@@ -4,15 +4,18 @@
 
 import { readCollection, writeCollection, STORAGE_KEYS } from "@/lib/storage/local-storage";
 import { obterSeedCompleto } from "@/lib/seed-data";
+import { calcularComissao } from "@/lib/comissoes/engine";
 import type {
   Agendamento,
   Bloqueio,
   Consumidor,
   Convite,
   Estabelecimento,
+  LancamentoComissao,
   Membership,
   Profissional,
   RegistroAuditoria,
+  RegraComissao,
   Recurso,
   Servico,
   StatusAgendamento,
@@ -167,6 +170,113 @@ export const bloqueioRepository = {
   },
 };
 
+// ---------- Regras de comissão ----------
+export const comissaoRegraRepository = {
+  listarTodos(): RegraComissao[] {
+    return readCollection(STORAGE_KEYS.regrasComissao, obterSeedCompleto().regrasComissao);
+  },
+  listarPorTenant(tenantId: string): RegraComissao[] {
+    return this.listarTodos().filter((r) => r.tenantId === tenantId);
+  },
+  obterPorProfissionalEServico(tenantId: string, profissionalId: string, servicoId: string): RegraComissao | undefined {
+    return this.listarTodos().find(
+      (r) => r.tenantId === tenantId && r.profissionalId === profissionalId && r.servicoId === servicoId
+    );
+  },
+  /** Upsert por tenantId+profissionalId+servicoId — garante estruturalmente que só
+   * existe uma regra ativa por combinação, sem precisar de uma checagem separada
+   * de unicidade nem de um campo `ativa`. */
+  salvar(dados: Omit<RegraComissao, "id" | "criadoEm" | "atualizadoEm">): RegraComissao {
+    const todos = this.listarTodos();
+    const agora = new Date().toISOString();
+    const existente = this.obterPorProfissionalEServico(dados.tenantId, dados.profissionalId, dados.servicoId);
+    if (existente) {
+      const atualizada: RegraComissao = { ...existente, tipo: dados.tipo, valor: dados.valor, atualizadoEm: agora };
+      writeCollection(STORAGE_KEYS.regrasComissao, todos.map((r) => (r.id === existente.id ? atualizada : r)));
+      return atualizada;
+    }
+    const nova: RegraComissao = { ...dados, id: gerarId("comregra"), criadoEm: agora, atualizadoEm: agora };
+    writeCollection(STORAGE_KEYS.regrasComissao, [...todos, nova]);
+    return nova;
+  },
+  remover(id: string): void {
+    writeCollection(STORAGE_KEYS.regrasComissao, this.listarTodos().filter((r) => r.id !== id));
+  },
+};
+
+// ---------- Lançamentos de comissão ----------
+export const lancamentoComissaoRepository = {
+  listarTodos(): LancamentoComissao[] {
+    return readCollection(STORAGE_KEYS.lancamentosComissao, obterSeedCompleto().lancamentosComissao);
+  },
+  listarPorTenant(tenantId: string): LancamentoComissao[] {
+    return this.listarTodos().filter((l) => l.tenantId === tenantId);
+  },
+  /** No máximo um lançamento por agendamento, para sempre — mesmo estornado, nunca
+   * é substituído por um novo. */
+  obterPorAgendamentoId(agendamentoId: string): LancamentoComissao | undefined {
+    return this.listarTodos().find((l) => l.agendamentoId === agendamentoId);
+  },
+  /** Idempotente: se já existir um lançamento para este `agendamentoId` (em
+   * qualquer status), retorna o existente em vez de criar outro — protege mesmo
+   * que algum chamador futuro esqueça de checar antes. */
+  criar(dados: Omit<LancamentoComissao, "id">): LancamentoComissao {
+    const existente = this.obterPorAgendamentoId(dados.agendamentoId);
+    if (existente) return existente;
+    const novo: LancamentoComissao = { ...dados, id: gerarId("comlanc") };
+    writeCollection(STORAGE_KEYS.lancamentosComissao, [...this.listarTodos(), novo]);
+    return novo;
+  },
+  /** Marca como estornado — nunca remove o registro do histórico. */
+  estornar(id: string): LancamentoComissao | undefined {
+    const todos = this.listarTodos();
+    const idx = todos.findIndex((l) => l.id === id);
+    if (idx === -1) return undefined;
+    todos[idx] = { ...todos[idx], status: "estornado" };
+    writeCollection(STORAGE_KEYS.lancamentosComissao, todos);
+    return todos[idx];
+  },
+};
+
+/** Gera o lançamento de comissão quando um agendamento é concluído. Sem preço
+ * definido no agendamento ("sob consulta"), não há valor para dividir — não gera
+ * lançamento. Sem regra configurada para o par profissional+serviço, gera um
+ * lançamento com comissão 0 (100% para o estabelecimento), conforme a regra de
+ * negócio: ausência de configuração nunca impede a conclusão do atendimento. */
+function consolidarComissaoDoAgendamento(agendamento: Agendamento): void {
+  if (agendamento.precoCentavos === undefined) return;
+  const regra = comissaoRegraRepository.obterPorProfissionalEServico(
+    agendamento.tenantId,
+    agendamento.profissionalId,
+    agendamento.servicoId
+  );
+  const regraAplicada = regra ? { tipo: regra.tipo, valor: regra.valor } : { tipo: "percentual" as const, valor: 0 };
+  const { valorProfissionalCentavos, valorEstabelecimentoCentavos } = calcularComissao(agendamento.precoCentavos, regraAplicada);
+  lancamentoComissaoRepository.criar({
+    tenantId: agendamento.tenantId,
+    agendamentoId: agendamento.id,
+    profissionalId: agendamento.profissionalId,
+    servicoId: agendamento.servicoId,
+    precoAgendamentoCentavos: agendamento.precoCentavos,
+    tipoComissao: regraAplicada.tipo,
+    valorRegraAplicada: regraAplicada.valor,
+    valorProfissionalCentavos,
+    valorEstabelecimentoCentavos,
+    dataAtendimento: agendamento.dataHoraInicio,
+    calculadoEm: new Date().toISOString(),
+    status: "confirmado",
+  });
+}
+
+/** Estorna (nunca apaga) o lançamento de um agendamento que deixou de estar
+ * concluído depois de já ter gerado comissão. */
+function estornarComissaoDoAgendamento(agendamentoId: string): void {
+  const existente = lancamentoComissaoRepository.obterPorAgendamentoId(agendamentoId);
+  if (existente && existente.status === "confirmado") {
+    lancamentoComissaoRepository.estornar(existente.id);
+  }
+}
+
 // ---------- Unidades ----------
 export const unidadeRepository = {
   listarTodos(): Unidade[] {
@@ -230,6 +340,11 @@ export const agendamentoRepository = {
       historico: [...anterior.historico, { em: new Date().toISOString(), de: anterior.status, para: novoStatus, por }],
     };
     writeCollection(STORAGE_KEYS.agendamentos, todos);
+    if (novoStatus === "concluido" && anterior.status !== "concluido") {
+      consolidarComissaoDoAgendamento(todos[idx]);
+    } else if (anterior.status === "concluido" && novoStatus !== "concluido") {
+      estornarComissaoDoAgendamento(id);
+    }
     return todos[idx];
   },
   remarcar(id: string, novoInicio: string, novoFim: string, por: string): Agendamento | undefined {
@@ -245,6 +360,9 @@ export const agendamentoRepository = {
       historico: [...anterior.historico, { em: new Date().toISOString(), de: anterior.status, para: "pendente", por }],
     };
     writeCollection(STORAGE_KEYS.agendamentos, todos);
+    if (anterior.status === "concluido") {
+      estornarComissaoDoAgendamento(id);
+    }
     return todos[idx];
   },
 };

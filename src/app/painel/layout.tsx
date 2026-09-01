@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CalendarDays, ClipboardList, LayoutDashboard, Paintbrush, ShieldAlert, Settings, UserCircle, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, LayoutDashboard, Paintbrush, Percent, ShieldAlert, Settings, UserCircle, Users } from "lucide-react";
 import { RequireRole } from "@/components/layout/require-role";
 import { AdminShell, type ItemNavegacao } from "@/components/layout/admin-shell";
 import { TenantProvider, useTenant } from "@/lib/tenant/tenant-context";
@@ -26,6 +26,7 @@ function PainelShell({ children }: { children: ReactNode }) {
     { href: "/painel/servicos", rotulo: terminologia.servico.plural, icone: ClipboardList, permissao: "servicos.visualizar" },
     { href: "/painel/consumidores", rotulo: terminologia.consumidor.plural, icone: Users, permissao: "consumidores.visualizar" },
     { href: "/painel/equipe", rotulo: "Equipe e acessos", icone: Users, permissao: "equipe.visualizar" },
+    { href: "/painel/comissoes", rotulo: "Comissões", icone: Percent, permissao: "comissoes.visualizar" },
     { href: "/painel/personalizacao", rotulo: "Personalização", icone: Paintbrush, permissao: "personalizacao.gerenciar" },
     { href: "/painel/configuracoes", rotulo: "Configurações", icone: Settings, permissao: "configuracoes.gerenciar" },
   ];

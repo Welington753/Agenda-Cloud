@@ -255,6 +255,50 @@ export interface Agendamento {
   historico: HistoricoAlteracao[];
 }
 
+export type TipoComissao = "percentual" | "fixo";
+
+/** `confirmado` = lançamento válido, entra nos totais do relatório. `estornado` =
+ * o agendamento que o gerou foi revertido depois de concluído; o registro nunca é
+ * apagado, só marcado — histórico permanece auditável. */
+export type StatusLancamentoComissao = "confirmado" | "estornado";
+
+/** Regra de comissão para UMA combinação profissional+serviço. No máximo uma por
+ * `tenantId`+`profissionalId`+`servicoId` — `comissaoRegraRepository.salvar` faz
+ * upsert por essa chave, então a unicidade é estrutural, não uma checagem separada.
+ * `valor`: percentual é 0-100 (não fração); fixo é centavos. */
+export interface RegraComissao {
+  id: string;
+  tenantId: string;
+  profissionalId: string;
+  servicoId: string;
+  tipo: TipoComissao;
+  valor: number;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+/** Lançamento gerado quando um agendamento é concluído — cópia congelada dos
+ * valores no momento do cálculo. Nunca é recalculado a partir da regra atual;
+ * alterar ou remover a `RegraComissao` depois não toca nenhum `LancamentoComissao`
+ * já existente. No máximo um lançamento por `agendamentoId`, para sempre — mesmo
+ * que ele tenha sido estornado, um novo nunca é criado para o mesmo agendamento. */
+export interface LancamentoComissao {
+  id: string;
+  tenantId: string;
+  agendamentoId: string;
+  profissionalId: string;
+  servicoId: string;
+  precoAgendamentoCentavos: number;
+  tipoComissao: TipoComissao;
+  valorRegraAplicada: number;
+  valorProfissionalCentavos: number;
+  valorEstabelecimentoCentavos: number;
+  /** = `Agendamento.dataHoraInicio` no momento do cálculo. */
+  dataAtendimento: string;
+  calculadoEm: string;
+  status: StatusLancamentoComissao;
+}
+
 // ---------------------------------------------------------------------------
 // Contas, vínculos e permissões
 //
@@ -332,6 +376,8 @@ export type Permission =
   | "relatorios.visualizar"
   | "equipe.visualizar"
   | "equipe.gerenciar"
+  | "comissoes.visualizar"
+  | "comissoes.gerenciar"
   | "personalizacao.gerenciar"
   | "configuracoes.gerenciar";
 

@@ -18,10 +18,12 @@ import type {
   Estabelecimento,
   Feature,
   HistoricoAlteracao,
+  LancamentoComissao,
   Membership,
   Profissional,
   Recurso,
   RegistroAuditoria,
+  RegraComissao,
   RegrasAgendamento,
   Servico,
   StatusAgendamento,
@@ -993,6 +995,21 @@ export function gerarConvitesSeed(): Convite[] {
   ];
 }
 
+export function gerarRegrasComissaoSeed(): RegraComissao[] {
+  return [
+    {
+      id: "regra-comissao-joao-corte-tradicional",
+      tenantId: TENANT_DOM_NAVALHA,
+      profissionalId: "prof-joao-silva",
+      servicoId: "serv-corte-tradicional",
+      tipo: "percentual",
+      valor: 40,
+      criadoEm: addDays(new Date(), -30).toISOString(),
+      atualizadoEm: addDays(new Date(), -30).toISOString(),
+    },
+  ];
+}
+
 export function gerarAuditoriaSeed(): RegistroAuditoria[] {
   const feature: Feature = "relatorios";
   return [
@@ -1080,6 +1097,8 @@ let seedCompletoCache: {
   memberships: Membership[];
   convites: Convite[];
   auditoria: RegistroAuditoria[];
+  regrasComissao: RegraComissao[];
+  lancamentosComissao: LancamentoComissao[];
 } | null = null;
 
 /** Memoiza a geração para que agendamentos e consumidores (que são derivados
@@ -1102,6 +1121,10 @@ export function obterSeedCompleto() {
       memberships: gerarMembershipsSeed(),
       convites: gerarConvitesSeed(),
       auditoria: gerarAuditoriaSeed(),
+      regrasComissao: gerarRegrasComissaoSeed(),
+      // Sem backfill — só passa a existir a partir de agendamentos concluídos
+      // depois desta implementação (ver AGENTS.md / plano da feature).
+      lancamentosComissao: [],
     };
   }
   return seedCompletoCache;

@@ -36,6 +36,8 @@ export const PERMISSAO_PARA_FEATURE: Partial<Record<Permission, Feature>> = {
   "relatorios.visualizar": "relatorios",
   "equipe.visualizar": "equipe",
   "equipe.gerenciar": "equipe",
+  "comissoes.visualizar": "comissoes",
+  "comissoes.gerenciar": "comissoes",
 };
 
 const TODAS_AS_PERMISSOES: Permission[] = [
@@ -54,6 +56,8 @@ const TODAS_AS_PERMISSOES: Permission[] = [
   "relatorios.visualizar",
   "equipe.visualizar",
   "equipe.gerenciar",
+  "comissoes.visualizar",
+  "comissoes.gerenciar",
   "personalizacao.gerenciar",
   "configuracoes.gerenciar",
 ];
@@ -78,6 +82,8 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<PapelEstabelecimento, Permissio
     "consumidores.visualizar",
     "consumidores.gerenciar",
     "relatorios.visualizar",
+    "comissoes.visualizar",
+    "comissoes.gerenciar",
   ],
   recepcionista: [
     "dashboard.visualizar",

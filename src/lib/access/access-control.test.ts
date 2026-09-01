@@ -126,6 +126,24 @@ describe("podeGerenciarAdministradores", () => {
   });
 });
 
+describe("permissões de comissões", () => {
+  it("dono no plano pro vê e gerencia comissões", () => {
+    expect(calcularAcessoEfetivo(baseEntrada({ permissao: "comissoes.visualizar", papel: "dono", plano: "pro" })).permitido).toBe(true);
+    expect(calcularAcessoEfetivo(baseEntrada({ permissao: "comissoes.gerenciar", papel: "dono", plano: "pro" })).permitido).toBe(true);
+  });
+
+  it("recepcionista não gerencia comissões mesmo no plano pro", () => {
+    const resultado = calcularAcessoEfetivo(baseEntrada({ permissao: "comissoes.gerenciar", papel: "recepcionista", plano: "pro" }));
+    expect(resultado.permitido).toBe(false);
+  });
+
+  it("plano sem a feature comissoes bloqueia acesso mesmo para o dono", () => {
+    const resultado = calcularAcessoEfetivo(baseEntrada({ permissao: "comissoes.visualizar", papel: "dono", plano: "equipe" }));
+    expect(resultado.permitido).toBe(false);
+    expect(resultado.motivo).toMatch(/plano/i);
+  });
+});
+
 describe("podeReceberAgendamentoPublico", () => {
   it("permite quando o tenant está ativo", () => {
     expect(podeReceberAgendamentoPublico("ativo")).toBe(true);

@@ -61,7 +61,6 @@ export const DEFINICOES_PLANO: Record<CodigoPlano, DefinicaoPlano> = {
  * normal. Nunca finja que uma dessas funciona. */
 export const FEATURES_AINDA_NAO_IMPLEMENTADAS: readonly Feature[] = [
   "listaDeEspera",
-  "comissoes",
   "pagamentos",
   "assinaturas",
   "dominioProprio",
