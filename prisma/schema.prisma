@@ -1,0 +1,703 @@
+// Schema multi-tenant do Agenda Cloud.
+//
+// Convenção: models/campos em inglês (camelCase -> snake_case via @map/@@map),
+// mesmo o domínio da UI (src/lib/types.ts) sendo em português. Ver a tabela de
+// mapeamento em docs/plans/fundacao-postgresql.md para a correspondência
+// completa entre cada model daqui e o tipo TS equivalente.
+//
+// Duas peças NÃO aparecem neste arquivo porque o Prisma 7 (estável) não tem
+// DSL para elas — são adicionadas manualmente na migration inicial, com o
+// motivo documentado no cabeçalho do arquivo .sql correspondente:
+//   1. CHECK ("end_at" > "start_at") em Appointment.
+//   2. EXCLUDE USING gist contra sobreposição de agendamentos ativos do mesmo
+//      profissional (requer a extensão btree_gist).
+// A extensão `citext` (usada para e-mail e slug case-insensitive) e a
+// extensão `btree_gist` (pré-requisito da exclusion constraint) já são
+// declaradas abaixo via `extensions = [...]` — o Prisma gera o
+// `CREATE EXTENSION` automaticamente a partir disso.
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  // prisma_postgres: extensão instalada automaticamente pela infraestrutura
+  // gerenciada do Prisma Postgres (aparece mesmo usando a connection string
+  // "Any Client"), não faz parte do domínio da aplicação. Declarada aqui só
+  // para o Migrate não a tratar como drift.
+  extensions = [citext, btree_gist, prisma_postgres]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PlatformRole {
+  MASTER_OWNER
+  MASTER_ADMIN
+  MASTER_SUPPORT
+}
+
+enum PlatformPermission {
+  ESTABLISHMENTS_MANAGE
+  ADMINISTRATORS_MANAGE
+  PLANS_MANAGE
+  SUPPORT_ACCESS
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  PAST_DUE
+  CANCELED
+}
+
+enum BusinessCategory {
+  BARBERSHOP
+  HAIR_SALON
+  CLINIC
+  DENTAL_CLINIC
+  AESTHETICS
+  TATTOO
+  PET_SHOP
+  OTHER
+}
+
+enum PageTemplate {
+  CLASSIC
+  MODERN
+}
+
+enum FeatureKey {
+  AGENDA
+  AGENDAMENTO_PUBLICO
+  PROFISSIONAIS
+  CONSUMIDORES
+  RELATORIOS
+  EQUIPE
+  PERSONALIZACAO_AVANCADA
+  MULTIPLAS_UNIDADES
+  DOMINIO_PROPRIO
+  LISTA_DE_ESPERA
+  COMISSOES
+  PAGAMENTOS
+  ASSINATURAS
+}
+
+enum EstablishmentRole {
+  DONO
+  GERENTE
+  RECEPCIONISTA
+  PROFISSIONAL
+}
+
+enum Permission {
+  DASHBOARD_VISUALIZAR
+  AGENDA_VISUALIZAR
+  AGENDA_GERENCIAR
+  AGENDAMENTO_CRIAR
+  AGENDAMENTO_EDITAR
+  AGENDAMENTO_CANCELAR
+  PROFISSIONAIS_VISUALIZAR
+  PROFISSIONAIS_GERENCIAR
+  SERVICOS_VISUALIZAR
+  SERVICOS_GERENCIAR
+  CONSUMIDORES_VISUALIZAR
+  CONSUMIDORES_GERENCIAR
+  RELATORIOS_VISUALIZAR
+  EQUIPE_VISUALIZAR
+  EQUIPE_GERENCIAR
+  PERSONALIZACAO_GERENCIAR
+  CONFIGURACOES_GERENCIAR
+}
+
+// GRANTED / DENIED substitui os dois arrays paralelos (permissoesLiberadas /
+// permissoesNegadas) do tipo Membership atual por uma única tabela de
+// exceções auditável linha a linha. DENIED sempre vence sobre GRANTED e
+// sobre o que o papel concederia por padrão.
+enum PermissionMode {
+  GRANTED
+  DENIED
+}
+
+enum InviteType {
+  ESTABLISHMENT
+  PLATFORM
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum AuditAction {
+  TENANT_CREATED
+  TENANT_PLAN_CHANGED
+  TENANT_FEATURE_CHANGED
+  TENANT_SUSPENDED
+  TENANT_REACTIVATED
+  MASTER_CREATED
+  MASTER_REMOVED
+  USER_INVITED
+  USER_PERMISSION_CHANGED
+  SUPPORT_ACCESSED
+  IDENTITY_CHANGED
+}
+
+enum ResourceType {
+  CHAIR
+  ROOM
+  OFFICE
+  EQUIPMENT
+  TABLE
+  VEHICLE
+  OTHER
+}
+
+enum ServiceModality {
+  IN_PERSON
+  REMOTE
+  HOME
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+// ---------------------------------------------------------------------------
+// Globais
+// ---------------------------------------------------------------------------
+
+// Unifica UsuarioPlataforma e UsuarioEstabelecimento (src/lib/types.ts) em um
+// único model global. `emailVerified` e `image` existem só para compatibiliade
+// futura com o adapter Prisma do Better Auth (Account/Session/Verification
+// entram numa fase posterior — não implementados aqui). Nunca recebe campo de
+// senha nesta etapa.
+model User {
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique @db.Citext
+  phone               String?
+  emailVerified       Boolean              @default(false)
+  image               String?
+  status              UserStatus           @default(ACTIVE)
+  platformRole        PlatformRole?
+  platformPermissions PlatformPermission[]
+  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
+  lastSeenAt          DateTime?            @db.Timestamptz(3)
+
+  memberships    Membership[]
+  createdInvites Invite[]     @relation("InviteCreatedBy")
+  auditLogs      AuditLog[]   @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Plan {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  priceCents       Int
+  shortDescription String
+  maxProfessionals Int
+  maxUnits         Int
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  planFeatures PlanFeature[]
+  tenants      Tenant[]
+
+  @@map("plans")
+}
+
+model Feature {
+  id    String     @id @default(cuid())
+  key   FeatureKey @unique
+  label String
+
+  planFeatures    PlanFeature[]
+  tenantOverrides TenantFeatureOverride[]
+
+  @@map("features")
+}
+
+// Catálogo "o que cada plano inclui por padrão" — hoje hardcoded em
+// src/lib/planos.ts (DEFINICOES_PLANO), vira dado real no banco.
+model PlanFeature {
+  id        String @id @default(cuid())
+  planId    String
+  featureId String
+
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureId])
+  @@map("plan_features")
+}
+
+// Estabelecimento / tenant. `slug` é @db.Citext para ser único
+// case-insensitive no próprio banco (regra 3), não só por convenção da
+// aplicação. Dado operacional (Professional, Service, Consumer, Appointment,
+// ...) referencia Tenant com onDelete: Restrict — não é possível apagar um
+// tenant que já tem operação (regra 13). Tabelas de configuração 1:1
+// (BrandIdentity/BookingPolicy/PublicSettings) usam Cascade por serem
+// estritamente dependentes do tenant.
+model Tenant {
+  id                String           @id @default(cuid())
+  slug              String           @unique @db.Citext
+  category          BusinessCategory
+  taxDocument       String?
+  timezone          String
+  planId            String
+  status            TenantStatus     @default(TRIAL)
+  suspensionReason  String?
+  professionalCount Int              @default(0)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  brandIdentity    BrandIdentity?
+  bookingPolicy    BookingPolicy?
+  publicSettings   PublicSettings?
+  featureOverrides TenantFeatureOverride[]
+
+  units         Unit[]
+  memberships   Membership[]
+  invites       Invite[]
+  auditLogs     AuditLog[]
+  professionals Professional[]
+  services      Service[]
+  consumers     Consumer[]
+  timeBlocks    TimeBlock[]
+  resources     Resource[]
+  appointments  Appointment[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+// Exceção do master por tenant (equivalente a Estabelecimento.featuresDesativadas).
+// `enabled = false` é o único caso usado hoje (desativar algo que o plano
+// incluiria); a coluna já suporta o inverso (ligar algo fora do plano) sem
+// migração futura.
+model TenantFeatureOverride {
+  id        String  @id @default(cuid())
+  tenantId  String
+  featureId String
+  enabled   Boolean
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@index([tenantId])
+  @@map("tenant_feature_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// Configuração do tenant
+// ---------------------------------------------------------------------------
+
+// IdentidadeVisual. `template` cobre "modelo de página" (ModeloPaginaPublica)
+// — decisão: campo estruturado aqui, não tabela própria, por ser um enum de
+// 2 valores sem dado adicional.
+model BrandIdentity {
+  id                   String       @id @default(cuid())
+  tenantId             String       @unique
+  name                 String
+  shortName            String
+  logoInitials         String
+  primaryColor         String
+  secondaryColor       String
+  accentColor          String
+  style                String
+  template             PageTemplate @default(CLASSIC)
+  address              String
+  phone                String
+  email                String?
+  instagram            String?
+  facebook             String?
+  presentationText     String
+  photos               String[]
+  bannerUrl            String?
+  sectionOrder         String[]
+  customFooter         String?
+  hidePlatformBranding Boolean      @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("brand_identities")
+}
+
+// RegrasAgendamento.
+model BookingPolicy {
+  id                    String  @id @default(cuid())
+  tenantId              String  @unique
+  minLeadMinutes        Int
+  maxFutureDays         Int
+  cancellationHours     Int
+  autoConfirm           Boolean
+  allowAnyProfessional  Boolean
+  allowClientReschedule Boolean
+  requireClientPhone    Boolean
+  requireClientEmail    Boolean
+  showPublicPrice       Boolean
+  defaultBufferMinutes  Int
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("booking_policies")
+}
+
+// Cobre "Configurações públicas" e "Status de publicação". `isPublished` é um
+// campo novo (não existe hoje na UI) preparado para controlar a visibilidade
+// da página pública independente do status de cobrança do tenant.
+model PublicSettings {
+  id            String  @id @default(cuid())
+  tenantId      String  @unique
+  isPublished   Boolean @default(true)
+  operatingDays Int[]
+  openTime      String
+  closeTime     String
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("public_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Operação do tenant
+// ---------------------------------------------------------------------------
+
+model Unit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  address   String
+  timezone  String
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  professionals Professional[]
+  appointments  Appointment[]
+
+  @@index([tenantId])
+  @@map("units")
+}
+
+model Membership {
+  id             String            @id @default(cuid())
+  userId         String
+  tenantId       String
+  role           EstablishmentRole
+  professionalId String?           @unique
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  professional Professional? @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+
+  permissionOverrides MembershipPermissionOverride[]
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("memberships")
+}
+
+// Substitui Membership.permissoesLiberadas / permissoesNegadas.
+model MembershipPermissionOverride {
+  id           String         @id @default(cuid())
+  membershipId String
+  permission   Permission
+  mode         PermissionMode
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, permission])
+  @@map("membership_permission_overrides")
+}
+
+// Nunca guarda o token em texto puro (regra 14) — só o hash.
+model Invite {
+  id                String             @id @default(cuid())
+  type              InviteType
+  targetName        String
+  targetEmail       String             @db.Citext
+  tenantId          String?
+  establishmentRole EstablishmentRole?
+  platformRole      PlatformRole?
+  status            InviteStatus       @default(PENDING)
+  tokenHash         String             @unique
+  createdByUserId   String
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  expiresAt         DateTime           @db.Timestamptz(3)
+  acceptedAt        DateTime?          @db.Timestamptz(3)
+  revokedAt         DateTime?          @db.Timestamptz(3)
+  generatedUserId   String?
+
+  tenant        Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdByUser User    @relation("InviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  // Cobre também "índice para convites pendentes" via prefixo (tenantId, status).
+  @@index([tenantId, status])
+  @@index([targetEmail])
+  @@map("invites")
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  occurredAt   DateTime    @default(now()) @db.Timestamptz(3)
+  action       AuditAction
+  actorUserId  String
+  actorName    String
+  tenantId     String?
+  summary      String
+  previousData Json?
+  newData      Json?
+
+  actor  User    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, occurredAt])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}
+
+model Professional {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  unitId              String?
+  name                String
+  avatarInitials      String
+  avatarColor         String
+  onlineBookingActive Boolean  @default(true)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit   Unit?  @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  schedules    ProfessionalSchedule[]
+  services     ProfessionalService[]
+  membership   Membership?
+  timeBlocks   TimeBlock[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@map("professionals")
+}
+
+// Regra de disponibilidade semanal (HorarioDia). Uma linha por dia da semana
+// em uso, em vez do array embutido em Profissional.horarios.
+model ProfessionalSchedule {
+  id             String  @id @default(cuid())
+  professionalId String
+  weekday        Int
+  active         Boolean @default(true)
+  startTime      String
+  endTime        String
+  lunchStart     String?
+  lunchEnd       String?
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, weekday])
+  @@map("professional_schedules")
+}
+
+model Service {
+  id                         String          @id @default(cuid())
+  tenantId                   String
+  name                       String
+  shortDescription           String
+  priceCents                 Int?
+  priceVisible               Boolean         @default(true)
+  durationMinutes            Int
+  bufferAfterMinutes         Int             @default(0)
+  modality                   ServiceModality @default(IN_PERSON)
+  activeInPublicBooking      Boolean         @default(true)
+  requiresManualConfirmation Boolean         @default(false)
+  active                     Boolean         @default(true)
+  createdAt                  DateTime        @default(now()) @db.Timestamptz(3)
+
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  professionals    ProfessionalService[]
+  appointmentItems AppointmentItem[]
+
+  @@index([tenantId])
+  @@map("services")
+}
+
+// Junção M:N explícita — substitui os arrays paralelos
+// Profissional.servicosIds / Servico.profissionaisIds.
+model ProfessionalService {
+  id             String @id @default(cuid())
+  professionalId String
+  serviceId      String
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, serviceId])
+  @@map("professional_services")
+}
+
+model Consumer {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  name               String
+  whatsapp           String
+  whatsappNormalized String
+  email              String?
+  totalVisits        Int       @default(0)
+  totalNoShows       Int       @default(0)
+  lastServedAt       DateTime? @db.Timestamptz(3)
+  nextAppointmentAt  DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+
+  // Mesmo telefone pode existir em tenants diferentes — isolamento é por
+  // tenant + telefone normalizado, nunca telefone sozinho.
+  @@unique([tenantId, whatsappNormalized])
+  @@index([tenantId])
+  @@index([whatsappNormalized])
+  @@map("consumers")
+}
+
+model TimeBlock {
+  id             String   @id @default(cuid())
+  tenantId       String
+  professionalId String
+  startAt        DateTime @db.Timestamptz(3)
+  endAt          DateTime @db.Timestamptz(3)
+  reason         String
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([professionalId, startAt, endAt])
+  @@map("time_blocks")
+}
+
+model Resource {
+  id       String       @id @default(cuid())
+  tenantId String
+  name     String
+  type     ResourceType
+  active   Boolean      @default(true)
+
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appointmentResources AppointmentResource[]
+
+  @@index([tenantId])
+  @@map("resources")
+}
+
+// `startAt`/`endAt` em UTC (timestamptz). A constraint de exclusão contra
+// sobreposição e o CHECK (endAt > startAt) são adicionados via SQL bruto na
+// migration inicial — ver o cabeçalho deste arquivo e o comentário no .sql
+// gerado. `consumerNameSnapshot`/`consumerWhatsappSnapshot` são histórico
+// imutável proposital: preservam o que era verdade no momento do
+// agendamento, mesmo que o cadastro do consumidor mude depois.
+model Appointment {
+  id                       String            @id @default(cuid())
+  tenantId                 String
+  unitId                   String
+  consumerId               String
+  consumerNameSnapshot     String
+  consumerWhatsappSnapshot String
+  professionalId           String
+  startAt                  DateTime          @db.Timestamptz(3)
+  endAt                    DateTime          @db.Timestamptz(3)
+  status                   AppointmentStatus @default(PENDING)
+  notes                    String?
+  createdAt                DateTime          @default(now()) @db.Timestamptz(3)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  consumer     Consumer     @relation(fields: [consumerId], references: [id], onDelete: Restrict)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Restrict)
+
+  items         AppointmentItem[]
+  resources     AppointmentResource[]
+  statusChanges AppointmentStatusChange[]
+
+  @@index([tenantId])
+  @@index([professionalId, startAt, endAt])
+  @@index([status])
+  @@index([startAt])
+  @@map("appointments")
+}
+
+// "Itens do agendamento" — extraído de Agendamento.servicoId/precoCentavos
+// para tabela filha. Hoje sempre 1 linha por agendamento (preserva o
+// comportamento atual), mas já prepara suporte a múltiplos serviços por
+// agendamento sem exigir nova migration.
+model AppointmentItem {
+  id                      String @id @default(cuid())
+  appointmentId           String
+  serviceId               String
+  priceCentsSnapshot      Int?
+  durationMinutesSnapshot Int
+  position                Int    @default(0)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId])
+  @@map("appointment_items")
+}
+
+// "Recursos utilizados pelo agendamento". Tabela vazia por enquanto — recurso
+// ainda não entra no motor de disponibilidade (ver seed-data.ts atual).
+model AppointmentResource {
+  id            String @id @default(cuid())
+  appointmentId String
+  resourceId    String
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, resourceId])
+  @@map("appointment_resources")
+}
+
+// Substitui Agendamento.historico (array embutido) por uma linha por
+// transição de status. `changedBy` é um rótulo livre (ex.: "consumidor",
+// "recepcionista") — vira FK de User quando a autenticação real existir.
+model AppointmentStatusChange {
+  id            String             @id @default(cuid())
+  appointmentId String
+  occurredAt    DateTime           @default(now()) @db.Timestamptz(3)
+  fromStatus    AppointmentStatus?
+  toStatus      AppointmentStatus
+  changedBy     String
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@map("appointment_status_changes")
+}
