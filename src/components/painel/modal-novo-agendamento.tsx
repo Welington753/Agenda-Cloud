@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/modal";
 import { Botao } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { formatarDataLonga, formatarHora, formatarWhatsapp } from "@/lib/format";
-import { horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
+import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import { agendamentoRepository, consumidorRepository } from "@/lib/repositories";
 import type { Terminologia } from "@/lib/verticals/terminologia";
 import type { Estabelecimento, Profissional, Servico } from "@/lib/types";
@@ -39,6 +39,7 @@ export function ModalNovoAgendamento({
   const [horario, setHorario] = useState<Date | null>(null);
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [versaoHorarios, setVersaoHorarios] = useState(0);
 
   useEffect(() => {
     if (aberto) {
@@ -47,6 +48,7 @@ export function ModalNovoAgendamento({
       setHorario(null);
       setNome("");
       setWhatsapp("");
+      setVersaoHorarios(0);
     }
   }, [aberto, profissionalPreSelecionadoId]);
 
@@ -57,12 +59,19 @@ export function ModalNovoAgendamento({
   const horarios = useMemo(() => {
     if (!servico || !profissional) return [];
     return horariosLivresDoProfissionalNoDia(profissional, servico, dia, estabelecimento);
-  }, [servico, profissional, dia, estabelecimento]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servico, profissional, dia, estabelecimento, versaoHorarios]);
 
   function confirmar() {
     if (!servico || !profissional || !horario) return;
     if (!nome.trim() || whatsapp.replace(/\D/g, "").length < 10) {
       notificar("Preencha nome e WhatsApp válidos.", "erro");
+      return;
+    }
+    if (!horarioAindaDisponivelParaProfissional(profissional, servico, horario, estabelecimento)) {
+      notificar("Esse horário deixou de estar disponível. Escolha outro horário.", "erro");
+      setHorario(null);
+      setVersaoHorarios((v) => v + 1);
       return;
     }
     const consumidor = consumidorRepository.obterOuCriarPorWhatsapp(estabelecimento.tenantId, nome.trim(), whatsapp);

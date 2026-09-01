@@ -6,7 +6,7 @@ import { Store } from "lucide-react";
 import { estabelecimentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
 import { useClientData } from "@/lib/hooks/use-client-data";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
-import { featureHabilitada } from "@/lib/access/access-control";
+import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
 import { Botao } from "@/components/ui/button";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,11 +60,9 @@ export default function PaginaPublicaEstabelecimento() {
 
   const { estabelecimento, profissionais, servicos } = dados;
   const terminologia = obterTerminologia(estabelecimento.categoria);
-  const agendamentoPublicoHabilitado = featureHabilitada(
-    estabelecimento.plano,
-    estabelecimento.featuresDesativadas,
-    "agendamentoPublico"
-  );
+  const agendamentoPublicoHabilitado =
+    featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico") &&
+    podeReceberAgendamentoPublico(estabelecimento.status);
 
   const props = { slug, estabelecimento, profissionais, servicos, terminologia, agendamentoPublicoHabilitado };
 

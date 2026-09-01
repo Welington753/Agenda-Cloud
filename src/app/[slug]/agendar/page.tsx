@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { addDays, getDay, startOfDay } from "date-fns";
 import { ArrowLeft, Store } from "lucide-react";
-import { horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
+import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import {
   agendamentoRepository,
   consumidorRepository,
@@ -25,7 +25,7 @@ import { EtapaDataHorario } from "@/components/agendamento/etapa-data-horario";
 import { EtapaDadosCliente } from "@/components/agendamento/etapa-dados-cliente";
 import { EtapaConfirmacao } from "@/components/agendamento/etapa-confirmacao";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
-import { featureHabilitada } from "@/lib/access/access-control";
+import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
 import type { DiaSemana, Estabelecimento, Profissional, Servico } from "@/lib/types";
 
 const MAX_DIAS_EXIBIDOS = 21;
@@ -164,6 +164,25 @@ export default function AgendarPage() {
     );
   }
 
+  if (!podeReceberAgendamentoPublico(estabelecimento.status)) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md items-center justify-center px-4">
+        <EstadoVazio
+          icone={Store}
+          titulo="Agendamento indisponível"
+          descricao={`${estabelecimento.identidadeVisual.nome} não está aceitando novos agendamentos no momento.`}
+          acao={
+            <Link href={`/${slug}`}>
+              <Botao variante="secundaria" tamanho="sm">
+                Voltar
+              </Botao>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   function irParaEtapaAnterior() {
     setEtapa((e) => Math.max(0, e - 1));
   }
@@ -196,9 +215,7 @@ export default function AgendarPage() {
       return;
     }
 
-    const aindaDisponivel = horariosLivresDoProfissionalNoDia(profissional, servico, horarioSelecionado, estabelecimento).some(
-      (h) => h.getTime() === horarioSelecionado.getTime()
-    );
+    const aindaDisponivel = horarioAindaDisponivelParaProfissional(profissional, servico, horarioSelecionado, estabelecimento);
 
     if (!aindaDisponivel) {
       notificar("Esse horário acabou de ser preenchido. Escolha outro, por favor.", "erro");

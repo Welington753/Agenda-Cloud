@@ -5,6 +5,7 @@ import {
   identificarProprietarioPrincipal,
   podeAdministrarPlataforma,
   podeGerenciarAdministradores,
+  podeReceberAgendamentoPublico,
 } from "./access-control";
 import type { EntradaAcessoEfetivo } from "./access-control";
 
@@ -122,6 +123,24 @@ describe("podeGerenciarAdministradores", () => {
     expect(podeGerenciarAdministradores("MASTER_OWNER")).toBe(true);
     expect(podeGerenciarAdministradores("MASTER_ADMIN")).toBe(false);
     expect(podeGerenciarAdministradores("MASTER_SUPPORT")).toBe(false);
+  });
+});
+
+describe("podeReceberAgendamentoPublico", () => {
+  it("permite quando o tenant está ativo", () => {
+    expect(podeReceberAgendamentoPublico("ativo")).toBe(true);
+  });
+  it("permite quando o tenant está em teste", () => {
+    expect(podeReceberAgendamentoPublico("teste")).toBe(true);
+  });
+  it("permite quando o tenant está inadimplente (regra funcional atual)", () => {
+    expect(podeReceberAgendamentoPublico("inadimplente")).toBe(true);
+  });
+  it("bloqueia quando o tenant está suspenso", () => {
+    expect(podeReceberAgendamentoPublico("suspenso")).toBe(false);
+  });
+  it("bloqueia quando o tenant está cancelado", () => {
+    expect(podeReceberAgendamentoPublico("cancelado")).toBe(false);
   });
 });
 

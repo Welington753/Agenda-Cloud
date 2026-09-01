@@ -24,7 +24,7 @@ export default function PainelProfissionaisPage() {
 }
 
 function ConteudoProfissionais() {
-  const { tenantId, terminologia } = useTenant();
+  const { tenantId, terminologia, podeAcessar } = useTenant();
   const { notificar } = useToast();
   const [modalAberto, setModalAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<Profissional | null>(null);
@@ -45,8 +45,10 @@ function ConteudoProfissionais() {
 
   const { profissionais, servicos } = dados;
   const nomeServico = new Map(servicos.map((s) => [s.id, s.nome]));
+  const podeGerenciar = podeAcessar("profissionais.gerenciar").permitido;
 
   function alternarAtivo(prof: Profissional) {
+    if (!podeAcessar("profissionais.gerenciar").permitido) return;
     profissionalRepository.atualizar(prof.id, { ativo: !prof.ativo });
     notificar(
       prof.ativo ? `${terminologia.profissional.singular} desativado(a).` : `${terminologia.profissional.singular} reativado(a).`,
@@ -62,15 +64,17 @@ function ConteudoProfissionais() {
           <h1 className="text-xl font-bold text-ink">{terminologia.equipe}</h1>
           <p className="text-sm text-ink-soft">Gerencie sua equipe e os horários de cada um.</p>
         </div>
-        <Botao
-          tamanho="sm"
-          onClick={() => {
-            setEmEdicao(null);
-            setModalAberto(true);
-          }}
-        >
-          <Plus size={16} className="mr-1.5" /> Nov{terminologia.profissional.artigo === "a" ? "a" : "o"} {terminologia.profissional.singular.toLowerCase()}
-        </Botao>
+        {podeGerenciar && (
+          <Botao
+            tamanho="sm"
+            onClick={() => {
+              setEmEdicao(null);
+              setModalAberto(true);
+            }}
+          >
+            <Plus size={16} className="mr-1.5" /> Nov{terminologia.profissional.artigo === "a" ? "a" : "o"} {terminologia.profissional.singular.toLowerCase()}
+          </Botao>
+        )}
       </div>
 
       {profissionais.length === 0 ? (
@@ -107,22 +111,24 @@ function ConteudoProfissionais() {
                 <p className="text-xs text-ink-soft">
                   {prof.agendamentoOnlineAtivo ? "Aceita agendamento online" : "Agendamento online desativado"}
                 </p>
-                <div className="flex gap-2">
-                  <Botao
-                    tamanho="sm"
-                    variante="secundaria"
-                    className="flex-1"
-                    onClick={() => {
-                      setEmEdicao(prof);
-                      setModalAberto(true);
-                    }}
-                  >
-                    <Pencil size={14} className="mr-1.5" /> Editar
-                  </Botao>
-                  <Botao tamanho="sm" variante="secundaria" className="flex-1" onClick={() => alternarAtivo(prof)}>
-                    <PowerOff size={14} className="mr-1.5" /> {prof.ativo ? "Desativar" : "Reativar"}
-                  </Botao>
-                </div>
+                {podeGerenciar && (
+                  <div className="flex gap-2">
+                    <Botao
+                      tamanho="sm"
+                      variante="secundaria"
+                      className="flex-1"
+                      onClick={() => {
+                        setEmEdicao(prof);
+                        setModalAberto(true);
+                      }}
+                    >
+                      <Pencil size={14} className="mr-1.5" /> Editar
+                    </Botao>
+                    <Botao tamanho="sm" variante="secundaria" className="flex-1" onClick={() => alternarAtivo(prof)}>
+                      <PowerOff size={14} className="mr-1.5" /> {prof.ativo ? "Desativar" : "Reativar"}
+                    </Botao>
+                  </div>
+                )}
               </CartaoCorpo>
             </Cartao>
           ))}
@@ -136,6 +142,7 @@ function ConteudoProfissionais() {
         servicos={servicos}
         profissionalEmEdicao={emEdicao}
         terminologia={terminologia}
+        podeSalvar={podeGerenciar}
         onSalvo={recarregar}
       />
     </div>

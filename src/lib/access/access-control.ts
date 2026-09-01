@@ -114,6 +114,13 @@ export interface ResultadoAcesso {
  * teste precisa poder usar o produto, senão o teste não serve pra nada. */
 const STATUS_TENANT_FUNCIONAL: StatusEstabelecimento[] = ["ativo", "teste", "inadimplente"];
 
+/** Estabelecimentos "suspenso" ou "cancelado" não podem receber NOVOS agendamentos
+ * públicos nem remarcações — reaproveita a mesma classificação de status funcional
+ * usada pelo portal (STATUS_TENANT_FUNCIONAL), então as duas regras nunca divergem. */
+export function podeReceberAgendamentoPublico(status: StatusEstabelecimento): boolean {
+  return STATUS_TENANT_FUNCIONAL.includes(status);
+}
+
 /**
  * Uma permissão só é concedida quando TODAS as condições são verdadeiras, nesta
  * ordem (a ordem importa para o `motivo` retornado fazer sentido):

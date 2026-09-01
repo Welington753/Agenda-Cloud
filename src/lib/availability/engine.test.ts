@@ -133,3 +133,107 @@ describe("horarioAindaDisponivel", () => {
     expect(horarioAindaDisponivel(opcoesComNovoConflito, hora("15:00"))).toBe(false);
   });
 });
+
+describe("intervalo posterior e duração real do agendamento existente", () => {
+  it("agendamento existente de 90 minutos não vira 30 minutos quando o novo serviço é diferente", () => {
+    const outroServico: Agendamento = {
+      id: "ag-outro",
+      tenantId: "t1",
+      consumidorId: "c1",
+      consumidorNome: "Cliente",
+      consumidorWhatsapp: "(11) 90000-0000",
+      profissionalId: "p1",
+      servicoId: "serv-longo",
+      dataHoraInicio: hora("10:00").toISOString(),
+      dataHoraFim: hora("11:30").toISOString(),
+      status: "confirmado",
+      precoCentavos: 5000,
+      criadoEm: new Date().toISOString(),
+      historico: [],
+    };
+    const ocupados = agendamentosParaOcupados(
+      [outroServico],
+      new Map([["serv-x", 30]]),
+      new Map([["serv-x", 0]])
+    );
+    expect(ocupados).toHaveLength(1);
+    expect(ocupados[0].fim.getTime()).toBe(hora("11:30").getTime());
+    expect(ocupados[0].fim.getTime()).not.toBe(hora("10:30").getTime());
+
+    const disponiveis = calcularHorariosDisponiveis(baseOpcoes({ ocupados }));
+    expect(disponiveis.some((d) => d.getTime() === hora("11:00").getTime())).toBe(false);
+    expect(disponiveis.some((d) => d.getTime() === hora("11:30").getTime())).toBe(true);
+  });
+
+  it("intervalo posterior do agendamento existente bloqueia o próximo início", () => {
+    const agendamento: Agendamento = {
+      id: "ag-1",
+      tenantId: "t1",
+      consumidorId: "c1",
+      consumidorNome: "Cliente",
+      consumidorWhatsapp: "(11) 90000-0000",
+      profissionalId: "p1",
+      servicoId: "serv-x",
+      dataHoraInicio: hora("10:00").toISOString(),
+      dataHoraFim: hora("10:30").toISOString(),
+      status: "confirmado",
+      precoCentavos: 4000,
+      criadoEm: new Date().toISOString(),
+      historico: [],
+    };
+    const ocupados = agendamentosParaOcupados(
+      [agendamento],
+      new Map([["serv-x", 30]]),
+      new Map([["serv-x", 15]])
+    );
+    expect(ocupados[0].fim.getTime()).toBe(hora("10:45").getTime());
+
+    const disponiveis = calcularHorariosDisponiveis(baseOpcoes({ ocupados }));
+    expect(disponiveis.some((d) => d.getTime() === hora("10:30").getTime())).toBe(false);
+    expect(disponiveis.some((d) => d.getTime() === hora("10:45").getTime())).toBe(true);
+  });
+
+  it("intervalo posterior do novo serviço impede sobreposição com o próximo compromisso", () => {
+    const opcoes = baseOpcoes({
+      duracaoServicoMinutos: 30,
+      intervaloPosteriorMinutos: 20,
+      ocupados: [{ inicio: hora("11:00"), fim: hora("11:30") }],
+    });
+    const disponiveis = calcularHorariosDisponiveis(opcoes);
+    // 10:15 + 30min + 20min de intervalo = 11:05, invade o compromisso das 11:00 —
+    // não deve aparecer. 09:45 + 30min + 20min = 10:35, sem invasão — deve aparecer.
+    expect(disponiveis.some((d) => d.getTime() === hora("10:15").getTime())).toBe(false);
+    expect(disponiveis.some((d) => d.getTime() === hora("09:45").getTime())).toBe(true);
+  });
+
+  it("duração + intervalo do novo serviço precisam caber antes do fechamento", () => {
+    const opcoes = baseOpcoes({ duracaoServicoMinutos: 30, intervaloPosteriorMinutos: 20 });
+    const disponiveis = calcularHorariosDisponiveis(opcoes);
+    // Fecha às 19:00. 18:15 + 30min + 20min = 19:05, passa do fechamento — não deve
+    // aparecer. 18:00 + 30min + 20min = 18:50, cabe exatamente — deve aparecer.
+    expect(disponiveis.some((d) => d.getTime() === hora("18:15").getTime())).toBe(false);
+    expect(disponiveis.some((d) => d.getTime() === hora("18:00").getTime())).toBe(true);
+  });
+
+  it("cancelamento continua liberando o horário mesmo com intervalo posterior cadastrado", () => {
+    const cancelado: Agendamento = {
+      id: "ag-c",
+      tenantId: "t1",
+      consumidorId: "c1",
+      consumidorNome: "Cliente",
+      consumidorWhatsapp: "(11) 90000-0000",
+      profissionalId: "p1",
+      servicoId: "serv-x",
+      dataHoraInicio: hora("10:00").toISOString(),
+      dataHoraFim: hora("10:30").toISOString(),
+      status: "cancelado",
+      precoCentavos: 4000,
+      criadoEm: new Date().toISOString(),
+      historico: [],
+    };
+    const ocupados = agendamentosParaOcupados([cancelado], new Map([["serv-x", 30]]), new Map([["serv-x", 15]]));
+    expect(ocupados).toHaveLength(0);
+    const disponiveis = calcularHorariosDisponiveis(baseOpcoes({ ocupados }));
+    expect(disponiveis.some((d) => d.getTime() === hora("10:00").getTime())).toBe(true);
+  });
+});
