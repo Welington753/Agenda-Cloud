@@ -63,6 +63,29 @@ export function validarRegraComissao(entrada: EntradaValidacaoRegra): ResultadoV
   return { valido: true };
 }
 
+/** Converte o texto digitado no formulário (vírgula ou ponto, vazio, ou lixo) para
+ * um número seguro — nunca `NaN`, infinito ou negativo. Percentual fica em 0-100
+ * (não fração); fixo é convertido de reais para centavos inteiros. Não valida
+ * regras de negócio (isso é `validarRegraComissao`) — só protege o preview e o
+ * envio contra entrada malformada, retornando 0 nesses casos. */
+export function converterValorDigitado(tipo: TipoComissao, valorTexto: string): number {
+  const numero = Number.parseFloat(valorTexto.trim().replace(",", "."));
+  if (!Number.isFinite(numero) || numero < 0) return 0;
+  return tipo === "percentual" ? numero : Math.round(numero * 100);
+}
+
+/** Preview em tempo real para a tela de configuração — usa o texto que está
+ * sendo digitado agora, nunca um valor já persistido. Sem preço de serviço
+ * definido ("sob consulta"), não há o que prever. */
+export function calcularComissaoPreview(
+  precoServicoCentavos: number | undefined,
+  tipo: TipoComissao,
+  valorTexto: string
+): ResultadoCalculoComissao | null {
+  if (precoServicoCentavos === undefined) return null;
+  return calcularComissao(precoServicoCentavos, { tipo, valor: converterValorDigitado(tipo, valorTexto) });
+}
+
 export interface TotaisComissao {
   totalServicosCentavos: number;
   totalProfissionalCentavos: number;

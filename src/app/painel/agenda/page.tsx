@@ -18,6 +18,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { BadgeStatusAgendamento } from "@/components/ui/badge";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { ModalDetalheAgendamento } from "@/components/painel/modal-agendamento";
 import { ModalNovoAgendamento } from "@/components/painel/modal-novo-agendamento";
 import { ModalBloqueio } from "@/components/painel/modal-bloqueio";
@@ -47,6 +48,7 @@ export default function PainelAgendaPage() {
 
 function ConteudoAgenda() {
   const { tenantId, terminologia, podeAcessar } = useTenant();
+  const { notificar } = useToast();
   const [modo, setModo] = useState<ModoVisualizacao>("dia");
   const [dataAtual, setDataAtual] = useState(() => new Date());
   const [filtroProfissionalId, setFiltroProfissionalId] = useState("todos");
@@ -351,9 +353,13 @@ function ConteudoAgenda() {
               onRemarcar={(novoInicio) => {
                 if (!podeAcessar("agendamento.editar").permitido) return;
                 const fim = new Date(novoInicio.getTime() + servico.duracaoMinutos * 60_000);
-                agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "dono");
-                recarregar();
-                setAgendamentoSelecionado(null);
+                try {
+                  agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "dono");
+                  recarregar();
+                  setAgendamentoSelecionado(null);
+                } catch (erro) {
+                  notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
+                }
               }}
             />
           );

@@ -167,3 +167,170 @@ describe("compatibilidade com dados existentes", () => {
     expect(agendamentoRepository.listarTodos().length).toBe(agendamentosAntes.length);
   });
 });
+
+describe("comissaoRegraRepository.salvar como barreira de integridade", () => {
+  function baseRegra(overrides: Partial<Parameters<typeof comissaoRegraRepository.salvar>[0]> = {}) {
+    const tenant = tenantDomNavalha();
+    return {
+      tenantId: tenant.tenantId,
+      profissionalId: "prof-joao-silva",
+      servicoId: "serv-corte-tradicional",
+      tipo: "percentual" as const,
+      valor: 40,
+      ...overrides,
+    };
+  }
+
+  it("rejeita percentual negativo, sem gravar nada e sem alterar a regra semeada (40%)", () => {
+    const tenant = tenantDomNavalha();
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ valor: -1 }))).toThrow();
+    const regraSemeada = comissaoRegraRepository.obterPorProfissionalEServico(
+      tenant.tenantId,
+      "prof-joao-silva",
+      "serv-corte-tradicional"
+    );
+    expect(regraSemeada?.valor).toBe(40);
+  });
+
+  it("rejeita percentual acima de 100", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ valor: 101 }))).toThrow();
+  });
+
+  it("rejeita valor NaN", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ valor: Number.NaN }))).toThrow();
+  });
+
+  it("rejeita valor infinito", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ valor: Number.POSITIVE_INFINITY }))).toThrow();
+  });
+
+  it("rejeita valor fixo negativo", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ tipo: "fixo", valor: -100 }))).toThrow();
+  });
+
+  it("rejeita valor fixo maior que o preço atual do serviço", () => {
+    // serv-corte-tradicional custa R$40 (4000 centavos) no seed.
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ tipo: "fixo", valor: 5000 }))).toThrow();
+  });
+
+  it("rejeita profissional de outro tenant", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ profissionalId: "prof-lucas-ferreira" }))).toThrow();
+  });
+
+  it("rejeita serviço de outro tenant", () => {
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ servicoId: "serv-avaliacao-inicial" }))).toThrow();
+  });
+
+  it("rejeita serviço não vinculado ao profissional", () => {
+    // serv-corte-infantil é do mesmo tenant, mas só está em servicosIds de João —
+    // Pedro Martins não realiza esse serviço, então a combinação é inválida mesmo
+    // sendo tudo do mesmo tenant.
+    expect(() =>
+      comissaoRegraRepository.salvar(baseRegra({ profissionalId: "prof-pedro-martins", servicoId: "serv-corte-infantil" }))
+    ).toThrow();
+  });
+
+  it("aceita regra válida e persiste", () => {
+    const salva = comissaoRegraRepository.salvar(baseRegra({ valor: 55 }));
+    expect(salva.valor).toBe(55);
+    const relida = comissaoRegraRepository.obterPorProfissionalEServico(
+      salva.tenantId,
+      "prof-joao-silva",
+      "serv-corte-tradicional"
+    );
+    expect(relida?.valor).toBe(55);
+  });
+
+  it("uma tentativa inválida não sobrescreve uma regra válida anterior", () => {
+    const valida = comissaoRegraRepository.salvar(baseRegra({ valor: 40 }));
+    expect(() => comissaoRegraRepository.salvar(baseRegra({ valor: 999 }))).toThrow();
+    const aindaValida = comissaoRegraRepository.obterPorProfissionalEServico(
+      valida.tenantId,
+      "prof-joao-silva",
+      "serv-corte-tradicional"
+    );
+    expect(aindaValida?.valor).toBe(40);
+  });
+});
+
+describe("remarcação de agendamento concluído", () => {
+  it("agendamento futuro (não concluído) é remarcado normalmente e não gera nem estorna comissão", () => {
+    const agendamento = criarAgendamentoDeTeste();
+    const novoInicio = new Date("2026-02-12T10:00:00.000Z").toISOString();
+    const novoFim = new Date("2026-02-12T10:30:00.000Z").toISOString();
+    const remarcado = agendamentoRepository.remarcar(agendamento.id, novoInicio, novoFim, "dono");
+    expect(remarcado?.dataHoraInicio).toBe(novoInicio);
+    expect(remarcado?.status).toBe("pendente");
+    expect(lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)).toBeUndefined();
+  });
+
+  it("agendamento concluído não pode ser remarcado diretamente", () => {
+    const agendamento = criarAgendamentoDeTeste();
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    const novoInicio = new Date("2026-02-12T10:00:00.000Z").toISOString();
+    const novoFim = new Date("2026-02-12T10:30:00.000Z").toISOString();
+    expect(() => agendamentoRepository.remarcar(agendamento.id, novoInicio, novoFim, "dono")).toThrow();
+    // O agendamento continua concluído, sem alteração de horário.
+    const inalterado = agendamentoRepository.obterPorId(agendamento.id)!;
+    expect(inalterado.status).toBe("concluido");
+    expect(inalterado.dataHoraInicio).not.toBe(novoInicio);
+  });
+
+  it("concluído → cancelado → remarcado funciona (estorna a comissão, depois remarca normalmente)", () => {
+    const agendamento = criarAgendamentoDeTeste();
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    agendamentoRepository.atualizarStatus(agendamento.id, "cancelado", "dono");
+    expect(lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)?.status).toBe("estornado");
+
+    const novoInicio = new Date("2026-02-12T10:00:00.000Z").toISOString();
+    const novoFim = new Date("2026-02-12T10:30:00.000Z").toISOString();
+    const remarcado = agendamentoRepository.remarcar(agendamento.id, novoInicio, novoFim, "dono");
+    expect(remarcado?.status).toBe("pendente");
+  });
+});
+
+describe("reconclusão após estorno reativa o mesmo lançamento", () => {
+  it("concluído → cancelado → concluído de novo reativa o lançamento original, preservando os valores antigos mesmo com a regra alterada", () => {
+    const agendamento = criarAgendamentoDeTeste(10000); // R$100
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    const original = lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)!;
+    expect(original.valorProfissionalCentavos).toBe(4000); // 40% de R$100
+    expect(original.valorEstabelecimentoCentavos).toBe(6000);
+    const idOriginal = original.id;
+
+    agendamentoRepository.atualizarStatus(agendamento.id, "cancelado", "dono");
+    expect(lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)?.status).toBe("estornado");
+
+    // Regra muda para 50% — não pode afetar o lançamento reativado.
+    comissaoRegraRepository.salvar({
+      tenantId: original.tenantId,
+      profissionalId: "prof-joao-silva",
+      servicoId: "serv-corte-tradicional",
+      tipo: "percentual",
+      valor: 50,
+    });
+
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    const reativado = lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)!;
+    expect(reativado.id).toBe(idOriginal); // mesmo registro, nenhuma linha nova
+    expect(reativado.status).toBe("confirmado");
+    expect(reativado.valorProfissionalCentavos).toBe(4000); // preservado, não recalculado
+    expect(reativado.valorEstabelecimentoCentavos).toBe(6000);
+    expect(reativado.valorRegraAplicada).toBe(40); // snapshot antigo, não a regra nova de 50%
+
+    const todos = lancamentoComissaoRepository.listarTodos().filter((l) => l.agendamentoId === agendamento.id);
+    expect(todos).toHaveLength(1);
+  });
+
+  it("concluir quando já está confirmado continua idempotente (no-op)", () => {
+    const agendamento = criarAgendamentoDeTeste();
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    const primeiro = lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)!;
+    agendamentoRepository.atualizarStatus(agendamento.id, "concluido", "dono");
+    const segundo = lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id)!;
+    expect(segundo.id).toBe(primeiro.id);
+    expect(segundo.calculadoEm).toBe(primeiro.calculadoEm);
+    const todos = lancamentoComissaoRepository.listarTodos().filter((l) => l.agendamentoId === agendamento.id);
+    expect(todos).toHaveLength(1);
+  });
+});

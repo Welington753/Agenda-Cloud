@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { calcularComissao, calcularTotaisRelatorio, validarRegraComissao } from "./engine";
+import {
+  calcularComissao,
+  calcularComissaoPreview,
+  calcularTotaisRelatorio,
+  converterValorDigitado,
+  validarRegraComissao,
+} from "./engine";
 import type { LancamentoComissao, Profissional, Servico } from "@/lib/types";
 
 function profissional(overrides: Partial<Profissional> = {}): Profissional {
@@ -163,5 +169,56 @@ describe("calcularTotaisRelatorio", () => {
   it("lista vazia retorna totais zerados", () => {
     const totais = calcularTotaisRelatorio([]);
     expect(totais).toEqual({ totalServicosCentavos: 0, totalProfissionalCentavos: 0, totalEstabelecimentoCentavos: 0 });
+  });
+});
+
+describe("converterValorDigitado", () => {
+  it("converte percentual digitado normalmente", () => {
+    expect(converterValorDigitado("percentual", "40")).toBe(40);
+  });
+
+  it("converte valor fixo em reais (vírgula) para centavos inteiros", () => {
+    expect(converterValorDigitado("fixo", "30,50")).toBe(3050);
+  });
+
+  it("texto vazio vira 0, nunca NaN", () => {
+    expect(converterValorDigitado("percentual", "")).toBe(0);
+    expect(converterValorDigitado("fixo", "")).toBe(0);
+  });
+
+  it("texto não numérico vira 0, nunca NaN", () => {
+    expect(converterValorDigitado("percentual", "abc")).toBe(0);
+  });
+
+  it("texto negativo vira 0, nunca um número negativo", () => {
+    expect(converterValorDigitado("percentual", "-5")).toBe(0);
+    expect(converterValorDigitado("fixo", "-10")).toBe(0);
+  });
+
+  it("texto representando infinito vira 0, nunca Infinity", () => {
+    expect(converterValorDigitado("percentual", "Infinity")).toBe(0);
+  });
+});
+
+describe("calcularComissaoPreview", () => {
+  it("retorna null quando o serviço não tem preço definido (sob consulta)", () => {
+    expect(calcularComissaoPreview(undefined, "percentual", "40")).toBeNull();
+  });
+
+  it("usa o texto digitado agora, não um valor persistido — 40% de R$100 dá R$40/R$60", () => {
+    const preview = calcularComissaoPreview(10000, "percentual", "40");
+    expect(preview).toEqual({ valorProfissionalCentavos: 4000, valorEstabelecimentoCentavos: 6000 });
+  });
+
+  it("reflete a troca de percentual para fixo imediatamente", () => {
+    const percentual = calcularComissaoPreview(10000, "percentual", "40");
+    const fixo = calcularComissaoPreview(10000, "fixo", "30,00");
+    expect(percentual).toEqual({ valorProfissionalCentavos: 4000, valorEstabelecimentoCentavos: 6000 });
+    expect(fixo).toEqual({ valorProfissionalCentavos: 3000, valorEstabelecimentoCentavos: 7000 });
+  });
+
+  it("texto inválido não gera NaN nem negativo no preview — cai para comissão 0", () => {
+    const preview = calcularComissaoPreview(10000, "percentual", "abc");
+    expect(preview).toEqual({ valorProfissionalCentavos: 0, valorEstabelecimentoCentavos: 10000 });
   });
 });

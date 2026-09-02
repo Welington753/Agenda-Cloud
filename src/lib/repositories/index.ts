@@ -4,7 +4,7 @@
 
 import { readCollection, writeCollection, STORAGE_KEYS } from "@/lib/storage/local-storage";
 import { obterSeedCompleto } from "@/lib/seed-data";
-import { calcularComissao } from "@/lib/comissoes/engine";
+import { calcularComissao, validarRegraComissao } from "@/lib/comissoes/engine";
 import type {
   Agendamento,
   Bloqueio,
@@ -185,8 +185,35 @@ export const comissaoRegraRepository = {
   },
   /** Upsert por tenantId+profissionalId+servicoId — garante estruturalmente que só
    * existe uma regra ativa por combinação, sem precisar de uma checagem separada
-   * de unicidade nem de um campo `ativa`. */
+   * de unicidade nem de um campo `ativa`. É a barreira de integridade real: valida
+   * tenant/profissional/serviço/tipo/valor por conta própria, nunca confia que
+   * quem chamou (a tela, ou qualquer código futuro) já validou. Lança `Error` com
+   * mensagem segura para mostrar ao usuário quando os dados são inválidos — nada é
+   * gravado e nenhuma regra anterior é alterada. */
   salvar(dados: Omit<RegraComissao, "id" | "criadoEm" | "atualizadoEm">): RegraComissao {
+    const estabelecimento = estabelecimentoRepository.obterPorTenantId(dados.tenantId);
+    if (!estabelecimento) {
+      throw new Error("Não foi possível salvar: estabelecimento não encontrado.");
+    }
+    const profissional = profissionalRepository.obterPorId(dados.profissionalId);
+    if (!profissional || profissional.tenantId !== dados.tenantId) {
+      throw new Error("Não foi possível salvar: profissional não encontrado neste estabelecimento.");
+    }
+    const servico = servicoRepository.obterPorId(dados.servicoId);
+    if (!servico || servico.tenantId !== dados.tenantId) {
+      throw new Error("Não foi possível salvar: serviço não encontrado neste estabelecimento.");
+    }
+    if (dados.tipo !== "percentual" && dados.tipo !== "fixo") {
+      throw new Error("Não foi possível salvar: tipo de comissão inválido.");
+    }
+    if (!Number.isFinite(dados.valor)) {
+      throw new Error("Não foi possível salvar: valor da comissão inválido.");
+    }
+    const validacao = validarRegraComissao({ tipo: dados.tipo, valor: dados.valor, profissional, servico });
+    if (!validacao.valido) {
+      throw new Error(validacao.erro ?? "Não foi possível salvar: regra de comissão inválida.");
+    }
+
     const todos = this.listarTodos();
     const agora = new Date().toISOString();
     const existente = this.obterPorProfissionalEServico(dados.tenantId, dados.profissionalId, dados.servicoId);
@@ -236,14 +263,39 @@ export const lancamentoComissaoRepository = {
     writeCollection(STORAGE_KEYS.lancamentosComissao, todos);
     return todos[idx];
   },
+  /** Reativa um lançamento estornado (agendamento revertido e concluído de novo)
+   * — só troca `status` para `confirmado` e preenche `reativadoEm`. Nunca toca em
+   * nenhum dos valores congelados (preço, tipo, regra aplicada, valores de
+   * profissional/estabelecimento): a reconclusão nunca relê a regra atual nem
+   * recalcula nada. */
+  reativar(id: string): LancamentoComissao | undefined {
+    const todos = this.listarTodos();
+    const idx = todos.findIndex((l) => l.id === id);
+    if (idx === -1) return undefined;
+    todos[idx] = { ...todos[idx], status: "confirmado", reativadoEm: new Date().toISOString() };
+    writeCollection(STORAGE_KEYS.lancamentosComissao, todos);
+    return todos[idx];
+  },
 };
 
-/** Gera o lançamento de comissão quando um agendamento é concluído. Sem preço
- * definido no agendamento ("sob consulta"), não há valor para dividir — não gera
- * lançamento. Sem regra configurada para o par profissional+serviço, gera um
- * lançamento com comissão 0 (100% para o estabelecimento), conforme a regra de
- * negócio: ausência de configuração nunca impede a conclusão do atendimento. */
+/** Gera (ou reativa) o lançamento de comissão quando um agendamento é concluído.
+ * Se já existir um lançamento para este agendamento — reconclusão depois de um
+ * estorno —, reativa o MESMO registro em vez de criar outro, preservando o
+ * snapshot financeiro original (nunca relê a regra atual). Se já existir e
+ * estiver confirmado, é no-op idempotente (conclusão repetida). Só calcula um
+ * lançamento novo quando não existe nenhum ainda. Sem preço definido no
+ * agendamento ("sob consulta"), não há valor para dividir — não gera lançamento.
+ * Sem regra configurada para o par profissional+serviço, gera um lançamento com
+ * comissão 0 (100% para o estabelecimento) — ausência de configuração nunca
+ * impede a conclusão do atendimento. */
 function consolidarComissaoDoAgendamento(agendamento: Agendamento): void {
+  const existente = lancamentoComissaoRepository.obterPorAgendamentoId(agendamento.id);
+  if (existente) {
+    if (existente.status === "estornado") {
+      lancamentoComissaoRepository.reativar(existente.id);
+    }
+    return;
+  }
   if (agendamento.precoCentavos === undefined) return;
   const regra = comissaoRegraRepository.obterPorProfissionalEServico(
     agendamento.tenantId,
@@ -347,11 +399,19 @@ export const agendamentoRepository = {
     }
     return todos[idx];
   },
+  /** Rejeita remarcar um agendamento já concluído — a barreira fica aqui, não só
+   * na interface. Para corrigir um atendimento concluído é preciso primeiro mudar
+   * o status (o que estorna a comissão via `atualizarStatus`), só depois ele pode
+   * ser remarcado. Como um agendamento concluído nunca chega a ser reescrito por
+   * este método, remarcar nunca cria nem estorna comissão. */
   remarcar(id: string, novoInicio: string, novoFim: string, por: string): Agendamento | undefined {
     const todos = this.listarTodos();
     const idx = todos.findIndex((a) => a.id === id);
     if (idx === -1) return undefined;
     const anterior = todos[idx];
+    if (anterior.status === "concluido") {
+      throw new Error("Não é possível remarcar um agendamento já concluído. Altere o status primeiro.");
+    }
     todos[idx] = {
       ...anterior,
       dataHoraInicio: novoInicio,
@@ -360,9 +420,6 @@ export const agendamentoRepository = {
       historico: [...anterior.historico, { em: new Date().toISOString(), de: anterior.status, para: "pendente", por }],
     };
     writeCollection(STORAGE_KEYS.agendamentos, todos);
-    if (anterior.status === "concluido") {
-      estornarComissaoDoAgendamento(id);
-    }
     return todos[idx];
   },
 };

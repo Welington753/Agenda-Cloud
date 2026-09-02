@@ -6,7 +6,7 @@ import { useClientData } from "@/lib/hooks/use-client-data";
 import { useTenant } from "@/lib/tenant/tenant-context";
 import { RequirePermission } from "@/components/layout/require-permission";
 import { comissaoRegraRepository, lancamentoComissaoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
-import { calcularComissao, calcularTotaisRelatorio, validarRegraComissao } from "@/lib/comissoes/engine";
+import { calcularComissaoPreview, calcularTotaisRelatorio, converterValorDigitado } from "@/lib/comissoes/engine";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -75,19 +75,18 @@ function ConteudoComissoes() {
     ? servicos.filter((s) => profissionalSelecionado.servicosIds.includes(s.id))
     : [];
 
+  // A validação de negócio mora no repository (`comissaoRegraRepository.salvar` é
+  // a barreira de integridade real) — aqui só chamamos e mostramos o erro que ele
+  // lançar, sem duplicar a lógica de validação na tela.
   function salvarRegra(profissionalId: string, servicoId: string, tipo: TipoComissao, valor: number) {
     if (!podeGerenciar) return;
-    const profissional = profissionais.find((p) => p.id === profissionalId);
-    const servico = servicos.find((s) => s.id === servicoId);
-    if (!profissional || !servico) return;
-    const validacao = validarRegraComissao({ tipo, valor, profissional, servico });
-    if (!validacao.valido) {
-      notificar(validacao.erro ?? "Regra de comissão inválida.", "erro");
-      return;
+    try {
+      comissaoRegraRepository.salvar({ tenantId, profissionalId, servicoId, tipo, valor });
+      notificar("Comissão salva.", "sucesso");
+      recarregar();
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível salvar a comissão.", "erro");
     }
-    comissaoRegraRepository.salvar({ tenantId, profissionalId, servicoId, tipo, valor });
-    notificar("Comissão salva.", "sucesso");
-    recarregar();
   }
 
   function removerRegra(regra: RegraComissao) {
@@ -261,16 +260,23 @@ function LinhaConfiguracaoServico({
   onSalvar: (profissionalId: string, servicoId: string, tipo: TipoComissao, valor: number) => void;
   onRemover: (regra: RegraComissao) => void;
 }) {
-  const [tipo, setTipo] = useState<TipoComissao>(regra?.tipo ?? "percentual");
-  const [valorTexto, setValorTexto] = useState(
-    regra ? (regra.tipo === "percentual" ? String(regra.valor) : (regra.valor / 100).toFixed(2).replace(".", ",")) : ""
-  );
+  const tipoInicial = (r?: RegraComissao): TipoComissao => r?.tipo ?? "percentual";
+  const valorTextoInicial = (r?: RegraComissao): string =>
+    r ? (r.tipo === "percentual" ? String(r.valor) : (r.valor / 100).toFixed(2).replace(".", ",")) : "";
+
+  const [tipo, setTipo] = useState<TipoComissao>(tipoInicial(regra));
+  const [valorTexto, setValorTexto] = useState(valorTextoInicial(regra));
+
+  function cancelarEdicao() {
+    setTipo(tipoInicial(regra));
+    setValorTexto(valorTextoInicial(regra));
+  }
 
   const precoServico = servico.precoCentavos;
-  const valorNumerico =
-    tipo === "percentual" ? Number(valorTexto.replace(",", ".")) || 0 : Math.round(parseFloat(valorTexto.replace(",", ".") || "0") * 100);
-  const preview =
-    precoServico !== undefined ? calcularComissao(precoServico, { tipo, valor: regra ? regra.valor : valorNumerico }) : null;
+  // Sempre calcula em cima do que está digitado agora — nunca do valor já
+  // persistido em `regra`, senão editar uma regra existente nunca mostra o
+  // efeito da edição antes de salvar.
+  const preview = calcularComissaoPreview(precoServico, tipo, valorTexto);
 
   return (
     <div className="rounded-[var(--radius-control)] border border-border p-3">
@@ -305,13 +311,18 @@ function LinhaConfiguracaoServico({
               className="w-28 rounded-[var(--radius-control)] border border-border bg-card px-2 py-1.5 text-sm text-ink"
             />
           </div>
-          <Botao tamanho="sm" onClick={() => onSalvar(profissionalId, servico.id, tipo, valorNumerico)}>
+          <Botao tamanho="sm" onClick={() => onSalvar(profissionalId, servico.id, tipo, converterValorDigitado(tipo, valorTexto))}>
             {regra ? "Salvar" : "Configurar"}
           </Botao>
           {regra && (
-            <Botao tamanho="sm" variante="secundaria" onClick={() => onRemover(regra)}>
-              Remover
-            </Botao>
+            <>
+              <Botao tamanho="sm" variante="secundaria" onClick={cancelarEdicao}>
+                Cancelar
+              </Botao>
+              <Botao tamanho="sm" variante="secundaria" onClick={() => onRemover(regra)}>
+                Remover
+              </Botao>
+            </>
           )}
         </div>
       )}

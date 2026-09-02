@@ -123,12 +123,16 @@ export default function AgendamentoDetalhePage() {
       return;
     }
     const novoFim = new Date(horarioRemarcar.getTime() + servico.duracaoMinutos * 60_000);
-    agendamentoRepository.remarcar(agendamento.id, horarioRemarcar.toISOString(), novoFim.toISOString(), "cliente");
-    notificar(`${terminologia.agendamento.singular} remarcado com sucesso.`, "sucesso");
-    setRemarcando(false);
-    setDataRemarcar(null);
-    setHorarioRemarcar(null);
-    recarregar();
+    try {
+      agendamentoRepository.remarcar(agendamento.id, horarioRemarcar.toISOString(), novoFim.toISOString(), "cliente");
+      notificar(`${terminologia.agendamento.singular} remarcado com sucesso.`, "sucesso");
+      setRemarcando(false);
+      setDataRemarcar(null);
+      setHorarioRemarcar(null);
+      recarregar();
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
+    }
   }
 
   return (

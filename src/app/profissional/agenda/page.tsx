@@ -19,6 +19,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { BadgeStatusAgendamento } from "@/components/ui/badge";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { ModalDetalheAgendamento } from "@/components/painel/modal-agendamento";
 import { ModalBloqueio } from "@/components/painel/modal-bloqueio";
 import { formatarDataLonga, formatarHora } from "@/lib/format";
@@ -35,6 +36,7 @@ export default function AgendaProfissionalPage() {
 function ConteudoAgendaProfissional() {
   const { usuario } = useAuth();
   const { terminologia, podeAcessar } = useTenant();
+  const { notificar } = useToast();
   const profissionalId = usuario?.profissionalId ?? "";
   const [dataAtual, setDataAtual] = useState(() => new Date());
   const [agendamentoSelecionado, setAgendamentoSelecionado] = useState<Agendamento | null>(null);
@@ -198,9 +200,13 @@ function ConteudoAgendaProfissional() {
               onRemarcar={(novoInicio) => {
                 if (!podeAcessar("agendamento.editar").permitido) return;
                 const fim = new Date(novoInicio.getTime() + servico.duracaoMinutos * 60_000);
-                agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "profissional");
-                recarregar();
-                setAgendamentoSelecionado(null);
+                try {
+                  agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "profissional");
+                  recarregar();
+                  setAgendamentoSelecionado(null);
+                } catch (erro) {
+                  notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
+                }
               }}
             />
           );

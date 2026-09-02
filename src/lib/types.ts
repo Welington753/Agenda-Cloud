@@ -280,8 +280,10 @@ export interface RegraComissao {
 /** Lançamento gerado quando um agendamento é concluído — cópia congelada dos
  * valores no momento do cálculo. Nunca é recalculado a partir da regra atual;
  * alterar ou remover a `RegraComissao` depois não toca nenhum `LancamentoComissao`
- * já existente. No máximo um lançamento por `agendamentoId`, para sempre — mesmo
- * que ele tenha sido estornado, um novo nunca é criado para o mesmo agendamento. */
+ * já existente. No máximo um lançamento por `agendamentoId`, para sempre — se o
+ * agendamento for revertido e concluído de novo, o MESMO registro é reativado
+ * (status volta a `confirmado`, `reativadoEm` é preenchido), nunca criada uma
+ * segunda linha nem recalculados os valores. */
 export interface LancamentoComissao {
   id: string;
   tenantId: string;
@@ -297,6 +299,10 @@ export interface LancamentoComissao {
   dataAtendimento: string;
   calculadoEm: string;
   status: StatusLancamentoComissao;
+  /** Preenchido só quando o lançamento é reativado depois de ter sido estornado —
+   * ausente em registros que nunca passaram por reversão. Opcional para não exigir
+   * migração de lançamentos antigos. */
+  reativadoEm?: string;
 }
 
 // ---------------------------------------------------------------------------
