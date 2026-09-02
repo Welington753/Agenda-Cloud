@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Botao } from "@/components/ui/button";
 import { BadgeStatusAgendamento } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import { formatarDataLonga, formatarHora, formatarMoeda, formatarWhatsapp } from "@/lib/format";
-import { horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
+import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import type { Terminologia } from "@/lib/verticals/terminologia";
 import type { Agendamento, Estabelecimento, Profissional, Servico, StatusAgendamento } from "@/lib/types";
 
@@ -23,6 +24,8 @@ interface ModalDetalheAgendamentoProps {
   profissional: Profissional;
   estabelecimento: Estabelecimento;
   terminologia: Terminologia;
+  podeEditar: boolean;
+  podeCancelar: boolean;
   onMudarStatus: (status: StatusAgendamento) => void;
   onRemarcar: (novoInicio: Date) => void;
 }
@@ -35,11 +38,15 @@ export function ModalDetalheAgendamento({
   profissional,
   estabelecimento,
   terminologia,
+  podeEditar,
+  podeCancelar,
   onMudarStatus,
   onRemarcar,
 }: ModalDetalheAgendamentoProps) {
+  const { notificar } = useToast();
   const [remarcando, setRemarcando] = useState(false);
   const [novoHorario, setNovoHorario] = useState<Date | null>(null);
+  const [versaoHorarios, setVersaoHorarios] = useState(0);
 
   const horariosDoMesmoDia = useMemo(() => {
     if (!remarcando) return [];
@@ -50,10 +57,13 @@ export function ModalDetalheAgendamento({
       estabelecimento,
       agendamento.id
     );
-  }, [remarcando, profissional, servico, agendamento, estabelecimento]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remarcando, profissional, servico, agendamento, estabelecimento, versaoHorarios]);
 
   const acaoPrincipal = PROXIMO_STATUS[agendamento.status];
-  const podeAlterar = agendamento.status !== "concluido" && agendamento.status !== "cancelado";
+  const statusPermiteAlterar = agendamento.status !== "concluido" && agendamento.status !== "cancelado";
+  const podeAlterar = statusPermiteAlterar && podeEditar;
+  const podeCancelarAgora = statusPermiteAlterar && podeCancelar;
 
   function fecharTudo() {
     setRemarcando(false);
@@ -118,7 +128,7 @@ export function ModalDetalheAgendamento({
         )}
       </div>
 
-      {podeAlterar && (
+      {(podeAlterar || podeCancelarAgora) && (
         <div className="mt-5 space-y-2">
           {remarcando ? (
             <div className="flex gap-2">
@@ -129,10 +139,17 @@ export function ModalDetalheAgendamento({
                 className="flex-1"
                 disabled={!novoHorario}
                 onClick={() => {
-                  if (novoHorario) {
-                    onRemarcar(novoHorario);
-                    fecharTudo();
+                  if (!novoHorario) return;
+                  if (
+                    !horarioAindaDisponivelParaProfissional(profissional, servico, novoHorario, estabelecimento, agendamento.id)
+                  ) {
+                    notificar("Esse horário deixou de estar disponível. Escolha outro horário.", "erro");
+                    setNovoHorario(null);
+                    setVersaoHorarios((v) => v + 1);
+                    return;
                   }
+                  onRemarcar(novoHorario);
+                  fecharTudo();
                 }}
               >
                 Confirmar novo horário
@@ -140,24 +157,28 @@ export function ModalDetalheAgendamento({
             </div>
           ) : (
             <>
-              {acaoPrincipal && (
+              {podeAlterar && acaoPrincipal && (
                 <Botao className="w-full" onClick={() => onMudarStatus(acaoPrincipal.status)}>
                   {acaoPrincipal.rotulo}
                 </Botao>
               )}
-              <div className="flex gap-2">
-                <Botao variante="secundaria" className="flex-1" onClick={() => setRemarcando(true)}>
-                  Remarcar
-                </Botao>
-                {agendamento.status !== "nao_compareceu" && (
-                  <Botao variante="secundaria" className="flex-1" onClick={() => onMudarStatus("nao_compareceu")}>
-                    Marcar falta
+              {podeAlterar && (
+                <div className="flex gap-2">
+                  <Botao variante="secundaria" className="flex-1" onClick={() => setRemarcando(true)}>
+                    Remarcar
                   </Botao>
-                )}
-              </div>
-              <Botao variante="perigo" className="w-full" onClick={() => onMudarStatus("cancelado")}>
-                Cancelar {terminologia.agendamento.singular.toLowerCase()}
-              </Botao>
+                  {agendamento.status !== "nao_compareceu" && (
+                    <Botao variante="secundaria" className="flex-1" onClick={() => onMudarStatus("nao_compareceu")}>
+                      Marcar falta
+                    </Botao>
+                  )}
+                </div>
+              )}
+              {podeCancelarAgora && (
+                <Botao variante="perigo" className="w-full" onClick={() => onMudarStatus("cancelado")}>
+                  Cancelar {terminologia.agendamento.singular.toLowerCase()}
+                </Botao>
+              )}
             </>
           )}
         </div>

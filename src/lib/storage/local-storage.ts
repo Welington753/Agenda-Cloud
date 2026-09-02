@@ -72,4 +72,6 @@ export const STORAGE_KEYS = {
   memberships: "memberships",
   convites: "convites",
   auditoria: "auditoria",
+  regrasComissao: "regras-comissao",
+  lancamentosComissao: "lancamentos-comissao",
 } as const;

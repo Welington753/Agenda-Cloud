@@ -36,6 +36,9 @@ interface ModalProfissionalProps {
   servicos: Servico[];
   profissionalEmEdicao: Profissional | null;
   terminologia: Terminologia;
+  /** Defesa em profundidade: a página só abre este modal se `profissionais.gerenciar`
+   * já estiver liberado, mas `salvar()` confere de novo antes de gravar. */
+  podeSalvar: boolean;
   onSalvo: () => void;
 }
 
@@ -46,6 +49,7 @@ export function ModalProfissional({
   servicos,
   profissionalEmEdicao,
   terminologia,
+  podeSalvar,
   onSalvo,
 }: ModalProfissionalProps) {
   const { notificar } = useToast();
@@ -83,6 +87,7 @@ export function ModalProfissional({
   }
 
   function salvar() {
+    if (!podeSalvar) return;
     if (!nome.trim()) {
       notificar(`Informe o nome ${terminologia.profissional.artigo === "a" ? "da" : "do"} ${terminologia.profissional.singular.toLowerCase()}.`, "erro");
       return;
@@ -214,7 +219,7 @@ export function ModalProfissional({
       </div>
 
       <div className="mt-5">
-        <Botao className="w-full" onClick={salvar}>
+        <Botao className="w-full" onClick={salvar} disabled={!podeSalvar}>
           Salvar {terminologia.profissional.singular.toLowerCase()}
         </Botao>
       </div>

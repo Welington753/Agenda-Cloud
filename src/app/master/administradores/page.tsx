@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, RotateCcw, ShieldOff, UserCheck } from "lucide-react";
+import { Plus, RotateCcw, ShieldAlert, ShieldOff, UserCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useClientData } from "@/lib/hooks/use-client-data";
-import { identificarProprietarioPrincipal, podeGerenciarAdministradores } from "@/lib/access/access-control";
+import {
+  identificarProprietarioPrincipal,
+  podeAlterarPapelAdministrador,
+  podeAlterarStatusAdministrador,
+  podeCriarAdministrador,
+  podeGerenciarAdministradores,
+  podeRemoverAdministrador,
+} from "@/lib/access/access-control";
 import { auditoriaRepository, conviteRepository, usuarioPlataformaRepository } from "@/lib/repositories";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
@@ -44,17 +51,27 @@ export default function MasterAdministradoresPage() {
   const principal = identificarProprietarioPrincipal(usuarios);
   const podeGerenciar = podeGerenciarAdministradores(usuario.papel as PapelPlataforma);
 
+  // Toda função de mutação abaixo confere a permissão de novo, por conta própria
+  // — o botão escondido na UI é só ajuda visual, nunca a proteção real. As regras
+  // em si (inclusive "nunca zero MASTER_OWNER ativo") vivem em
+  // src/lib/access/access-control.ts e são puras/testadas isoladamente.
+
   function alternarStatus(id: string, statusAtual: StatusUsuario) {
-    const novoStatus = statusAtual === "ativo" ? "suspenso" : "ativo";
+    const novoStatus: StatusUsuario = statusAtual === "ativo" ? "suspenso" : "ativo";
+    const resultado = podeAlterarStatusAdministrador(usuarios, usuario!.papel as PapelPlataforma, id, novoStatus);
+    if (!resultado.permitido) {
+      notificar(resultado.motivo ?? "Não foi possível alterar o status.", "erro");
+      return;
+    }
     usuarioPlataformaRepository.atualizar(id, { status: novoStatus });
     notificar(`Administrador ${novoStatus === "ativo" ? "reativado" : "suspenso"}.`, "sucesso");
     recarregar();
   }
 
   function remover(id: string, nome: string) {
-    if (!podeGerenciar) return;
-    if (principal?.id === id) {
-      notificar("O proprietário principal não pode ser removido.", "erro");
+    const resultado = podeRemoverAdministrador(usuarios, usuario!.papel as PapelPlataforma, id);
+    if (!resultado.permitido) {
+      notificar(resultado.motivo ?? "Não foi possível remover este administrador.", "erro");
       return;
     }
     if (!window.confirm(`Remover o administrador "${nome}"? Essa ação não pode ser desfeita.`)) return;
@@ -70,6 +87,11 @@ export default function MasterAdministradoresPage() {
   }
 
   function alterarPapel(id: string, novoPapel: PapelPlataforma) {
+    const resultado = podeAlterarPapelAdministrador(usuarios, usuario!.papel as PapelPlataforma, id, novoPapel);
+    if (!resultado.permitido) {
+      notificar(resultado.motivo ?? "Não foi possível alterar o perfil.", "erro");
+      return;
+    }
     usuarioPlataformaRepository.atualizar(id, { papel: novoPapel, permissoesExtras: [] });
     notificar("Perfil atualizado.", "sucesso");
     recarregar();
@@ -78,6 +100,11 @@ export default function MasterAdministradoresPage() {
   function aceitarConvite(conviteId: string) {
     const convite = convites.find((c) => c.id === conviteId);
     if (!convite) return;
+    const resultado = podeCriarAdministrador(usuario!.papel as PapelPlataforma, convite.papel as PapelPlataforma);
+    if (!resultado.permitido) {
+      notificar(resultado.motivo ?? "Não foi possível aceitar este convite.", "erro");
+      return;
+    }
     const novo = usuarioPlataformaRepository.criar({
       nome: convite.nome,
       email: convite.email,
@@ -103,6 +130,15 @@ export default function MasterAdministradoresPage() {
 
   return (
     <div className="space-y-5">
+      <div className="flex items-start gap-2 rounded-[var(--radius-control)] bg-warning-soft p-3 text-[color:var(--color-warning)]">
+        <ShieldAlert size={18} className="mt-0.5 shrink-0" />
+        <p className="text-sm">
+          Autenticação de demonstração: todas as contas usam a mesma senha simulada, sem hash nem verificação de
+          servidor. Não representa segurança de produção — um backend real precisa validar credenciais e emitir
+          sessão segura antes de qualquer uso real.
+        </p>
+      </div>
+
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-xl font-bold text-ink">Administradores</h1>
@@ -161,13 +197,15 @@ export default function MasterAdministradoresPage() {
                       </td>
                       <td className="py-2.5">
                         <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => alternarStatus(u.id, u.status)}
-                            className="text-xs font-semibold text-accent hover:underline"
-                          >
-                            {u.status === "ativo" ? "Suspender" : "Reativar"}
-                          </button>
+                          {podeGerenciar && (
+                            <button
+                              type="button"
+                              onClick={() => alternarStatus(u.id, u.status)}
+                              className="text-xs font-semibold text-accent hover:underline"
+                            >
+                              {u.status === "ativo" ? "Suspender" : "Reativar"}
+                            </button>
+                          )}
                           {podeGerenciar && !ehPrincipal && (
                             <button
                               type="button"
@@ -238,6 +276,7 @@ export default function MasterAdministradoresPage() {
           aoFechar={() => setModalAberto(false)}
           responsavelId={usuario.id}
           responsavelNome={usuario.nome}
+          responsavelPapel={usuario.papel as PapelPlataforma}
           onCriado={recarregar}
         />
       )}

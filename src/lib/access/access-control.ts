@@ -36,6 +36,8 @@ export const PERMISSAO_PARA_FEATURE: Partial<Record<Permission, Feature>> = {
   "relatorios.visualizar": "relatorios",
   "equipe.visualizar": "equipe",
   "equipe.gerenciar": "equipe",
+  "comissoes.visualizar": "comissoes",
+  "comissoes.gerenciar": "comissoes",
 };
 
 const TODAS_AS_PERMISSOES: Permission[] = [
@@ -54,6 +56,8 @@ const TODAS_AS_PERMISSOES: Permission[] = [
   "relatorios.visualizar",
   "equipe.visualizar",
   "equipe.gerenciar",
+  "comissoes.visualizar",
+  "comissoes.gerenciar",
   "personalizacao.gerenciar",
   "configuracoes.gerenciar",
 ];
@@ -78,6 +82,8 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<PapelEstabelecimento, Permissio
     "consumidores.visualizar",
     "consumidores.gerenciar",
     "relatorios.visualizar",
+    "comissoes.visualizar",
+    "comissoes.gerenciar",
   ],
   recepcionista: [
     "dashboard.visualizar",
@@ -113,6 +119,13 @@ export interface ResultadoAcesso {
  * normalmente. Só "suspenso" e "cancelado" bloqueiam o portal — um tenant em
  * teste precisa poder usar o produto, senão o teste não serve pra nada. */
 const STATUS_TENANT_FUNCIONAL: StatusEstabelecimento[] = ["ativo", "teste", "inadimplente"];
+
+/** Estabelecimentos "suspenso" ou "cancelado" não podem receber NOVOS agendamentos
+ * públicos nem remarcações — reaproveita a mesma classificação de status funcional
+ * usada pelo portal (STATUS_TENANT_FUNCIONAL), então as duas regras nunca divergem. */
+export function podeReceberAgendamentoPublico(status: StatusEstabelecimento): boolean {
+  return STATUS_TENANT_FUNCIONAL.includes(status);
+}
 
 /**
  * Uma permissão só é concedida quando TODAS as condições são verdadeiras, nesta
@@ -211,10 +224,103 @@ interface UsuarioPlataformaMinimo {
 
 /** O "proprietário principal" é o MASTER_OWNER mais antigo — não é um campo
  * marcado manualmente, é derivado, então continua correto mesmo se mais
- * MASTER_OWNERs forem criados depois. Ele nunca pode ser removido, nem por
- * outro MASTER_OWNER. */
+ * MASTER_OWNERs forem criados depois. Usado só como rótulo informativo na tela
+ * ("Proprietário principal"); a regra que decide se um owner PODE ser removido
+ * ou rebaixado é `ficariaSemOwnerAtivo`/as funções abaixo, que protegem contra
+ * zerar os owners ativos — com dois sócios no mesmo nível, qualquer um dos dois
+ * pode ser removido desde que o outro continue ativo. */
 export function identificarProprietarioPrincipal<T extends UsuarioPlataformaMinimo>(usuarios: T[]): T | undefined {
   return usuarios
     .filter((u) => u.papel === "MASTER_OWNER")
     .sort((a, b) => new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime())[0];
+}
+
+interface UsuarioPlataformaParaRegraDeOwner {
+  id: string;
+  papel: PapelPlataforma;
+  status: StatusUsuario;
+}
+
+/** Verdadeiro se `alvoId` é hoje um MASTER_OWNER ativo e, tirando-o da contagem
+ * (por remoção, suspensão ou rebaixamento de papel), sobraria zero MASTER_OWNER
+ * ativo na plataforma. Núcleo da regra "nunca pode existir zero MASTER_OWNER
+ * ativo" — com dois (ou mais) owners ativos, mexer em um é permitido desde que
+ * outro continue ativo. */
+function ficariaSemOwnerAtivo(usuarios: UsuarioPlataformaParaRegraDeOwner[], alvoId: string): boolean {
+  const alvo = usuarios.find((u) => u.id === alvoId);
+  if (!alvo || alvo.papel !== "MASTER_OWNER" || alvo.status !== "ativo") return false;
+  const outrosOwnersAtivos = usuarios.filter(
+    (u) => u.id !== alvoId && u.papel === "MASTER_OWNER" && u.status === "ativo"
+  ).length;
+  return outrosOwnersAtivos === 0;
+}
+
+/** Barreira de criação de administrador — usar tanto ao criar o convite quanto
+ * ao aceitá-lo (o convite pode ficar pendente tempo suficiente para o cenário
+ * mudar). Só quem já pode gerenciar administradores cria qualquer administrador;
+ * promover alguém a MASTER_OWNER exige que quem está criando já seja
+ * MASTER_OWNER — um MASTER_ADMIN nunca promove ninguém a owner, mesmo que
+ * eventualmente ganhe a permissão `administradores.gerenciar` por extras. */
+export function podeCriarAdministrador(papelSolicitante: PapelPlataforma, papelAlvo: PapelPlataforma): ResultadoAcesso {
+  if (!podeGerenciarAdministradores(papelSolicitante)) {
+    return { permitido: false, motivo: "Você não tem permissão para gerenciar administradores da plataforma." };
+  }
+  if (papelAlvo === "MASTER_OWNER" && papelSolicitante !== "MASTER_OWNER") {
+    return { permitido: false, motivo: "Somente um MASTER_OWNER pode criar outra conta MASTER_OWNER." };
+  }
+  return { permitido: true };
+}
+
+/** Barreira de suspender/reativar um administrador — nunca pode deixar a
+ * plataforma sem nenhum MASTER_OWNER ativo. */
+export function podeAlterarStatusAdministrador(
+  usuarios: UsuarioPlataformaParaRegraDeOwner[],
+  papelSolicitante: PapelPlataforma,
+  alvoId: string,
+  novoStatus: StatusUsuario
+): ResultadoAcesso {
+  if (!podeGerenciarAdministradores(papelSolicitante)) {
+    return { permitido: false, motivo: "Você não tem permissão para gerenciar administradores da plataforma." };
+  }
+  if (novoStatus !== "ativo" && ficariaSemOwnerAtivo(usuarios, alvoId)) {
+    return { permitido: false, motivo: "Não é possível desativar o último MASTER_OWNER ativo da plataforma." };
+  }
+  return { permitido: true };
+}
+
+/** Barreira de trocar o papel de um administrador — nunca pode rebaixar o
+ * último MASTER_OWNER ativo, e só um MASTER_OWNER promove outra conta a
+ * MASTER_OWNER. */
+export function podeAlterarPapelAdministrador(
+  usuarios: UsuarioPlataformaParaRegraDeOwner[],
+  papelSolicitante: PapelPlataforma,
+  alvoId: string,
+  novoPapel: PapelPlataforma
+): ResultadoAcesso {
+  if (!podeGerenciarAdministradores(papelSolicitante)) {
+    return { permitido: false, motivo: "Você não tem permissão para gerenciar administradores da plataforma." };
+  }
+  if (novoPapel !== "MASTER_OWNER" && ficariaSemOwnerAtivo(usuarios, alvoId)) {
+    return { permitido: false, motivo: "Não é possível rebaixar o último MASTER_OWNER ativo da plataforma." };
+  }
+  if (novoPapel === "MASTER_OWNER" && papelSolicitante !== "MASTER_OWNER") {
+    return { permitido: false, motivo: "Somente um MASTER_OWNER pode promover outra conta a MASTER_OWNER." };
+  }
+  return { permitido: true };
+}
+
+/** Barreira de remover um administrador — mesma regra de "nunca zero owners
+ * ativos" da suspensão, mas para exclusão definitiva do registro. */
+export function podeRemoverAdministrador(
+  usuarios: UsuarioPlataformaParaRegraDeOwner[],
+  papelSolicitante: PapelPlataforma,
+  alvoId: string
+): ResultadoAcesso {
+  if (!podeGerenciarAdministradores(papelSolicitante)) {
+    return { permitido: false, motivo: "Você não tem permissão para gerenciar administradores da plataforma." };
+  }
+  if (ficariaSemOwnerAtivo(usuarios, alvoId)) {
+    return { permitido: false, motivo: "Não é possível remover o último MASTER_OWNER ativo da plataforma." };
+  }
+  return { permitido: true };
 }

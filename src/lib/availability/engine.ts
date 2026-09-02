@@ -13,6 +13,10 @@ export interface OpcoesDisponibilidade {
   data: Date;
   horarios: HorarioDia[];
   duracaoServicoMinutos: number;
+  /** Intervalo posterior do serviço sendo agendado agora — reserva esse tempo
+   * depois do atendimento antes de liberar o próximo horário. Padrão 0 mantém
+   * compatibilidade com chamadas existentes. */
+  intervaloPosteriorMinutos?: number;
   ocupados: JanelaOcupada[];
   antecedenciaMinimaMinutos: number;
   limiteDiasFuturos: number;
@@ -54,8 +58,12 @@ function horaParaDate(dia: Date, hhmm: string): Date {
   return setMinutes(setHours(startOfDay(dia), h), m);
 }
 
-/** Converte agendamentos em janelas ocupadas, já somando a duração do serviço e o
- * intervalo posterior. Agendamentos cancelados ou com falta não geram janela. */
+/** Converte agendamentos em janelas ocupadas. Usa `dataHoraFim` como fim real do
+ * atendimento (não recalcula a duração); só recai no fallback pela duração
+ * cadastrada do serviço se `dataHoraFim` estiver ausente/inválido/não-posterior ao
+ * início, protegendo dados malformados sem alterar o significado de `dataHoraFim`
+ * para os dados válidos. Some o intervalo posterior do serviço depois do fim real.
+ * Agendamentos cancelados ou com falta não geram janela. */
 export function agendamentosParaOcupados(
   agendamentos: Agendamento[],
   duracaoPorServicoMinutos: Map<string, number>,
@@ -65,9 +73,13 @@ export function agendamentosParaOcupados(
     .filter((a) => STATUS_OCUPA_AGENDA.includes(a.status))
     .map((a) => {
       const inicio = new Date(a.dataHoraInicio);
-      const duracao = duracaoPorServicoMinutos.get(a.servicoId) ?? 30;
+      const fimRegistrado = new Date(a.dataHoraFim);
       const intervalo = intervaloPosteriorPorServicoMinutos.get(a.servicoId) ?? 0;
-      return { inicio, fim: addMinutes(inicio, duracao + intervalo) };
+      const fimRegistradoValido = !Number.isNaN(fimRegistrado.getTime()) && isBefore(inicio, fimRegistrado);
+      const fimReal = fimRegistradoValido
+        ? fimRegistrado
+        : addMinutes(inicio, duracaoPorServicoMinutos.get(a.servicoId) ?? 30);
+      return { inicio, fim: addMinutes(fimReal, intervalo) };
     });
 }
 
@@ -79,6 +91,7 @@ export function bloqueiosParaOcupados(bloqueios: { inicio: string; fim: string }
  * que o serviço cabe inteiramente dentro do expediente, sem cruzar o almoço. */
 export function calcularHorariosDisponiveis(opcoes: OpcoesDisponibilidade): Date[] {
   const passo = opcoes.passoMinutos ?? 15;
+  const intervaloPosterior = opcoes.intervaloPosteriorMinutos ?? 0;
   const horarioDia = obterHorarioDoDia(opcoes.horarios, getDay(opcoes.data) as DiaSemana);
   if (!horarioDia) return [];
 
@@ -96,10 +109,12 @@ export function calcularHorariosDisponiveis(opcoes: OpcoesDisponibilidade): Date
   let cursor = aberturaDia;
   while (isBefore(cursor, fechamentoDia)) {
     const fimServico = addMinutes(cursor, opcoes.duracaoServicoMinutos);
-    const cabeNoExpediente = !isBefore(fechamentoDia, fimServico);
-    const cruzaAlmoco = almocoInicio && almocoFim ? intervalosSeSobrepoem(cursor, fimServico, almocoInicio, almocoFim) : false;
+    const fimComIntervalo = addMinutes(fimServico, intervaloPosterior);
+    const cabeNoExpediente = !isBefore(fechamentoDia, fimComIntervalo);
+    const cruzaAlmoco =
+      almocoInicio && almocoFim ? intervalosSeSobrepoem(cursor, fimComIntervalo, almocoInicio, almocoFim) : false;
     const respeitaAntecedencia = !isBefore(cursor, inicioMinimoPorAntecedencia);
-    const temConflito = opcoes.ocupados.some((o) => intervalosSeSobrepoem(cursor, fimServico, o.inicio, o.fim));
+    const temConflito = opcoes.ocupados.some((o) => intervalosSeSobrepoem(cursor, fimComIntervalo, o.inicio, o.fim));
 
     if (cabeNoExpediente && !cruzaAlmoco && respeitaAntecedencia && !temConflito) {
       disponiveis.push(cursor);

@@ -25,7 +25,7 @@ export default function PainelServicosPage() {
 }
 
 function ConteudoServicos() {
-  const { tenantId, terminologia, estabelecimento } = useTenant();
+  const { tenantId, terminologia, estabelecimento, podeAcessar } = useTenant();
   const { notificar } = useToast();
   const [modalAberto, setModalAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<Servico | null>(null);
@@ -45,8 +45,10 @@ function ConteudoServicos() {
   }
 
   const { servicos, profissionais } = dados;
+  const podeGerenciar = podeAcessar("servicos.gerenciar").permitido;
 
   function remover(servico: Servico) {
+    if (!podeAcessar("servicos.gerenciar").permitido) return;
     if (!window.confirm(`Remover "${servico.nome}"? Essa ação não pode ser desfeita.`)) return;
     servicoRepository.remover(servico.id);
     notificar(`${terminologia.servico.singular} removido.`, "sucesso");
@@ -60,15 +62,17 @@ function ConteudoServicos() {
           <h1 className="text-xl font-bold text-ink">{terminologia.servico.plural}</h1>
           <p className="text-sm text-ink-soft">Preços, duração e quem realiza cada um.</p>
         </div>
-        <Botao
-          tamanho="sm"
-          onClick={() => {
-            setEmEdicao(null);
-            setModalAberto(true);
-          }}
-        >
-          <Plus size={16} className="mr-1.5" /> Nov{terminologia.servico.artigo === "a" ? "a" : "o"} {terminologia.servico.singular.toLowerCase()}
-        </Botao>
+        {podeGerenciar && (
+          <Botao
+            tamanho="sm"
+            onClick={() => {
+              setEmEdicao(null);
+              setModalAberto(true);
+            }}
+          >
+            <Plus size={16} className="mr-1.5" /> Nov{terminologia.servico.artigo === "a" ? "a" : "o"} {terminologia.servico.singular.toLowerCase()}
+          </Botao>
+        )}
       </div>
 
       {servicos.length === 0 ? (
@@ -100,22 +104,24 @@ function ConteudoServicos() {
                   <span className="text-ink-soft">{formatarDuracao(servico.duracaoMinutos)}</span>
                   {servico.exigeConfirmacaoManual && <Badge cor="info">Confirmação manual</Badge>}
                 </div>
-                <div className="flex gap-2">
-                  <Botao
-                    tamanho="sm"
-                    variante="secundaria"
-                    className="flex-1"
-                    onClick={() => {
-                      setEmEdicao(servico);
-                      setModalAberto(true);
-                    }}
-                  >
-                    <Pencil size={14} className="mr-1.5" /> Editar
-                  </Botao>
-                  <Botao tamanho="sm" variante="secundaria" onClick={() => remover(servico)}>
-                    <Trash2 size={14} />
-                  </Botao>
-                </div>
+                {podeGerenciar && (
+                  <div className="flex gap-2">
+                    <Botao
+                      tamanho="sm"
+                      variante="secundaria"
+                      className="flex-1"
+                      onClick={() => {
+                        setEmEdicao(servico);
+                        setModalAberto(true);
+                      }}
+                    >
+                      <Pencil size={14} className="mr-1.5" /> Editar
+                    </Botao>
+                    <Botao tamanho="sm" variante="secundaria" onClick={() => remover(servico)}>
+                      <Trash2 size={14} />
+                    </Botao>
+                  </div>
+                )}
               </CartaoCorpo>
             </Cartao>
           ))}
@@ -130,6 +136,7 @@ function ConteudoServicos() {
         servicoEmEdicao={emEdicao}
         intervaloPadraoMinutos={estabelecimento.regras.intervaloPadraoMinutos}
         terminologia={terminologia}
+        podeSalvar={podeGerenciar}
         onSalvo={recarregar}
       />
     </div>

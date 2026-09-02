@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { addDays, differenceInHours, getDay, startOfDay } from "date-fns";
 import { CalendarCog, CalendarX2, CheckCircle2, Store, Tag, User, XCircle } from "lucide-react";
-import { horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
+import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import { agendamentoRepository, estabelecimentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
 import { useClientData } from "@/lib/hooks/use-client-data";
 import { useToast } from "@/components/ui/toast";
@@ -18,6 +18,7 @@ import { Modal } from "@/components/ui/modal";
 import { EtapaDataHorario } from "@/components/agendamento/etapa-data-horario";
 import { formatarDataLonga, formatarHora, formatarMoeda } from "@/lib/format";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
+import { podeReceberAgendamentoPublico } from "@/lib/access/access-control";
 import type { DiaSemana, StatusAgendamento } from "@/lib/types";
 
 const MAX_DIAS_EXIBIDOS = 21;
@@ -103,7 +104,8 @@ export default function AgendamentoDetalhePage() {
     (agendamento.status === "pendente" || agendamento.status === "confirmado") &&
     horasAteAtendimento >= estabelecimento.regras.prazoCancelamentoHoras;
   const podeCancelar = dentroDoPrazo;
-  const podeRemarcar = dentroDoPrazo && estabelecimento.regras.permitirRemarcacaoCliente;
+  const podeRemarcar =
+    dentroDoPrazo && estabelecimento.regras.permitirRemarcacaoCliente && podeReceberAgendamentoPublico(estabelecimento.status);
 
   function confirmarCancelamento() {
     agendamentoRepository.atualizarStatus(agendamento.id, "cancelado", "cliente");
@@ -114,13 +116,23 @@ export default function AgendamentoDetalhePage() {
 
   function confirmarRemarcacao() {
     if (!horarioRemarcar || !servico) return;
+    if (!horarioAindaDisponivelParaProfissional(profissional, servico, horarioRemarcar, estabelecimento, agendamento.id)) {
+      notificar("Esse horário deixou de estar disponível. Escolha outro horário.", "erro");
+      setHorarioRemarcar(null);
+      recarregar();
+      return;
+    }
     const novoFim = new Date(horarioRemarcar.getTime() + servico.duracaoMinutos * 60_000);
-    agendamentoRepository.remarcar(agendamento.id, horarioRemarcar.toISOString(), novoFim.toISOString(), "cliente");
-    notificar(`${terminologia.agendamento.singular} remarcado com sucesso.`, "sucesso");
-    setRemarcando(false);
-    setDataRemarcar(null);
-    setHorarioRemarcar(null);
-    recarregar();
+    try {
+      agendamentoRepository.remarcar(agendamento.id, horarioRemarcar.toISOString(), novoFim.toISOString(), "cliente");
+      notificar(`${terminologia.agendamento.singular} remarcado com sucesso.`, "sucesso");
+      setRemarcando(false);
+      setDataRemarcar(null);
+      setHorarioRemarcar(null);
+      recarregar();
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
+    }
   }
 
   return (

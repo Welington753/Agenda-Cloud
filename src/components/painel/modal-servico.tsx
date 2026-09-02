@@ -24,6 +24,9 @@ interface ModalServicoProps {
    * estabelecimento (`regras.intervaloPadraoMinutos`). */
   intervaloPadraoMinutos: number;
   terminologia: Terminologia;
+  /** Defesa em profundidade: a página só abre este modal se `servicos.gerenciar`
+   * já estiver liberado, mas `salvar()` confere de novo antes de gravar. */
+  podeSalvar: boolean;
   onSalvo: () => void;
 }
 
@@ -35,6 +38,7 @@ export function ModalServico({
   servicoEmEdicao,
   intervaloPadraoMinutos,
   terminologia,
+  podeSalvar,
   onSalvo,
 }: ModalServicoProps) {
   const { notificar } = useToast();
@@ -81,6 +85,7 @@ export function ModalServico({
   }
 
   function salvar() {
+    if (!podeSalvar) return;
     if (!nome.trim()) {
       notificar("Informe o nome do serviço.", "erro");
       return;
@@ -240,7 +245,7 @@ export function ModalServico({
       </div>
 
       <div className="mt-5">
-        <Botao className="w-full" onClick={salvar}>
+        <Botao className="w-full" onClick={salvar} disabled={!podeSalvar}>
           Salvar {terminologia.servico.singular.toLowerCase()}
         </Botao>
       </div>

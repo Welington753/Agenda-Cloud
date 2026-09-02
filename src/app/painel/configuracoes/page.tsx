@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, RotateCcw } from "lucide-react";
+import { Check, Copy, ExternalLink, RotateCcw } from "lucide-react";
 import { useTenant } from "@/lib/tenant/tenant-context";
 import { RequirePermission } from "@/components/layout/require-permission";
 import { estabelecimentoRepository } from "@/lib/repositories";
@@ -32,7 +32,7 @@ export default function PainelConfiguracoesPage() {
 }
 
 function ConteudoConfiguracoes() {
-  const { tenantId, terminologia, estabelecimento: dados, carregando, recarregar } = useTenant();
+  const { tenantId, terminologia, estabelecimento: dados, carregando, recarregar, podeAcessar } = useTenant();
   const { notificar } = useToast();
 
   const [copiado, setCopiado] = useState(false);
@@ -43,9 +43,8 @@ function ConteudoConfiguracoes() {
     endereco: "",
     telefone: "",
     instagram: "",
-    logoIniciais: "",
-    corDestaque: "#B5651D",
     textoApresentacao: "",
+    orientacoesAntesVisita: "",
     diasFuncionamento: [] as DiaSemana[],
     abertura: "09:00",
     fechamento: "19:00",
@@ -69,9 +68,8 @@ function ConteudoConfiguracoes() {
       endereco: dados.identidadeVisual.endereco,
       telefone: dados.identidadeVisual.telefone,
       instagram: dados.identidadeVisual.redesSociais?.instagram ?? "",
-      logoIniciais: dados.identidadeVisual.logoIniciais,
-      corDestaque: dados.identidadeVisual.corDestaque,
       textoApresentacao: dados.identidadeVisual.textoApresentacao,
+      orientacoesAntesVisita: dados.regras.orientacoesAntesVisita ?? "",
       diasFuncionamento: dados.horarioGeral.diasFuncionamento,
       abertura: dados.horarioGeral.abertura,
       fechamento: dados.horarioGeral.fechamento,
@@ -107,40 +105,47 @@ function ConteudoConfiguracoes() {
     }));
   }
 
+  // Confere a permissão de novo aqui dentro — a página já está atrás de
+  // <RequirePermission>, mas a função que muta nunca deve depender só disso
+  // (mesma disciplina aplicada em /master/administradores e nas comissões).
   function salvar() {
-    estabelecimentoRepository.atualizar(tenantId, {
-      categoria: form.categoria,
-      identidadeVisual: {
-        ...dados!.identidadeVisual,
-        nome: form.nome.trim(),
-        nomeCurto: form.nomeCurto.trim() || form.nome.trim(),
-        endereco: form.endereco.trim(),
-        telefone: form.telefone.trim(),
-        logoIniciais: form.logoIniciais.trim().toUpperCase().slice(0, 3) || "ES",
-        redesSociais: form.instagram.trim() ? { instagram: form.instagram.trim() } : undefined,
-        corDestaque: form.corDestaque,
-        textoApresentacao: form.textoApresentacao.trim(),
-      },
-      horarioGeral: {
-        diasFuncionamento: form.diasFuncionamento,
-        abertura: form.abertura,
-        fechamento: form.fechamento,
-      },
-      regras: {
-        ...dados!.regras,
-        antecedenciaMinimaMinutos: form.antecedenciaMinimaMinutos,
-        limiteDiasFuturos: form.limiteDiasFuturos,
-        prazoCancelamentoHoras: form.prazoCancelamentoHoras,
-        intervaloPadraoMinutos: form.intervaloPadraoMinutos,
-        confirmacaoAutomatica: form.confirmacaoAutomatica,
-        permitirQualquerProfissional: form.permitirQualquerProfissional,
-        permitirRemarcacaoCliente: form.permitirRemarcacaoCliente,
-        exigirTelefoneCliente: form.exigirTelefoneCliente,
-        exibirPrecoPublico: form.exibirPrecoPublico,
-      },
-    });
-    notificar("Configurações salvas.", "sucesso");
-    recarregar();
+    if (!podeAcessar("configuracoes.gerenciar").permitido) return;
+    try {
+      estabelecimentoRepository.atualizar(tenantId, {
+        categoria: form.categoria,
+        identidadeVisual: {
+          ...dados!.identidadeVisual,
+          nome: form.nome.trim(),
+          nomeCurto: form.nomeCurto.trim() || form.nome.trim(),
+          endereco: form.endereco.trim(),
+          telefone: form.telefone.trim(),
+          redesSociais: form.instagram.trim() ? { instagram: form.instagram.trim() } : undefined,
+          textoApresentacao: form.textoApresentacao.trim(),
+        },
+        horarioGeral: {
+          diasFuncionamento: form.diasFuncionamento,
+          abertura: form.abertura,
+          fechamento: form.fechamento,
+        },
+        regras: {
+          ...dados!.regras,
+          antecedenciaMinimaMinutos: form.antecedenciaMinimaMinutos,
+          limiteDiasFuturos: form.limiteDiasFuturos,
+          prazoCancelamentoHoras: form.prazoCancelamentoHoras,
+          intervaloPadraoMinutos: form.intervaloPadraoMinutos,
+          confirmacaoAutomatica: form.confirmacaoAutomatica,
+          permitirQualquerProfissional: form.permitirQualquerProfissional,
+          permitirRemarcacaoCliente: form.permitirRemarcacaoCliente,
+          exigirTelefoneCliente: form.exigirTelefoneCliente,
+          exibirPrecoPublico: form.exibirPrecoPublico,
+          orientacoesAntesVisita: form.orientacoesAntesVisita.trim() || undefined,
+        },
+      });
+      notificar("Configurações salvas.", "sucesso");
+      recarregar();
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível salvar as configurações.", "erro");
+    }
   }
 
   function copiarLink() {
@@ -149,6 +154,10 @@ function ConteudoConfiguracoes() {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
     });
+  }
+
+  function abrirPaginaPublica() {
+    window.open(`/${slugAtual}`, "_blank", "noopener,noreferrer");
   }
 
   function aoRestaurar() {
@@ -225,10 +234,10 @@ function ConteudoConfiguracoes() {
             />
           </Campo>
           <Campo rotulo="Texto de apresentação">
-            <input
-              type="text"
+            <textarea
               value={form.textoApresentacao}
               onChange={(e) => setForm((f) => ({ ...f, textoApresentacao: e.target.value }))}
+              rows={3}
               className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
             />
           </Campo>
@@ -251,25 +260,18 @@ function ConteudoConfiguracoes() {
               />
             </Campo>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="Iniciais do logo">
-              <input
-                type="text"
-                value={form.logoIniciais}
-                onChange={(e) => setForm((f) => ({ ...f, logoIniciais: e.target.value }))}
-                maxLength={3}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Cor de destaque">
-              <input
-                type="color"
-                value={form.corDestaque}
-                onChange={(e) => setForm((f) => ({ ...f, corDestaque: e.target.value }))}
-                className="h-[38px] w-full rounded-[var(--radius-control)] border border-border bg-card px-1"
-              />
-            </Campo>
-          </div>
+          <Campo rotulo="Orientações antes da visita (opcional)">
+            <textarea
+              value={form.orientacoesAntesVisita}
+              onChange={(e) => setForm((f) => ({ ...f, orientacoesAntesVisita: e.target.value }))}
+              rows={3}
+              placeholder={"Chegue com 5 minutos de antecedência.\nEstacionamento disponível na rua lateral.\nEm caso de atraso, entre em contato pelo WhatsApp."}
+              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+            />
+            <p className="mt-1 text-xs text-ink-soft">
+              Mostrado como texto simples na página pública, nunca como HTML.
+            </p>
+          </Campo>
           <Campo rotulo="Link público">
             <div className="flex items-center gap-2">
               <input
@@ -277,8 +279,11 @@ function ConteudoConfiguracoes() {
                 value={`/${slugAtual}`}
                 className="w-full rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 py-2 text-sm text-ink-soft"
               />
-              <Botao tamanho="sm" variante="secundaria" onClick={copiarLink}>
+              <Botao tamanho="sm" variante="secundaria" onClick={copiarLink} aria-label="Copiar link público">
                 {copiado ? <Check size={16} /> : <Copy size={16} />}
+              </Botao>
+              <Botao tamanho="sm" variante="secundaria" onClick={abrirPaginaPublica}>
+                <ExternalLink size={16} className="mr-1.5" /> Abrir página pública
               </Botao>
             </div>
           </Campo>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { addDays, getDay, startOfDay } from "date-fns";
 import { ArrowLeft, Store } from "lucide-react";
-import { horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
+import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import {
   agendamentoRepository,
   consumidorRepository,
@@ -25,7 +25,8 @@ import { EtapaDataHorario } from "@/components/agendamento/etapa-data-horario";
 import { EtapaDadosCliente } from "@/components/agendamento/etapa-dados-cliente";
 import { EtapaConfirmacao } from "@/components/agendamento/etapa-confirmacao";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
-import { featureHabilitada } from "@/lib/access/access-control";
+import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
+import { resolverLogo } from "@/components/publico/secoes";
 import type { DiaSemana, Estabelecimento, Profissional, Servico } from "@/lib/types";
 
 const MAX_DIAS_EXIBIDOS = 21;
@@ -143,6 +144,7 @@ export default function AgendarPage() {
 
   const { estabelecimento, servicos } = dados;
   const terminologia = obterTerminologia(estabelecimento.categoria);
+  const logo = resolverLogo(estabelecimento.identidadeVisual);
   const ETAPAS = ["Serviço", terminologia.profissional.singular, "Data e horário", "Seus dados", "Confirmação"];
 
   if (!featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico")) {
@@ -152,6 +154,25 @@ export default function AgendarPage() {
           icone={Store}
           titulo="Agendamento online desativado"
           descricao={`${estabelecimento.identidadeVisual.nome} não está aceitando agendamentos online nesta demonstração.`}
+          acao={
+            <Link href={`/${slug}`}>
+              <Botao variante="secundaria" tamanho="sm">
+                Voltar
+              </Botao>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (!podeReceberAgendamentoPublico(estabelecimento.status)) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md items-center justify-center px-4">
+        <EstadoVazio
+          icone={Store}
+          titulo="Agendamento indisponível"
+          descricao={`${estabelecimento.identidadeVisual.nome} não está aceitando novos agendamentos no momento.`}
           acao={
             <Link href={`/${slug}`}>
               <Botao variante="secundaria" tamanho="sm">
@@ -196,9 +217,7 @@ export default function AgendarPage() {
       return;
     }
 
-    const aindaDisponivel = horariosLivresDoProfissionalNoDia(profissional, servico, horarioSelecionado, estabelecimento).some(
-      (h) => h.getTime() === horarioSelecionado.getTime()
-    );
+    const aindaDisponivel = horarioAindaDisponivelParaProfissional(profissional, servico, horarioSelecionado, estabelecimento);
 
     if (!aindaDisponivel) {
       notificar("Esse horário acabou de ser preenchido. Escolha outro, por favor.", "erro");
@@ -249,6 +268,17 @@ export default function AgendarPage() {
           >
             <ArrowLeft size={18} />
           </Link>
+        )}
+        {logo.tipo === "imagem" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo.url} alt={logo.alt} className="size-9 shrink-0 rounded-full border border-border object-cover" />
+        ) : (
+          <div
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+            style={{ backgroundColor: estabelecimento.identidadeVisual.corDestaque }}
+          >
+            {logo.texto}
+          </div>
         )}
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink">{estabelecimento.identidadeVisual.nome}</p>

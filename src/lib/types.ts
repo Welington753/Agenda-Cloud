@@ -45,9 +45,15 @@ export interface IdentidadeVisual {
   email?: string;
   redesSociais?: { instagram?: string; facebook?: string };
   textoApresentacao: string;
-  /** URLs de fotos — sem upload real nesta fase (sem backend), o campo aceita link. */
+  /** URLs de fotos — aceita link `https://` ou Data URL de imagem (upload local
+   * de demonstração, ver `validarUrlFoto`). */
   fotos: string[];
   bannerUrl?: string;
+  /** Logo do estabelecimento. Nesta fase, sem backend/storage, é uma Data URL
+   * gerada no upload local (ver `/painel/personalizacao`) — guardada só neste
+   * navegador. Preparado para, no futuro, virar uma URL de armazenamento real
+   * sem mudar o tipo. Ausente = usa `logoIniciais` como fallback. */
+  logoUrl?: string;
   /** Só tem efeito visual quando o plano do tenant inclui `personalizacaoAvancada`. */
   personalizacaoAvancada?: {
     ordemSecoes: ("servicos" | "equipe" | "apresentacao" | "fotos")[];
@@ -92,6 +98,10 @@ export interface RegrasAgendamento {
   exigirEmailCliente: boolean;
   exibirPrecoPublico: boolean;
   intervaloPadraoMinutos: number;
+  /** Texto livre opcional mostrado na página pública antes da confirmação —
+   * ex.: "chegue com 5 min de antecedência". Renderizado sempre como texto
+   * simples, nunca como HTML. */
+  orientacoesAntesVisita?: string;
 }
 
 export interface Estabelecimento {
@@ -255,6 +265,56 @@ export interface Agendamento {
   historico: HistoricoAlteracao[];
 }
 
+export type TipoComissao = "percentual" | "fixo";
+
+/** `confirmado` = lançamento válido, entra nos totais do relatório. `estornado` =
+ * o agendamento que o gerou foi revertido depois de concluído; o registro nunca é
+ * apagado, só marcado — histórico permanece auditável. */
+export type StatusLancamentoComissao = "confirmado" | "estornado";
+
+/** Regra de comissão para UMA combinação profissional+serviço. No máximo uma por
+ * `tenantId`+`profissionalId`+`servicoId` — `comissaoRegraRepository.salvar` faz
+ * upsert por essa chave, então a unicidade é estrutural, não uma checagem separada.
+ * `valor`: percentual é 0-100 (não fração); fixo é centavos. */
+export interface RegraComissao {
+  id: string;
+  tenantId: string;
+  profissionalId: string;
+  servicoId: string;
+  tipo: TipoComissao;
+  valor: number;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+/** Lançamento gerado quando um agendamento é concluído — cópia congelada dos
+ * valores no momento do cálculo. Nunca é recalculado a partir da regra atual;
+ * alterar ou remover a `RegraComissao` depois não toca nenhum `LancamentoComissao`
+ * já existente. No máximo um lançamento por `agendamentoId`, para sempre — se o
+ * agendamento for revertido e concluído de novo, o MESMO registro é reativado
+ * (status volta a `confirmado`, `reativadoEm` é preenchido), nunca criada uma
+ * segunda linha nem recalculados os valores. */
+export interface LancamentoComissao {
+  id: string;
+  tenantId: string;
+  agendamentoId: string;
+  profissionalId: string;
+  servicoId: string;
+  precoAgendamentoCentavos: number;
+  tipoComissao: TipoComissao;
+  valorRegraAplicada: number;
+  valorProfissionalCentavos: number;
+  valorEstabelecimentoCentavos: number;
+  /** = `Agendamento.dataHoraInicio` no momento do cálculo. */
+  dataAtendimento: string;
+  calculadoEm: string;
+  status: StatusLancamentoComissao;
+  /** Preenchido só quando o lançamento é reativado depois de ter sido estornado —
+   * ausente em registros que nunca passaram por reversão. Opcional para não exigir
+   * migração de lançamentos antigos. */
+  reativadoEm?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Contas, vínculos e permissões
 //
@@ -332,6 +392,8 @@ export type Permission =
   | "relatorios.visualizar"
   | "equipe.visualizar"
   | "equipe.gerenciar"
+  | "comissoes.visualizar"
+  | "comissoes.gerenciar"
   | "personalizacao.gerenciar"
   | "configuracoes.gerenciar";
 

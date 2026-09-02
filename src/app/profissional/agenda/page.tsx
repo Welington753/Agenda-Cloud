@@ -19,6 +19,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { BadgeStatusAgendamento } from "@/components/ui/badge";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { ModalDetalheAgendamento } from "@/components/painel/modal-agendamento";
 import { ModalBloqueio } from "@/components/painel/modal-bloqueio";
 import { formatarDataLonga, formatarHora } from "@/lib/format";
@@ -34,7 +35,8 @@ export default function AgendaProfissionalPage() {
 
 function ConteudoAgendaProfissional() {
   const { usuario } = useAuth();
-  const { terminologia } = useTenant();
+  const { terminologia, podeAcessar } = useTenant();
+  const { notificar } = useToast();
   const profissionalId = usuario?.profissionalId ?? "";
   const [dataAtual, setDataAtual] = useState(() => new Date());
   const [agendamentoSelecionado, setAgendamentoSelecionado] = useState<Agendamento | null>(null);
@@ -83,9 +85,11 @@ function ConteudoAgendaProfissional() {
             {terminologia.agendamento.plural.toLowerCase()}.
           </p>
         </div>
-        <Botao tamanho="sm" variante="secundaria" onClick={() => setModalBloqueioAberto(true)}>
-          <CalendarX2 size={16} className="mr-1.5" /> Bloquear horário
-        </Botao>
+        {podeAcessar("agenda.gerenciar").permitido && (
+          <Botao tamanho="sm" variante="secundaria" onClick={() => setModalBloqueioAberto(true)}>
+            <CalendarX2 size={16} className="mr-1.5" /> Bloquear horário
+          </Botao>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -130,16 +134,19 @@ function ConteudoAgendaProfissional() {
                       {formatarHora(b.inicio)} – {formatarHora(b.fim)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      bloqueioRepository.remover(b.id);
-                      recarregar();
-                    }}
-                    className="shrink-0 text-xs font-semibold text-[color:var(--color-danger)] hover:underline"
-                  >
-                    Remover
-                  </button>
+                  {podeAcessar("agenda.gerenciar").permitido && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!podeAcessar("agenda.gerenciar").permitido) return;
+                        bloqueioRepository.remover(b.id);
+                        recarregar();
+                      }}
+                      className="shrink-0 text-xs font-semibold text-[color:var(--color-danger)] hover:underline"
+                    >
+                      Remover
+                    </button>
+                  )}
                 </li>
               ))}
               {agendamentosDoDia.map((a) => {
@@ -181,31 +188,42 @@ function ConteudoAgendaProfissional() {
               profissional={profissional}
               estabelecimento={estabelecimento}
               terminologia={terminologia}
+              podeEditar={podeAcessar("agendamento.editar").permitido}
+              podeCancelar={podeAcessar("agendamento.cancelar").permitido}
               onMudarStatus={(status) => {
+                const permissaoNecessaria = status === "cancelado" ? "agendamento.cancelar" : "agendamento.editar";
+                if (!podeAcessar(permissaoNecessaria).permitido) return;
                 agendamentoRepository.atualizarStatus(agendamentoSelecionado.id, status, "profissional");
                 recarregar();
                 setAgendamentoSelecionado(null);
               }}
               onRemarcar={(novoInicio) => {
+                if (!podeAcessar("agendamento.editar").permitido) return;
                 const fim = new Date(novoInicio.getTime() + servico.duracaoMinutos * 60_000);
-                agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "profissional");
-                recarregar();
-                setAgendamentoSelecionado(null);
+                try {
+                  agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "profissional");
+                  recarregar();
+                  setAgendamentoSelecionado(null);
+                } catch (erro) {
+                  notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
+                }
               }}
             />
           );
         })()}
 
-      <ModalBloqueio
-        aberto={modalBloqueioAberto}
-        aoFechar={() => setModalBloqueioAberto(false)}
-        tenantId={profissional.tenantId}
-        profissionais={[profissional]}
-        dia={dataAtual}
-        profissionalPreSelecionadoId={profissional.id}
-        terminologia={terminologia}
-        onCriado={recarregar}
-      />
+      {podeAcessar("agenda.gerenciar").permitido && (
+        <ModalBloqueio
+          aberto={modalBloqueioAberto}
+          aoFechar={() => setModalBloqueioAberto(false)}
+          tenantId={profissional.tenantId}
+          profissionais={[profissional]}
+          dia={dataAtual}
+          profissionalPreSelecionadoId={profissional.id}
+          terminologia={terminologia}
+          onCriado={recarregar}
+        />
+      )}
     </div>
   );
 }

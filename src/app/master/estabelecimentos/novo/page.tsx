@@ -21,7 +21,8 @@ import {
 } from "@/lib/repositories";
 import { DEFINICOES_PLANO, FEATURES_AINDA_NAO_IMPLEMENTADAS, ROTULO_FEATURE, obterDefinicaoPlano } from "@/lib/planos";
 import { CATEGORIAS_NEGOCIO, obterTerminologia } from "@/lib/verticals/terminologia";
-import type { CategoriaNegocio, CodigoPlano, Feature, ModeloPaginaPublica } from "@/lib/types";
+import { normalizarSlug, validarFormatoSlug } from "@/lib/estabelecimentos/validacao";
+import type { CategoriaNegocio, CodigoPlano, Estabelecimento, Feature, ModeloPaginaPublica } from "@/lib/types";
 
 const ETAPAS = ["Negócio", "Plano", "Identidade", "Proprietário", "Revisão"];
 
@@ -79,15 +80,6 @@ const ESTADO_INICIAL: EstadoFormulario = {
   donoTelefone: "",
 };
 
-function slugify(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 export default function NovoEstabelecimentoPage() {
   return (
     <RequirePlatformPermission permissao="estabelecimentos.gerenciar">
@@ -113,7 +105,7 @@ function ConteudoNovoEstabelecimento() {
   function aoMudarNome(nome: string) {
     atualizar("nome", nome);
     if (!slugEditadoManualmente) {
-      const sugestao = slugify(nome);
+      const sugestao = normalizarSlug(nome);
       atualizar("slug", sugestao);
       setErroSlug(null);
     }
@@ -122,7 +114,7 @@ function ConteudoNovoEstabelecimento() {
 
   function aoMudarSlug(slug: string) {
     setSlugEditadoManualmente(true);
-    atualizar("slug", slugify(slug));
+    atualizar("slug", normalizarSlug(slug));
     setErroSlug(null);
   }
 
@@ -154,8 +146,9 @@ function ConteudoNovoEstabelecimento() {
       }
     }
     if (atual === 2) {
-      if (!form.slug.trim()) {
-        notificar("Defina um slug público.", "erro");
+      const validacaoFormato = validarFormatoSlug(form.slug);
+      if (!validacaoFormato.valido) {
+        setErroSlug(validacaoFormato.motivo ?? "Endereço público inválido.");
         return false;
       }
       if (!estabelecimentoRepository.slugDisponivel(form.slug)) {
@@ -188,6 +181,12 @@ function ConteudoNovoEstabelecimento() {
       setEtapa(2);
       return;
     }
+    const validacaoFinal = validarFormatoSlug(form.slug);
+    if (!validacaoFinal.valido) {
+      setErroSlug(validacaoFinal.motivo ?? "Endereço público inválido.");
+      setEtapa(2);
+      return;
+    }
     setPublicando(true);
 
     const tenantId = `tenant-${form.slug}-${Date.now().toString(36)}`;
@@ -204,37 +203,45 @@ function ConteudoNovoEstabelecimento() {
       intervaloPadraoMinutos: 0,
     };
 
-    const estabelecimento = estabelecimentoRepository.criar({
-      tenantId,
-      slug: form.slug,
-      categoria: form.categoria,
-      identidadeVisual: {
-        nome: form.nome.trim(),
-        nomeCurto: form.nomeFantasia.trim() || form.nome.trim(),
-        logoIniciais: (form.logoIniciais.trim() || form.nome.slice(0, 2)).toUpperCase().slice(0, 3),
-        corPrincipal: form.corPrincipal,
-        corSecundaria: form.corSecundaria,
-        corDestaque: form.corDestaque,
-        estilo: "Definido pelo master no cadastro",
-        modelo: form.modelo,
-        endereco: form.endereco.trim(),
-        telefone: form.telefone.trim(),
-        email: form.email.trim() || undefined,
-        redesSociais: form.instagram.trim() ? { instagram: form.instagram.trim() } : undefined,
-        textoApresentacao: form.textoApresentacao.trim(),
-        fotos: [],
-      },
-      documentoFiscal: form.documentoFiscal.trim() || undefined,
-      fusoHorario: form.fusoHorario,
-      horarioGeral: { diasFuncionamento: [1, 2, 3, 4, 5, 6], abertura: "09:00", fechamento: "19:00" },
-      regras: regrasIniciais,
-      plano: form.plano,
-      featuresDesativadas: form.featuresDesativadas,
-      limites: { maxProfissionais: form.maxProfissionais, maxUnidades: form.maxUnidades },
-      status: "teste",
-      criadoEm: new Date().toISOString(),
-      quantidadeProfissionais: 0,
-    });
+    let estabelecimento: Estabelecimento;
+    try {
+      estabelecimento = estabelecimentoRepository.criar({
+        tenantId,
+        slug: form.slug,
+        categoria: form.categoria,
+        identidadeVisual: {
+          nome: form.nome.trim(),
+          nomeCurto: form.nomeFantasia.trim() || form.nome.trim(),
+          logoIniciais: (form.logoIniciais.trim() || form.nome.slice(0, 2)).toUpperCase().slice(0, 3),
+          corPrincipal: form.corPrincipal,
+          corSecundaria: form.corSecundaria,
+          corDestaque: form.corDestaque,
+          estilo: "Definido pelo master no cadastro",
+          modelo: form.modelo,
+          endereco: form.endereco.trim(),
+          telefone: form.telefone.trim(),
+          email: form.email.trim() || undefined,
+          redesSociais: form.instagram.trim() ? { instagram: form.instagram.trim() } : undefined,
+          textoApresentacao: form.textoApresentacao.trim(),
+          fotos: [],
+        },
+        documentoFiscal: form.documentoFiscal.trim() || undefined,
+        fusoHorario: form.fusoHorario,
+        horarioGeral: { diasFuncionamento: [1, 2, 3, 4, 5, 6], abertura: "09:00", fechamento: "19:00" },
+        regras: regrasIniciais,
+        plano: form.plano,
+        featuresDesativadas: form.featuresDesativadas,
+        limites: { maxProfissionais: form.maxProfissionais, maxUnidades: form.maxUnidades },
+        status: "teste",
+        criadoEm: new Date().toISOString(),
+        quantidadeProfissionais: 0,
+      });
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível criar o estabelecimento.", "erro");
+      setPublicando(false);
+      setEtapa(2);
+      return;
+    }
 
     unidadeRepository.criar({ tenantId, nome: "Unidade principal", endereco: form.endereco.trim(), principal: true });
 
