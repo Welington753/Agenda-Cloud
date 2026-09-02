@@ -4,25 +4,32 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Botao } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { podeCriarAdministrador } from "@/lib/access/access-control";
 import { conviteRepository, auditoriaRepository } from "@/lib/repositories";
 import type { PapelPlataforma } from "@/lib/types";
 
-const PAPEIS: { valor: PapelPlataforma; rotulo: string }[] = [
+const PAPEIS_BASE: { valor: PapelPlataforma; rotulo: string }[] = [
   { valor: "MASTER_ADMIN", rotulo: "MASTER_ADMIN — permissões configuráveis" },
   { valor: "MASTER_SUPPORT", rotulo: "MASTER_SUPPORT — acesso a suporte" },
 ];
+
+const PAPEL_OWNER = { valor: "MASTER_OWNER" as const, rotulo: "MASTER_OWNER — acesso total (ex.: segundo sócio)" };
 
 export function ModalConvitePlataforma({
   aberto,
   aoFechar,
   responsavelId,
   responsavelNome,
+  responsavelPapel,
   onCriado,
 }: {
   aberto: boolean;
   aoFechar: () => void;
   responsavelId: string;
   responsavelNome: string;
+  /** Só um MASTER_OWNER pode oferecer/criar outra conta MASTER_OWNER — a opção só
+   * aparece na lista quando quem está convidando já é owner. */
+  responsavelPapel: PapelPlataforma;
   onCriado: () => void;
 }) {
   const { notificar } = useToast();
@@ -30,9 +37,16 @@ export function ModalConvitePlataforma({
   const [email, setEmail] = useState("");
   const [papel, setPapel] = useState<PapelPlataforma>("MASTER_ADMIN");
 
+  const papeisDisponiveis = responsavelPapel === "MASTER_OWNER" ? [PAPEL_OWNER, ...PAPEIS_BASE] : PAPEIS_BASE;
+
   function confirmar() {
     if (!nome.trim() || !email.trim()) {
       notificar("Informe nome e e-mail.", "erro");
+      return;
+    }
+    const resultado = podeCriarAdministrador(responsavelPapel, papel);
+    if (!resultado.permitido) {
+      notificar(resultado.motivo ?? "Não foi possível criar este administrador.", "erro");
       return;
     }
     conviteRepository.criar({
@@ -84,7 +98,7 @@ export function ModalConvitePlataforma({
             onChange={(e) => setPapel(e.target.value as PapelPlataforma)}
             className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
           >
-            {PAPEIS.map((p) => (
+            {papeisDisponiveis.map((p) => (
               <option key={p.valor} value={p.valor}>
                 {p.rotulo}
               </option>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
+import { RequirePlatformPermission } from "@/components/layout/require-platform-permission";
 import { useClientData } from "@/lib/hooks/use-client-data";
 import { estabelecimentoRepository } from "@/lib/repositories";
 import { Botao } from "@/components/ui/button";
@@ -19,6 +20,14 @@ import type { CodigoPlano, Estabelecimento, StatusEstabelecimento } from "@/lib/
 const ROTULO_CATEGORIA = new Map(CATEGORIAS_NEGOCIO.map((c) => [c.valor, c.rotulo]));
 
 export default function MasterEstabelecimentosPage() {
+  return (
+    <RequirePlatformPermission permissao="estabelecimentos.gerenciar">
+      <ConteudoEstabelecimentos />
+    </RequirePlatformPermission>
+  );
+}
+
+function ConteudoEstabelecimentos() {
   const [suporteAberto, setSuporteAberto] = useState<Estabelecimento | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<StatusEstabelecimento | "todos">("todos");
