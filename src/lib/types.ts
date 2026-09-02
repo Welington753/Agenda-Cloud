@@ -45,9 +45,15 @@ export interface IdentidadeVisual {
   email?: string;
   redesSociais?: { instagram?: string; facebook?: string };
   textoApresentacao: string;
-  /** URLs de fotos — sem upload real nesta fase (sem backend), o campo aceita link. */
+  /** URLs de fotos — aceita link `https://` ou Data URL de imagem (upload local
+   * de demonstração, ver `validarUrlFoto`). */
   fotos: string[];
   bannerUrl?: string;
+  /** Logo do estabelecimento. Nesta fase, sem backend/storage, é uma Data URL
+   * gerada no upload local (ver `/painel/personalizacao`) — guardada só neste
+   * navegador. Preparado para, no futuro, virar uma URL de armazenamento real
+   * sem mudar o tipo. Ausente = usa `logoIniciais` como fallback. */
+  logoUrl?: string;
   /** Só tem efeito visual quando o plano do tenant inclui `personalizacaoAvancada`. */
   personalizacaoAvancada?: {
     ordemSecoes: ("servicos" | "equipe" | "apresentacao" | "fotos")[];
@@ -92,6 +98,10 @@ export interface RegrasAgendamento {
   exigirEmailCliente: boolean;
   exibirPrecoPublico: boolean;
   intervaloPadraoMinutos: number;
+  /** Texto livre opcional mostrado na página pública antes da confirmação —
+   * ex.: "chegue com 5 min de antecedência". Renderizado sempre como texto
+   * simples, nunca como HTML. */
+  orientacoesAntesVisita?: string;
 }
 
 export interface Estabelecimento {

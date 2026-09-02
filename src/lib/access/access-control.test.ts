@@ -85,6 +85,20 @@ describe("calcularAcessoEfetivo", () => {
     expect(resultado.permitido).toBe(false);
   });
 
+  it("recepcionista não gerencia personalização mesmo no plano pro", () => {
+    const resultado = calcularAcessoEfetivo(
+      baseEntrada({ papel: "recepcionista", plano: "pro", permissao: "personalizacao.gerenciar" })
+    );
+    expect(resultado.permitido).toBe(false);
+  });
+
+  it("recepcionista não gerencia configurações mesmo no plano pro", () => {
+    const resultado = calcularAcessoEfetivo(
+      baseEntrada({ papel: "recepcionista", plano: "pro", permissao: "configuracoes.gerenciar" })
+    );
+    expect(resultado.permitido).toBe(false);
+  });
+
   it("permissões sem feature associada (ex.: servicos.gerenciar) não dependem do plano", () => {
     const resultado = calcularAcessoEfetivo(
       baseEntrada({ papel: "gerente", plano: "essencial", permissao: "servicos.gerenciar" })

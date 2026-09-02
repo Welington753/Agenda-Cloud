@@ -26,6 +26,7 @@ import { EtapaDadosCliente } from "@/components/agendamento/etapa-dados-cliente"
 import { EtapaConfirmacao } from "@/components/agendamento/etapa-confirmacao";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
 import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
+import { resolverLogo } from "@/components/publico/secoes";
 import type { DiaSemana, Estabelecimento, Profissional, Servico } from "@/lib/types";
 
 const MAX_DIAS_EXIBIDOS = 21;
@@ -143,6 +144,7 @@ export default function AgendarPage() {
 
   const { estabelecimento, servicos } = dados;
   const terminologia = obterTerminologia(estabelecimento.categoria);
+  const logo = resolverLogo(estabelecimento.identidadeVisual);
   const ETAPAS = ["Serviço", terminologia.profissional.singular, "Data e horário", "Seus dados", "Confirmação"];
 
   if (!featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico")) {
@@ -266,6 +268,17 @@ export default function AgendarPage() {
           >
             <ArrowLeft size={18} />
           </Link>
+        )}
+        {logo.tipo === "imagem" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo.url} alt={logo.alt} className="size-9 shrink-0 rounded-full border border-border object-cover" />
+        ) : (
+          <div
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+            style={{ backgroundColor: estabelecimento.identidadeVisual.corDestaque }}
+          >
+            {logo.texto}
+          </div>
         )}
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink">{estabelecimento.identidadeVisual.nome}</p>

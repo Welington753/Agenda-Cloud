@@ -5,6 +5,8 @@
 import { readCollection, writeCollection, STORAGE_KEYS } from "@/lib/storage/local-storage";
 import { obterSeedCompleto } from "@/lib/seed-data";
 import { calcularComissao, validarRegraComissao } from "@/lib/comissoes/engine";
+import { featureHabilitada } from "@/lib/access/access-control";
+import { validarIdentidadeVisual, validarSlugEstabelecimento } from "@/lib/estabelecimentos/validacao";
 import type {
   Agendamento,
   Bloqueio,
@@ -43,7 +45,15 @@ export const estabelecimentoRepository = {
   slugDisponivel(slug: string, ignorarTenantId?: string): boolean {
     return !this.listarTodos().some((e) => e.slug === slug && e.tenantId !== ignorarTenantId);
   },
+  // A validação aqui é a barreira real — nunca confia que quem chamou (formulário
+  // de criação no Master, tela de configurações/personalização) já validou. Mesma
+  // disciplina aplicada a `comissaoRegraRepository.salvar` nesta sessão.
   criar(dados: Omit<Estabelecimento, "id">): Estabelecimento {
+    const validacaoSlug = validarSlugEstabelecimento(dados.slug, this.listarTodos());
+    if (!validacaoSlug.valido) throw new Error(validacaoSlug.motivo);
+    const validacaoIdentidade = validarIdentidadeVisual(dados.identidadeVisual);
+    if (!validacaoIdentidade.valido) throw new Error(validacaoIdentidade.motivo);
+
     const novo: Estabelecimento = { ...dados, id: gerarId("estab") };
     writeCollection(STORAGE_KEYS.estabelecimentos, [...this.listarTodos(), novo]);
     return novo;
@@ -52,6 +62,24 @@ export const estabelecimentoRepository = {
     const todos = this.listarTodos();
     const idx = todos.findIndex((e) => e.tenantId === tenantId);
     if (idx === -1) return undefined;
+
+    if (dados.slug !== undefined) {
+      const validacaoSlug = validarSlugEstabelecimento(dados.slug, todos, tenantId);
+      if (!validacaoSlug.valido) throw new Error(validacaoSlug.motivo);
+    }
+    if (dados.identidadeVisual) {
+      const validacaoIdentidade = validarIdentidadeVisual(dados.identidadeVisual);
+      if (!validacaoIdentidade.valido) throw new Error(validacaoIdentidade.motivo);
+      // Personalização avançada (ordem das seções, rodapé, ocultar marca) só existe
+      // no plano atual do tenant — esconder o formulário não basta, ver Lote 1.
+      if (dados.identidadeVisual.personalizacaoAvancada) {
+        const atual = todos[idx];
+        if (!featureHabilitada(atual.plano, atual.featuresDesativadas, "personalizacaoAvancada")) {
+          throw new Error("Personalização avançada não está disponível no plano atual.");
+        }
+      }
+    }
+
     todos[idx] = { ...todos[idx], ...dados };
     writeCollection(STORAGE_KEYS.estabelecimentos, todos);
     return todos[idx];
