@@ -24,6 +24,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // backend/ is an independent npm project (NestJS) with its own lint tooling
+    // (oxlint) — see docs/plans/migracao-nestjs-typeorm-neon.md.
+    "backend/**",
   ]),
 ]);
 
