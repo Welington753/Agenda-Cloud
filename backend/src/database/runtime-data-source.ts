@@ -9,19 +9,34 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DataSource, type DataSourceOptions } from 'typeorm';
+import { SnakeNamingStrategy } from './snake-naming-strategy.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+// `typeorm` não exporta o tipo específico do driver Postgres em nível
+// avançado (só o `DataSourceOptions` geral, união de todos os drivers) — e
+// seu `package.json` só declara "." no `exports`, então nenhum import
+// profundo (`typeorm/driver/postgres/...`) resolve sob `moduleResolution:
+// nodenext`. `Extract` deriva o tipo específico a partir da união pública,
+// sem precisar de import nenhum — é isto que dá acesso a `ssl` com
+// segurança de tipo (sem `as`/cast).
+type PostgresDataSourceOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
 /** Pura e testável sem rede: recebe a URL já validada (ver
  * `config/env.validation.ts`), nunca lê `process.env` diretamente. */
 export function buildRuntimeDataSourceOptions(
   databaseUrl: string,
-): DataSourceOptions {
+): PostgresDataSourceOptions {
   return {
     type: 'postgres',
     url: databaseUrl,
     synchronize: false,
     migrationsRun: false,
+    // Propriedades TS em camelCase, colunas físicas em snake_case (ver
+    // entities/*.entity.ts, Lote 3) — implementação própria porque o pacote
+    // de terceiros mais usado para isto (`typeorm-naming-strategies`) só
+    // declara suporte a TypeORM 0.2/0.3.
+    namingStrategy: new SnakeNamingStrategy(),
     // Nunca 'query'/'all' — evitaria vazar parâmetros de bind em log.
     // 'error'/'warn' nunca incluem a connection string nem valor de coluna.
     logging: ['error', 'warn'],
