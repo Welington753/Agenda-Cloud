@@ -207,7 +207,7 @@ export default function AgendarPage() {
     return Object.keys(novosErros).length === 0;
   }
 
-  async function confirmarAgendamento() {
+  function confirmarAgendamento() {
     if (!servico || !horarioSelecionado || !profissionalResolvidoId) return;
     setEnviando(true);
     const profissional = profissionaisCapacitados.find((p) => p.id === profissionalResolvidoId);

@@ -9,7 +9,7 @@
 // inside a flat config file trips that config's own no-undef rule.
 import defaultConfig from "./eslint.config.mjs";
 
-export default [
+const typedConfig = [
   ...defaultConfig,
   {
     files: ["src/**/*.{ts,tsx}"],
@@ -41,3 +41,5 @@ export default [
     },
   },
 ];
+
+export default typedConfig;

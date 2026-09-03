@@ -165,7 +165,7 @@ function ConteudoConfiguracoes() {
 
   function copiarLink() {
     const link = `${window.location.origin}/${slugAtual}`;
-    navigator.clipboard.writeText(link).then(() => {
+    void navigator.clipboard.writeText(link).then(() => {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
     });
