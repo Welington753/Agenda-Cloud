@@ -9,19 +9,26 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DataSource, type DataSourceOptions } from 'typeorm';
+import { SnakeNamingStrategy } from './snake-naming-strategy.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+// Ver a mesma nota em runtime-data-source.ts sobre por que `Extract` (e não
+// um import profundo do driver) é usado para obter o tipo específico do
+// Postgres com `ssl` tipado.
+type PostgresDataSourceOptions = Extract<DataSourceOptions, { type: 'postgres' }>;
 
 /** Pura e testável sem rede: recebe a URL já validada, nunca lê `process.env`
  * diretamente. */
 export function buildMigrationsDataSourceOptions(
   directUrl: string,
-): DataSourceOptions {
+): PostgresDataSourceOptions {
   return {
     type: 'postgres',
     url: directUrl,
     synchronize: false,
     migrationsRun: false,
+    namingStrategy: new SnakeNamingStrategy(),
     logging: ['error', 'warn'],
     ssl: { rejectUnauthorized: true },
     entities: [path.join(moduleDir, '../entities/**/*.entity.{ts,js}')],
