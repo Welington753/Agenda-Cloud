@@ -8,6 +8,15 @@
 // plano), porque o TypeORM não representa nenhum dos dois via decorator de
 // entidade, assim como o Prisma também não tinha DSL para isso. Colunas e
 // relações já ficam prontas para quando a migration os adicionar.
+//
+// Índices (correção pós-Lote 3): as duas consultas reais da agenda são
+// sempre por tenant primeiro — "horários de um profissional" e "lista por
+// status" — por isso os dois índices compostos abaixo lideram com
+// `tenant_id`. Não existe índice avulso em `tenantId`/`status`/`startAt`
+// sozinhos: qualquer um desses três, sozinho, seria redundante (o prefixo
+// esquerdo de um índice composto já serve `WHERE tenant_id = $1`) e uma
+// consulta sem `tenant_id` nunca é um caso de uso real neste domínio
+// (vazaria dado entre estabelecimentos).
 import {
   BeforeInsert,
   Column,
@@ -32,7 +41,8 @@ import type { Tenant } from './tenant.entity.js';
 import type { Unit } from './unit.entity.js';
 
 @Entity('appointments')
-@Index(['professionalId', 'startAt', 'endAt'])
+@Index(['tenantId', 'professionalId', 'startAt', 'endAt'])
+@Index(['tenantId', 'status', 'startAt'])
 export class Appointment {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -42,7 +52,6 @@ export class Appointment {
     this.id ??= generateId();
   }
 
-  @Index()
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -61,14 +70,12 @@ export class Appointment {
   @Column({ type: 'varchar', length: 30 })
   professionalId!: string;
 
-  @Index()
   @Column({ type: 'timestamptz', precision: 3 })
   startAt!: Date;
 
   @Column({ type: 'timestamptz', precision: 3 })
   endAt!: Date;
 
-  @Index()
   @Column({
     type: 'enum',
     enum: AppointmentStatus,

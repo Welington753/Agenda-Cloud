@@ -2,7 +2,23 @@
 // uma regra ativa por (tenant, profissional, serviço), garantida pela
 // unicidade composta (mesma disciplina de
 // `comissaoRegraRepository.salvar` no frontend, que faz upsert por essa
-// chave). `value`: percentual 0-100 inteiro (não fração), fixo em centavos.
+// chave).
+//
+// UNIDADE DE `value` (revisada — correção pós-Lote 3, nunca float para
+// dinheiro/percentual):
+//   - `type = PERCENTAGE`: pontos-base inteiros, nunca fração/decimal.
+//     100% = 10000, 40% = 4000, 12,5% = 1250, 0,01% = 1. Faixa válida:
+//     0-10000 inclusive. O frontend guarda percentual como 0-100 "humano"
+//     (`RegraComissao.valor` em src/lib/types.ts) — a conversão para
+//     pontos-base (×100) é responsabilidade do serviço/DTO que grava esta
+//     entidade (lote posterior), nunca feita aqui.
+//   - `type = FIXED`: centavos inteiros, >= 0 (mesma unidade de
+//     `Service.priceCents`).
+// O futuro `CHECK` do Lote 5 (SQL manual, não criado aqui) precisa impor:
+// `(type = 'PERCENTAGE' AND value BETWEEN 0 AND 10000) OR (type = 'FIXED'
+// AND value >= 0)` — não expressável por decorator do TypeORM porque depende
+// do valor de outra coluna da mesma linha (`type`), não é validação de
+// intervalo fixo.
 //
 // Validações replicadas do frontend (`validarRegraComissao`,
 // src/lib/comissoes/engine.ts) — profissional/serviço mesmo tenant, serviço
@@ -15,7 +31,6 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  Index,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -39,7 +54,10 @@ export class CommissionRule {
     this.id ??= generateId();
   }
 
-  @Index()
+  // Sem índice avulso aqui — a unicidade composta
+  // (tenantId, professionalId, serviceId) abaixo já cobre `WHERE tenant_id =
+  // $1` sozinho pelo prefixo esquerdo; um índice extra só em tenantId seria
+  // redundante.
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -52,7 +70,9 @@ export class CommissionRule {
   @Column({ type: 'enum', enum: CommissionType })
   type!: CommissionType;
 
-  // Percentual: inteiro 0-100 (não fração). Fixo: centavos inteiro.
+  // PERCENTAGE: pontos-base inteiros, 0-10000 (100% = 10000, 40% = 4000,
+  // 12,5% = 1250, 0,01% = 1). FIXED: centavos inteiros, >= 0. Nunca float.
+  // Ver nota de unidade no cabeçalho do arquivo.
   @Column({ type: 'int' })
   value!: number;
 

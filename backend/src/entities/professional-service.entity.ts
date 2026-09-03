@@ -11,7 +11,6 @@ import {
   BeforeInsert,
   Column,
   Entity,
-  Index,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -32,7 +31,10 @@ export class ProfessionalService {
     this.id ??= generateId();
   }
 
-  @Index()
+  // Sem índice avulso aqui — a unicidade composta
+  // (tenantId, professionalId, serviceId) abaixo já cobre `WHERE tenant_id =
+  // $1` sozinho pelo prefixo esquerdo; um índice extra só em tenantId seria
+  // redundante.
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 

@@ -187,6 +187,13 @@ const ENTITIES: EntitySpec[] = [
   },
 ];
 
+// Credential/Session aparecem 2x em ENTITIES (globais e "novas", ver seção
+// 3.2 do plano) — deduplicado por classe para os testes que iteram por
+// entidade única, usado por vários blocos `describe` abaixo.
+const entidadesUnicas = Array.from(new Set(ENTITIES.map((e) => e.ctor))).map(
+  (ctor) => ENTITIES.find((e) => e.ctor === ctor)!,
+);
+
 describe('entidades — contagem e nomes de tabela', () => {
   it('registra exatamente 30 entidades (sem duplicata de classe)', () => {
     const unicas = new Set(ENTITIES.map((e) => e.ctor));
@@ -215,10 +222,6 @@ describe('entidades — contagem e nomes de tabela', () => {
 });
 
 describe('isolamento multi-tenant — tenantId', () => {
-  const entidadesUnicas = Array.from(new Set(ENTITIES.map((e) => e.ctor))).map(
-    (ctor) => ENTITIES.find((e) => e.ctor === ctor)!,
-  );
-
   it.each(
     entidadesUnicas
       .filter((e) => e.tenantId)
@@ -247,6 +250,78 @@ describe('isolamento multi-tenant — tenantId', () => {
         indexadoSozinho || emUnicidadeComposta,
         `${entidade.name}.tenantId não está indexado nem faz parte de uma unicidade composta`,
       ).toBe(true);
+    }
+  });
+});
+
+describe('tenantId nullable — só nas duas entidades de propósito duplo (plataforma/tenant)', () => {
+  // Invite (convite de plataforma vs. de estabelecimento) e AuditLog
+  // (auditoria de plataforma vs. de tenant) são as ÚNICAS entidades
+  // tenant-owned desta lista cujo tenantId é nullable de propósito — nunca
+  // "esquecido". Regra de serviço a implementar em lote posterior (nunca
+  // aqui, e nunca só CHECK de banco, porque depende do valor de outra
+  // coluna): Invite.tenantId é obrigatório quando type = ESTABLISHMENT e
+  // deve ser nulo quando type = PLATFORM; AuditLog.tenantId é nulo quando a
+  // ação é de escopo de plataforma (ex.: MASTER_CREATED/MASTER_REMOVED) e
+  // obrigatório quando a ação pertence a um tenant.
+  it('Invite.tenantId é nullable', () => {
+    expect(columnOptionsOf(Invite, 'tenantId')?.nullable).toBe(true);
+  });
+
+  it('AuditLog.tenantId é nullable', () => {
+    expect(columnOptionsOf(AuditLog, 'tenantId')?.nullable).toBe(true);
+  });
+
+  it('toda outra entidade tenant-owned tem tenantId obrigatório (nunca nullable)', () => {
+    const excecoesDePropositoDuplo = new Set<Function>([Invite, AuditLog]);
+    for (const entidade of entidadesUnicas.filter(
+      (e) => e.tenantId && !excecoesDePropositoDuplo.has(e.ctor),
+    )) {
+      expect(
+        columnOptionsOf(entidade.ctor, 'tenantId')?.nullable,
+        `${entidade.name}.tenantId não deveria ser nullable`,
+      ).not.toBe(true);
+    }
+  });
+});
+
+describe('tenantId denormalizado — pendente de constraint composta no Lote 5', () => {
+  // As 6 tabelas abaixo ganharam tenantId nesta revisão além do mapeamento
+  // original da seção 3.2 (que só tinha a FK do pai) — decisão desta
+  // execução para atender à exigência de que toda entidade tenant-owned
+  // tenha tenant_id próprio e indexado (ver docs/plans/
+  // migracao-nestjs-typeorm-neon.md, seção 4/5). Nenhuma delas tem ainda
+  // uma constraint de banco garantindo que o tenantId próprio bate com o
+  // tenantId do registro pai — isso é SQL manual do Lote 5 (FK composta
+  // (tenant_id, x_id) REFERENCES x(tenant_id, id), exigindo antes um
+  // UNIQUE(tenant_id, id) em cada tabela-pai referenciada). Este teste só
+  // documenta e comprova que a coluna existe — nunca simula a constraint.
+  const pendentesDeConstraintComposta: [string, Function, string][] = [
+    ['MembershipPermissionOverride', MembershipPermissionOverride, 'Membership'],
+    ['ProfessionalSchedule', ProfessionalSchedule, 'Professional'],
+    ['ProfessionalService', ProfessionalService, 'Professional e Service'],
+    ['AppointmentItem', AppointmentItem, 'Appointment e Service'],
+    ['AppointmentResource', AppointmentResource, 'Appointment e Resource'],
+    ['AppointmentStatusChange', AppointmentStatusChange, 'Appointment'],
+  ];
+
+  it.each(pendentesDeConstraintComposta)(
+    '%s tem tenantId denormalizado (consistência com %s fica para SQL manual no Lote 5)',
+    (_nome, ctor) => {
+      expect(columnPropertyNamesOf(ctor)).toContain('tenantId');
+      expect(columnOptionsOf(ctor, 'tenantId')?.nullable).not.toBe(true);
+    },
+  );
+
+  it('nenhuma dessas 6 tabelas declara uma relação TypeORM inventada para simular a constraint composta', () => {
+    for (const [, ctor] of pendentesDeConstraintComposta) {
+      const relacoesComTenant = relationsOf(ctor).filter(
+        (r) => r.propertyName === 'tenant',
+      );
+      expect(
+        relacoesComTenant,
+        `${String(ctor)} não deveria ter relação "tenant" própria — a consistência é responsabilidade do Lote 5, não de uma relação TypeORM incorreta`,
+      ).toHaveLength(0);
     }
   });
 });
@@ -298,30 +373,57 @@ describe('unicidades de negócio com escopo do tenant', () => {
 });
 
 describe('índices multi-tenant principais', () => {
-  it('Appointment indexa tenantId sozinho', () => {
-    expect(hasIndexOnColumns(Appointment, ['tenantId'])).toBe(true);
-  });
-
-  it('Appointment indexa (professionalId, startAt, endAt) — checagem de conflito de horário', () => {
+  // Correção pós-Lote 3: os dois índices compostos de Appointment lideram
+  // com tenantId (consultas reais da agenda são sempre por tenant primeiro).
+  // Não há índice avulso em tenantId/status/startAt sozinhos — seriam
+  // redundantes (o prefixo esquerdo de cada composto já serve `WHERE
+  // tenant_id = $1`) e uma consulta sem tenant_id nunca é caso de uso real.
+  it('Appointment indexa (tenantId, professionalId, startAt, endAt) — horários de um profissional', () => {
     expect(
-      hasIndexOnColumns(Appointment, ['professionalId', 'startAt', 'endAt']),
+      hasIndexOnColumns(Appointment, [
+        'tenantId',
+        'professionalId',
+        'startAt',
+        'endAt',
+      ]),
     ).toBe(true);
   });
 
-  it('Appointment indexa status e startAt isoladamente', () => {
-    expect(hasIndexOnColumns(Appointment, ['status'])).toBe(true);
-    expect(hasIndexOnColumns(Appointment, ['startAt'])).toBe(true);
+  it('Appointment indexa (tenantId, status, startAt) — lista por status', () => {
+    expect(
+      hasIndexOnColumns(Appointment, ['tenantId', 'status', 'startAt']),
+    ).toBe(true);
   });
 
-  it('AuditLog indexa (tenantId, occurredAt) e actorUserId', () => {
+  it('Appointment NÃO tem índice avulso em tenantId/status/startAt sozinhos (seriam redundantes)', () => {
+    expect(hasIndexOnColumns(Appointment, ['tenantId'])).toBe(false);
+    expect(hasIndexOnColumns(Appointment, ['status'])).toBe(false);
+    expect(hasIndexOnColumns(Appointment, ['startAt'])).toBe(false);
+  });
+
+  it('AuditLog indexa (tenantId, occurredAt) e actorUserId (actorUserId é consulta de plataforma, cross-tenant, mantida de propósito)', () => {
     expect(hasIndexOnColumns(AuditLog, ['tenantId', 'occurredAt'])).toBe(true);
     expect(hasIndexOnColumns(AuditLog, ['actorUserId'])).toBe(true);
   });
 
-  it('CommissionEntry indexa (professionalId, serviceDate) — relatório por período/profissional', () => {
-    expect(hasIndexOnColumns(CommissionEntry, ['professionalId', 'serviceDate'])).toBe(
-      true,
-    );
+  it('CommissionEntry indexa (tenantId, professionalId, serviceDate) — relatório por período/profissional do estabelecimento', () => {
+    expect(
+      hasIndexOnColumns(CommissionEntry, ['tenantId', 'professionalId', 'serviceDate']),
+    ).toBe(true);
+  });
+
+  it('CommissionRule e ProfessionalService não têm índice avulso em tenantId — a unicidade composta já cobre (prefixo esquerdo)', () => {
+    expect(hasIndexOnColumns(CommissionRule, ['tenantId'])).toBe(false);
+    expect(hasIndexOnColumns(ProfessionalService, ['tenantId'])).toBe(false);
+    expect(hasUniqueOnColumns(CommissionRule, ['tenantId', 'professionalId', 'serviceId'])).toBe(true);
+    expect(
+      hasUniqueOnColumns(ProfessionalService, ['tenantId', 'professionalId', 'serviceId']),
+    ).toBe(true);
+  });
+
+  it('Consumer não tem índice avulso em tenantId (coberto pela unicidade tenantId+whatsappNormalized), mas mantém whatsappNormalized avulso (consulta de plataforma, cross-tenant)', () => {
+    expect(hasIndexOnColumns(Consumer, ['tenantId'])).toBe(false);
+    expect(hasIndexOnColumns(Consumer, ['whatsappNormalized'])).toBe(true);
   });
 
   it('Invite indexa (tenantId, status) e targetEmail', () => {
@@ -356,6 +458,35 @@ describe('colunas monetárias — sempre inteiro, nunca float', () => {
   });
 });
 
+describe('comissão — percentual em pontos-base, nunca fração/float', () => {
+  it('CommissionRule.value e CommissionEntry.appliedValue são inteiros', () => {
+    expect(columnOptionsOf(CommissionRule, 'value')?.type).toBe('int');
+    expect(columnOptionsOf(CommissionEntry, 'appliedValue')?.type).toBe('int');
+  });
+
+  // Documenta a convenção de unidade acordada (correção pós-Lote 3): 100% =
+  // 10000 pontos-base, nunca "100" (que seria fração/percentual humano).
+  // O futuro CHECK do Lote 5 usa exatamente esta faixa para PERCENTAGE.
+  it.each([
+    [10000, '100%'],
+    [4000, '40%'],
+    [1250, '12,5%'],
+    [1, '0,01%'],
+    [0, '0%'],
+  ])('%i pontos-base representa %s — dentro da faixa válida 0-10000', (pontosBase) => {
+    expect(Number.isInteger(pontosBase)).toBe(true);
+    expect(pontosBase).toBeGreaterThanOrEqual(0);
+    expect(pontosBase).toBeLessThanOrEqual(10000);
+  });
+
+  it('valores fora de 0-10000 não representam percentual válido (limite documentado para o CHECK do Lote 5)', () => {
+    for (const invalido of [-1, 10001, 15000]) {
+      const dentroDaFaixa = invalido >= 0 && invalido <= 10000;
+      expect(dentroDaFaixa).toBe(false);
+    }
+  });
+});
+
 describe('relações históricas/financeiras — nunca cascade destrutivo', () => {
   it.each([
     [CommissionEntry, 'tenant', 'RESTRICT'],
@@ -383,7 +514,7 @@ describe('relações históricas/financeiras — nunca cascade destrutivo', () =
     // propósito — não têm valor histórico/financeiro independente do
     // tenant. A regra "nunca cascade" vale para dado operacional,
     // financeiro e de auditoria, nunca para essas 4.
-    const excecoesDeConfiguracao1x1 = new Set([
+    const excecoesDeConfiguracao1x1 = new Set<Function>([
       TenantFeatureOverride,
       BrandIdentity,
       BookingPolicy,

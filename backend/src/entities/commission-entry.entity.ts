@@ -14,6 +14,13 @@
 // já garantidas estruturalmente aqui pela unicidade de `appointmentId` e
 // pelos campos de snapshot serem simples colunas (nunca derivadas por
 // trigger/generated column).
+//
+// UNIDADE de `appliedValue` (correção pós-Lote 3): mesma representação de
+// `CommissionRule.value` — nunca recalculada, é cópia exata do valor da
+// regra no momento do cálculo, na mesma unidade que `appliedType` indica.
+// `PERCENTAGE`: pontos-base inteiros 0-10000. `FIXED`: centavos inteiros
+// >= 0. Nunca float. Mesmo `CHECK` do Lote 5 descrito em
+// commission-rule.entity.ts se aplica aqui.
 import {
   BeforeInsert,
   Column,
@@ -34,7 +41,7 @@ import type { Service } from './service.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('commission_entries')
-@Index(['professionalId', 'serviceDate'])
+@Index(['tenantId', 'professionalId', 'serviceDate'])
 export class CommissionEntry {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -44,7 +51,10 @@ export class CommissionEntry {
     this.id ??= generateId();
   }
 
-  @Index()
+  // Sem índice avulso aqui — o índice composto da classe
+  // (tenantId, professionalId, serviceDate) já cobre `WHERE tenant_id = $1`
+  // sozinho pelo prefixo esquerdo; um índice extra só em tenantId seria
+  // redundante.
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -66,6 +76,8 @@ export class CommissionEntry {
   @Column({ type: 'enum', enum: CommissionType })
   appliedType!: CommissionType;
 
+  // Mesma unidade de CommissionRule.value: PERCENTAGE em pontos-base
+  // 0-10000, FIXED em centavos >= 0. Snapshot — nunca recalculado.
   @Column({ type: 'int' })
   appliedValue!: number;
 

@@ -28,7 +28,10 @@ export class Consumer {
     this.id ??= generateId();
   }
 
-  @Index()
+  // Sem índice avulso aqui — a unicidade composta
+  // (tenantId, whatsappNormalized) abaixo já cobre `WHERE tenant_id = $1`
+  // sozinho pelo prefixo esquerdo; um índice extra só em tenantId seria
+  // redundante.
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -38,6 +41,10 @@ export class Consumer {
   @Column({ type: 'varchar' })
   whatsapp!: string;
 
+  // Índice cross-tenant deliberado (não lidera com tenant_id): suporta a
+  // busca de plataforma "este telefone já foi usado, em qual tenant?" — uso
+  // de Master, não do estabelecimento. Herdado do mapeamento original
+  // (schema.prisma já tinha os dois índices separados).
   @Index()
   @Column({ type: 'varchar' })
   whatsappNormalized!: string;
