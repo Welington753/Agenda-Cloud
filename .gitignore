@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# backend (NestJS, independent npm project — see docs/plans/migracao-nestjs-typeorm-neon.md)
+backend/node_modules
+backend/dist
