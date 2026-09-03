@@ -1,14 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { addDays, getDay, startOfDay } from "date-fns";
 import { ArrowLeft, Store } from "lucide-react";
-import { horarioAindaDisponivelParaProfissional, horariosLivresDoProfissionalNoDia } from "@/lib/availability/consulta";
 import {
-  agendamentoRepository,
-  consumidorRepository,
   estabelecimentoRepository,
   profissionalRepository,
   servicoRepository,
@@ -27,7 +23,9 @@ import { EtapaConfirmacao } from "@/components/agendamento/etapa-confirmacao";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
 import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
 import { resolverLogo } from "@/components/publico/secoes";
-import type { DiaSemana, Estabelecimento, Profissional, Servico } from "@/lib/types";
+import { calcularDiasCandidatos, calcularHorariosDisponiveis, resolverProfissionalParaHorario } from "./disponibilidade-agendamento";
+import { executarConfirmacaoAgendamento } from "./confirmar-agendamento";
+import { useFluxoAgendamento } from "./use-fluxo-agendamento";
 
 const MAX_DIAS_EXIBIDOS = 21;
 
@@ -49,26 +47,34 @@ export default function AgendarPage() {
     return { estabelecimento, profissionais, servicos };
   }, [slug]);
 
-  const [etapa, setEtapa] = useState(0);
-  const [servico, setServico] = useState<Servico | null>(null);
-  const [escolhaProfissional, setEscolhaProfissional] = useState<string | typeof QUALQUER_PROFISSIONAL | null>(null);
-  const [dataSelecionada, setDataSelecionada] = useState<Date | null>(null);
-  const [horarioSelecionado, setHorarioSelecionado] = useState<Date | null>(null);
-  const [profissionalResolvidoId, setProfissionalResolvidoId] = useState<string | null>(null);
-  const [nome, setNome] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [erros, setErros] = useState<{ nome?: string; whatsapp?: string }>({});
-  const [enviando, setEnviando] = useState(false);
+  const {
+    etapa,
+    setEtapa,
+    servico,
+    setServico,
+    escolhaProfissional,
+    setEscolhaProfissional,
+    dataSelecionada,
+    setDataSelecionada,
+    horarioSelecionado,
+    setHorarioSelecionado,
+    profissionalResolvidoId,
+    setProfissionalResolvidoId,
+    nome,
+    setNome,
+    whatsapp,
+    setWhatsapp,
+    erros,
+    enviando,
+    setEnviando,
+    irParaEtapaAnterior,
+    validarDados,
+  } = useFluxoAgendamento();
 
   const profissionaisCapacitados = useMemo(() => {
     if (!dados || !servico) return [];
     return dados.profissionais.filter((p) => p.servicosIds.includes(servico.id));
   }, [dados, servico]);
-
-  function calcularHorariosDoProfissional(profissional: Profissional, estabelecimento: Estabelecimento, dia: Date) {
-    if (!servico) return [];
-    return horariosLivresDoProfissionalNoDia(profissional, servico, dia, estabelecimento);
-  }
 
   const diasCandidatos = useMemo(() => {
     if (!dados || !escolhaProfissional) return [];
@@ -77,42 +83,13 @@ export default function AgendarPage() {
       escolhaProfissional === QUALQUER_PROFISSIONAL
         ? profissionaisCapacitados
         : profissionaisCapacitados.filter((p) => p.id === escolhaProfissional);
-
-    const dias: Date[] = [];
-    let cursor = 0;
-    while (dias.length < MAX_DIAS_EXIBIDOS && cursor < estabelecimento.regras.limiteDiasFuturos + 5) {
-      const candidato = addDays(startOfDay(new Date()), cursor);
-      const diaSemana = getDay(candidato) as DiaSemana;
-      const algumProfissionalAtende = profissionaisRelevantes.some((p) =>
-        p.horarios.some((h) => h.diaSemana === diaSemana && h.ativo)
-      );
-      if (algumProfissionalAtende) dias.push(candidato);
-      cursor += 1;
-    }
-    return dias;
+    return calcularDiasCandidatos(estabelecimento, profissionaisRelevantes, MAX_DIAS_EXIBIDOS);
   }, [dados, escolhaProfissional, profissionaisCapacitados]);
 
   const horariosDisponiveis = useMemo(() => {
     if (!dados || !dataSelecionada || !escolhaProfissional) return [];
-    const { estabelecimento } = dados;
-
-    if (escolhaProfissional !== QUALQUER_PROFISSIONAL) {
-      const profissional = profissionaisCapacitados.find((p) => p.id === escolhaProfissional);
-      if (!profissional) return [];
-      return calcularHorariosDoProfissional(profissional, estabelecimento, dataSelecionada);
-    }
-
-    const mapaHorarios = new Map<number, string>();
-    for (const profissional of profissionaisCapacitados) {
-      for (const horario of calcularHorariosDoProfissional(profissional, estabelecimento, dataSelecionada)) {
-        if (!mapaHorarios.has(horario.getTime())) mapaHorarios.set(horario.getTime(), profissional.id);
-      }
-    }
-    return Array.from(mapaHorarios.keys())
-      .sort((a, b) => a - b)
-      .map((t) => new Date(t));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dados, dataSelecionada, escolhaProfissional, profissionaisCapacitados]);
+    return calcularHorariosDisponiveis(profissionaisCapacitados, escolhaProfissional, servico, dados.estabelecimento, dataSelecionada);
+  }, [dados, dataSelecionada, escolhaProfissional, profissionaisCapacitados, servico]);
 
   if (carregando) {
     return (
@@ -185,28 +162,6 @@ export default function AgendarPage() {
     );
   }
 
-  function irParaEtapaAnterior() {
-    setEtapa((e) => Math.max(0, e - 1));
-  }
-
-  function resolverProfissionalParaHorario(hora: Date): string | undefined {
-    if (escolhaProfissional !== QUALQUER_PROFISSIONAL) return escolhaProfissional ?? undefined;
-    return profissionaisCapacitados.find((p) =>
-      calcularHorariosDoProfissional(p, estabelecimento, hora).some((h) => h.getTime() === hora.getTime())
-    )?.id;
-  }
-
-  function validarDados(): boolean {
-    const novosErros: { nome?: string; whatsapp?: string } = {};
-    if (!nome.trim()) novosErros.nome = "Informe seu nome.";
-    const digitos = whatsapp.replace(/\D/g, "");
-    if (estabelecimento.regras.exigirTelefoneCliente && digitos.length < 10) {
-      novosErros.whatsapp = "Informe um WhatsApp válido com DDD.";
-    }
-    setErros(novosErros);
-    return Object.keys(novosErros).length === 0;
-  }
-
   function confirmarAgendamento() {
     if (!servico || !horarioSelecionado || !profissionalResolvidoId) return;
     setEnviando(true);
@@ -217,9 +172,8 @@ export default function AgendarPage() {
       return;
     }
 
-    const aindaDisponivel = horarioAindaDisponivelParaProfissional(profissional, servico, horarioSelecionado, estabelecimento);
-
-    if (!aindaDisponivel) {
+    const resultado = executarConfirmacaoAgendamento({ estabelecimento, servico, horarioSelecionado, profissional, nome, whatsapp });
+    if (!resultado.sucesso) {
       notificar("Esse horário acabou de ser preenchido. Escolha outro, por favor.", "erro");
       setEnviando(false);
       setHorarioSelecionado(null);
@@ -227,23 +181,8 @@ export default function AgendarPage() {
       return;
     }
 
-    const consumidor = consumidorRepository.obterOuCriarPorWhatsapp(estabelecimento.tenantId, nome.trim(), whatsapp);
-    const fim = new Date(horarioSelecionado.getTime() + servico.duracaoMinutos * 60_000);
-    const novoAgendamento = agendamentoRepository.criar({
-      tenantId: estabelecimento.tenantId,
-      consumidorId: consumidor.id,
-      consumidorNome: nome.trim(),
-      consumidorWhatsapp: whatsapp,
-      profissionalId: profissional.id,
-      servicoId: servico.id,
-      dataHoraInicio: horarioSelecionado.toISOString(),
-      dataHoraFim: fim.toISOString(),
-      status: estabelecimento.regras.confirmacaoAutomatica && !servico.exigeConfirmacaoManual ? "confirmado" : "pendente",
-      precoCentavos: servico.precoCentavos,
-    });
-
     notificar("Agendamento confirmado com sucesso!", "sucesso");
-    router.push(`/${slug}/agendamento/${novoAgendamento.id}`);
+    router.push(`/${slug}/agendamento/${resultado.agendamentoId}`);
   }
 
   const profissionalSelecionadoParaResumo = profissionaisCapacitados.find((p) => p.id === profissionalResolvidoId);
@@ -330,7 +269,7 @@ export default function AgendarPage() {
             carregandoHorarios={false}
             horarioSelecionado={horarioSelecionado}
             onSelecionarHorario={(h) => {
-              const profissionalId = resolverProfissionalParaHorario(h);
+              const profissionalId = resolverProfissionalParaHorario(profissionaisCapacitados, escolhaProfissional, h, servico, estabelecimento);
               if (!profissionalId) {
                 notificar("Esse horário deixou de estar disponível.", "erro");
                 return;
@@ -374,7 +313,7 @@ export default function AgendarPage() {
                 tamanho="lg"
                 className="w-full"
                 onClick={() => {
-                  if (validarDados()) setEtapa(4);
+                  if (validarDados(estabelecimento.regras.exigirTelefoneCliente)) setEtapa(4);
                 }}
               >
                 Continuar
