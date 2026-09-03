@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addDays, isSameDay, startOfWeek } from "date-fns";
-import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, UserRound } from "lucide-react";
+import { addDays, startOfWeek } from "date-fns";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useClientData } from "@/lib/hooks/use-client-data";
 import { useTenant } from "@/lib/tenant/tenant-context";
 import { RequirePermission } from "@/components/layout/require-permission";
@@ -14,17 +14,17 @@ import {
   servicoRepository,
 } from "@/lib/repositories";
 import { Botao } from "@/components/ui/button";
-import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { BadgeStatusAgendamento } from "@/components/ui/badge";
-import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { ModalDetalheAgendamento } from "@/components/painel/modal-agendamento";
 import { ModalNovoAgendamento } from "@/components/painel/modal-novo-agendamento";
 import { ModalBloqueio } from "@/components/painel/modal-bloqueio";
-import { formatarDataLonga, formatarHora, formatarMoeda } from "@/lib/format";
-import type { Agendamento, StatusAgendamento } from "@/lib/types";
+import { formatarDataLonga } from "@/lib/format";
+import type { StatusAgendamento } from "@/lib/types";
 import clsx from "clsx";
+import { useAgendaSelecao } from "./use-agenda-selecao";
+import { VisaoSemana } from "./_visao/visao-semana";
+import { VisaoDia } from "./_visao/visao-dia";
 
 type ModoVisualizacao = "dia" | "semana";
 
@@ -53,9 +53,6 @@ function ConteudoAgenda() {
   const [dataAtual, setDataAtual] = useState(() => new Date());
   const [filtroProfissionalId, setFiltroProfissionalId] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState<StatusAgendamento | "todos">("todos");
-  const [agendamentoSelecionado, setAgendamentoSelecionado] = useState<Agendamento | null>(null);
-  const [modalNovo, setModalNovo] = useState<{ profissionalId?: string } | null>(null);
-  const [modalBloqueio, setModalBloqueio] = useState<{ profissionalId?: string } | null>(null);
 
   const { dados, carregando, recarregar } = useClientData(() => {
     const estabelecimento = estabelecimentoRepository.obterPorTenantId(tenantId);
@@ -68,6 +65,18 @@ function ConteudoAgenda() {
       bloqueios: bloqueioRepository.listarPorTenant(tenantId),
     };
   }, [tenantId]);
+
+  const {
+    agendamentoSelecionado,
+    setAgendamentoSelecionado,
+    modalNovo,
+    setModalNovo,
+    modalBloqueio,
+    setModalBloqueio,
+    onMudarStatus,
+    onRemarcar,
+    onRemoverBloqueio,
+  } = useAgendaSelecao({ podeAcessar, notificar, recarregar });
 
   const diasDaSemana = useMemo(() => {
     const inicio = startOfWeek(dataAtual, { weekStartsOn: 0 });
@@ -88,23 +97,6 @@ function ConteudoAgenda() {
   const profissionalPorId = new Map(profissionais.map((p) => [p.id, p]));
   const profissionaisExibidos =
     filtroProfissionalId === "todos" ? profissionais : profissionais.filter((p) => p.id === filtroProfissionalId);
-
-  function agendamentosDoDia(profissionalId: string, dia: Date) {
-    return agendamentos
-      .filter(
-        (a) =>
-          a.profissionalId === profissionalId &&
-          isSameDay(new Date(a.dataHoraInicio), dia) &&
-          (filtroStatus === "todos" || a.status === filtroStatus)
-      )
-      .sort((a, b) => new Date(a.dataHoraInicio).getTime() - new Date(b.dataHoraInicio).getTime());
-  }
-
-  function bloqueiosDoDia(profissionalId: string, dia: Date) {
-    return bloqueios
-      .filter((b) => b.profissionalId === profissionalId && isSameDay(new Date(b.inicio), dia))
-      .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
-  }
 
   return (
     <div className="space-y-5">
@@ -185,146 +177,32 @@ function ConteudoAgenda() {
       </div>
 
       {modo === "semana" ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-          {diasDaSemana.map((dia) => {
-            const totalDia = profissionaisExibidos.reduce((soma, p) => soma + agendamentosDoDia(p.id, dia).length, 0);
-            const faturamentoDia = profissionaisExibidos.reduce(
-              (soma, p) =>
-                soma +
-                agendamentosDoDia(p.id, dia)
-                  .filter((a) => a.status !== "cancelado" && a.status !== "nao_compareceu")
-                  .reduce((s, a) => s + (a.precoCentavos ?? 0), 0),
-              0
-            );
-            return (
-              <button
-                key={dia.toISOString()}
-                type="button"
-                onClick={() => {
-                  setDataAtual(dia);
-                  setModo("dia");
-                }}
-                className={clsx(
-                  "rounded-[var(--radius-card)] border p-3 text-left transition-colors hover:border-accent",
-                  isSameDay(dia, new Date()) ? "border-accent bg-accent-soft/40" : "border-border bg-card"
-                )}
-              >
-                <p className="text-xs font-semibold uppercase text-ink-soft">
-                  {dia.toLocaleDateString("pt-BR", { weekday: "short" })}
-                </p>
-                <p className="text-lg font-bold text-ink">{dia.getDate()}</p>
-                <p className="mt-1 text-xs text-ink-soft">
-                  {totalDia} {totalDia === 1 ? terminologia.agendamento.singular.toLowerCase() : terminologia.agendamento.plural.toLowerCase()}
-                </p>
-                <p className="text-xs font-semibold text-accent">{formatarMoeda(faturamentoDia)}</p>
-              </button>
-            );
-          })}
-        </div>
+        <VisaoSemana
+          diasDaSemana={diasDaSemana}
+          profissionaisExibidos={profissionaisExibidos}
+          agendamentos={agendamentos}
+          filtroStatus={filtroStatus}
+          terminologia={terminologia}
+          aoSelecionarDia={(dia) => {
+            setDataAtual(dia);
+            setModo("dia");
+          }}
+        />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {profissionaisExibidos.map((prof) => {
-            const itensAgendamento = agendamentosDoDia(prof.id, dataAtual);
-            const itensBloqueio = bloqueiosDoDia(prof.id, dataAtual);
-            const semItens = itensAgendamento.length === 0 && itensBloqueio.length === 0;
-            return (
-              <Cartao key={prof.id}>
-                <CartaoCorpo className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ backgroundColor: prof.corAvatar }}
-                      >
-                        {prof.avatarIniciais}
-                      </div>
-                      <p className="font-semibold text-ink">{prof.nome}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      {podeAcessar("agendamento.criar").permitido && (
-                        <button
-                          type="button"
-                          aria-label={`${terminologia.agendamento.artigo === "a" ? "Nova" : "Novo"} ${terminologia.agendamento.singular.toLowerCase()} para ${prof.nome}`}
-                          onClick={() => setModalNovo({ profissionalId: prof.id })}
-                          className="flex size-8 items-center justify-center rounded-full border border-border hover:bg-paper-muted"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      )}
-                      {podeAcessar("agenda.gerenciar").permitido && (
-                        <button
-                          type="button"
-                          aria-label={`Bloquear horário de ${prof.nome}`}
-                          onClick={() => setModalBloqueio({ profissionalId: prof.id })}
-                          className="flex size-8 items-center justify-center rounded-full border border-border hover:bg-paper-muted"
-                        >
-                          <CalendarX2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {semItens ? (
-                    <EstadoVazio icone={CalendarDays} titulo="Nenhum item neste dia" />
-                  ) : (
-                    <ul className="space-y-2">
-                      {itensBloqueio.map((b) => (
-                        <li
-                          key={b.id}
-                          className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] bg-paper-muted px-3 py-2 text-sm"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-ink-soft">{b.motivo}</p>
-                            <p className="text-xs text-ink-soft">
-                              {formatarHora(b.inicio)} – {formatarHora(b.fim)}
-                            </p>
-                          </div>
-                          {podeAcessar("agenda.gerenciar").permitido && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!podeAcessar("agenda.gerenciar").permitido) return;
-                                bloqueioRepository.remover(b.id);
-                                recarregar();
-                              }}
-                              className="shrink-0 text-xs font-semibold text-[color:var(--color-danger)] hover:underline"
-                            >
-                              Remover
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                      {itensAgendamento.map((a) => {
-                        const servico = servicoPorId.get(a.servicoId);
-                        return (
-                          <li key={a.id}>
-                            <button
-                              type="button"
-                              onClick={() => setAgendamentoSelecionado(a)}
-                              className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border px-3 py-2 text-left text-sm hover:border-accent"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-ink">{a.consumidorNome}</p>
-                                <p className="truncate text-xs text-ink-soft">{servico?.nome}</p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-sm font-semibold text-ink">{formatarHora(a.dataHoraInicio)}</p>
-                                <BadgeStatusAgendamento status={a.status} />
-                              </div>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </CartaoCorpo>
-              </Cartao>
-            );
-          })}
-          {profissionaisExibidos.length === 0 && (
-            <EstadoVazio icone={UserRound} titulo={`Nenhum${terminologia.profissional.artigo === "a" ? "a" : ""} ${terminologia.profissional.singular.toLowerCase()} cadastrad${terminologia.profissional.artigo === "a" ? "a" : "o"}`} />
-          )}
-        </div>
+        <VisaoDia
+          dataAtual={dataAtual}
+          profissionaisExibidos={profissionaisExibidos}
+          agendamentos={agendamentos}
+          bloqueios={bloqueios}
+          filtroStatus={filtroStatus}
+          servicoPorId={servicoPorId}
+          podeAcessar={podeAcessar}
+          terminologia={terminologia}
+          aoSelecionarAgendamento={setAgendamentoSelecionado}
+          aoNovoAgendamento={(profissionalId) => setModalNovo({ profissionalId })}
+          aoNovoBloqueio={(profissionalId) => setModalBloqueio({ profissionalId })}
+          aoRemoverBloqueio={onRemoverBloqueio}
+        />
       )}
 
       {agendamentoSelecionado &&
@@ -343,24 +221,8 @@ function ConteudoAgenda() {
               terminologia={terminologia}
               podeEditar={podeAcessar("agendamento.editar").permitido}
               podeCancelar={podeAcessar("agendamento.cancelar").permitido}
-              onMudarStatus={(status) => {
-                const permissaoNecessaria = status === "cancelado" ? "agendamento.cancelar" : "agendamento.editar";
-                if (!podeAcessar(permissaoNecessaria).permitido) return;
-                agendamentoRepository.atualizarStatus(agendamentoSelecionado.id, status, "dono");
-                recarregar();
-                setAgendamentoSelecionado(null);
-              }}
-              onRemarcar={(novoInicio) => {
-                if (!podeAcessar("agendamento.editar").permitido) return;
-                const fim = new Date(novoInicio.getTime() + servico.duracaoMinutos * 60_000);
-                try {
-                  agendamentoRepository.remarcar(agendamentoSelecionado.id, novoInicio.toISOString(), fim.toISOString(), "dono");
-                  recarregar();
-                  setAgendamentoSelecionado(null);
-                } catch (erro) {
-                  notificar(erro instanceof Error ? erro.message : "Não foi possível remarcar.", "erro");
-                }
-              }}
+              onMudarStatus={onMudarStatus}
+              onRemarcar={(novoInicio) => onRemarcar(novoInicio, servico)}
             />
           );
         })()}
