@@ -1,27 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, RotateCcw } from "lucide-react";
 import { useTenant } from "@/lib/tenant/tenant-context";
 import { RequirePermission } from "@/components/layout/require-permission";
 import { estabelecimentoRepository } from "@/lib/repositories";
 import { restaurarTenant } from "@/lib/repositories/restaurar";
-import { CATEGORIAS_NEGOCIO } from "@/lib/verticals/terminologia";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
-import { Cartao, CartaoCorpo, CartaoTitulo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CategoriaNegocio, DiaSemana } from "@/lib/types";
-
-const DIAS: { valor: DiaSemana; rotulo: string }[] = [
-  { valor: 0, rotulo: "Dom" },
-  { valor: 1, rotulo: "Seg" },
-  { valor: 2, rotulo: "Ter" },
-  { valor: 3, rotulo: "Qua" },
-  { valor: 4, rotulo: "Qui" },
-  { valor: 5, rotulo: "Sex" },
-  { valor: 6, rotulo: "Sáb" },
-];
+import { SecaoCategoria } from "./_secoes/secao-categoria";
+import { SecaoIdentidade } from "./_secoes/secao-identidade";
+import { SecaoHorarios } from "./_secoes/secao-horarios";
+import { SecaoPolitica } from "./_secoes/secao-politica";
+import { SecaoRestaurar } from "./_secoes/secao-restaurar";
 
 export default function PainelConfiguracoesPage() {
   return (
@@ -31,13 +23,36 @@ export default function PainelConfiguracoesPage() {
   );
 }
 
+export interface EstadoConfiguracoes {
+  categoria: CategoriaNegocio;
+  nome: string;
+  nomeCurto: string;
+  endereco: string;
+  telefone: string;
+  instagram: string;
+  textoApresentacao: string;
+  orientacoesAntesVisita: string;
+  diasFuncionamento: DiaSemana[];
+  abertura: string;
+  fechamento: string;
+  antecedenciaMinimaMinutos: number;
+  limiteDiasFuturos: number;
+  prazoCancelamentoHoras: number;
+  intervaloPadraoMinutos: number;
+  confirmacaoAutomatica: boolean;
+  permitirQualquerProfissional: boolean;
+  permitirRemarcacaoCliente: boolean;
+  exigirTelefoneCliente: boolean;
+  exibirPrecoPublico: boolean;
+}
+
 function ConteudoConfiguracoes() {
   const { tenantId, terminologia, estabelecimento: dados, carregando, recarregar, podeAcessar } = useTenant();
   const { notificar } = useToast();
 
   const [copiado, setCopiado] = useState(false);
-  const [form, setForm] = useState({
-    categoria: "outro" as CategoriaNegocio,
+  const [form, setForm] = useState<EstadoConfiguracoes>({
+    categoria: "outro",
     nome: "",
     nomeCurto: "",
     endereco: "",
@@ -45,7 +60,7 @@ function ConteudoConfiguracoes() {
     instagram: "",
     textoApresentacao: "",
     orientacoesAntesVisita: "",
-    diasFuncionamento: [] as DiaSemana[],
+    diasFuncionamento: [],
     abertura: "09:00",
     fechamento: "19:00",
     antecedenciaMinimaMinutos: 60,
@@ -183,265 +198,25 @@ function ConteudoConfiguracoes() {
         </p>
       </div>
 
-      <Cartao>
-        <CartaoCorpo className="space-y-4">
-          <CartaoTitulo>Categoria do negócio</CartaoTitulo>
-          <Campo rotulo="Categoria">
-            <select
-              value={form.categoria}
-              onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value as CategoriaNegocio }))}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            >
-              {CATEGORIAS_NEGOCIO.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.rotulo}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <p className="text-xs text-ink-soft">
-            Define os termos usados na interface (ex.: {terminologia.profissional.singular.toLowerCase()},{" "}
-            {terminologia.consumidor.singular.toLowerCase()}, {terminologia.agendamento.singular.toLowerCase()}).
-          </p>
-        </CartaoCorpo>
-      </Cartao>
+      <SecaoCategoria categoria={form.categoria} terminologia={terminologia} setForm={setForm} />
 
-      <Cartao>
-        <CartaoCorpo className="space-y-4">
-          <CartaoTitulo>Identidade e informações públicas</CartaoTitulo>
-          <Campo rotulo={`Nome ${terminologia.estabelecimento.artigo === "a" ? "da" : "do"} ${terminologia.estabelecimento.singular.toLowerCase()}`}>
-            <input
-              type="text"
-              value={form.nome}
-              onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-          </Campo>
-          <Campo rotulo="Nome curto (usado no painel)">
-            <input
-              type="text"
-              value={form.nomeCurto}
-              onChange={(e) => setForm((f) => ({ ...f, nomeCurto: e.target.value }))}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-          </Campo>
-          <Campo rotulo="Endereço">
-            <input
-              type="text"
-              value={form.endereco}
-              onChange={(e) => setForm((f) => ({ ...f, endereco: e.target.value }))}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-          </Campo>
-          <Campo rotulo="Texto de apresentação">
-            <textarea
-              value={form.textoApresentacao}
-              onChange={(e) => setForm((f) => ({ ...f, textoApresentacao: e.target.value }))}
-              rows={3}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-          </Campo>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="Telefone/WhatsApp">
-              <input
-                type="text"
-                value={form.telefone}
-                onChange={(e) => setForm((f) => ({ ...f, telefone: e.target.value }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Instagram">
-              <input
-                type="text"
-                value={form.instagram}
-                onChange={(e) => setForm((f) => ({ ...f, instagram: e.target.value }))}
-                placeholder="@seuinstagram"
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-          </div>
-          <Campo rotulo="Orientações antes da visita (opcional)">
-            <textarea
-              value={form.orientacoesAntesVisita}
-              onChange={(e) => setForm((f) => ({ ...f, orientacoesAntesVisita: e.target.value }))}
-              rows={3}
-              placeholder={"Chegue com 5 minutos de antecedência.\nEstacionamento disponível na rua lateral.\nEm caso de atraso, entre em contato pelo WhatsApp."}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-            <p className="mt-1 text-xs text-ink-soft">
-              Mostrado como texto simples na página pública, nunca como HTML.
-            </p>
-          </Campo>
-          <Campo rotulo="Link público">
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={`/${slugAtual}`}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 py-2 text-sm text-ink-soft"
-              />
-              <Botao tamanho="sm" variante="secundaria" onClick={copiarLink} aria-label="Copiar link público">
-                {copiado ? <Check size={16} /> : <Copy size={16} />}
-              </Botao>
-              <Botao tamanho="sm" variante="secundaria" onClick={abrirPaginaPublica}>
-                <ExternalLink size={16} className="mr-1.5" /> Abrir página pública
-              </Botao>
-            </div>
-          </Campo>
-        </CartaoCorpo>
-      </Cartao>
+      <SecaoIdentidade
+        form={form}
+        terminologia={terminologia}
+        slugAtual={slugAtual}
+        copiado={copiado}
+        setForm={setForm}
+        copiarLink={copiarLink}
+        abrirPaginaPublica={abrirPaginaPublica}
+      />
 
-      <Cartao>
-        <CartaoCorpo className="space-y-4">
-          <CartaoTitulo>Horários gerais</CartaoTitulo>
-          <div className="flex flex-wrap gap-1.5">
-            {DIAS.map((d) => (
-              <button
-                key={d.valor}
-                type="button"
-                onClick={() => alternarDia(d.valor)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                  form.diasFuncionamento.includes(d.valor)
-                    ? "border-accent bg-accent text-white"
-                    : "border-border text-ink-soft"
-                }`}
-              >
-                {d.rotulo}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="Abertura">
-              <input
-                type="time"
-                value={form.abertura}
-                onChange={(e) => setForm((f) => ({ ...f, abertura: e.target.value }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Fechamento">
-              <input
-                type="time"
-                value={form.fechamento}
-                onChange={(e) => setForm((f) => ({ ...f, fechamento: e.target.value }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-          </div>
-        </CartaoCorpo>
-      </Cartao>
+      <SecaoHorarios form={form} alternarDia={alternarDia} setForm={setForm} />
 
-      <Cartao>
-        <CartaoCorpo className="space-y-4">
-          <CartaoTitulo>Política de agendamento</CartaoTitulo>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Campo rotulo="Antecedência mín. (min)">
-              <input
-                type="number"
-                min={0}
-                value={form.antecedenciaMinimaMinutos}
-                onChange={(e) => setForm((f) => ({ ...f, antecedenciaMinimaMinutos: Number(e.target.value) }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Agendar até (dias)">
-              <input
-                type="number"
-                min={1}
-                value={form.limiteDiasFuturos}
-                onChange={(e) => setForm((f) => ({ ...f, limiteDiasFuturos: Number(e.target.value) }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Cancelar até (h antes)">
-              <input
-                type="number"
-                min={0}
-                value={form.prazoCancelamentoHoras}
-                onChange={(e) => setForm((f) => ({ ...f, prazoCancelamentoHoras: Number(e.target.value) }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-            <Campo rotulo="Intervalo padrão (min)">
-              <input
-                type="number"
-                min={0}
-                value={form.intervaloPadraoMinutos}
-                onChange={(e) => setForm((f) => ({ ...f, intervaloPadraoMinutos: Number(e.target.value) }))}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-              />
-            </Campo>
-          </div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              <input
-                type="checkbox"
-                checked={form.confirmacaoAutomatica}
-                onChange={(e) => setForm((f) => ({ ...f, confirmacaoAutomatica: e.target.checked }))}
-              />
-              {`${terminologia.agendamento.plural} públicos nascem já confirmados (sem revisão manual)`}
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              <input
-                type="checkbox"
-                checked={form.permitirQualquerProfissional}
-                onChange={(e) => setForm((f) => ({ ...f, permitirQualquerProfissional: e.target.checked }))}
-              />
-              {`Permitir que o ${terminologia.consumidor.singular.toLowerCase()} escolha "qualquer ${terminologia.profissional.singular.toLowerCase()}"`}
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              <input
-                type="checkbox"
-                checked={form.permitirRemarcacaoCliente}
-                onChange={(e) => setForm((f) => ({ ...f, permitirRemarcacaoCliente: e.target.checked }))}
-              />
-              {`Permitir que o ${terminologia.consumidor.singular.toLowerCase()} remarque pelo link de confirmação`}
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              <input
-                type="checkbox"
-                checked={form.exigirTelefoneCliente}
-                onChange={(e) => setForm((f) => ({ ...f, exigirTelefoneCliente: e.target.checked }))}
-              />
-              {`Exigir telefone do ${terminologia.consumidor.singular.toLowerCase()} no agendamento público`}
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              <input
-                type="checkbox"
-                checked={form.exibirPrecoPublico}
-                onChange={(e) => setForm((f) => ({ ...f, exibirPrecoPublico: e.target.checked }))}
-              />
-              Exibir preços na página pública (serviços individuais ainda podem ocultar o próprio preço)
-            </label>
-          </div>
-        </CartaoCorpo>
-      </Cartao>
+      <SecaoPolitica form={form} terminologia={terminologia} setForm={setForm} />
 
       <Botao onClick={salvar}>Salvar configurações</Botao>
 
-      <Cartao className="border-dashed">
-        <CartaoCorpo className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-semibold text-ink">Restaurar dados da demonstração</p>
-            <p className="text-sm text-ink-soft">
-              Restaura somente {terminologia.estabelecimento.artigo === "a" ? "esta" : "este"}{" "}
-              {terminologia.estabelecimento.singular.toLowerCase()} para os dados simulados originais. Outros
-              estabelecimentos não são afetados.
-            </p>
-          </div>
-          <Botao variante="secundaria" onClick={aoRestaurar}>
-            <RotateCcw size={16} className="mr-1.5" /> Restaurar
-          </Botao>
-        </CartaoCorpo>
-      </Cartao>
-    </div>
-  );
-}
-
-function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-semibold text-ink-soft">{rotulo}</label>
-      {children}
+      <SecaoRestaurar terminologia={terminologia} aoRestaurar={aoRestaurar} />
     </div>
   );
 }
