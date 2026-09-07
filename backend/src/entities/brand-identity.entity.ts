@@ -58,7 +58,7 @@ export class BrandIdentity {
   @Column({ type: 'varchar' })
   style!: string;
 
-  @Column({ type: 'enum', enum: PageTemplate, default: PageTemplate.CLASSIC })
+  @Column({ type: 'enum', enum: PageTemplate, enumName: 'page_template', default: PageTemplate.CLASSIC })
   template!: PageTemplate;
 
   @Column({ type: 'varchar' })

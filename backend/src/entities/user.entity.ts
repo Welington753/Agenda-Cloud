@@ -54,17 +54,18 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   image?: string;
 
-  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
+  @Column({ type: 'enum', enum: UserStatus, enumName: 'user_status', default: UserStatus.ACTIVE })
   status!: UserStatus;
 
   // Preenchido = conta de administração da plataforma (Master). Ausente =
   // pessoa só vinculada a tenant(s) via Membership. Nunca exige tenantId.
-  @Column({ type: 'enum', enum: PlatformRole, nullable: true })
+  @Column({ type: 'enum', enum: PlatformRole, enumName: 'platform_role', nullable: true })
   platformRole?: PlatformRole;
 
   @Column({
     type: 'enum',
     enum: PlatformPermission,
+    enumName: 'platform_permission',
     array: true,
     nullable: true,
   })

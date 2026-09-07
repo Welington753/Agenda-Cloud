@@ -34,7 +34,7 @@ export class Invite {
     this.id ??= generateId();
   }
 
-  @Column({ type: 'enum', enum: InviteType })
+  @Column({ type: 'enum', enum: InviteType, enumName: 'invite_type' })
   type!: InviteType;
 
   @Column({ type: 'varchar' })
@@ -47,13 +47,13 @@ export class Invite {
   @Column({ type: 'varchar', length: 30, nullable: true })
   tenantId?: string;
 
-  @Column({ type: 'enum', enum: EstablishmentRole, nullable: true })
+  @Column({ type: 'enum', enum: EstablishmentRole, enumName: 'establishment_role', nullable: true })
   establishmentRole?: EstablishmentRole;
 
-  @Column({ type: 'enum', enum: PlatformRole, nullable: true })
+  @Column({ type: 'enum', enum: PlatformRole, enumName: 'platform_role', nullable: true })
   platformRole?: PlatformRole;
 
-  @Column({ type: 'enum', enum: InviteStatus, default: InviteStatus.PENDING })
+  @Column({ type: 'enum', enum: InviteStatus, enumName: 'invite_status', default: InviteStatus.PENDING })
   status!: InviteStatus;
 
   @Index({ unique: true })

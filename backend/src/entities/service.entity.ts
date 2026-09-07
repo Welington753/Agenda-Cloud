@@ -55,6 +55,7 @@ export class Service {
   @Column({
     type: 'enum',
     enum: ServiceModality,
+    enumName: 'service_modality',
     default: ServiceModality.IN_PERSON,
   })
   modality!: ServiceModality;

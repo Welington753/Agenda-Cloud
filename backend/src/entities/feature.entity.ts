@@ -24,7 +24,7 @@ export class Feature {
   }
 
   @Index({ unique: true })
-  @Column({ type: 'enum', enum: FeatureKey })
+  @Column({ type: 'enum', enum: FeatureKey, enumName: 'feature_key' })
   key!: FeatureKey;
 
   @Column({ type: 'varchar' })

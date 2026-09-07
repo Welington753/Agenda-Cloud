@@ -33,7 +33,7 @@ export class Resource {
   @Column({ type: 'varchar' })
   name!: string;
 
-  @Column({ type: 'enum', enum: ResourceType })
+  @Column({ type: 'enum', enum: ResourceType, enumName: 'resource_type' })
   type!: ResourceType;
 
   @Column({ type: 'boolean', default: true })

@@ -21,6 +21,12 @@ describe('buildMigrationsDataSourceOptions', () => {
     const opcoes = buildMigrationsDataSourceOptions(FAKE_URL);
     expect(opcoes.ssl).toEqual({ rejectUnauthorized: true });
   });
+
+  it('usa nome explícito e estável para a tabela de controle de migrations', () => {
+    expect(buildMigrationsDataSourceOptions(FAKE_URL).migrationsTableName).toBe(
+      'typeorm_migrations',
+    );
+  });
 });
 
 describe('MigrationsDataSource (importação do módulo)', () => {

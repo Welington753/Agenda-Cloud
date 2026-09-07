@@ -67,7 +67,7 @@ export class CommissionRule {
   @Column({ type: 'varchar', length: 30 })
   serviceId!: string;
 
-  @Column({ type: 'enum', enum: CommissionType })
+  @Column({ type: 'enum', enum: CommissionType, enumName: 'commission_type' })
   type!: CommissionType;
 
   // PERCENTAGE: pontos-base inteiros, 0-10000 (100% = 10000, 40% = 4000,

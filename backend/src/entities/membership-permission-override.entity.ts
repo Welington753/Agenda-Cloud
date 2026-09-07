@@ -46,10 +46,10 @@ export class MembershipPermissionOverride {
   @Column({ type: 'varchar', length: 30 })
   membershipId!: string;
 
-  @Column({ type: 'enum', enum: Permission })
+  @Column({ type: 'enum', enum: Permission, enumName: 'permission' })
   permission!: Permission;
 
-  @Column({ type: 'enum', enum: PermissionMode })
+  @Column({ type: 'enum', enum: PermissionMode, enumName: 'permission_mode' })
   mode!: PermissionMode;
 
   @ManyToOne(

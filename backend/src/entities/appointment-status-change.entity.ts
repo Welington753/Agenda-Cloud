@@ -43,10 +43,10 @@ export class AppointmentStatusChange {
   occurredAt!: Date;
 
   // Ausente na primeira transição (criação do agendamento).
-  @Column({ type: 'enum', enum: AppointmentStatus, nullable: true })
+  @Column({ type: 'enum', enum: AppointmentStatus, enumName: 'appointment_status', nullable: true })
   fromStatus?: AppointmentStatus;
 
-  @Column({ type: 'enum', enum: AppointmentStatus })
+  @Column({ type: 'enum', enum: AppointmentStatus, enumName: 'appointment_status' })
   toStatus!: AppointmentStatus;
 
   @Column({ type: 'varchar' })

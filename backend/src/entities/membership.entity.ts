@@ -47,7 +47,7 @@ export class Membership {
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
-  @Column({ type: 'enum', enum: EstablishmentRole })
+  @Column({ type: 'enum', enum: EstablishmentRole, enumName: 'establishment_role' })
   role!: EstablishmentRole;
 
   // Presente quando `role = PROFISSIONAL`, aponta para o registro

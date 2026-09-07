@@ -32,8 +32,18 @@ export function buildMigrationsDataSourceOptions(
     logging: ['error', 'warn'],
     ssl: { rejectUnauthorized: true },
     entities: [path.join(moduleDir, '../entities/**/*.entity.{ts,js}')],
-    // Populado no Lote 5 — mesma cobertura dev/produção do glob de entidades.
-    migrations: [path.join(moduleDir, '../migrations/**/*.{ts,js}')],
+    // `!(*.spec)` (extglob, suportado pelo `tinyglobby` que o TypeORM usa
+    // internamente — confirmado sem conectar a banco nenhum) exclui os
+    // arquivos de teste que vivem ao lado das migrations em
+    // `backend/src/migrations/` — sem essa exclusão, TypeORM tentaria
+    // carregar `*.spec.ts` como migration de verdade.
+    migrations: [path.join(moduleDir, '../migrations/**/!(*.spec).{ts,js}')],
+    // Nome explícito e estável (nunca o default "migrations", genérico
+    // demais e propenso a colidir com nome de tabela de domínio futura) —
+    // coexiste sem conflito com `_prisma_migrations` (namespace de controle
+    // independente, ver docs/plans/migracao-nestjs-typeorm-neon.md, seção
+    // 8.6).
+    migrationsTableName: 'typeorm_migrations',
   };
 }
 

@@ -59,7 +59,7 @@ export class Tenant {
   @Column({ type: 'citext' })
   slug!: string;
 
-  @Column({ type: 'enum', enum: BusinessCategory })
+  @Column({ type: 'enum', enum: BusinessCategory, enumName: 'business_category' })
   category!: BusinessCategory;
 
   @Column({ type: 'varchar', nullable: true })
@@ -72,7 +72,7 @@ export class Tenant {
   planId!: string;
 
   @Index()
-  @Column({ type: 'enum', enum: TenantStatus, default: TenantStatus.TRIAL })
+  @Column({ type: 'enum', enum: TenantStatus, enumName: 'tenant_status', default: TenantStatus.TRIAL })
   status!: TenantStatus;
 
   @Column({ type: 'varchar', nullable: true })

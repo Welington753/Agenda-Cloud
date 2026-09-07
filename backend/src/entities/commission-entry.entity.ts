@@ -73,7 +73,7 @@ export class CommissionEntry {
   @Column({ type: 'int' })
   priceCentsSnapshot!: number;
 
-  @Column({ type: 'enum', enum: CommissionType })
+  @Column({ type: 'enum', enum: CommissionType, enumName: 'commission_type' })
   appliedType!: CommissionType;
 
   // Mesma unidade de CommissionRule.value: PERCENTAGE em pontos-base
@@ -97,6 +97,7 @@ export class CommissionEntry {
   @Column({
     type: 'enum',
     enum: CommissionEntryStatus,
+    enumName: 'commission_entry_status',
     default: CommissionEntryStatus.CONFIRMED,
   })
   status!: CommissionEntryStatus;

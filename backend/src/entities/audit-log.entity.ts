@@ -34,7 +34,7 @@ export class AuditLog {
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   occurredAt!: Date;
 
-  @Column({ type: 'enum', enum: AuditAction })
+  @Column({ type: 'enum', enum: AuditAction, enumName: 'audit_action' })
   action!: AuditAction;
 
   @Index()

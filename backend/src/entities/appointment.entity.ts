@@ -79,6 +79,7 @@ export class Appointment {
   @Column({
     type: 'enum',
     enum: AppointmentStatus,
+    enumName: 'appointment_status',
     default: AppointmentStatus.PENDING,
   })
   status!: AppointmentStatus;
