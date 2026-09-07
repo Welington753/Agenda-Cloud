@@ -14,7 +14,6 @@ import {
   BeforeInsert,
   Column,
   Entity,
-  Index,
   JoinColumn,
   OneToOne,
   PrimaryColumn,
@@ -23,6 +22,11 @@ import { generateId } from './common/generate-id.js';
 import { PageTemplate } from './enums/page-template.enum.js';
 import type { Tenant } from './tenant.entity.js';
 
+// `tenantId` não leva `@Index({unique:true})` próprio — a relação `@OneToOne`
+// dona abaixo já gera automaticamente a UNIQUE CONSTRAINT
+// `uq_brand_identities_tenant_id` via `SnakeNamingStrategy.relationConstraintName`
+// (ver database/snake-naming-strategy.ts); um índice único explícito aqui
+// duplicaria a constraint (Lote 5B.3).
 @Entity('brand_identities')
 export class BrandIdentity {
   @PrimaryColumn({ type: 'varchar', length: 30 })
@@ -33,7 +37,6 @@ export class BrandIdentity {
     this.id ??= generateId();
   }
 
-  @Index('uq_brand_identities_tenant_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 

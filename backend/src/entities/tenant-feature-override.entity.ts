@@ -6,7 +6,6 @@ import {
   BeforeInsert,
   Column,
   Entity,
-  Index,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -16,6 +15,12 @@ import { generateId } from './common/generate-id.js';
 import type { Feature } from './feature.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
+// `tenantId` não leva `@Index()` próprio: `uq_tenant_feature_overrides_tenant_feature`
+// abaixo já é UNIQUE (tenant_id, feature_id) — o índice btree dessa constraint
+// cobre filtro só por tenant_id (regra do prefixo mais à esquerda), e não há
+// nenhuma consulta real no código hoje que precise de um índice dedicado
+// (Lote 5B.3 — gap identificado na auditoria de schema:log, ver
+// docs/audits/neon-lote-5-migration-review.md).
 @Entity('tenant_feature_overrides')
 @Unique('uq_tenant_feature_overrides_tenant_feature', ['tenantId', 'featureId'])
 export class TenantFeatureOverride {
@@ -27,7 +32,6 @@ export class TenantFeatureOverride {
     this.id ??= generateId();
   }
 
-  @Index()
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 

@@ -21,6 +21,17 @@ import {
   UNIQUE_INDEX_STATEMENTS,
 } from '../migrations/1788782400000-InitialSchema.js';
 
+// As 4 tabelas cujo lado dono de `@OneToOne` gera sozinho a UNIQUE CONSTRAINT
+// (via `SnakeNamingStrategy.relationConstraintName`) — não podem ter também
+// um `@Index({unique:true})` decorado à mão, ou o schema:log volta a ver
+// DROP+ADD da FK a cada rodada (drift do Lote 5B.2, eliminado no 5B.3).
+const ONE_TO_ONE_OWNED_UNIQUE_COLUMNS: ReadonlyArray<{ target: string; propertyName: string }> = [
+  { target: 'BookingPolicy', propertyName: 'tenantId' },
+  { target: 'BrandIdentity', propertyName: 'tenantId' },
+  { target: 'Credential', propertyName: 'userId' },
+  { target: 'PublicSettings', propertyName: 'tenantId' },
+];
+
 const entitiesDir = path.dirname(fileURLToPath(import.meta.url));
 
 beforeAll(async () => {
@@ -156,6 +167,68 @@ describe('idx_sessions_expires_at — novo, exigido pela seção 10', () => {
     const idx = storage.indices.find((i) => i.name === 'idx_sessions_expires_at');
     expect(idx).toBeDefined();
     expect(idx!.target).toHaveProperty('name', 'Session');
+  });
+});
+
+describe('4 relações @OneToOne dono — UNIQUE CONSTRAINT única por coluna, sem índice duplicado (Lote 5B.3)', () => {
+  it('nenhuma das 4 colunas tem @Index próprio (a constraint vem do relacionamento, não de decorator)', () => {
+    const storage = getMetadataArgsStorage();
+    for (const { target, propertyName } of ONE_TO_ONE_OWNED_UNIQUE_COLUMNS) {
+      const hasOwnIndex = storage.indices.some((idx) => {
+        const targetName = typeof idx.target === 'string' ? idx.target : idx.target.name;
+        if (targetName !== target) return false;
+        const columns =
+          typeof idx.columns === 'function' ? Object.keys(idx.columns({})) : (idx.columns ?? []);
+        return Array.isArray(columns) && columns.length === 1 && columns[0] === propertyName;
+      });
+      expect(hasOwnIndex, `${target}.${propertyName} não deveria ter @Index próprio`).toBe(false);
+    }
+  });
+
+  it('as 4 relações continuam com a FK automática ativa (createForeignKeyConstraints nunca false aqui)', () => {
+    const storage = getMetadataArgsStorage();
+    for (const { target } of ONE_TO_ONE_OWNED_UNIQUE_COLUMNS) {
+      const relation = storage.relations.find((r) => {
+        const targetName = typeof r.target === 'string' ? r.target : r.target.name;
+        return targetName === target && r.relationType === 'one-to-one';
+      });
+      expect(relation, `relação OneToOne de ${target} não encontrada`).toBeDefined();
+      expect(
+        (relation!.options as { createForeignKeyConstraints?: boolean }).createForeignKeyConstraints,
+      ).not.toBe(false);
+    }
+  });
+
+  it('a migration cria as 4 constraints como UNIQUE CONSTRAINT (não como CREATE UNIQUE INDEX)', () => {
+    const expectedConstraints = [
+      'ALTER TABLE credentials ADD CONSTRAINT uq_credentials_user_id UNIQUE (user_id)',
+      'ALTER TABLE brand_identities ADD CONSTRAINT uq_brand_identities_tenant_id UNIQUE (tenant_id)',
+      'ALTER TABLE booking_policies ADD CONSTRAINT uq_booking_policies_tenant_id UNIQUE (tenant_id)',
+      'ALTER TABLE public_settings ADD CONSTRAINT uq_public_settings_tenant_id UNIQUE (tenant_id)',
+    ];
+    for (const statement of expectedConstraints) {
+      expect(BUSINESS_UNIQUE_STATEMENTS).toContain(statement);
+    }
+    for (const table of ['credentials', 'brand_identities', 'booking_policies', 'public_settings']) {
+      expect(UNIQUE_INDEX_STATEMENTS.some((s) => s.includes(`ON ${table} `))).toBe(false);
+    }
+  });
+});
+
+describe('tenant_feature_overrides.tenant_id — índice simples removido por redundância (Lote 5B.3)', () => {
+  it('não existe @Index em TenantFeatureOverride.tenantId (coberto pelo prefixo do UNIQUE(tenant_id, feature_id))', () => {
+    const storage = getMetadataArgsStorage();
+    const hasIndex = storage.indices.some((idx) => {
+      const targetName = typeof idx.target === 'string' ? idx.target : idx.target.name;
+      return targetName === 'TenantFeatureOverride';
+    });
+    expect(hasIndex).toBe(false);
+  });
+
+  it('a migration nunca ganhou um CREATE INDEX dedicado para tenant_feature_overrides.tenant_id', () => {
+    expect(
+      INDEX_STATEMENTS.some((s) => s.includes('tenant_feature_overrides')),
+    ).toBe(false);
   });
 });
 

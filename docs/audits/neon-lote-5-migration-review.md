@@ -55,8 +55,8 @@ programaticamente e conferida pelo teste `up() — soma exata das seções` em
 | Enums (`CREATE TYPE`) | 18 |
 | Tabelas (`CREATE TABLE`) | 30 |
 | Uniques auxiliares de tenant (`UNIQUE(tenant_id, id)`) | 5 |
-| Uniques de negócio (`@Unique` de classe) | 9 |
-| Índices únicos (`@Index({unique:true})`) | 12 |
+| Uniques de negócio (`@Unique` de classe + 4 `UNIQUE CONSTRAINT` de `@OneToOne` dono, ver seção 16) | 13 |
+| Índices únicos (`@Index({unique:true})`) | 8 |
 | FKs simples | 33 |
 | FKs compostas de tenant | 15 |
 | Checks | 9 |
@@ -388,3 +388,92 @@ extensões de aplicação, `_prisma_migrations` inexistente. Nenhuma verificaç�
 read-only nova foi feita contra o banco real nesta fase — o estado vazio é
 herdado sem alteração do relatório do Lote 4, e confirmar isso de novo contra
 o Neon exigiria abrir `backend/.env`, o que esta fase proíbe explicitamente.
+
+## 14. Lote 5B — validação em branch Neon descartável
+
+Migration aplicada pela primeira vez contra um banco real: branch Neon
+descartável `validate-lote-5b` (nunca `production`), acessada só via um
+wrapper fail-closed que carrega a connection string de um arquivo de segredo
+fora do repositório (`%TEMP%\agenda-lote5b.env`) e valida 5 guards
+pré-conexão (URL Postgres real; conexão direta, não pooler; hostname bate com
+o endpoint esperado; hostname não bate com o endpoint de produção proibido;
+esperado ≠ proibido) antes de qualquer `connect()`. `migration:run -t all`,
+verificação estrutural, testes comportamentais em transações sempre revertidas
+(`ROLLBACK`/`SAVEPOINT`), `migration:revert -t all` + verificação, `migration:run
+-t all` de novo — tudo passou. Branch Neon e arquivo de segredo preservados
+para os lotes seguintes.
+
+## 15. Lote 5B.2 — alinhamento de metadata TypeORM × migration
+
+Auditoria de `schema:log` pós-5B encontrou 212 statements de drift — nenhum
+estrutural, todos por ausência de nome explícito nos decorators (a migration
+usa nomes legíveis; os decorators sem nome levavam o TypeORM a gerar
+`UQ_<hash>`/`FK_<hash>`/`IDX_<hash>`). Confirmado por auditoria separada das
+capacidades reais do `typeorm@1.1.1` instalado (não a versão 0.3.x da
+documentação pública) que o pacote suporta nativamente `@ForeignKey` de
+classe (composto), `@Exclusion` com `WHERE`, `@Check`/`@Unique`/`@Index`
+nomeados e `createForeignKeyConstraints: false` por relação — o suficiente
+para representar tudo exceto `ON DELETE SET NULL (professional_id)` (sintaxe
+de coluna-alvo do Postgres 15+, fora do union `OnDeleteType` do TypeORM).
+
+Alinhamento aplicado a todas as 30 entidades: nomes explícitos idênticos à
+migration em 33 FKs simples, 9 `@Unique` e 38 `@Index` já existentes; 5 novos
+`@Unique(['tenantId','id'])`; 9 novos `@Check` nomeados; 1 novo `@Exclusion`
+nomeado (bounds `[)` e predicate `CANCELED`); 1 novo `@Index
+idx_sessions_expires_at`; 14 novos `@ForeignKey` de classe (compostas de
+tenant) pareados com `createForeignKeyConstraints:false` na relação
+correspondente, evitando FK simples duplicada. `memberships` ×
+`professionals` ficou como única exceção deliberada: `createForeignKeyConstraints:false`
+na relação, sem `@ForeignKey` substituto, sem cast — a FK continua 100% SQL
+manual na migration. `schema:log` caiu de 212 para 14 statements, classificados
+em 3 grupos: 1 esperado (a exceção de membership), 8 de um comportamento
+inerente do TypeORM em relações `@OneToOne` dono (ver seção 16), 1 gap
+pré-existente (`tenant_feature_overrides.tenant_id`, ver seção 16).
+
+## 16. Lote 5B.3 — convergência final do `schema:log` (14 → 1)
+
+Objetivo: eliminar os 13 statements restantes que *podiam* ser eliminados,
+preservando só a exceção documentada de `memberships`.
+
+**Os 8 statements de `@OneToOne` dono (4 tabelas × DROP+ADD da mesma FK):**
+causa raiz identificada em `node_modules/typeorm/metadata-builder/RelationJoinColumnBuilder.js`
+(`build()`) — toda relação `@OneToOne` dona de FK gera **automaticamente**,
+em tempo de build do schema, uma `UNIQUE CONSTRAINT` própria na coluna da FK
+(via `namingStrategy.relationConstraintName`), **independente** de qualquer
+`@Index({unique:true})` que a entidade já declare na mesma coluna — as duas
+coexistiam (índice único decorado + constraint única automática), forçando um
+`DROP`+`ADD` da FK a cada `schema:log` porque o Postgres precisa recriar a FK
+ao lidar com a constraint duplicada. Correção: `SnakeNamingStrategy.relationConstraintName`
+(`backend/src/database/snake-naming-strategy.ts`) passou a gerar
+`uq_<tabela>_<coluna>` (nome legível e estável, com fallback por hash se
+ultrapassar os 63 caracteres do Postgres) em vez do `UQ_<hash>` padrão; os
+`@Index({unique:true})` redundantes foram removidos de `BookingPolicy.tenantId`,
+`BrandIdentity.tenantId`, `Credential.userId` e `PublicSettings.tenantId`; a
+migration trocou os 4 `CREATE UNIQUE INDEX` correspondentes por `ALTER TABLE
+... ADD CONSTRAINT ... UNIQUE (...)`, que é exatamente o que o metadata do
+`@OneToOne` dono sempre produz. Validado contra o Neon: as 4 FKs deixaram de
+sofrer `DROP`/`ADD` no `schema:log`, e um teste comportamental (`INSERT`
+duplicado em `booking_policies.tenant_id` dentro de transação revertida)
+confirmou `23505` (unique violation) preservado.
+
+**`tenant_feature_overrides.tenant_id`:** o `@Index()` simples da coluna era
+redundante com `uq_tenant_feature_overrides_tenant_feature UNIQUE (tenant_id,
+feature_id)` já existente — todo índice de uma `UNIQUE` composta é utilizável
+para filtro só pela primeira coluna (regra do prefixo mais à esquerda do
+Postgres), e não há nenhuma consulta no código atual que filtre por
+`tenant_id` sozinho nesta tabela (nenhum repositório/serviço referencia
+`TenantFeatureOverride` ainda além das próprias entidades). Decisão: remover
+o `@Index()` redundante da entidade — não adicionar o índice à migration.
+
+**Resultado:** `schema:log` contém exatamente 1 statement — `ALTER TABLE
+"memberships" DROP CONSTRAINT "fk_memberships_tenant_professional"` — a
+exceção manual documentada desde a seção 15, e nenhuma outra. Validado com
+ciclo completo `migration:revert -t all` (0 tabelas de negócio, 0 enums
+restantes) seguido de `migration:run -t all` com a migration revisada
+(31 tabelas incluindo `typeorm_migrations`, 18 enums, histórico com 1 linha,
+0 dados) contra a mesma branch `validate-lote-5b`. Testes de metadata novos
+em `backend/src/entities/entity-metadata.spec.ts` (as 4 relações `@OneToOne`
+sem índice duplicado e ainda com FK automática ativa; `tenant_feature_overrides`
+sem `@Index`) e em `backend/src/database/snake-naming-strategy.spec.ts`
+(`relationConstraintName` determinístico, nomes esperados para as 4 tabelas,
+truncamento seguro acima de 63 caracteres) travam a regressão.

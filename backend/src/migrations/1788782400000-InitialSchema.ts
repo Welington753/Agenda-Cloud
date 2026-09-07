@@ -429,9 +429,21 @@ export const TENANT_PARENT_UNIQUE_STATEMENTS: readonly string[] = [
 ];
 
 // `@Unique([...])` de classe nas entidades — constraints de unicidade
-// "de negócio", nunca decorativas.
+// "de negócio", nunca decorativas. Inclui as 4 constraints geradas
+// automaticamente pelo lado dono de um `@OneToOne` (via
+// `SnakeNamingStrategy.relationConstraintName`, ver database/snake-naming-strategy.ts) —
+// eram `CREATE UNIQUE INDEX` até o Lote 5B.3, migradas para `UNIQUE CONSTRAINT`
+// porque é isso que o metadata do `@OneToOne` dono sempre produz
+// (RelationJoinColumnBuilder.build em node_modules/typeorm); manter como
+// índice geraria um `DROP`+`ADD` de constraint a cada `schema:log` (drift
+// identificado na auditoria do Lote 5B.2, ver
+// docs/audits/neon-lote-5-migration-review.md).
 export const BUSINESS_UNIQUE_STATEMENTS: readonly string[] = [
   'ALTER TABLE plan_features ADD CONSTRAINT uq_plan_features_plan_feature UNIQUE (plan_id, feature_id)',
+  'ALTER TABLE credentials ADD CONSTRAINT uq_credentials_user_id UNIQUE (user_id)',
+  'ALTER TABLE brand_identities ADD CONSTRAINT uq_brand_identities_tenant_id UNIQUE (tenant_id)',
+  'ALTER TABLE booking_policies ADD CONSTRAINT uq_booking_policies_tenant_id UNIQUE (tenant_id)',
+  'ALTER TABLE public_settings ADD CONSTRAINT uq_public_settings_tenant_id UNIQUE (tenant_id)',
   'ALTER TABLE tenant_feature_overrides ADD CONSTRAINT uq_tenant_feature_overrides_tenant_feature UNIQUE (tenant_id, feature_id)',
   'ALTER TABLE memberships ADD CONSTRAINT uq_memberships_user_tenant UNIQUE (user_id, tenant_id)',
   'ALTER TABLE membership_permission_overrides ADD CONSTRAINT uq_membership_permission_overrides_tenant_membership_permission UNIQUE (tenant_id, membership_id, permission)',
@@ -443,17 +455,16 @@ export const BUSINESS_UNIQUE_STATEMENTS: readonly string[] = [
 ];
 
 // `@Index({ unique: true })` de coluna nas entidades — índice único, não
-// constraint nomeada (mesma semântica que o TypeORM aplicaria).
+// constraint nomeada (mesma semântica que o TypeORM aplicaria). Não inclui
+// `credentials.user_id`/`brand_identities.tenant_id`/`booking_policies.tenant_id`/
+// `public_settings.tenant_id` — essas 4 são geradas pelo lado dono de um
+// `@OneToOne` como UNIQUE CONSTRAINT, não índice (ver BUSINESS_UNIQUE_STATEMENTS).
 export const UNIQUE_INDEX_STATEMENTS: readonly string[] = [
   'CREATE UNIQUE INDEX uq_plans_code ON plans (code)',
   'CREATE UNIQUE INDEX uq_features_key ON features (key)',
   'CREATE UNIQUE INDEX uq_users_email ON users (email)',
   'CREATE UNIQUE INDEX uq_tenants_slug ON tenants (slug)',
-  'CREATE UNIQUE INDEX uq_credentials_user_id ON credentials (user_id)',
   'CREATE UNIQUE INDEX uq_sessions_token_hash ON sessions (token_hash)',
-  'CREATE UNIQUE INDEX uq_brand_identities_tenant_id ON brand_identities (tenant_id)',
-  'CREATE UNIQUE INDEX uq_booking_policies_tenant_id ON booking_policies (tenant_id)',
-  'CREATE UNIQUE INDEX uq_public_settings_tenant_id ON public_settings (tenant_id)',
   'CREATE UNIQUE INDEX uq_memberships_professional_id ON memberships (professional_id) WHERE professional_id IS NOT NULL',
   'CREATE UNIQUE INDEX uq_invites_token_hash ON invites (token_hash)',
   'CREATE UNIQUE INDEX uq_commission_entries_appointment_id ON commission_entries (appointment_id)',
