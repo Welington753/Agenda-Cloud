@@ -10,6 +10,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryColumn,
+  Unique,
 } from 'typeorm';
 import { generateId } from './common/generate-id.js';
 import { ServiceModality } from './enums/service-modality.enum.js';
@@ -20,6 +21,7 @@ import type { ProfessionalService } from './professional-service.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('services')
+@Unique('uq_services_tenant_id', ['tenantId', 'id'])
 export class Service {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -29,7 +31,7 @@ export class Service {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_services_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -55,6 +57,7 @@ export class Service {
   @Column({
     type: 'enum',
     enum: ServiceModality,
+    enumName: 'service_modality',
     default: ServiceModality.IN_PERSON,
   })
   modality!: ServiceModality;
@@ -74,7 +77,7 @@ export class Service {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.services, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_services_tenant' })
   tenant!: Tenant;
 
   @OneToMany(

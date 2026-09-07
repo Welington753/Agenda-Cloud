@@ -18,7 +18,8 @@ import type { Appointment } from './appointment.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('consumers')
-@Unique(['tenantId', 'whatsappNormalized'])
+@Unique('uq_consumers_tenant_whatsapp', ['tenantId', 'whatsappNormalized'])
+@Unique('uq_consumers_tenant_id', ['tenantId', 'id'])
 export class Consumer {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -45,7 +46,7 @@ export class Consumer {
   // busca de plataforma "este telefone já foi usado, em qual tenant?" — uso
   // de Master, não do estabelecimento. Herdado do mapeamento original
   // (schema.prisma já tinha os dois índices separados).
-  @Index()
+  @Index('idx_consumers_whatsapp_normalized')
   @Column({ type: 'varchar' })
   whatsappNormalized!: string;
 
@@ -70,7 +71,7 @@ export class Consumer {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.consumers, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_consumers_tenant' })
   tenant!: Tenant;
 
   @OneToMany('Appointment', (appointment: Appointment) => appointment.consumer)

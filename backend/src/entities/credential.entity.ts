@@ -7,7 +7,6 @@ import {
   BeforeInsert,
   Column,
   Entity,
-  Index,
   JoinColumn,
   OneToOne,
   PrimaryColumn,
@@ -16,6 +15,11 @@ import {
 import { generateId } from './common/generate-id.js';
 import type { User } from './user.entity.js';
 
+// `userId` não leva `@Index({unique:true})` próprio — a relação `@OneToOne`
+// dona abaixo já gera automaticamente a UNIQUE CONSTRAINT
+// `uq_credentials_user_id` via `SnakeNamingStrategy.relationConstraintName`
+// (ver database/snake-naming-strategy.ts); um índice único explícito aqui
+// duplicaria a constraint (Lote 5B.3).
 @Entity('credentials')
 export class Credential {
   @PrimaryColumn({ type: 'varchar', length: 30 })
@@ -26,7 +30,6 @@ export class Credential {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
   @Column({ type: 'varchar', length: 30 })
   userId!: string;
 
@@ -42,6 +45,6 @@ export class Credential {
   updatedAt!: Date;
 
   @OneToOne('User', (user: User) => user.credential, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'fk_credentials_user' })
   user!: User;
 }

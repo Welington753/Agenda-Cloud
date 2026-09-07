@@ -16,6 +16,7 @@ import {
   BeforeInsert,
   Column,
   Entity,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
@@ -28,7 +29,15 @@ import { PermissionMode } from './enums/permission-mode.enum.js';
 import type { Membership } from './membership.entity.js';
 
 @Entity('membership_permission_overrides')
-@Unique(['tenantId', 'membershipId', 'permission'])
+@Unique('uq_membership_permission_overrides_tenant_membership_permission', [
+  'tenantId',
+  'membershipId',
+  'permission',
+])
+@ForeignKey('Membership', ['tenantId', 'membershipId'], ['tenantId', 'id'], {
+  name: 'fk_membership_permission_overrides_tenant_membership',
+  onDelete: 'CASCADE',
+})
 export class MembershipPermissionOverride {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -39,23 +48,25 @@ export class MembershipPermissionOverride {
   }
 
   // Denormalizado a partir de `Membership.tenantId` — ver nota acima.
-  @Index()
+  @Index('idx_membership_permission_overrides_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
   @Column({ type: 'varchar', length: 30 })
   membershipId!: string;
 
-  @Column({ type: 'enum', enum: Permission })
+  @Column({ type: 'enum', enum: Permission, enumName: 'permission' })
   permission!: Permission;
 
-  @Column({ type: 'enum', enum: PermissionMode })
+  @Column({ type: 'enum', enum: PermissionMode, enumName: 'permission_mode' })
   mode!: PermissionMode;
 
+  // FK real é a composta de classe
+  // (fk_membership_permission_overrides_tenant_membership) acima.
   @ManyToOne(
     'Membership',
     (membership: Membership) => membership.permissionOverrides,
-    { onDelete: 'CASCADE' },
+    { onDelete: 'CASCADE', createForeignKeyConstraints: false },
   )
   @JoinColumn({ name: 'membership_id' })
   membership!: Membership;

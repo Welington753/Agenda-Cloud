@@ -26,14 +26,14 @@ export class Resource {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_resources_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
   @Column({ type: 'varchar' })
   name!: string;
 
-  @Column({ type: 'enum', enum: ResourceType })
+  @Column({ type: 'enum', enum: ResourceType, enumName: 'resource_type' })
   type!: ResourceType;
 
   @Column({ type: 'boolean', default: true })
@@ -42,7 +42,7 @@ export class Resource {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.resources, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_resources_tenant' })
   tenant!: Tenant;
 
   @OneToMany(

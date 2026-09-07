@@ -11,8 +11,10 @@
 // `Appointment.tenantId`.
 import {
   BeforeInsert,
+  Check,
   Column,
   Entity,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
@@ -23,6 +25,14 @@ import type { Appointment } from './appointment.entity.js';
 import type { Service } from './service.entity.js';
 
 @Entity('appointment_items')
+@Check(
+  'ck_appointment_items_price_cents_snapshot_non_negative',
+  'price_cents_snapshot IS NULL OR price_cents_snapshot >= 0',
+)
+@ForeignKey('Appointment', ['tenantId', 'appointmentId'], ['tenantId', 'id'], {
+  name: 'fk_appointment_items_tenant_appointment',
+  onDelete: 'CASCADE',
+})
 export class AppointmentItem {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -32,11 +42,11 @@ export class AppointmentItem {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_appointment_items_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
-  @Index()
+  @Index('idx_appointment_items_appointment_id')
   @Column({ type: 'varchar', length: 30 })
   appointmentId!: string;
 
@@ -54,8 +64,11 @@ export class AppointmentItem {
   @Column({ type: 'int', default: 0 })
   position!: number;
 
+  // FK real é a composta de classe (fk_appointment_items_tenant_appointment)
+  // acima.
   @ManyToOne('Appointment', (appointment: Appointment) => appointment.items, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'appointment_id' })
   appointment!: Appointment;
@@ -63,6 +76,6 @@ export class AppointmentItem {
   @ManyToOne('Service', (service: Service) => service.appointmentItems, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'service_id' })
+  @JoinColumn({ name: 'service_id', foreignKeyConstraintName: 'fk_appointment_items_service' })
   service!: Service;
 }

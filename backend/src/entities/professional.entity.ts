@@ -10,6 +10,7 @@ import {
   OneToMany,
   OneToOne,
   PrimaryColumn,
+  Unique,
 } from 'typeorm';
 import { generateId } from './common/generate-id.js';
 import type { Appointment } from './appointment.entity.js';
@@ -23,6 +24,7 @@ import type { TimeBlock } from './time-block.entity.js';
 import type { Unit } from './unit.entity.js';
 
 @Entity('professionals')
+@Unique('uq_professionals_tenant_id', ['tenantId', 'id'])
 export class Professional {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -32,7 +34,7 @@ export class Professional {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_professionals_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -61,14 +63,14 @@ export class Professional {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.professionals, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_professionals_tenant' })
   tenant!: Tenant;
 
   @ManyToOne('Unit', (unit: Unit) => unit.professionals, {
     onDelete: 'SET NULL',
     nullable: true,
   })
-  @JoinColumn({ name: 'unit_id' })
+  @JoinColumn({ name: 'unit_id', foreignKeyConstraintName: 'fk_professionals_unit' })
   unit?: Unit;
 
   @OneToMany(

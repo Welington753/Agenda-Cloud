@@ -6,7 +6,6 @@ import {
   BeforeInsert,
   Column,
   Entity,
-  Index,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -16,8 +15,14 @@ import { generateId } from './common/generate-id.js';
 import type { Feature } from './feature.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
+// `tenantId` não leva `@Index()` próprio: `uq_tenant_feature_overrides_tenant_feature`
+// abaixo já é UNIQUE (tenant_id, feature_id) — o índice btree dessa constraint
+// cobre filtro só por tenant_id (regra do prefixo mais à esquerda), e não há
+// nenhuma consulta real no código hoje que precise de um índice dedicado
+// (Lote 5B.3 — gap identificado na auditoria de schema:log, ver
+// docs/audits/neon-lote-5-migration-review.md).
 @Entity('tenant_feature_overrides')
-@Unique(['tenantId', 'featureId'])
+@Unique('uq_tenant_feature_overrides_tenant_feature', ['tenantId', 'featureId'])
 export class TenantFeatureOverride {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -27,7 +32,6 @@ export class TenantFeatureOverride {
     this.id ??= generateId();
   }
 
-  @Index()
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -40,12 +44,12 @@ export class TenantFeatureOverride {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.featureOverrides, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_tenant_feature_overrides_tenant' })
   tenant!: Tenant;
 
   @ManyToOne('Feature', (feature: Feature) => feature.tenantOverrides, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'feature_id' })
+  @JoinColumn({ name: 'feature_id', foreignKeyConstraintName: 'fk_tenant_feature_overrides_feature' })
   feature!: Feature;
 }

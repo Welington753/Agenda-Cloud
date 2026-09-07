@@ -246,8 +246,26 @@ describe('isolamento multi-tenant — tenantId', () => {
       const emUnicidadeComposta = uniquesOf(entidade.ctor).some(
         (u) => Array.isArray(u.columns) && u.columns.includes('tenantId'),
       );
+      // `@OneToOne` dono cuja @JoinColumn cai em `tenant_id` gera sozinho uma
+      // UNIQUE CONSTRAINT em tempo de build (RelationJoinColumnBuilder, ver
+      // SnakeNamingStrategy.relationConstraintName) — não é visível via
+      // storage.indices/storage.uniques (que só veem decorators), mas ainda
+      // assim indexa tenantId (Lote 5B.3: BookingPolicy/BrandIdentity/
+      // PublicSettings deixaram de ter @Index({unique:true}) próprio por isso).
+      const viaOneToOneDono = relationsOf(entidade.ctor).some((r) => {
+        if (r.relationType !== 'one-to-one') return false;
+        if (
+          (r.options as { createForeignKeyConstraints?: boolean })
+            .createForeignKeyConstraints === false
+        )
+          return false;
+        const joinColumn = storage.joinColumns.find(
+          (jc) => jc.target === entidade.ctor && jc.propertyName === r.propertyName,
+        );
+        return joinColumn?.name === 'tenant_id';
+      });
       expect(
-        indexadoSozinho || emUnicidadeComposta,
+        indexadoSozinho || emUnicidadeComposta || viaOneToOneDono,
         `${entidade.name}.tenantId não está indexado nem faz parte de uma unicidade composta`,
       ).toBe(true);
     }

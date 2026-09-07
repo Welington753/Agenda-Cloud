@@ -4,10 +4,12 @@
 // que o cadastro do consumidor mude depois) — não denormalização acidental.
 //
 // `CHECK ("end_at" > "start_at")` e `EXCLUDE USING gist` (anti-sobreposição)
-// NÃO são criados aqui — são SQL bruto de migration (Lote 5, seção 3.3 do
-// plano), porque o TypeORM não representa nenhum dos dois via decorator de
-// entidade, assim como o Prisma também não tinha DSL para isso. Colunas e
-// relações já ficam prontas para quando a migration os adicionar.
+// são declarados abaixo via `@Check`/`@Exclusion` (Lote 5B.2) — o pacote
+// TypeORM instalado (1.1.1) suporta os dois via decorator de classe,
+// diferente do TypeORM 0.3.x comum e do Prisma (nenhum dos dois tinha DSL
+// pra isso). Nomes e expressões idênticos aos de
+// `1788782400000-InitialSchema.ts`, conferido por
+// `initial-schema-appointments.spec.ts`.
 //
 // Índices (correção pós-Lote 3): as duas consultas reais da agenda são
 // sempre por tenant primeiro — "horários de um profissional" e "lista por
@@ -19,15 +21,19 @@
 // (vazaria dado entre estabelecimentos).
 import {
   BeforeInsert,
+  Check,
   Column,
   CreateDateColumn,
   Entity,
+  Exclusion,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
   OneToOne,
   PrimaryColumn,
+  Unique,
 } from 'typeorm';
 import { generateId } from './common/generate-id.js';
 import { AppointmentStatus } from './enums/appointment-status.enum.js';
@@ -41,8 +47,27 @@ import type { Tenant } from './tenant.entity.js';
 import type { Unit } from './unit.entity.js';
 
 @Entity('appointments')
-@Index(['tenantId', 'professionalId', 'startAt', 'endAt'])
-@Index(['tenantId', 'status', 'startAt'])
+@Index('idx_appointments_tenant_id_professional_id_start_at_end_at', [
+  'tenantId',
+  'professionalId',
+  'startAt',
+  'endAt',
+])
+@Index('idx_appointments_tenant_id_status_start_at', ['tenantId', 'status', 'startAt'])
+@Unique('uq_appointments_tenant_id', ['tenantId', 'id'])
+@Check('ck_appointments_end_after_start', 'end_at > start_at')
+@Exclusion(
+  'appointments_no_overlap_excl',
+  `USING gist (tenant_id WITH =, professional_id WITH =, tstzrange(start_at, end_at, '[)') WITH &&) WHERE (status <> 'CANCELED')`,
+)
+@ForeignKey('Professional', ['tenantId', 'professionalId'], ['tenantId', 'id'], {
+  name: 'fk_appointments_tenant_professional',
+  onDelete: 'RESTRICT',
+})
+@ForeignKey('Consumer', ['tenantId', 'consumerId'], ['tenantId', 'id'], {
+  name: 'fk_appointments_tenant_consumer',
+  onDelete: 'RESTRICT',
+})
 export class Appointment {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -79,6 +104,7 @@ export class Appointment {
   @Column({
     type: 'enum',
     enum: AppointmentStatus,
+    enumName: 'appointment_status',
     default: AppointmentStatus.PENDING,
   })
   status!: AppointmentStatus;
@@ -92,23 +118,30 @@ export class Appointment {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.appointments, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_appointments_tenant' })
   tenant!: Tenant;
 
   @ManyToOne('Unit', (unit: Unit) => unit.appointments, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'unit_id' })
+  @JoinColumn({ name: 'unit_id', foreignKeyConstraintName: 'fk_appointments_unit' })
   unit!: Unit;
 
+  // FK real é a composta de classe (fk_appointments_tenant_consumer) acima —
+  // createForeignKeyConstraints:false evita uma segunda FK simples duplicada
+  // na mesma coluna consumer_id.
   @ManyToOne('Consumer', (consumer: Consumer) => consumer.appointments, {
     onDelete: 'RESTRICT',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'consumer_id' })
   consumer!: Consumer;
 
+  // FK real é a composta de classe (fk_appointments_tenant_professional)
+  // acima — mesma razão do `consumer` logo abaixo.
   @ManyToOne('Professional', (professional: Professional) => professional.appointments, {
     onDelete: 'RESTRICT',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional!: Professional;

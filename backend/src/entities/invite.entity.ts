@@ -7,6 +7,7 @@
 // o token em texto puro, só `tokenHash`.
 import {
   BeforeInsert,
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -24,7 +25,8 @@ import type { Tenant } from './tenant.entity.js';
 import type { User } from './user.entity.js';
 
 @Entity('invites')
-@Index(['tenantId', 'status'])
+@Index('idx_invites_tenant_id_status', ['tenantId', 'status'])
+@Check('ck_invites_expires_after_created', 'expires_at > created_at')
 export class Invite {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -34,29 +36,29 @@ export class Invite {
     this.id ??= generateId();
   }
 
-  @Column({ type: 'enum', enum: InviteType })
+  @Column({ type: 'enum', enum: InviteType, enumName: 'invite_type' })
   type!: InviteType;
 
   @Column({ type: 'varchar' })
   targetName!: string;
 
-  @Index()
+  @Index('idx_invites_target_email')
   @Column({ type: 'citext' })
   targetEmail!: string;
 
   @Column({ type: 'varchar', length: 30, nullable: true })
   tenantId?: string;
 
-  @Column({ type: 'enum', enum: EstablishmentRole, nullable: true })
+  @Column({ type: 'enum', enum: EstablishmentRole, enumName: 'establishment_role', nullable: true })
   establishmentRole?: EstablishmentRole;
 
-  @Column({ type: 'enum', enum: PlatformRole, nullable: true })
+  @Column({ type: 'enum', enum: PlatformRole, enumName: 'platform_role', nullable: true })
   platformRole?: PlatformRole;
 
-  @Column({ type: 'enum', enum: InviteStatus, default: InviteStatus.PENDING })
+  @Column({ type: 'enum', enum: InviteStatus, enumName: 'invite_status', default: InviteStatus.PENDING })
   status!: InviteStatus;
 
-  @Index({ unique: true })
+  @Index('uq_invites_token_hash', { unique: true })
   @Column({ type: 'varchar' })
   tokenHash!: string;
 
@@ -82,12 +84,12 @@ export class Invite {
     onDelete: 'RESTRICT',
     nullable: true,
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_invites_tenant' })
   tenant?: Tenant;
 
   @ManyToOne('User', (user: User) => user.createdInvites, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'created_by_user_id' })
+  @JoinColumn({ name: 'created_by_user_id', foreignKeyConstraintName: 'fk_invites_created_by_user' })
   createdByUser!: User;
 }
