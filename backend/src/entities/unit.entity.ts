@@ -26,7 +26,7 @@ export class Unit {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_units_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -48,7 +48,7 @@ export class Unit {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.units, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_units_tenant' })
   tenant!: Tenant;
 
   @OneToMany('Professional', (professional: Professional) => professional.unit)

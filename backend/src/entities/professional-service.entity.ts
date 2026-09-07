@@ -11,6 +11,7 @@ import {
   BeforeInsert,
   Column,
   Entity,
+  ForeignKey,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -21,7 +22,19 @@ import type { Professional } from './professional.entity.js';
 import type { Service } from './service.entity.js';
 
 @Entity('professional_services')
-@Unique(['tenantId', 'professionalId', 'serviceId'])
+@Unique('uq_professional_services_tenant_professional_service', [
+  'tenantId',
+  'professionalId',
+  'serviceId',
+])
+@ForeignKey('Professional', ['tenantId', 'professionalId'], ['tenantId', 'id'], {
+  name: 'fk_professional_services_tenant_professional',
+  onDelete: 'CASCADE',
+})
+@ForeignKey('Service', ['tenantId', 'serviceId'], ['tenantId', 'id'], {
+  name: 'fk_professional_services_tenant_service',
+  onDelete: 'CASCADE',
+})
 export class ProfessionalService {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -44,14 +57,17 @@ export class ProfessionalService {
   @Column({ type: 'varchar', length: 30 })
   serviceId!: string;
 
+  // FKs reais são as compostas de classe acima.
   @ManyToOne('Professional', (professional: Professional) => professional.services, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional!: Professional;
 
   @ManyToOne('Service', (service: Service) => service.professionals, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'service_id' })
   service!: Service;

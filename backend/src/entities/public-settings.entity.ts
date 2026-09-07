@@ -24,7 +24,7 @@ export class PublicSettings {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
+  @Index('uq_public_settings_tenant_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -45,6 +45,6 @@ export class PublicSettings {
   @OneToOne('Tenant', (tenant: Tenant) => tenant.publicSettings, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_public_settings_tenant' })
   tenant!: Tenant;
 }

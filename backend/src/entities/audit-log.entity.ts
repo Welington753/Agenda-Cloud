@@ -21,7 +21,7 @@ import type { Tenant } from './tenant.entity.js';
 import type { User } from './user.entity.js';
 
 @Entity('audit_logs')
-@Index(['tenantId', 'occurredAt'])
+@Index('idx_audit_logs_tenant_id_occurred_at', ['tenantId', 'occurredAt'])
 export class AuditLog {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -37,7 +37,7 @@ export class AuditLog {
   @Column({ type: 'enum', enum: AuditAction, enumName: 'audit_action' })
   action!: AuditAction;
 
-  @Index()
+  @Index('idx_audit_logs_actor_user_id')
   @Column({ type: 'varchar', length: 30 })
   actorUserId!: string;
 
@@ -60,14 +60,14 @@ export class AuditLog {
   supportSessionId?: string;
 
   @ManyToOne('User', (user: User) => user.auditLogs, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'actor_user_id' })
+  @JoinColumn({ name: 'actor_user_id', foreignKeyConstraintName: 'fk_audit_logs_actor_user' })
   actor!: User;
 
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.auditLogs, {
     onDelete: 'RESTRICT',
     nullable: true,
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_audit_logs_tenant' })
   tenant?: Tenant;
 
   @ManyToOne(
@@ -75,6 +75,6 @@ export class AuditLog {
     (supportSession: SupportSession) => supportSession.auditLogs,
     { onDelete: 'RESTRICT', nullable: true },
   )
-  @JoinColumn({ name: 'support_session_id' })
+  @JoinColumn({ name: 'support_session_id', foreignKeyConstraintName: 'fk_audit_logs_support_session' })
   supportSession?: SupportSession;
 }

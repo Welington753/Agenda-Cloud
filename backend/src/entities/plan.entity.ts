@@ -27,7 +27,7 @@ export class Plan {
 
   // Chave de negócio estável (ex.: "essencial", "equipe", "pro") — espelha
   // `CodigoPlano` de src/lib/types.ts.
-  @Index({ unique: true })
+  @Index('uq_plans_code', { unique: true })
   @Column({ type: 'varchar' })
   code!: string;
 

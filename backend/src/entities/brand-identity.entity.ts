@@ -33,7 +33,7 @@ export class BrandIdentity {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
+  @Index('uq_brand_identities_tenant_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -107,6 +107,6 @@ export class BrandIdentity {
   @OneToOne('Tenant', (tenant: Tenant) => tenant.brandIdentity, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_brand_identities_tenant' })
   tenant!: Tenant;
 }

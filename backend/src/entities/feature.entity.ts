@@ -23,7 +23,7 @@ export class Feature {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
+  @Index('uq_features_key', { unique: true })
   @Column({ type: 'enum', enum: FeatureKey, enumName: 'feature_key' })
   key!: FeatureKey;
 

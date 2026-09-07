@@ -22,7 +22,7 @@ import type { Tenant } from './tenant.entity.js';
 import type { User } from './user.entity.js';
 
 @Entity('support_sessions')
-@Index(['tenantId', 'startedAt'])
+@Index('idx_support_sessions_tenant_id_started_at', ['tenantId', 'startedAt'])
 export class SupportSession {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -32,7 +32,7 @@ export class SupportSession {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_support_sessions_master_user_id')
   @Column({ type: 'varchar', length: 30 })
   masterUserId!: string;
 
@@ -51,13 +51,13 @@ export class SupportSession {
   @ManyToOne('User', (user: User) => user.supportSessionsAsMaster, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'master_user_id' })
+  @JoinColumn({ name: 'master_user_id', foreignKeyConstraintName: 'fk_support_sessions_master_user' })
   masterUser!: User;
 
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.supportSessions, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_support_sessions_tenant' })
   tenant!: Tenant;
 
   @OneToMany('AuditLog', (auditLog: AuditLog) => auditLog.supportSession)

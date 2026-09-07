@@ -55,7 +55,7 @@ export class Tenant {
   // case-insensitive garantida pelo banco. Formato/reservados são validação
   // de aplicação (DTO), não de banco (ver seção 6.4). Preparado para resolver
   // "<slug>.agendacloud.com.br" no futuro — sem DNS/proxy nesta migração.
-  @Index({ unique: true })
+  @Index('uq_tenants_slug', { unique: true })
   @Column({ type: 'citext' })
   slug!: string;
 
@@ -71,7 +71,7 @@ export class Tenant {
   @Column({ type: 'varchar', length: 30 })
   planId!: string;
 
-  @Index()
+  @Index('idx_tenants_status')
   @Column({ type: 'enum', enum: TenantStatus, enumName: 'tenant_status', default: TenantStatus.TRIAL })
   status!: TenantStatus;
 
@@ -88,7 +88,7 @@ export class Tenant {
   updatedAt!: Date;
 
   @ManyToOne('Plan', (plan: Plan) => plan.tenants, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'plan_id' })
+  @JoinColumn({ name: 'plan_id', foreignKeyConstraintName: 'fk_tenants_plan' })
   plan!: Plan;
 
   @OneToOne('BrandIdentity', (brandIdentity: BrandIdentity) => brandIdentity.tenant)

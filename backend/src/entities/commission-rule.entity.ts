@@ -28,9 +28,11 @@
 // expressável em CHECK simples de coluna.
 import {
   BeforeInsert,
+  Check,
   Column,
   CreateDateColumn,
   Entity,
+  ForeignKey,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -44,7 +46,23 @@ import type { Service } from './service.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('commission_rules')
-@Unique(['tenantId', 'professionalId', 'serviceId'])
+@Unique('uq_commission_rules_tenant_professional_service', [
+  'tenantId',
+  'professionalId',
+  'serviceId',
+])
+@Check(
+  'ck_commission_rules_value_range',
+  `(type = 'PERCENTAGE' AND value BETWEEN 0 AND 10000) OR (type = 'FIXED' AND value >= 0)`,
+)
+@ForeignKey('Professional', ['tenantId', 'professionalId'], ['tenantId', 'id'], {
+  name: 'fk_commission_rules_tenant_professional',
+  onDelete: 'CASCADE',
+})
+@ForeignKey('Service', ['tenantId', 'serviceId'], ['tenantId', 'id'], {
+  name: 'fk_commission_rules_tenant_service',
+  onDelete: 'CASCADE',
+})
 export class CommissionRule {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -85,17 +103,20 @@ export class CommissionRule {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.commissionRules, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_commission_rules_tenant' })
   tenant!: Tenant;
 
+  // FKs reais são as compostas de classe acima.
   @ManyToOne('Professional', (professional: Professional) => professional.commissionRules, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional!: Professional;
 
   @ManyToOne('Service', (service: Service) => service.commissionRules, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'service_id' })
   service!: Service;

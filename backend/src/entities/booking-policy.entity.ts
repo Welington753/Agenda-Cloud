@@ -23,7 +23,7 @@ export class BookingPolicy {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
+  @Index('uq_booking_policies_tenant_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -65,6 +65,6 @@ export class BookingPolicy {
   @OneToOne('Tenant', (tenant: Tenant) => tenant.bookingPolicy, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_booking_policies_tenant' })
   tenant!: Tenant;
 }

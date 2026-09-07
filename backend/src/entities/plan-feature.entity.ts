@@ -6,7 +6,7 @@ import type { Feature } from './feature.entity.js';
 import type { Plan } from './plan.entity.js';
 
 @Entity('plan_features')
-@Unique(['planId', 'featureId'])
+@Unique('uq_plan_features_plan_feature', ['planId', 'featureId'])
 export class PlanFeature {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -23,12 +23,12 @@ export class PlanFeature {
   featureId!: string;
 
   @ManyToOne('Plan', (plan: Plan) => plan.planFeatures, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'plan_id' })
+  @JoinColumn({ name: 'plan_id', foreignKeyConstraintName: 'fk_plan_features_plan' })
   plan!: Plan;
 
   @ManyToOne('Feature', (feature: Feature) => feature.planFeatures, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'feature_id' })
+  @JoinColumn({ name: 'feature_id', foreignKeyConstraintName: 'fk_plan_features_feature' })
   feature!: Feature;
 }

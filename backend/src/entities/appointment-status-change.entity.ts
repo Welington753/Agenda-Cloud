@@ -12,6 +12,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
@@ -22,6 +23,10 @@ import { AppointmentStatus } from './enums/appointment-status.enum.js';
 import type { Appointment } from './appointment.entity.js';
 
 @Entity('appointment_status_changes')
+@ForeignKey('Appointment', ['tenantId', 'appointmentId'], ['tenantId', 'id'], {
+  name: 'fk_appointment_status_changes_tenant_appointment',
+  onDelete: 'CASCADE',
+})
 export class AppointmentStatusChange {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -31,11 +36,11 @@ export class AppointmentStatusChange {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_appointment_status_changes_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
-  @Index()
+  @Index('idx_appointment_status_changes_appointment_id')
   @Column({ type: 'varchar', length: 30 })
   appointmentId!: string;
 
@@ -52,8 +57,11 @@ export class AppointmentStatusChange {
   @Column({ type: 'varchar' })
   changedBy!: string;
 
+  // FK real é a composta de classe
+  // (fk_appointment_status_changes_tenant_appointment) acima.
   @ManyToOne('Appointment', (appointment: Appointment) => appointment.statusChanges, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'appointment_id' })
   appointment!: Appointment;

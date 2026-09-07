@@ -41,7 +41,7 @@ export class User {
 
   // citext no Postgres real (extensão criada no Lote 5) — unicidade
   // case-insensitive garantida pelo próprio banco, não só pela aplicação.
-  @Index({ unique: true })
+  @Index('uq_users_email', { unique: true })
   @Column({ type: 'citext' })
   email!: string;
 

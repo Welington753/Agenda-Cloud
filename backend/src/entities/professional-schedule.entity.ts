@@ -13,6 +13,7 @@ import {
   BeforeInsert,
   Column,
   Entity,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
@@ -23,7 +24,15 @@ import { generateId } from './common/generate-id.js';
 import type { Professional } from './professional.entity.js';
 
 @Entity('professional_schedules')
-@Unique(['tenantId', 'professionalId', 'weekday'])
+@Unique('uq_professional_schedules_tenant_professional_weekday', [
+  'tenantId',
+  'professionalId',
+  'weekday',
+])
+@ForeignKey('Professional', ['tenantId', 'professionalId'], ['tenantId', 'id'], {
+  name: 'fk_professional_schedules_tenant_professional',
+  onDelete: 'CASCADE',
+})
 export class ProfessionalSchedule {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -33,7 +42,7 @@ export class ProfessionalSchedule {
     this.id ??= generateId();
   }
 
-  @Index()
+  @Index('idx_professional_schedules_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -58,8 +67,10 @@ export class ProfessionalSchedule {
   @Column({ type: 'varchar', nullable: true })
   lunchEnd?: string;
 
+  // FK real é a composta de classe (fk_professional_schedules_tenant_professional) acima.
   @ManyToOne('Professional', (professional: Professional) => professional.schedules, {
     onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional!: Professional;

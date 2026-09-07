@@ -5,11 +5,18 @@
 // independente (ver docs/plans/migracao-nestjs-typeorm-neon.md, seção 4.3).
 //
 // Proteção contra mistura de tenant (seção 5): quando `professionalId` está
-// presente, `Professional.tenantId` precisa ser igual a `Membership.tenantId`
-// — não expressável com segurança por decorators simples do TypeORM (FK
-// composta exigiria UNIQUE(tenant_id, id) em `professionals` e um
-// `@JoinColumn` de duas colunas); registrado para SQL manual no Lote 5, não
-// implementado agora.
+// presente, `Professional.tenantId` precisa ser igual a `Membership.tenantId`.
+// EXCEÇÃO deliberada do Lote 5B.2 (a única): ao contrário das outras 14 FKs
+// compostas de tenant, esta continua SQL manual na migration
+// (`fk_memberships_tenant_professional ... ON DELETE SET NULL
+// (professional_id)`, sintaxe de coluna-alvo do Postgres 15+) porque
+// `OnDeleteType` do TypeORM não modela `SET NULL (coluna)` — só a lista fixa
+// `RESTRICT|CASCADE|SET NULL|DEFAULT|NO ACTION`. `createForeignKeyConstraints:
+// false` abaixo desativa a FK simples automática desta relação (não haveria
+// FK nenhuma sem isso: nem a simples do TypeORM, nem a composta, que só
+// existe como SQL manual) — ver
+// `initial-schema-tenant-integrity.spec.ts` para o teste que prova essa
+// exceção.
 import {
   BeforeInsert,
   Column,
@@ -30,7 +37,8 @@ import type { Tenant } from './tenant.entity.js';
 import type { User } from './user.entity.js';
 
 @Entity('memberships')
-@Unique(['userId', 'tenantId'])
+@Unique('uq_memberships_user_tenant', ['userId', 'tenantId'])
+@Unique('uq_memberships_tenant_id', ['tenantId', 'id'])
 export class Membership {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -43,7 +51,7 @@ export class Membership {
   @Column({ type: 'varchar', length: 30 })
   userId!: string;
 
-  @Index()
+  @Index('idx_memberships_tenant_id')
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
@@ -52,7 +60,7 @@ export class Membership {
 
   // Presente quando `role = PROFISSIONAL`, aponta para o registro
   // `Professional` que representa essa pessoa na agenda.
-  @Index({ unique: true, where: '"professional_id" IS NOT NULL' })
+  @Index('uq_memberships_professional_id', { unique: true, where: '"professional_id" IS NOT NULL' })
   @Column({ type: 'varchar', length: 30, nullable: true })
   professionalId?: string;
 
@@ -62,18 +70,22 @@ export class Membership {
   @ManyToOne('User', (user: User) => user.memberships, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'fk_memberships_user' })
   user!: User;
 
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.memberships, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_memberships_tenant' })
   tenant!: Tenant;
 
+  // Sem FK automática nem `@ForeignKey` de classe — exceção documentada no
+  // cabeçalho do arquivo. `fk_memberships_tenant_professional` continua só
+  // na migration (SQL manual).
   @ManyToOne('Professional', (professional: Professional) => professional.membership, {
     onDelete: 'SET NULL',
     nullable: true,
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional?: Professional;

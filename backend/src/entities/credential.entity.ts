@@ -26,7 +26,7 @@ export class Credential {
     this.id ??= generateId();
   }
 
-  @Index({ unique: true })
+  @Index('uq_credentials_user_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   userId!: string;
 
@@ -42,6 +42,6 @@ export class Credential {
   updatedAt!: Date;
 
   @OneToOne('User', (user: User) => user.credential, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'fk_credentials_user' })
   user!: User;
 }

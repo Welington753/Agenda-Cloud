@@ -23,9 +23,11 @@
 // commission-rule.entity.ts se aplica aqui.
 import {
   BeforeInsert,
+  Check,
   Column,
   CreateDateColumn,
   Entity,
+  ForeignKey,
   Index,
   JoinColumn,
   ManyToOne,
@@ -41,7 +43,30 @@ import type { Service } from './service.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('commission_entries')
-@Index(['tenantId', 'professionalId', 'serviceDate'])
+@Index('idx_commission_entries_tenant_id_professional_id_service_date', [
+  'tenantId',
+  'professionalId',
+  'serviceDate',
+])
+@Check(
+  'ck_commission_entries_applied_value_range',
+  `(applied_type = 'PERCENTAGE' AND applied_value BETWEEN 0 AND 10000) OR (applied_type = 'FIXED' AND applied_value >= 0)`,
+)
+@Check('ck_commission_entries_professional_cents_non_negative', 'professional_cents >= 0')
+@Check('ck_commission_entries_establishment_cents_non_negative', 'establishment_cents >= 0')
+@Check('ck_commission_entries_price_cents_snapshot_non_negative', 'price_cents_snapshot >= 0')
+@ForeignKey('Appointment', ['tenantId', 'appointmentId'], ['tenantId', 'id'], {
+  name: 'fk_commission_entries_tenant_appointment',
+  onDelete: 'RESTRICT',
+})
+@ForeignKey('Professional', ['tenantId', 'professionalId'], ['tenantId', 'id'], {
+  name: 'fk_commission_entries_tenant_professional',
+  onDelete: 'RESTRICT',
+})
+@ForeignKey('Service', ['tenantId', 'serviceId'], ['tenantId', 'id'], {
+  name: 'fk_commission_entries_tenant_service',
+  onDelete: 'RESTRICT',
+})
 export class CommissionEntry {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id!: string;
@@ -58,7 +83,7 @@ export class CommissionEntry {
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 
-  @Index({ unique: true })
+  @Index('uq_commission_entries_appointment_id', { unique: true })
   @Column({ type: 'varchar', length: 30 })
   appointmentId!: string;
 
@@ -111,23 +136,28 @@ export class CommissionEntry {
   @ManyToOne('Tenant', (tenant: Tenant) => tenant.commissionEntries, {
     onDelete: 'RESTRICT',
   })
-  @JoinColumn({ name: 'tenant_id' })
+  @JoinColumn({ name: 'tenant_id', foreignKeyConstraintName: 'fk_commission_entries_tenant' })
   tenant!: Tenant;
 
+  // FKs reais são as compostas de classe acima (inclui esta OneToOne — owner
+  // side, elegível a `createForeignKeyConstraints` como qualquer many-to-one).
   @OneToOne('Appointment', (appointment: Appointment) => appointment.commissionEntry, {
     onDelete: 'RESTRICT',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'appointment_id' })
   appointment!: Appointment;
 
   @ManyToOne('Professional', (professional: Professional) => professional.commissionEntries, {
     onDelete: 'RESTRICT',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'professional_id' })
   professional!: Professional;
 
   @ManyToOne('Service', (service: Service) => service.commissionEntries, {
     onDelete: 'RESTRICT',
+    createForeignKeyConstraints: false,
   })
   @JoinColumn({ name: 'service_id' })
   service!: Service;
