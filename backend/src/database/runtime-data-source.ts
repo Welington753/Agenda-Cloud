@@ -49,6 +49,11 @@ export function buildRuntimeDataSourceOptions(
     // entidades forem criadas.
     entities: [path.join(moduleDir, '../entities/**/*.entity.{ts,js}')],
     migrations: [],
+    // Mesmo nome usado pelo DataSource de migrations (ver
+    // migrations-data-source.ts) — nunca o default "migrations", genérico
+    // demais. `migrationsRun: false` acima já impede que o runtime toque
+    // nessa tabela; o nome só precisa ficar consistente caso essa flag mude.
+    migrationsTableName: 'typeorm_migrations',
   };
 }
 
