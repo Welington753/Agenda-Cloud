@@ -16,8 +16,12 @@ export type CategoriaNegocio =
   | "clinica"
   | "clinica_odontologica"
   | "estetica"
+  | "terapeuta"
+  | "massagem"
+  | "pilates_yoga"
   | "tatuagem"
   | "petshop"
+  | "consultor"
   | "outro";
 
 /** Identidade visual e institucional do estabelecimento. A página pública e o

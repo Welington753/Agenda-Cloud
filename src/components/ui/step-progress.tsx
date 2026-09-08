@@ -1,9 +1,17 @@
 import { Check } from "lucide-react";
 import clsx from "clsx";
 
-export function BarraDeEtapas({ etapas, etapaAtual }: { etapas: string[]; etapaAtual: number }) {
+export function BarraDeEtapas({
+  etapas,
+  etapaAtual,
+  ariaLabel = "Progresso do agendamento",
+}: {
+  etapas: string[];
+  etapaAtual: number;
+  ariaLabel?: string;
+}) {
   return (
-    <ol className="flex w-full items-center" aria-label="Progresso do agendamento">
+    <ol className="flex w-full items-center" aria-label={ariaLabel}>
       {etapas.map((etapa, indice) => {
         const concluida = indice < etapaAtual;
         const atual = indice === etapaAtual;
