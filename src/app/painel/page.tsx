@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { getDay, isSameDay, isAfter } from "date-fns";
 import { CalendarPlus, CalendarX2, CheckCircle2, Clock3, DollarSign, Gauge, UserX2, XCircle } from "lucide-react";
@@ -9,6 +10,8 @@ import { RequirePermission } from "@/components/layout/require-permission";
 import { agendamentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
 import { minutosDeExpedienteNoDia } from "@/lib/availability/engine";
 import { EstatisticaCard } from "@/components/painel/estatistica-card";
+import { ChecklistPrimeirosPassos } from "@/components/painel/checklist-primeiros-passos";
+import { checklistPrimeirosPassosVisivel } from "@/lib/onboarding/checklist-persistencia";
 import { Cartao, CartaoCorpo, CartaoTitulo } from "@/components/ui/card";
 import { Botao } from "@/components/ui/button";
 import { BadgeStatusAgendamento } from "@/components/ui/badge";
@@ -28,7 +31,13 @@ export default function PainelDashboardPage() {
 }
 
 function ConteudoDashboard() {
-  const { tenantId, terminologia } = useTenant();
+  const { tenantId, terminologia, estabelecimento } = useTenant();
+  const [mostrarChecklist, setMostrarChecklist] = useState(false);
+
+  useClientData(() => {
+    setMostrarChecklist(checklistPrimeirosPassosVisivel(tenantId));
+    return null;
+  }, [tenantId]);
 
   const { dados, carregando } = useClientData(() => {
     const agora = new Date();
@@ -112,6 +121,14 @@ function ConteudoDashboard() {
           </Link>
         </div>
       </div>
+
+      {mostrarChecklist && estabelecimento && (
+        <ChecklistPrimeirosPassos
+          tenantId={tenantId}
+          slug={estabelecimento.slug}
+          aoDispensar={() => setMostrarChecklist(false)}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <EstatisticaCard icone={Clock3} rotulo={`${terminologia.agendamento.plural} hoje`} valor={String(dados.agendamentosHojeTotal)} />

@@ -23,6 +23,7 @@ export const SLUGS_RESERVADOS = [
   "admin",
   "configuracoes",
   "agendar",
+  "onboarding",
 ] as const;
 
 const FORMATO_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
