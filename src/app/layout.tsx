@@ -11,9 +11,9 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: `${NOME_PRODUTO} — Agenda simples para barbearias`,
+  title: `${NOME_PRODUTO} — Agenda e gestão para pequenos negócios`,
   description:
-    "Uma agenda simples para barbearias pequenas, que reduz mensagens no WhatsApp, faltas e horários vazios.",
+    "Agenda e gestão simples para salões, clínicas, estúdios, pet shops, terapeutas, consultores e outros negócios com horário marcado.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
