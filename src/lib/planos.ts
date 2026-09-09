@@ -7,7 +7,10 @@ import type { CodigoPlano, Feature } from "./types";
 export interface DefinicaoPlano {
   codigo: CodigoPlano;
   nome: string;
-  precoCentavos: number;
+  /** `null` = preço ainda não aprovado comercialmente ("não definido").
+   * Nunca usar 0 para representar isso — todo consumidor que formata ou faz
+   * conta com este campo precisa tratar o `null` explicitamente. */
+  precoCentavos: number | null;
   descricaoCurta: string;
   limites: { maxProfissionais: number; maxUnidades: number };
   features: Feature[];
@@ -17,24 +20,24 @@ export const DEFINICOES_PLANO: Record<CodigoPlano, DefinicaoPlano> = {
   essencial: {
     codigo: "essencial",
     nome: "Essencial",
-    precoCentavos: 7900,
+    precoCentavos: null,
     descricaoCurta: "Agenda, agendamento público e serviços para um profissional só ou uma equipe pequena.",
     limites: { maxProfissionais: 2, maxUnidades: 1 },
     features: ["agenda", "agendamentoPublico", "profissionais"],
   },
   equipe: {
     codigo: "equipe",
-    nome: "Equipe",
-    precoCentavos: 14900,
+    nome: "Gestão",
+    precoCentavos: null,
     descricaoCurta: "Tudo do Essencial, mais consumidores, relatórios básicos e gestão de equipe.",
     limites: { maxProfissionais: 5, maxUnidades: 1 },
     features: ["agenda", "agendamentoPublico", "profissionais", "consumidores", "relatorios", "equipe"],
   },
   pro: {
     codigo: "pro",
-    nome: "Pro",
-    precoCentavos: 24900,
-    descricaoCurta: "Tudo do Equipe, mais unidades extras e personalização avançada. Alguns módulos aparecem como \"em breve\".",
+    nome: "Rede",
+    precoCentavos: null,
+    descricaoCurta: "Tudo do Gestão, mais unidades extras e personalização avançada. Alguns módulos aparecem como \"em breve\".",
     limites: { maxProfissionais: 20, maxUnidades: 5 },
     features: [
       "agenda",

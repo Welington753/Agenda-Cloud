@@ -55,15 +55,21 @@ describe('catálogo de planos/features — dados', () => {
     ]);
   });
 
-  it('nenhum preço é zero nem inventado — usa os mesmos valores já publicados em src/lib/planos.ts', () => {
-    const precosAprovados: Record<string, number> = {
-      essencial: 7900,
-      equipe: 14900,
-      pro: 24900,
+  it('preço de todo plano é NULL (não definido) — nunca zero, nunca um valor provisório', () => {
+    for (const plan of PLAN_ROWS) {
+      expect(plan.priceCents).toBeNull();
+      expect(plan.priceCents).not.toBe(0);
+    }
+  });
+
+  it('nomes comerciais são Essencial/Gestão/Rede, mantendo os códigos internos essencial/equipe/pro', () => {
+    const nomesComerciais: Record<string, string> = {
+      essencial: 'Essencial',
+      equipe: 'Gestão',
+      pro: 'Rede',
     };
     for (const plan of PLAN_ROWS) {
-      expect(plan.priceCents).toBeGreaterThan(0);
-      expect(plan.priceCents).toBe(precosAprovados[plan.code]);
+      expect(plan.name).toBe(nomesComerciais[plan.code]);
     }
   });
 

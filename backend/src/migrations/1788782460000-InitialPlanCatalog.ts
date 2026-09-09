@@ -3,11 +3,17 @@
 // `plans` (ver entities/tenant.entity.ts), então um banco vazio sem nenhum
 // plano bloqueia qualquer criação de tenant.
 //
-// Preços e descrições NÃO são inventados aqui — são os mesmos já aprovados e
-// publicados no site comercial (`src/lib/planos.ts`, `DEFINICOES_PLANO`,
-// mesclado no Lote 6A). Códigos (`essencial`/`equipe`/`pro`) também vêm de lá
-// (`CodigoPlano` em src/lib/types.ts) — nomes diferentes ("Gestão"/"Rede")
-// não existem no domínio atual e não foram criados por esta migration.
+// Preço (`price_cents`) ainda aguarda decisão comercial — não é 0, é
+// literalmente NULL ("não definido"). A coluna só aceita NULL porque a
+// migration 1788782450000-AllowUndefinedPlanPrice já rodou antes desta (ver
+// ordem de timestamp). Nenhum código que lida com cobrança pode tratar esse
+// NULL como zero.
+//
+// Códigos internos (`essencial`/`equipe`/`pro`, `CodigoPlano` em
+// src/lib/types.ts) são estáveis e nunca mudam. Nomes exibidos ao cliente
+// (`name`) são os nomes comerciais decididos pelo produto — Essencial/Gestão/
+// Rede — e podem divergir do código interno (ex.: código `equipe` mostra
+// "Gestão"). Descrições preservadas de `src/lib/planos.ts` (`DEFINICOES_PLANO`).
 //
 // IDs determinísticos (nunca `generateId()`/cuid2 aleatório) para que `up()`
 // seja idempotente via `ON CONFLICT ... DO NOTHING` na chave de negócio real
@@ -27,7 +33,7 @@ interface PlanRow {
   id: string;
   code: string;
   name: string;
-  priceCents: number;
+  priceCents: null;
   shortDescription: string;
   maxProfessionals: number;
   maxUnits: number;
@@ -45,13 +51,15 @@ interface PlanFeatureRow {
   featureId: string;
 }
 
-// Mesmos 3 planos e mesmos valores de `DEFINICOES_PLANO` (src/lib/planos.ts).
+// Códigos internos estáveis (essencial/equipe/pro) com nomes comerciais
+// (Essencial/Gestão/Rede) decididos pelo produto. Preço NULL — não definido,
+// nunca 0. Descrições preservadas de `DEFINICOES_PLANO` (src/lib/planos.ts).
 export const PLAN_ROWS: readonly PlanRow[] = [
   {
     id: 'plan_essencial',
     code: 'essencial',
     name: 'Essencial',
-    priceCents: 7900,
+    priceCents: null,
     shortDescription:
       'Agenda, agendamento público e serviços para um profissional só ou uma equipe pequena.',
     maxProfessionals: 2,
@@ -60,8 +68,8 @@ export const PLAN_ROWS: readonly PlanRow[] = [
   {
     id: 'plan_equipe',
     code: 'equipe',
-    name: 'Equipe',
-    priceCents: 14900,
+    name: 'Gestão',
+    priceCents: null,
     shortDescription:
       'Tudo do Essencial, mais consumidores, relatórios básicos e gestão de equipe.',
     maxProfessionals: 5,
@@ -70,10 +78,10 @@ export const PLAN_ROWS: readonly PlanRow[] = [
   {
     id: 'plan_pro',
     code: 'pro',
-    name: 'Pro',
-    priceCents: 24900,
+    name: 'Rede',
+    priceCents: null,
     shortDescription:
-      'Tudo do Equipe, mais unidades extras e personalização avançada. Alguns módulos aparecem como "em breve".',
+      'Tudo do Gestão, mais unidades extras e personalização avançada. Alguns módulos aparecem como "em breve".',
     maxProfessionals: 20,
     maxUnits: 5,
   },

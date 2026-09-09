@@ -77,8 +77,9 @@ describe("planos comerciais", () => {
     }
   });
 
-  it("tem exatamente Essencial, Gestão e Rede", () => {
-    expect(PLANOS_COMERCIAIS.map((p) => p.codigo)).toEqual(["essencial", "gestao", "rede"]);
+  it("usa os códigos internos do domínio (essencial/equipe/pro) com nomes comerciais Essencial/Gestão/Rede", () => {
+    expect(PLANOS_COMERCIAIS.map((p) => p.codigo)).toEqual(["essencial", "equipe", "pro"]);
+    expect(PLANOS_COMERCIAIS.map((p) => p.nome)).toEqual(["Essencial", "Gestão", "Rede"]);
   });
 });
 

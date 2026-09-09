@@ -12,7 +12,7 @@ export function Planos() {
       </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         {PLANOS_COMERCIAIS.map((plano) => (
-          <Cartao key={plano.codigo} className={plano.codigo === "gestao" ? "border-accent" : undefined}>
+          <Cartao key={plano.codigo} className={plano.codigo === "equipe" ? "border-accent" : undefined}>
             <CartaoCorpo className="flex h-full flex-col">
               <p className="font-bold text-ink">{plano.nome}</p>
               <p className="mt-1 text-sm text-ink-soft">{plano.descricaoCurta}</p>
@@ -25,7 +25,7 @@ export function Planos() {
                   </li>
                 ))}
               </ul>
-              <LinkBotao href={plano.ctaHref} className="mt-6 w-full" variante={plano.codigo === "gestao" ? "primaria" : "secundaria"}>
+              <LinkBotao href={plano.ctaHref} className="mt-6 w-full" variante={plano.codigo === "equipe" ? "primaria" : "secundaria"}>
                 Testar grátis
               </LinkBotao>
             </CartaoCorpo>
