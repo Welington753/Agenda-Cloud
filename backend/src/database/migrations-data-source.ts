@@ -55,6 +55,10 @@ export const migrationsDataSourceOptions = buildMigrationsDataSourceOptions(
   process.env.DIRECT_URL ?? '',
 );
 
+// Única exportação de instância DataSource neste módulo — o CLI do TypeORM
+// (`CommandUtils.loadDataSource`) itera todos os exports do arquivo e falha
+// se mais de um for instância de `DataSource` (ver
+// node_modules/typeorm/commands/CommandUtils.js). Um `export default`
+// apontando para este mesmo valor conta como uma segunda instância aos olhos
+// do CLI, mesmo sendo o mesmo objeto — por isso não há default export aqui.
 export const MigrationsDataSource = new DataSource(migrationsDataSourceOptions);
-
-export default MigrationsDataSource;

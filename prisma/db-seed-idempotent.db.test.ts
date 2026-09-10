@@ -2,11 +2,15 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { prisma } from "./db-test-helpers";
+import { CONFIRM_LEGACY_SEED_FLAG } from "./seed-guard";
 
 const SEED_SCRIPT = path.resolve(__dirname, "seed.ts");
 
+// Esta suíte é o único lugar autorizado a rodar o seed legado de verdade —
+// precisa passar a confirmação explícita (ver seed-guard.ts), senão o seed
+// recusa antes de qualquer conexão/escrita.
 function runSeed(): string {
-  return execFileSync(process.execPath, [require.resolve("tsx/cli"), SEED_SCRIPT], {
+  return execFileSync(process.execPath, [require.resolve("tsx/cli"), SEED_SCRIPT, CONFIRM_LEGACY_SEED_FLAG], {
     cwd: path.resolve(__dirname, ".."),
     env: process.env,
     encoding: "utf-8",

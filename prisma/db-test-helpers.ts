@@ -15,11 +15,16 @@ export function testId(label: string): string {
   return `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${label}`;
 }
 
-/** Garante que o Plano "essencial" e a Feature "AGENDA" existem, com os
- * valores canônicos do catálogo real (src/lib/planos.ts) — upsert idempotente,
- * nunca sobrescreve com dado de teste. Testes usam isso só para satisfazer a
- * FK obrigatória de Tenant.planId / TenantFeatureOverride.featureId, sem
- * depender de o seed já ter rodado antes na mesma execução. */
+/** Garante que o Plano "essencial" e a Feature "AGENDA" existem — upsert
+ * idempotente, nunca sobrescreve com dado de teste. Testes usam isso só para
+ * satisfazer a FK obrigatória de Tenant.planId / TenantFeatureOverride.featureId,
+ * sem depender de o seed já ter rodado antes na mesma execução.
+ *
+ * `priceCents` abaixo é dado histórico de fixture do Prisma legado (congelado
+ * desde o Lote 6B.2, ver docs/plans/fundacao-postgresql.md) — nunca preço
+ * comercial aprovado. O catálogo real (TypeORM + src/lib/planos.ts) usa
+ * `null` porque o preço ainda não foi definido comercialmente; este valor
+ * fixo só existe para satisfazer a coluna NOT NULL do schema.prisma atual. */
 export async function ensureCatalog() {
   const plan = await prisma.plan.upsert({
     where: { code: "essencial" },

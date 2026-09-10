@@ -24,6 +24,14 @@
   lint limpo (`eslint`), build limpo com as 20 rotas atuais compilando (Node v24.16.0,
   npm 11.13.0).
 
+## Status do Prisma (Lote 6B.2 — congelado)
+
+Decisão arquitetural: **TypeORM (`backend/src/`) é a única fonte oficial do backend novo.** O Prisma descrito neste documento (schema, migrations, seed) fica **congelado como legado/test-only** — usado só pela suíte de testes de banco (`prisma/*.db.test.ts`, `npm run test:db`), nunca por código de produção. O catálogo de planos criado pelo TypeORM (`backend/src/migrations/1788782460000-InitialPlanCatalog.ts`) não é sincronizado de volta para `schema.prisma`/`prisma/seed.ts` — os dois catálogos podem divergir de propósito (ver comentários em `prisma/seed.ts` e `prisma/db-test-helpers.ts`, cujos valores de preço são fixture histórica de teste, nunca preço comercial aprovado).
+
+- `prisma db seed` **não deve ser usado** — `prisma/seed.ts` recusa rodar sem confirmação explícita de linha de comando (`seed-guard.ts`), antes de qualquer conexão ou escrita.
+- Um teste arquitetural (`src/architecture-prisma-boundary.test.ts`) falha se qualquer código novo em `src/` ou `backend/src/` importar Prisma.
+- Remoção definitiva do Prisma (schema, client gerado, seed, testes de banco) acontece só depois que todo o frontend passar a consumir a API do backend TypeORM — não antes.
+
 ## Dependências escolhidas
 
 | Pacote | Versão | Motivo |

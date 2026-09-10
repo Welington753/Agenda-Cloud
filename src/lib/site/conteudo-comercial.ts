@@ -4,6 +4,8 @@
 // ficarem só de apresentação. Todo texto aqui é original: sem números de clientes,
 // depoimentos, avaliações ou promessas de recursos que ainda não existem.
 
+import type { CodigoPlano } from "../types";
+
 export interface ItemNavegacao {
   rotulo: string;
   href: string;
@@ -133,10 +135,13 @@ export const FLUXO_DEMONSTRACAO: EtapaFluxo[] = [
   { numero: 4, titulo: "Negócio acompanha tudo no painel", descricao: "Visão do dia, da equipe e do histórico de cada cliente." },
 ];
 
-export type CodigoPlanoComercial = "essencial" | "gestao" | "rede";
-
 export interface PlanoComercial {
-  codigo: CodigoPlanoComercial;
+  /** Código interno estável do domínio (`essencial`/`equipe`/`pro`,
+   * `CodigoPlano` em src/lib/types.ts) — o mesmo usado em `src/lib/planos.ts`
+   * e no catálogo persistido no banco. Nome exibido ao cliente vem de `nome`,
+   * que é decisão de marketing e pode divergir do código (ex.: `equipe`
+   * aparece como "Gestão"). */
+  codigo: CodigoPlano;
   nome: string;
   descricaoCurta: string;
   precoTexto: string;
@@ -145,9 +150,9 @@ export interface PlanoComercial {
 }
 
 /** Nomes de marketing — mapeiam para os planos reais (essencial/equipe/pro) de
- * `src/lib/planos.ts`, mas usam rótulos voltados a quem está decidindo assinar,
- * não aos códigos internos. Nenhum preço é inventado: o texto é sempre "em
- * definição" ou convite para o piloto. */
+ * `src/lib/planos.ts` usando o mesmo código interno, com rótulos voltados a
+ * quem está decidindo assinar. Preço ainda não foi aprovado comercialmente:
+ * nunca mostrar valor numérico, só "em definição" ou convite para o piloto. */
 export const PLANOS_COMERCIAIS: PlanoComercial[] = [
   {
     codigo: "essencial",
@@ -158,7 +163,7 @@ export const PLANOS_COMERCIAIS: PlanoComercial[] = [
     ctaHref: HREF_TESTAR_GRATIS,
   },
   {
-    codigo: "gestao",
+    codigo: "equipe",
     nome: "Gestão",
     descricaoCurta: "Para negócios que já acompanham clientes e relatórios básicos.",
     precoTexto: "Participe do piloto",
@@ -166,7 +171,7 @@ export const PLANOS_COMERCIAIS: PlanoComercial[] = [
     ctaHref: HREF_TESTAR_GRATIS,
   },
   {
-    codigo: "rede",
+    codigo: "pro",
     nome: "Rede",
     descricaoCurta: "Para negócios com mais de uma unidade.",
     precoTexto: "Participe do piloto",

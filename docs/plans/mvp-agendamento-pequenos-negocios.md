@@ -4,6 +4,13 @@
 
 **Fora de escopo aqui:** enviar qualquer mensagem de verdade, conectar um provedor externo (e-mail, SMS ou WhatsApp), ou desenhar a UI de configuração dessas mensagens. Isso fica para quando o piloto real for de fato implementado.
 
+## Catálogo de planos e preços (Lote 6B.2)
+
+- Códigos internos estáveis: `essencial`, `equipe`, `pro` (`CodigoPlano` em `src/lib/types.ts`, mesmos códigos no banco em `plans.code`).
+- Nomes comerciais exibidos ao cliente: Essencial, Gestão e Rede — mapeiam 1:1 para `essencial`/`equipe`/`pro`, respectivamente. Um nome comercial pode divergir do código interno (ex.: código `equipe` aparece como "Gestão").
+- Preço (`price_cents`/`precoCentavos`) ainda não foi aprovado comercialmente: é `NULL` ("não definido"), nunca `0`. O site comercial não mostra valor numérico — só "Preço em definição para o piloto" ou "Participe do piloto".
+- Cobrança (processar pagamento, cobrar assinatura) permanece fora de escopo do MVP atual, junto com os itens já listados abaixo.
+
 ## Requisitos obrigatórios antes do piloto
 
 - **Lembrete configurável** — no mínimo dois horários de disparo por padrão: 24 horas e 2 horas antes do agendamento. O estabelecimento deve poder ajustar esses horários.

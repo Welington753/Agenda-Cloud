@@ -34,9 +34,10 @@ export class Plan {
   @Column({ type: 'varchar' })
   name!: string;
 
-  // Sempre inteiro/centavos — nunca float.
-  @Column({ type: 'int' })
-  priceCents!: number;
+  // Sempre inteiro/centavos — nunca float. `null` = preço ainda não aprovado
+  // comercialmente ("não definido"); nunca usar 0 para representar isso.
+  @Column({ type: 'int', nullable: true })
+  priceCents!: number | null;
 
   @Column({ type: 'varchar' })
   shortDescription!: string;

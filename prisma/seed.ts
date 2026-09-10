@@ -53,6 +53,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { createHash } from "node:crypto";
 import { setHours, setMinutes, startOfDay } from "date-fns";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { assertLegacySeedConfirmed } from "./seed-guard";
+
+// Precisa ser a primeira coisa que este módulo faz — antes de ler qualquer
+// variável de ambiente ou criar adapter/client (ver seed-guard.ts).
+assertLegacySeedConfirmed();
 
 loadEnvConfig(process.cwd());
 
@@ -135,7 +140,16 @@ const DIAS_SEG_A_SEX = [1, 2, 3, 4, 5];
 const DIAS_SEG_A_SAB = [1, 2, 3, 4, 5, 6];
 
 // ---------------------------------------------------------------------------
-// Planos e features (src/lib/planos.ts)
+// Planos e features — dado histórico de fixture do seed legado (Prisma está
+// congelado desde o Lote 6B.2, ver docs/plans/fundacao-postgresql.md).
+//
+// `priceCents` abaixo NÃO é preço comercial aprovado — é só dado de fixture
+// para popular o banco de testes legado. O catálogo real vive em TypeORM
+// (backend/src/migrations/1788782460000-InitialPlanCatalog.ts) e em
+// src/lib/planos.ts, onde o preço é `null` (ainda não definido
+// comercialmente). Este seed não é sincronizado de volta para refletir isso —
+// mudar os valores aqui quebraria a suíte de testes de banco legada sem
+// nenhum ganho, já que nada os lê como preço real.
 // ---------------------------------------------------------------------------
 
 const FEATURES: { key: string; label: string }[] = [

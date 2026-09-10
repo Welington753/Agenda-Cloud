@@ -26,9 +26,15 @@ export default function MasterDashboardPage() {
       (s, e) => s + agendamentoRepository.listarPorTenant(e.tenantId).length,
       0
     );
-    const mrrCentavos = estabelecimentos
+    // `precoCentavos` de plano pode ser `null` (preço ainda não aprovado
+    // comercialmente) — nesse caso o MRR real não é calculável, então o
+    // resultado vira `null` em vez de tratar o plano sem preço como R$ 0.
+    const precosAtivos = estabelecimentos
       .filter((e) => e.status === "ativo" || e.status === "inadimplente")
-      .reduce((s, e) => s + obterDefinicaoPlano(e.plano).precoCentavos, 0);
+      .map((e) => obterDefinicaoPlano(e.plano).precoCentavos);
+    const mrrCentavos = precosAtivos.every((preco): preco is number => preco !== null)
+      ? precosAtivos.reduce((s, preco) => s + preco, 0)
+      : null;
 
     return {
       estabelecimentos,
@@ -74,7 +80,7 @@ export default function MasterDashboardPage() {
         <EstatisticaCard
           icone={DollarSign}
           rotulo="Receita recorrente simulada"
-          valor={formatarMoeda(dados.mrrCentavos)}
+          valor={dados.mrrCentavos === null ? "Não disponível" : formatarMoeda(dados.mrrCentavos)}
           corIcone="accent"
         />
       </div>

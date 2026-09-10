@@ -25,6 +25,10 @@ const envSchema = z.object({
     .string()
     .min(1)
     .refine((value) => POSTGRES_URL_PATTERN.test(value)),
+  // Origem exata liberada no CORS (Lote 6B.2) — nunca wildcard, porque o
+  // backend usa `credentials: true` (cookie de sessão) e o CORS nunca pode
+  // combinar as duas coisas com `*`.
+  FRONTEND_URL: z.string().url(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

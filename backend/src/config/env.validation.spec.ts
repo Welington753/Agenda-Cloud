@@ -6,6 +6,7 @@ const CONFIG_VALIDA = {
   PORT: '3001',
   DATABASE_URL: 'postgresql://user:pass@host:5432/db',
   DIRECT_URL: 'postgresql://user:pass@host:5432/db',
+  FRONTEND_URL: 'http://localhost:3000',
 };
 
 describe('validateEnv', () => {
@@ -29,6 +30,17 @@ describe('validateEnv', () => {
   it('lança erro explícito quando DIRECT_URL está ausente', () => {
     const { DIRECT_URL: _url, ...semDirectUrl } = CONFIG_VALIDA;
     expect(() => validateEnv(semDirectUrl)).toThrow(/DIRECT_URL/);
+  });
+
+  it('lança erro explícito quando FRONTEND_URL está ausente', () => {
+    const { FRONTEND_URL: _url, ...semFrontendUrl } = CONFIG_VALIDA;
+    expect(() => validateEnv(semFrontendUrl)).toThrow(/FRONTEND_URL/);
+  });
+
+  it('lança erro explícito quando FRONTEND_URL não é uma URL válida', () => {
+    expect(() =>
+      validateEnv({ ...CONFIG_VALIDA, FRONTEND_URL: 'nao-e-uma-url' }),
+    ).toThrow(/FRONTEND_URL/);
   });
 
   it('lança erro explícito quando DATABASE_URL não é uma connection string postgres', () => {
