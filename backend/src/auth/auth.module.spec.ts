@@ -36,20 +36,35 @@ const VALID_LOGIN_BODY = {
   password: 'senha-valida-123',
 };
 
-const FAKE_AUTH_CONTEXT = {
-  user: { id: 'user_1', name: 'Maria', email: 'maria@example.com' },
-  tenant: { id: 'tenant_1', slug: 'studio-bela', status: 'TRIAL' },
+const FAKE_TENANT_CONTEXT = {
+  membershipId: 'membership_1',
+  tenantId: 'tenant_1',
+  tenantName: 'Studio Bela',
+  tenantSlug: 'studio-bela',
+  role: 'DONO',
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
-  membership: { id: 'membership_1', role: 'DONO' },
-  plan: { code: 'equipe', name: 'Gestão', priceCents: null },
+  planCode: 'equipe',
+  planName: 'Gestão',
   trial: { trialStartAt: new Date(), trialEndAt: new Date(), durationDays: 14 },
+  tenantStatus: 'TRIAL',
 };
+
+const FAKE_SESSION_CONTEXT_RESULT = {
+  user: { id: 'user_1', name: 'Maria', email: 'maria@example.com' },
+  contexts: [FAKE_TENANT_CONTEXT],
+  activeContext: FAKE_TENANT_CONTEXT,
+  requiresTenantSelection: false,
+  hasEstablishmentAccess: true,
+};
+
+const FAKE_IDENTITY_CONTEXT = { userId: 'user_1', sessionId: 'session_1' };
 
 describe('AuthModule', () => {
   let app: INestApplication<App>;
   let registerMock: ReturnType<typeof vi.fn>;
   let loginMock: ReturnType<typeof vi.fn>;
   let logoutMock: ReturnType<typeof vi.fn>;
+  let getSessionContextMock: ReturnType<typeof vi.fn>;
   let guardCanActivateMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -64,12 +79,13 @@ describe('AuthModule', () => {
     }));
     loginMock = vi.fn().mockImplementation(async () => ({
       token: 'token-login-fake',
-      ...FAKE_AUTH_CONTEXT,
+      ...FAKE_SESSION_CONTEXT_RESULT,
     }));
     logoutMock = vi.fn().mockResolvedValue(undefined);
+    getSessionContextMock = vi.fn().mockResolvedValue(FAKE_SESSION_CONTEXT_RESULT);
     guardCanActivateMock = vi.fn().mockImplementation((context) => {
       const req = context.switchToHttp().getRequest();
-      req.auth = FAKE_AUTH_CONTEXT;
+      req.auth = FAKE_IDENTITY_CONTEXT;
       return true;
     });
 
@@ -77,7 +93,12 @@ describe('AuthModule', () => {
       imports: [GlobalDataSourceStubModule, AuthModule],
     })
       .overrideProvider(AuthService)
-      .useValue({ register: registerMock, login: loginMock, logout: logoutMock })
+      .useValue({
+        register: registerMock,
+        login: loginMock,
+        logout: logoutMock,
+        getSessionContext: getSessionContextMock,
+      })
       .overrideProvider(ConfigService)
       .useValue({ getOrThrow: () => 'development' })
       .overrideGuard(SessionGuard)
@@ -170,7 +191,7 @@ describe('AuthModule', () => {
     const response = await request(app.getHttpServer()).get('/auth/me').expect(200);
 
     expect(guardCanActivateMock).toHaveBeenCalledTimes(1);
-    expect(response.body.user).toEqual(FAKE_AUTH_CONTEXT.user);
+    expect(response.body.user).toEqual(FAKE_SESSION_CONTEXT_RESULT.user);
   });
 
   it('GET /auth/me responde 401 quando o guard recusa (sem chamar nenhum método do AuthService)', async () => {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
 import { UserStatus } from '../entities/enums/user-status.enum.js';
-import { AmbiguousSessionContextError, InvalidCredentialsError } from './auth.errors.js';
+import { InvalidCredentialsError } from './auth.errors.js';
 import { AuthService } from './auth.service.js';
 import * as passwordHasher from './password-hasher.js';
 import { DUMMY_PASSWORD_HASH, hashPassword } from './password-hasher.js';
@@ -44,15 +44,23 @@ async function seedFullAccount(
   store.seedUnit({ tenantId: tenant.id, isPrimary: true, name: 'Studio Bela' });
 
   const membershipCount = overrides.membershipCount ?? 1;
+  const extraTenants = [];
   for (let i = 0; i < membershipCount; i++) {
+    let tenantIdForMembership = tenant.id;
+    if (i > 0) {
+      const outro = store.seedTenant({ slug: `outro-${i}`, planId: plan.id });
+      store.seedUnit({ tenantId: outro.id, isPrimary: true, name: `Outro ${i}` });
+      extraTenants.push(outro);
+      tenantIdForMembership = outro.id;
+    }
     store.seedMembership({
       userId: user.id,
-      tenantId: i === 0 ? tenant.id : store.seedTenant({ slug: `outro-${i}` }).id,
+      tenantId: tenantIdForMembership,
       role: EstablishmentRole.DONO,
     });
   }
 
-  return { user, tenant, plan };
+  return { user, tenant, plan, extraTenants };
 }
 
 const VALID_DTO: LoginDto = {
@@ -70,15 +78,17 @@ describe('AuthService.login', () => {
     vi.restoreAllMocks();
   });
 
-  it('credenciais válidas: cria sessão nova e retorna contexto completo', async () => {
+  it('credenciais válidas com 1 vínculo: cria sessão e devolve activeContext preenchido', async () => {
     const { tenant, plan } = await seedFullAccount(store);
 
     const result = await service.login(VALID_DTO, { now: NOW });
 
     expect(result.user.email).toBe(VALID_DTO.email);
-    expect(result.tenant.id).toBe(tenant.id);
-    expect(result.plan.code).toBe(plan.code);
-    expect(result.membership.role).toBe(EstablishmentRole.DONO);
+    expect(result.activeContext?.tenantId).toBe(tenant.id);
+    expect(result.activeContext?.planCode).toBe(plan.code);
+    expect(result.activeContext?.role).toBe(EstablishmentRole.DONO);
+    expect(result.requiresTenantSelection).toBe(false);
+    expect(result.hasEstablishmentAccess).toBe(true);
   });
 
   it('persiste só o tokenHash da nova sessão, nunca o token puro', async () => {
@@ -156,14 +166,18 @@ describe('AuthService.login', () => {
     );
   });
 
-  it('tenant inativo (SUSPENDED) é recusado com o mesmo erro genérico', async () => {
+  it('tenant inativo (SUSPENDED) NÃO invalida a identidade: login sucede sem contexto ativo', async () => {
     await seedFullAccount(store, { tenantStatus: TenantStatus.SUSPENDED });
-    await expect(service.login(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
-      InvalidCredentialsError,
-    );
+
+    const result = await service.login(VALID_DTO, { now: NOW });
+
+    expect(result.activeContext).toBeNull();
+    expect(result.contexts).toHaveLength(0);
+    expect(result.hasEstablishmentAccess).toBe(false);
+    expect(result.requiresTenantSelection).toBe(false);
   });
 
-  it('nenhuma sessão é criada quando o login é recusado', async () => {
+  it('nenhuma sessão é criada quando o login é recusado (identidade inválida)', async () => {
     await seedFullAccount(store, { userStatus: UserStatus.SUSPENDED });
     await expect(service.login(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
       InvalidCredentialsError,
@@ -180,18 +194,29 @@ describe('AuthService.login', () => {
     expect([...store.liveSessions()]).toHaveLength(0);
   });
 
-  it('usuário com zero memberships: erro controlado (AmbiguousSessionContextError), nunca 401 disfarçado de sucesso', async () => {
+  it('usuário com zero memberships: login SUCEDE (identidade válida), sem contexto ativo', async () => {
     await seedFullAccount(store, { membershipCount: 0 });
-    await expect(service.login(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
-      AmbiguousSessionContextError,
-    );
+
+    const result = await service.login(VALID_DTO, { now: NOW });
+
+    expect(result.activeContext).toBeNull();
+    expect(result.contexts).toHaveLength(0);
+    expect(result.hasEstablishmentAccess).toBe(false);
+    expect(result.requiresTenantSelection).toBe(false);
+    expect([...store.liveSessions()]).toHaveLength(1);
   });
 
-  it('usuário com múltiplos memberships: erro controlado, nunca escolhe um tenant arbitrário', async () => {
-    await seedFullAccount(store, { membershipCount: 2 });
-    await expect(service.login(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
-      AmbiguousSessionContextError,
-    );
+  it('usuário com múltiplos memberships: login SUCEDE, requiresTenantSelection=true, nunca escolhe um tenant arbitrário', async () => {
+    const { tenant, extraTenants } = await seedFullAccount(store, { membershipCount: 2 });
+
+    const result = await service.login(VALID_DTO, { now: NOW });
+
+    expect(result.activeContext).toBeNull();
+    expect(result.requiresTenantSelection).toBe(true);
+    expect(result.hasEstablishmentAccess).toBe(true);
+    expect(result.contexts).toHaveLength(2);
+    const tenantIds = result.contexts.map((c) => c.tenantId).sort();
+    expect(tenantIds).toEqual([tenant.id, extraTenants[0].id].sort());
   });
 
   it('cada login gera um token novo — nunca fixação (dois logins seguidos nunca compartilham token)', async () => {

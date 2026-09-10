@@ -27,7 +27,7 @@ import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError }
 import { AuthService } from './auth.service.js';
 import { loginSchema, type LoginDto } from './login.dto.js';
 import { registerSchema, type RegisterDto } from './register.dto.js';
-import { AUTH_CONTEXT_REQUEST_KEY, type AuthenticatedContext } from './session-context.js';
+import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from './session-context.js';
 import { SessionGuard } from './session.guard.js';
 
 const GENERIC_INVALID_CREDENTIALS_MESSAGE = 'Não foi possível entrar com essas credenciais.';
@@ -94,9 +94,9 @@ export class AuthController {
       if (error instanceof InvalidCredentialsError) {
         throw new UnauthorizedException(GENERIC_INVALID_CREDENTIALS_MESSAGE);
       }
-      // Inclui AmbiguousSessionContextError e qualquer erro desconhecido —
-      // nunca uma resposta customizada, deixa o filtro padrão do Nest agir
-      // (500 genérico, sem stack/detalhe de banco).
+      // Qualquer erro desconhecido: nunca uma resposta customizada, deixa o
+      // filtro padrão do Nest agir (500 genérico, sem stack/detalhe de
+      // banco).
       throw error;
     }
 
@@ -105,30 +105,31 @@ export class AuthController {
 
     return {
       user: result.user,
-      tenant: result.tenant,
-      unit: result.unit,
-      membership: result.membership,
-      plan: result.plan,
-      trial: result.trial,
+      contexts: result.contexts,
+      activeContext: result.activeContext,
+      requiresTenantSelection: result.requiresTenantSelection,
+      hasEstablishmentAccess: result.hasEstablishmentAccess,
     };
   }
 
   @Get('me')
   @UseGuards(SessionGuard)
-  me(@Req() req: Request) {
-    // O guard já resolveu e anexou tudo — nenhuma consulta própria aqui
-    // (nunca duplica o trabalho do guard, ver session.guard.ts).
-    const auth = (req as unknown as Record<string, unknown>)[
+  async me(@Req() req: Request) {
+    // O guard só provou IDENTIDADE (ver session.guard.ts) — resolver os
+    // contexts de estabelecimento é uma consulta própria aqui, nunca do
+    // guard (guard nunca escolhe/exige tenant nenhum).
+    const identity = (req as unknown as Record<string, unknown>)[
       AUTH_CONTEXT_REQUEST_KEY
-    ] as AuthenticatedContext;
+    ] as IdentityContext;
+
+    const result = await this.authService.getSessionContext(identity.userId);
 
     return {
-      user: auth.user,
-      tenant: auth.tenant,
-      unit: auth.unit,
-      membership: auth.membership,
-      plan: auth.plan,
-      trial: auth.trial,
+      user: result.user,
+      contexts: result.contexts,
+      activeContext: result.activeContext,
+      requiresTenantSelection: result.requiresTenantSelection,
+      hasEstablishmentAccess: result.hasEstablishmentAccess,
     };
   }
 

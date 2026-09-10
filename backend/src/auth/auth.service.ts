@@ -25,7 +25,6 @@ import { Unit } from '../entities/unit.entity.js';
 import { User } from '../entities/user.entity.js';
 import { DEFAULT_SESSION_MAX_AGE_MS } from '../config/session-cookie.config.js';
 import {
-  AmbiguousSessionContextError,
   EmailAlreadyInUseError,
   InvalidCredentialsError,
   PlanUnavailableError,
@@ -33,7 +32,7 @@ import {
 import type { LoginDto } from './login.dto.js';
 import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher.js';
 import type { RegisterDto } from './register.dto.js';
-import type { AuthenticatedContext } from './session-context.js';
+import type { SessionContextResult, TenantContext } from './session-context.js';
 import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { resolveSlug, slugify } from './slug.js';
 import { isTenantUsableForSession } from './tenant-access.js';
@@ -83,16 +82,10 @@ export interface LoginContext {
   ipAddress?: string;
 }
 
-export interface LoginResult {
+export interface LoginResult extends SessionContextResult {
   /** Só para o controller emitir o cookie depois do COMMIT — nunca serializar
    * isto na resposta HTTP. */
   token: string;
-  user: AuthenticatedContext['user'];
-  tenant: AuthenticatedContext['tenant'];
-  unit: AuthenticatedContext['unit'];
-  membership: AuthenticatedContext['membership'];
-  plan: AuthenticatedContext['plan'];
-  trial: AuthenticatedContext['trial'];
 }
 
 @Injectable()
@@ -237,14 +230,19 @@ export class AuthService {
     };
   }
 
-  /** POST /auth/login (Lote 6B.4). Numa única transação: acha o usuário,
-   * verifica a senha (SEMPRE via Argon2id, com hash fictício fixo quando não
-   * há credencial real para comparar — ver password-hasher.ts), confere
-   * status de usuário/tenant, e só então cria a Session nova. Todo caminho de
-   * recusa (e-mail inexistente, senha errada, credencial ausente, algoritmo
-   * desconhecido, usuário/tenant inativo) rejeita com a MESMA
-   * `InvalidCredentialsError` — nunca uma mensagem diferente por caso, que
-   * seria um oráculo de enumeração de e-mail. */
+  /** POST /auth/login (Lote 6B.4, revisado no 6B.6). Numa única transação:
+   * acha o usuário, verifica a senha (SEMPRE via Argon2id, com hash fictício
+   * fixo quando não há credencial real para comparar — ver
+   * password-hasher.ts) e confere status do usuário — só isso autentica a
+   * IDENTIDADE. Todo caminho de recusa de identidade (e-mail inexistente,
+   * senha errada, credencial ausente, algoritmo desconhecido, usuário
+   * inativo) rejeita com a MESMA `InvalidCredentialsError` — nunca uma
+   * mensagem diferente por caso, que seria um oráculo de enumeração de
+   * e-mail. Uma vez autenticada a identidade, a sessão é criada
+   * incondicionalmente: ter zero, um ou vários vínculos de estabelecimento
+   * (Membership) utilizáveis é um estado de NEGÓCIO válido, nunca motivo
+   * para recusar o login (ver `loadTenantContexts`) — um tenant inativo não
+   * invalida a identidade, só fica fora da lista de contexts. */
   async login(dto: LoginDto, context: LoginContext): Promise<LoginResult> {
     return this.dataSource.transaction(async (manager) => {
       const user = await manager.findOne(User, { where: { email: dto.email } });
@@ -266,19 +264,6 @@ export class AuthService {
         throw new InvalidCredentialsError();
       }
 
-      const memberships = await manager.find(Membership, { where: { userId: user.id } });
-      if (memberships.length !== 1) {
-        // Ver AmbiguousSessionContextError: schema não define contexto ativo
-        // para múltiplos vínculos — nunca inventamos uma escolha aqui.
-        throw new AmbiguousSessionContextError();
-      }
-      const membership = memberships[0];
-
-      const tenant = await manager.findOne(Tenant, { where: { id: membership.tenantId } });
-      if (!tenant || !isTenantUsableForSession(tenant.status)) {
-        throw new InvalidCredentialsError();
-      }
-
       const { token, tokenHash } = generateSessionToken();
       const session = manager.create(Session, {
         userId: user.id,
@@ -289,25 +274,94 @@ export class AuthService {
       });
       await manager.save(session);
 
+      const contexts = await this.loadTenantContexts(manager, user.id);
+
+      return {
+        token,
+        ...this.buildSessionContextResult(user, contexts),
+      };
+    });
+  }
+
+  /** GET /auth/me (Lote 6B.4, revisado no 6B.6). Só leitura — nenhuma
+   * transação, nenhuma escrita. `SessionGuard` já provou a identidade
+   * (sessão válida + usuário ativo); aqui só resolvemos os vínculos de
+   * estabelecimento utilizáveis para montar a resposta. Nunca lança para um
+   * usuário autenticado sem nenhum vínculo — isso é `hasEstablishmentAccess:
+   * false`, nunca um 401/500. */
+  async getSessionContext(userId: string): Promise<SessionContextResult> {
+    const manager = this.dataSource.manager;
+    const user = await manager.findOne(User, { where: { id: userId } });
+    if (!user) {
+      // Não deveria acontecer — o guard acabou de validar este userId.
+      // Propaga como erro desconhecido (500 genérico via filtro padrão do
+      // Nest), nunca finge sucesso com dado inventado.
+      throw new Error('Usuário da sessão autenticada não foi encontrado.');
+    }
+
+    const contexts = await this.loadTenantContexts(manager, user.id);
+    return this.buildSessionContextResult(user, contexts);
+  }
+
+  /** Monta um `TenantContext` por Membership utilizável (tenant TRIAL ou
+   * ACTIVE — ver tenant-access.ts) do usuário; memberships de tenant
+   * inativo (SUSPENDED/PAST_DUE/CANCELED) são silenciosamente excluídas da
+   * lista, nunca causam erro. Reaproveitado por `login` e
+   * `getSessionContext` — única fonte de verdade, os dois nunca podem
+   * divergir sobre o que é um contexto utilizável. */
+  private async loadTenantContexts(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<TenantContext[]> {
+    const memberships = await manager.find(Membership, { where: { userId } });
+    const contexts: TenantContext[] = [];
+
+    for (const membership of memberships) {
+      const tenant = await manager.findOne(Tenant, { where: { id: membership.tenantId } });
+      if (!tenant || !isTenantUsableForSession(tenant.status)) {
+        continue;
+      }
+
       const unit = await manager.findOne(Unit, {
         where: { tenantId: tenant.id, isPrimary: true },
       });
       const plan = await manager.findOne(Plan, { where: { id: tenant.planId } });
       if (!plan) {
-        throw new PlanUnavailableError();
+        // FK RESTRICT garante que isto não deveria acontecer — pula em vez
+        // de quebrar a resposta inteira por um tenant com dado inconsistente.
+        continue;
       }
+
       const { trialStartAt, trialEndAt } = computeTrialWindow(tenant.createdAt);
 
-      return {
-        token,
-        user: { id: user.id, name: user.name, email: user.email },
-        tenant: { id: tenant.id, slug: tenant.slug, status: tenant.status },
+      contexts.push({
+        membershipId: membership.id,
+        tenantId: tenant.id,
+        tenantName: unit?.name ?? tenant.slug,
+        tenantSlug: tenant.slug,
+        role: membership.role,
         unit: unit ? { id: unit.id, name: unit.name, isPrimary: unit.isPrimary } : null,
-        membership: { id: membership.id, role: membership.role },
-        plan: { code: plan.code, name: plan.name, priceCents: plan.priceCents },
+        planCode: plan.code,
+        planName: plan.name,
         trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
-      };
-    });
+        tenantStatus: tenant.status,
+      });
+    }
+
+    return contexts;
+  }
+
+  /** Regra única de decisão de `activeContext`/`requiresTenantSelection`/
+   * `hasEstablishmentAccess` a partir da lista de contexts — nunca escolhe o
+   * primeiro quando há mais de um. */
+  private buildSessionContextResult(user: User, contexts: TenantContext[]): SessionContextResult {
+    return {
+      user: { id: user.id, name: user.name, email: user.email },
+      contexts,
+      activeContext: contexts.length === 1 ? contexts[0] : null,
+      requiresTenantSelection: contexts.length > 1,
+      hasEstablishmentAccess: contexts.length >= 1,
+    };
   }
 
   /** POST /auth/logout (Lote 6B.5). Idempotente por natureza: cookie

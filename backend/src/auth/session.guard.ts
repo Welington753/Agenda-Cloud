@@ -1,24 +1,21 @@
-// Guard de sessão (Lote 6B.4/6B.5) — protege GET /auth/me. Só leitura: usa
-// `dataSource.manager` (sem transação, auto-commit por consulta), nunca
-// escreve nada. Resolve TUDO que o controller precisa (user/tenant/unit/
-// membership/plan/trial já sanitizados) e anexa em `request[AUTH_CONTEXT_
-// REQUEST_KEY]` — o controller nunca repete essas consultas.
+// Guard de sessão (Lote 6B.4, revisado no 6B.6) — protege GET /auth/me. Só
+// autentica IDENTIDADE: sessão válida (não expirada, não revogada) + usuário
+// ativo. Nunca toca Membership/Tenant/Unit/Plan/Credential — resolver quais
+// estabelecimentos o usuário pode usar é responsabilidade de
+// `AuthService.getSessionContext`, chamada pelo controller depois deste
+// guard autorizar (ver auditoria multi-tenant, session-context.ts). Um
+// usuário com zero, um ou vários vínculos de estabelecimento autentica
+// exatamente da mesma forma — nunca é motivo de 401 nem de erro nenhum
+// aqui.
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
-import { Membership } from '../entities/membership.entity.js';
-import { Plan } from '../entities/plan.entity.js';
 import { Session } from '../entities/session.entity.js';
-import { Tenant } from '../entities/tenant.entity.js';
-import { Unit } from '../entities/unit.entity.js';
 import { User } from '../entities/user.entity.js';
 import { UserStatus } from '../entities/enums/user-status.enum.js';
 import { SESSION_COOKIE_NAME } from '../config/session-cookie.config.js';
-import { AmbiguousSessionContextError } from './auth.errors.js';
-import { AUTH_CONTEXT_REQUEST_KEY, type AuthenticatedContext } from './session-context.js';
+import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from './session-context.js';
 import { hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
-import { isTenantUsableForSession } from './tenant-access.js';
-import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
 
 const GENERIC_UNAUTHORIZED_MESSAGE = 'Não autenticado.';
 
@@ -49,34 +46,8 @@ export class SessionGuard implements CanActivate {
       throw new UnauthorizedException(GENERIC_UNAUTHORIZED_MESSAGE);
     }
 
-    const memberships = await manager.find(Membership, { where: { userId: user.id } });
-    if (memberships.length !== 1) {
-      // Ver AmbiguousSessionContextError: nunca escolhe um tenant arbitrário.
-      throw new AmbiguousSessionContextError();
-    }
-    const membership = memberships[0];
-
-    const tenant = await manager.findOne(Tenant, { where: { id: membership.tenantId } });
-    if (!tenant || !isTenantUsableForSession(tenant.status)) {
-      throw new UnauthorizedException(GENERIC_UNAUTHORIZED_MESSAGE);
-    }
-
-    const unit = await manager.findOne(Unit, { where: { tenantId: tenant.id, isPrimary: true } });
-    const plan = await manager.findOne(Plan, { where: { id: tenant.planId } });
-    if (!plan) {
-      throw new UnauthorizedException(GENERIC_UNAUTHORIZED_MESSAGE);
-    }
-    const { trialStartAt, trialEndAt } = computeTrialWindow(tenant.createdAt);
-
-    const authContext: AuthenticatedContext = {
-      user: { id: user.id, name: user.name, email: user.email },
-      tenant: { id: tenant.id, slug: tenant.slug, status: tenant.status },
-      unit: unit ? { id: unit.id, name: unit.name, isPrimary: unit.isPrimary } : null,
-      membership: { id: membership.id, role: membership.role },
-      plan: { code: plan.code, name: plan.name, priceCents: plan.priceCents },
-      trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
-    };
-    (request as unknown as Record<string, unknown>)[AUTH_CONTEXT_REQUEST_KEY] = authContext;
+    const identity: IdentityContext = { userId: user.id, sessionId: session.id };
+    (request as unknown as Record<string, unknown>)[AUTH_CONTEXT_REQUEST_KEY] = identity;
 
     return true;
   }

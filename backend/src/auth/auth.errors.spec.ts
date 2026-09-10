@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  AmbiguousSessionContextError,
-  EmailAlreadyInUseError,
-  InvalidCredentialsError,
-  PlanUnavailableError,
-} from './auth.errors.js';
+import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError } from './auth.errors.js';
 
 describe('EmailAlreadyInUseError', () => {
   it('é uma instância de Error com mensagem própria', () => {
@@ -40,14 +35,5 @@ describe('InvalidCredentialsError', () => {
     expect(mensagem).not.toContain('senha');
     expect(mensagem).not.toContain('inativ');
     expect(mensagem).not.toContain('suspens');
-  });
-});
-
-describe('AmbiguousSessionContextError', () => {
-  it('é uma instância de Error com mensagem própria', () => {
-    const error = new AmbiguousSessionContextError();
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe('AmbiguousSessionContextError');
-    expect(error.message.length).toBeGreaterThan(0);
   });
 });

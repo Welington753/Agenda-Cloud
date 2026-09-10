@@ -28,41 +28,52 @@ const VALID_LOGIN_BODY = {
   password: 'senha-valida-123',
 };
 
-const FAKE_LOGIN_RESULT = {
-  token: 'token-login-e2e-fake',
-  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
-  tenant: { id: 'tenant_1', slug: 'studio-bela', status: 'TRIAL' },
+const FAKE_TENANT_CONTEXT = {
+  membershipId: 'membership_1',
+  tenantId: 'tenant_1',
+  tenantName: 'Studio Bela',
+  tenantSlug: 'studio-bela',
+  role: 'DONO',
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
-  membership: { id: 'membership_1', role: 'DONO' },
-  plan: { code: 'equipe', name: 'Gestão', priceCents: null },
+  planCode: 'equipe',
+  planName: 'Gestão',
   trial: {
     trialStartAt: new Date('2026-09-10T12:00:00.000Z'),
     trialEndAt: new Date('2026-09-24T12:00:00.000Z'),
     durationDays: 14,
   },
+  tenantStatus: 'TRIAL',
 };
 
-const FAKE_AUTH_CONTEXT = {
-  user: FAKE_LOGIN_RESULT.user,
-  tenant: FAKE_LOGIN_RESULT.tenant,
-  unit: FAKE_LOGIN_RESULT.unit,
-  membership: FAKE_LOGIN_RESULT.membership,
-  plan: FAKE_LOGIN_RESULT.plan,
-  trial: FAKE_LOGIN_RESULT.trial,
+const FAKE_SESSION_CONTEXT_RESULT = {
+  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
+  contexts: [FAKE_TENANT_CONTEXT],
+  activeContext: FAKE_TENANT_CONTEXT,
+  requiresTenantSelection: false,
+  hasEstablishmentAccess: true,
 };
+
+const FAKE_LOGIN_RESULT = {
+  token: 'token-login-e2e-fake',
+  ...FAKE_SESSION_CONTEXT_RESULT,
+};
+
+const FAKE_IDENTITY_CONTEXT = { userId: 'user_1', sessionId: 'session_1' };
 
 describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
   let app: INestApplication<App>;
   let loginMock: ReturnType<typeof vi.fn>;
   let logoutMock: ReturnType<typeof vi.fn>;
+  let getSessionContextMock: ReturnType<typeof vi.fn>;
   let guardMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     loginMock = vi.fn().mockResolvedValue(FAKE_LOGIN_RESULT);
     logoutMock = vi.fn().mockResolvedValue(undefined);
+    getSessionContextMock = vi.fn().mockResolvedValue(FAKE_SESSION_CONTEXT_RESULT);
     guardMock = vi.fn().mockImplementation((context) => {
       const req = context.switchToHttp().getRequest();
-      req.auth = FAKE_AUTH_CONTEXT;
+      req.auth = FAKE_IDENTITY_CONTEXT;
       return true;
     });
 
@@ -72,7 +83,12 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
       .overrideProvider(DataSource)
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(AuthService)
-      .useValue({ login: loginMock, logout: logoutMock, register: vi.fn() })
+      .useValue({
+        login: loginMock,
+        logout: logoutMock,
+        register: vi.fn(),
+        getSessionContext: getSessionContextMock,
+      })
       .overrideGuard(SessionGuard)
       .useValue({ canActivate: guardMock })
       .compile();
@@ -97,15 +113,26 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
 
     expect(response.body).toEqual({
       user: FAKE_LOGIN_RESULT.user,
-      tenant: FAKE_LOGIN_RESULT.tenant,
-      unit: FAKE_LOGIN_RESULT.unit,
-      membership: FAKE_LOGIN_RESULT.membership,
-      plan: FAKE_LOGIN_RESULT.plan,
-      trial: {
-        trialStartAt: FAKE_LOGIN_RESULT.trial.trialStartAt.toISOString(),
-        trialEndAt: FAKE_LOGIN_RESULT.trial.trialEndAt.toISOString(),
-        durationDays: 14,
+      contexts: [
+        {
+          ...FAKE_TENANT_CONTEXT,
+          trial: {
+            trialStartAt: FAKE_TENANT_CONTEXT.trial.trialStartAt.toISOString(),
+            trialEndAt: FAKE_TENANT_CONTEXT.trial.trialEndAt.toISOString(),
+            durationDays: 14,
+          },
+        },
+      ],
+      activeContext: {
+        ...FAKE_TENANT_CONTEXT,
+        trial: {
+          trialStartAt: FAKE_TENANT_CONTEXT.trial.trialStartAt.toISOString(),
+          trialEndAt: FAKE_TENANT_CONTEXT.trial.trialEndAt.toISOString(),
+          durationDays: 14,
+        },
       },
+      requiresTenantSelection: false,
+      hasEstablishmentAccess: true,
     });
 
     const setCookie = response.headers['set-cookie'];
@@ -159,7 +186,8 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
       .expect(200);
 
     expect(guardMock).toHaveBeenCalledTimes(1);
-    expect(response.body.user).toEqual(FAKE_AUTH_CONTEXT.user);
+    expect(getSessionContextMock).toHaveBeenCalledWith(FAKE_IDENTITY_CONTEXT.userId);
+    expect(response.body.user).toEqual(FAKE_SESSION_CONTEXT_RESULT.user);
   });
 
   it('GET /auth/me: 401 quando o guard recusa', async () => {

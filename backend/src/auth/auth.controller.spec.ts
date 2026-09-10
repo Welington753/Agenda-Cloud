@@ -9,7 +9,12 @@ import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError }
 import type { AuthService, LoginResult, RegisterResult } from './auth.service.js';
 import type { LoginDto } from './login.dto.js';
 import type { RegisterDto } from './register.dto.js';
-import { AUTH_CONTEXT_REQUEST_KEY, type AuthenticatedContext } from './session-context.js';
+import {
+  AUTH_CONTEXT_REQUEST_KEY,
+  type IdentityContext,
+  type SessionContextResult,
+  type TenantContext,
+} from './session-context.js';
 
 const DTO: RegisterDto = {
   ownerName: 'Maria Souza',
@@ -222,18 +227,30 @@ const LOGIN_DTO: LoginDto = {
   password: 'senha-valida-123',
 };
 
-const LOGIN_SUCCESS_RESULT: LoginResult = {
-  token: 'token-puro-login-nunca-deve-vazar-na-resposta',
-  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
-  tenant: { id: 'tenant_1', slug: 'studio-bela', status: TenantStatus.TRIAL },
+const TENANT_CONTEXT_STUB: TenantContext = {
+  membershipId: 'membership_1',
+  tenantId: 'tenant_1',
+  tenantName: 'Studio Bela',
+  tenantSlug: 'studio-bela',
+  role: EstablishmentRole.DONO,
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
-  membership: { id: 'membership_1', role: EstablishmentRole.DONO },
-  plan: { code: 'equipe', name: 'Gestão', priceCents: null },
+  planCode: 'equipe',
+  planName: 'Gestão',
   trial: {
     trialStartAt: new Date('2026-09-10T12:00:00.000Z'),
     trialEndAt: new Date('2026-09-24T12:00:00.000Z'),
     durationDays: 14,
   },
+  tenantStatus: TenantStatus.TRIAL,
+};
+
+const LOGIN_SUCCESS_RESULT: LoginResult = {
+  token: 'token-puro-login-nunca-deve-vazar-na-resposta',
+  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
+  contexts: [TENANT_CONTEXT_STUB],
+  activeContext: TENANT_CONTEXT_STUB,
+  requiresTenantSelection: false,
+  hasEstablishmentAccess: true,
 };
 
 function buildLoginReqStub() {
@@ -264,11 +281,10 @@ describe('AuthController.login', () => {
 
     expect(response).toEqual({
       user: LOGIN_SUCCESS_RESULT.user,
-      tenant: LOGIN_SUCCESS_RESULT.tenant,
-      unit: LOGIN_SUCCESS_RESULT.unit,
-      membership: LOGIN_SUCCESS_RESULT.membership,
-      plan: LOGIN_SUCCESS_RESULT.plan,
-      trial: LOGIN_SUCCESS_RESULT.trial,
+      contexts: LOGIN_SUCCESS_RESULT.contexts,
+      activeContext: LOGIN_SUCCESS_RESULT.activeContext,
+      requiresTenantSelection: LOGIN_SUCCESS_RESULT.requiresTenantSelection,
+      hasEstablishmentAccess: LOGIN_SUCCESS_RESULT.hasEstablishmentAccess,
     });
   });
 
@@ -336,8 +352,8 @@ describe('AuthController.login', () => {
     }
   });
 
-  it('erro inesperado (ex.: AmbiguousSessionContextError) propaga sem cookie, deixando o filtro padrão do Nest agir', async () => {
-    authService.login.mockRejectedValue(new Error('contexto ambíguo qualquer'));
+  it('erro inesperado propaga sem cookie, deixando o filtro padrão do Nest agir', async () => {
+    authService.login.mockRejectedValue(new Error('falha interna qualquer'));
     const controller = new AuthController(
       authService as unknown as AuthService,
       buildConfigServiceStub('development'),
@@ -345,9 +361,50 @@ describe('AuthController.login', () => {
     const res = buildLoginResStub();
 
     await expect(controller.login(LOGIN_DTO, buildLoginReqStub(), res)).rejects.toThrow(
-      'contexto ambíguo qualquer',
+      'falha interna qualquer',
     );
     expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('múltiplos memberships: repassa contexts/requiresTenantSelection fielmente, sem escolher um', async () => {
+    const doisContextos: LoginResult = {
+      ...LOGIN_SUCCESS_RESULT,
+      contexts: [TENANT_CONTEXT_STUB, { ...TENANT_CONTEXT_STUB, tenantId: 'tenant_2', membershipId: 'membership_2' }],
+      activeContext: null,
+      requiresTenantSelection: true,
+    };
+    authService.login.mockResolvedValue(doisContextos);
+    const controller = new AuthController(
+      authService as unknown as AuthService,
+      buildConfigServiceStub('development'),
+    );
+
+    const response = await controller.login(LOGIN_DTO, buildLoginReqStub(), buildLoginResStub());
+
+    expect(response.activeContext).toBeNull();
+    expect(response.requiresTenantSelection).toBe(true);
+    expect(response.contexts).toHaveLength(2);
+  });
+
+  it('login continua emitindo cookie mesmo sem nenhum estabelecimento (hasEstablishmentAccess=false)', async () => {
+    const semEstabelecimento: LoginResult = {
+      ...LOGIN_SUCCESS_RESULT,
+      contexts: [],
+      activeContext: null,
+      requiresTenantSelection: false,
+      hasEstablishmentAccess: false,
+    };
+    authService.login.mockResolvedValue(semEstabelecimento);
+    const controller = new AuthController(
+      authService as unknown as AuthService,
+      buildConfigServiceStub('development'),
+    );
+    const res = buildLoginResStub();
+
+    const response = await controller.login(LOGIN_DTO, buildLoginReqStub(), res);
+
+    expect(response.hasEstablishmentAccess).toBe(false);
+    expect(res.cookie).toHaveBeenCalled();
   });
 
   it('passa now/userAgent/ipAddress ao serviço a partir do request', async () => {
@@ -366,49 +423,110 @@ describe('AuthController.login', () => {
   });
 });
 
-const AUTH_CONTEXT_STUB: AuthenticatedContext = {
+const IDENTITY_STUB: IdentityContext = { userId: 'user_1', sessionId: 'session_1' };
+
+const SESSION_CONTEXT_RESULT_STUB: SessionContextResult = {
   user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
-  tenant: { id: 'tenant_1', slug: 'studio-bela', status: TenantStatus.TRIAL },
-  unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
-  membership: { id: 'membership_1', role: EstablishmentRole.DONO },
-  plan: { code: 'equipe', name: 'Gestão', priceCents: null },
-  trial: {
-    trialStartAt: new Date('2026-09-10T12:00:00.000Z'),
-    trialEndAt: new Date('2026-09-24T12:00:00.000Z'),
-    durationDays: 14,
-  },
+  contexts: [TENANT_CONTEXT_STUB],
+  activeContext: TENANT_CONTEXT_STUB,
+  requiresTenantSelection: false,
+  hasEstablishmentAccess: true,
 };
 
-function buildMeReqStub(auth: AuthenticatedContext | undefined = AUTH_CONTEXT_STUB) {
-  return { [AUTH_CONTEXT_REQUEST_KEY]: auth } as unknown as Parameters<AuthController['me']>[0];
+function buildMeReqStub(identity: IdentityContext | undefined = IDENTITY_STUB) {
+  return { [AUTH_CONTEXT_REQUEST_KEY]: identity } as unknown as Parameters<AuthController['me']>[0];
 }
 
 describe('AuthController.me', () => {
-  it('retorna o contexto sanitizado anexado pelo guard, sem nenhuma consulta própria', () => {
+  let authService: { getSessionContext: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    authService = { getSessionContext: vi.fn() };
+  });
+
+  it('pede o contexto ao serviço usando o userId anexado pelo guard, nunca outro dado da request', async () => {
+    authService.getSessionContext.mockResolvedValue(SESSION_CONTEXT_RESULT_STUB);
     const controller = new AuthController(
-      {} as unknown as AuthService,
+      authService as unknown as AuthService,
       buildConfigServiceStub('development'),
     );
 
-    const response = controller.me(buildMeReqStub());
+    await controller.me(buildMeReqStub());
+
+    expect(authService.getSessionContext).toHaveBeenCalledWith(IDENTITY_STUB.userId);
+    expect(authService.getSessionContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('exatamente 1 contexto: devolve activeContext preenchido e requiresTenantSelection=false', async () => {
+    authService.getSessionContext.mockResolvedValue(SESSION_CONTEXT_RESULT_STUB);
+    const controller = new AuthController(
+      authService as unknown as AuthService,
+      buildConfigServiceStub('development'),
+    );
+
+    const response = await controller.me(buildMeReqStub());
 
     expect(response).toEqual({
-      user: AUTH_CONTEXT_STUB.user,
-      tenant: AUTH_CONTEXT_STUB.tenant,
-      unit: AUTH_CONTEXT_STUB.unit,
-      membership: AUTH_CONTEXT_STUB.membership,
-      plan: AUTH_CONTEXT_STUB.plan,
-      trial: AUTH_CONTEXT_STUB.trial,
+      user: SESSION_CONTEXT_RESULT_STUB.user,
+      contexts: SESSION_CONTEXT_RESULT_STUB.contexts,
+      activeContext: SESSION_CONTEXT_RESULT_STUB.activeContext,
+      requiresTenantSelection: false,
+      hasEstablishmentAccess: true,
     });
   });
 
-  it('nunca retorna tokenHash, passwordHash ou qualquer dado interno', () => {
+  it('zero contextos: 200 com hasEstablishmentAccess=false, nunca erro', async () => {
+    authService.getSessionContext.mockResolvedValue({
+      user: SESSION_CONTEXT_RESULT_STUB.user,
+      contexts: [],
+      activeContext: null,
+      requiresTenantSelection: false,
+      hasEstablishmentAccess: false,
+    });
     const controller = new AuthController(
-      {} as unknown as AuthService,
+      authService as unknown as AuthService,
       buildConfigServiceStub('development'),
     );
 
-    const response = controller.me(buildMeReqStub());
+    const response = await controller.me(buildMeReqStub());
+
+    expect(response.hasEstablishmentAccess).toBe(false);
+    expect(response.activeContext).toBeNull();
+  });
+
+  it('múltiplos contextos: activeContext=null e requiresTenantSelection=true, nunca escolhe o primeiro', async () => {
+    const segundoContexto: TenantContext = {
+      ...TENANT_CONTEXT_STUB,
+      membershipId: 'membership_2',
+      tenantId: 'tenant_2',
+    };
+    authService.getSessionContext.mockResolvedValue({
+      user: SESSION_CONTEXT_RESULT_STUB.user,
+      contexts: [TENANT_CONTEXT_STUB, segundoContexto],
+      activeContext: null,
+      requiresTenantSelection: true,
+      hasEstablishmentAccess: true,
+    });
+    const controller = new AuthController(
+      authService as unknown as AuthService,
+      buildConfigServiceStub('development'),
+    );
+
+    const response = await controller.me(buildMeReqStub());
+
+    expect(response.activeContext).toBeNull();
+    expect(response.requiresTenantSelection).toBe(true);
+    expect(response.contexts).toEqual([TENANT_CONTEXT_STUB, segundoContexto]);
+  });
+
+  it('nunca retorna tokenHash, passwordHash ou qualquer dado interno', async () => {
+    authService.getSessionContext.mockResolvedValue(SESSION_CONTEXT_RESULT_STUB);
+    const controller = new AuthController(
+      authService as unknown as AuthService,
+      buildConfigServiceStub('development'),
+    );
+
+    const response = await controller.me(buildMeReqStub());
     const serialized = JSON.stringify(response);
 
     expect(serialized).not.toContain('passwordHash');
