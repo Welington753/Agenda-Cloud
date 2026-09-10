@@ -1,0 +1,74 @@
+name: "Apply Lote 6B.2 — guarded production migration"
+
+# Só disparo manual — NUNCA em push ou pull_request. Ver
+# docs/runbooks/migrations-production.md para como disparar e o que cada
+# guarda faz.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Digite exatamente APLICAR_LOTE_6B2_PRODUCTION para confirmar'
+        required: true
+        type: string
+
+# Só um job por vez, nunca dois em paralelo (evita duas migrations correndo
+# ao mesmo tempo contra o mesmo banco). `cancel-in-progress: false` — nunca
+# cancela uma execução já em andamento contra production; uma nova tentativa
+# fica enfileirada, nunca substitui uma que já pode estar no meio da escrita.
+concurrency:
+  group: apply-lote6b2-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply guarded migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Verify branch
+        run: |
+          if [ "${{ github.ref_name }}" != "integration/nestjs-typeorm-frontend" ]; then
+            echo "REFUSED: workflow only runs from integration/nestjs-typeorm-frontend"
+            exit 1
+          fi
+
+      - name: Verify confirmation phrase
+        run: |
+          if [ "${{ inputs.confirmation }}" != "APLICAR_LOTE_6B2_PRODUCTION" ]; then
+            echo "REFUSED: confirmation phrase did not match"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: integration/nestjs-typeorm-frontend
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Nunca imprime segredo nenhum: `apply-lote6b2-production.ts` sanitiza
+      # toda a saída (ver backend/scripts/lib/sanitize.ts) antes de qualquer
+      # `console.log`. Todos os cinco secrets vêm só do GitHub Environment
+      # `production` (nunca de `backend/.env`, que nem existe neste runner).
+      - name: Run guarded production migration
+        working-directory: backend
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          L6B2_PRODUCTION_DIRECT_URL: ${{ secrets.L6B2_PRODUCTION_DIRECT_URL }}
+          L6B2_BACKUP_DIRECT_URL: ${{ secrets.L6B2_BACKUP_DIRECT_URL }}
+          L6B2_PRODUCTION_ENDPOINT_ID: ${{ secrets.L6B2_PRODUCTION_ENDPOINT_ID }}
+          L6B2_BACKUP_ENDPOINT_ID: ${{ secrets.L6B2_BACKUP_ENDPOINT_ID }}
+          L6B2_VALIDATION_ENDPOINT_ID: ${{ secrets.L6B2_VALIDATION_ENDPOINT_ID }}
+          L6B2_BACKUP_BRANCH_NAME: ${{ vars.L6B2_BACKUP_BRANCH_NAME }}
+        run: npm run migrate:production:guarded
