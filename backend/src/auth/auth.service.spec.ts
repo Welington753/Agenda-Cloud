@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { AuditAction } from '../entities/enums/audit-action.enum.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, MAX_SLUG_SAVE_RETRIES } from './auth.service.js';
 import { EmailAlreadyInUseError, PlanUnavailableError } from './auth.errors.js';
 import { CREDENTIAL_ALGORITHM, verifyPassword } from './password-hasher.js';
 import { hashSessionToken } from './session-token.js';
@@ -177,5 +177,69 @@ describe('AuthService.register', () => {
     await expect(service.register(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
       EmailAlreadyInUseError,
     );
+  });
+
+  describe('retry seguro após violação 23505 (transação abortada)', () => {
+    it('colisão real de slug no save (corrida entre checagem e insert) abre uma transação NOVA, sem reaproveitar o EntityManager abortado', async () => {
+      let jaColidiu = false;
+      store.onBeforeTenantSave = () => {
+        if (!jaColidiu) {
+          jaColidiu = true;
+          // Simula outro processo commitando o mesmo slug depois que o
+          // `resolveSlug` desta tentativa já checou (achou livre) — só o
+          // `save` real descobre a colisão, igual ao Postgres.
+          store.seedTenant({ slug: 'studio-bela' });
+        }
+      };
+
+      const result = await service.register(VALID_DTO, { now: NOW });
+
+      expect(result.tenant.slug).toBe('studio-bela-2');
+      // Prova estrutural: uma segunda transação foi aberta de verdade.
+      expect(store.transactionCount).toBe(2);
+      // Prova estrutural: nada da tentativa abortada (o primeiro User criado
+      // antes da colisão) sobrevive fora da tentativa vencedora.
+      const usersComEsseEmail = [...store.liveUsers()].filter(
+        (u) => u.email === VALID_DTO.email,
+      );
+      expect(usersComEsseEmail).toHaveLength(1);
+    });
+
+    it('colisão de e-mail nunca reabre transação (não é uma colisão de slug)', async () => {
+      store.onAfterEmailCheck = () => {
+        store.seedUser({ email: VALID_DTO.email });
+      };
+
+      await expect(service.register(VALID_DTO, { now: NOW })).rejects.toBeInstanceOf(
+        EmailAlreadyInUseError,
+      );
+      expect(store.transactionCount).toBe(1);
+    });
+
+    it('erro desconhecido no meio da transação nunca reabre transação', async () => {
+      store.onAfterSlugCheck = () => {
+        throw new Error('falha simulada no meio da transação');
+      };
+
+      await expect(service.register(VALID_DTO, { now: NOW })).rejects.toThrow(
+        'falha simulada no meio da transação',
+      );
+      expect(store.transactionCount).toBe(1);
+    });
+
+    it('após esgotar as tentativas de colisão real de slug, retorna erro controlado e não deixa dado parcial', async () => {
+      store.onBeforeTenantSave = (slug) => {
+        // Sempre colide, não importa o candidato — força esgotar o limite.
+        store.seedTenant({ slug });
+      };
+
+      await expect(service.register(VALID_DTO, { now: NOW })).rejects.toThrow();
+
+      expect(store.transactionCount).toBe(MAX_SLUG_SAVE_RETRIES);
+      const usersComEsseEmail = [...store.liveUsers()].filter(
+        (u) => u.email === VALID_DTO.email,
+      );
+      expect(usersComEsseEmail).toHaveLength(0);
+    });
   });
 });

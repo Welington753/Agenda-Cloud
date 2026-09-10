@@ -75,12 +75,24 @@ class Snapshot {
 export class InMemoryStore {
   private committed = new Snapshot();
 
+  /** Incrementado a cada `beginTransaction()` — prova estrutural de que uma
+   * colisão de slug abre uma transação NOVA (contador sobe), nunca reaproveita
+   * a mesma (ver `auth.service.ts`, retry via `DataSource.transaction`). */
+  transactionCount = 0;
+
   /** Executado logo após o `findOne` de verificação de e-mail dentro do
    * serviço, antes do `save` — permite simular outro processo inserindo uma
    * linha concorrente entre a checagem e a escrita (corrida real). */
   onAfterEmailCheck?: () => void;
-  /** Mesma ideia, para a corrida de slug. */
+  /** Mesma ideia, para a corrida de slug — dispara na checagem
+   * (`resolveSlug`), antes do `save` do Tenant. */
   onAfterSlugCheck?: () => void;
+  /** Dispara dentro de `TransactionScope.save` para `Tenant`, IMEDIATAMENTE
+   * antes da checagem de unicidade que antecede o INSERT — simula um processo
+   * concorrente commitando entre a checagem de `resolveSlug` e o `save` desta
+   * transação (janela diferente de `onAfterSlugCheck`), forçando uma violação
+   * 23505 real na hora do `save`, não na checagem prévia. */
+  onBeforeTenantSave?: (candidateSlug: string) => void;
 
   get plans() {
     return this.committed.plans;
@@ -166,6 +178,7 @@ export class InMemoryStore {
   /** Instância isolada de trabalho para uma transação — começa como cópia do
    * estado commitado; escritas ficam só aqui até `merge()`. */
   beginTransaction(): TransactionScope {
+    this.transactionCount++;
     const working = new Snapshot();
     for (const key of Object.keys(this.committed) as EntityMapName[]) {
       working[key] = new Map(this.committed[key]);
@@ -190,16 +203,35 @@ export class InMemoryStore {
   }
 }
 
+/** Mesmo texto do Postgres real (`25P02`) para uma transação que já sofreu
+ * erro e não recebeu `ROLLBACK`/`ROLLBACK TO SAVEPOINT` — qualquer comando
+ * novo nela é recusado até o fim da transação. */
+const ABORTED_TRANSACTION_MESSAGE =
+  'current transaction is aborted, commands ignored until end of transaction block';
+
 export class TransactionScope {
+  /** Vira `true` assim que este scope lança uma violação de UNIQUE CONSTRAINT
+   * — a partir daí, qualquer novo `findOne`/`save`/`commit` nele falha, igual
+   * ao Postgres real. Prova estrutural de que o serviço nunca reaproveita o
+   * `EntityManager` de uma transação já abortada (ver auth.service.spec.ts). */
+  private aborted = false;
+
   constructor(
     private readonly working: Snapshot,
     private readonly store: InMemoryStore,
   ) {}
 
+  private assertNotAborted(): void {
+    if (this.aborted) {
+      throw new Error(ABORTED_TRANSACTION_MESSAGE);
+    }
+  }
+
   findOne<T extends object>(
     EntityClass: EntityCtor,
     options: { where: Record<string, unknown> },
   ): T | null {
+    this.assertNotAborted();
     const name = mapNameFor(new EntityClass());
     if (!name) throw new Error(`Fake findOne não suporta ${EntityClass.name}`);
 
@@ -227,9 +259,14 @@ export class TransactionScope {
   }
 
   save<T extends object>(entity: T): T {
+    this.assertNotAborted();
     const name = mapNameFor(entity);
     if (!name) throw new Error(`Fake store não conhece a entidade ${entity.constructor.name}`);
     const map = this.working.mapFor(name);
+
+    if (entity instanceof Tenant) {
+      this.store.onBeforeTenantSave?.((entity as unknown as Tenant).slug);
+    }
 
     const rules = UNIQUE_RULES.get(entity.constructor as EntityCtor) ?? [];
     for (const rule of rules) {
@@ -241,6 +278,9 @@ export class TransactionScope {
           .map((f) => (existing as Record<string, unknown>)[f])
           .join('|');
         if (existingValue === value) {
+          // Igual ao Postgres real: o erro deixa a transação inteira
+          // inutilizável até um ROLLBACK — nenhum comando novo é aceito nela.
+          this.aborted = true;
           throw buildUniqueViolation(rule.constraintName);
         }
       }
@@ -256,6 +296,7 @@ export class TransactionScope {
   }
 
   commit(): void {
+    this.assertNotAborted();
     this.store.replaceCommitted(this.working);
   }
 }
