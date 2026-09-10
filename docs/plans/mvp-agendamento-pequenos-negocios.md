@@ -11,6 +11,18 @@
 - Preço (`price_cents`/`precoCentavos`) ainda não foi aprovado comercialmente: é `NULL` ("não definido"), nunca `0`. O site comercial não mostra valor numérico — só "Preço em definição para o piloto" ou "Participe do piloto".
 - Cobrança (processar pagamento, cobrar assinatura) permanece fora de escopo do MVP atual, junto com os itens já listados abaixo.
 
+## Cadastro de estabelecimento (Lote 6B.3)
+
+- **Implementado no backend:** `POST /auth/register` (`backend/src/auth/`) cria, numa transação TypeORM, o User (sem privilégios de plataforma), a Credential, o Tenant, a Unit principal, a Membership com papel `DONO` e a Session — com rollback total se qualquer etapa falhar. Colisão real de slug do tenant (`uq_tenants_slug`, corrida entre a checagem e o `INSERT`) nunca reaproveita a transação abortada pelo Postgres: abre uma `DataSource.transaction` inteiramente nova (até `MAX_SLUG_SAVE_RETRIES = 3`) e tenta de novo do zero com o próximo slug candidato. Colisão de e-mail e qualquer erro desconhecido nunca disparam retry.
+- **Trial de 14 dias:** todo novo estabelecimento entra automaticamente no plano comercial **Gestão** (código interno `equipe`), com preço ainda `NULL` (não definido comercialmente — ver seção acima). O trial começa no instante da criação da conta e termina exatamente 14 dias depois, sempre calculado em UTC a partir de `Tenant.createdAt` (não há coluna dedicada de trial; início/fim são **derivados** dessa mesma coluna + duração fixa de 14 dias — nunca uma assinatura persistida). Só se aplica ao fluxo de criação de tenant (`POST /auth/register`); nenhum código trata tenant já existente retroativamente como se estivesse em trial.
+- **Pendência explícita:** antes de cobrança real, criar modelo de assinatura com status, início, término, renovação, cancelamento e período pago — `Tenant.createdAt` + 14 dias fixos deixa de ser suficiente assim que existir renovação, upgrade/downgrade de plano ou cobrança de verdade.
+- **Senha:** hash com Argon2id (nunca outro algoritmo), gerado só no servidor; texto puro nunca é persistido, logado ou aparece em mensagem de erro.
+- **Sessão:** opaca (nunca JWT) — token aleatório de 32+ bytes via `node:crypto`, exposto ao cliente só pelo cookie `session_token` (HttpOnly, SameSite=Lax, Secure em produção, Path=/); o banco guarda somente o SHA-256 do token. O cookie só é emitido depois do COMMIT da transação.
+- **Rate limit:** 5 tentativas de cadastro por IP a cada 15 minutos (`express-rate-limit`, `MemoryStore`). O `MemoryStore` só é aceitável para o MVP em instância única — hospedagem horizontal (múltiplas instâncias) vai exigir um store compartilhado (Redis ou equivalente) para o limite valer entre processos, o que ainda não existe.
+- **Pendente para o Lote 6B.4:** login, `GET /auth/me` e logout continuam não implementados — o cadastro cria a sessão inicial, mas não há forma de autenticar de novo com a mesma credencial ainda.
+- **Ainda não verificados:** telefone e e-mail são só armazenados/normalizados no cadastro — nenhuma verificação (código por SMS, confirmação por e-mail) existe nesta etapa.
+- **Frontend:** ainda não conectado a este endpoint — o formulário de onboarding em `/onboarding` continua demonstrativo (ver Lote 6A), sem chamar `POST /auth/register` de verdade.
+
 ## Requisitos obrigatórios antes do piloto
 
 - **Lembrete configurável** — no mínimo dois horários de disparo por padrão: 24 horas e 2 horas antes do agendamento. O estabelecimento deve poder ajustar esses horários.
