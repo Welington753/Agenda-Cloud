@@ -16,6 +16,7 @@ import { AuditAction } from '../entities/enums/audit-action.enum.js';
 import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
+import { UserStatus } from '../entities/enums/user-status.enum.js';
 import { Membership } from '../entities/membership.entity.js';
 import { Plan } from '../entities/plan.entity.js';
 import { Session } from '../entities/session.entity.js';
@@ -23,11 +24,19 @@ import { Tenant } from '../entities/tenant.entity.js';
 import { Unit } from '../entities/unit.entity.js';
 import { User } from '../entities/user.entity.js';
 import { DEFAULT_SESSION_MAX_AGE_MS } from '../config/session-cookie.config.js';
-import { EmailAlreadyInUseError, PlanUnavailableError } from './auth.errors.js';
-import { CREDENTIAL_ALGORITHM, hashPassword } from './password-hasher.js';
+import {
+  AmbiguousSessionContextError,
+  EmailAlreadyInUseError,
+  InvalidCredentialsError,
+  PlanUnavailableError,
+} from './auth.errors.js';
+import type { LoginDto } from './login.dto.js';
+import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher.js';
 import type { RegisterDto } from './register.dto.js';
-import { generateSessionToken } from './session-token.js';
+import type { AuthenticatedContext } from './session-context.js';
+import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { resolveSlug, slugify } from './slug.js';
+import { isTenantUsableForSession } from './tenant-access.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
 import { isUniqueViolation } from './unique-violation.js';
 
@@ -66,6 +75,24 @@ export interface RegisterResult {
   membership: { role: EstablishmentRole };
   plan: { code: string; name: string; priceCents: number | null };
   trial: { trialStartAt: Date; trialEndAt: Date; durationDays: number };
+}
+
+export interface LoginContext {
+  now: Date;
+  userAgent?: string;
+  ipAddress?: string;
+}
+
+export interface LoginResult {
+  /** Só para o controller emitir o cookie depois do COMMIT — nunca serializar
+   * isto na resposta HTTP. */
+  token: string;
+  user: AuthenticatedContext['user'];
+  tenant: AuthenticatedContext['tenant'];
+  unit: AuthenticatedContext['unit'];
+  membership: AuthenticatedContext['membership'];
+  plan: AuthenticatedContext['plan'];
+  trial: AuthenticatedContext['trial'];
 }
 
 @Injectable()
@@ -208,5 +235,101 @@ export class AuthService {
       plan: { code: plan.code, name: plan.name, priceCents: plan.priceCents },
       trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
     };
+  }
+
+  /** POST /auth/login (Lote 6B.4). Numa única transação: acha o usuário,
+   * verifica a senha (SEMPRE via Argon2id, com hash fictício fixo quando não
+   * há credencial real para comparar — ver password-hasher.ts), confere
+   * status de usuário/tenant, e só então cria a Session nova. Todo caminho de
+   * recusa (e-mail inexistente, senha errada, credencial ausente, algoritmo
+   * desconhecido, usuário/tenant inativo) rejeita com a MESMA
+   * `InvalidCredentialsError` — nunca uma mensagem diferente por caso, que
+   * seria um oráculo de enumeração de e-mail. */
+  async login(dto: LoginDto, context: LoginContext): Promise<LoginResult> {
+    return this.dataSource.transaction(async (manager) => {
+      const user = await manager.findOne(User, { where: { email: dto.email } });
+      const credential = user
+        ? await manager.findOne(Credential, { where: { userId: user.id } })
+        : null;
+
+      const hasRealCredential = !!credential && credential.algorithm === CREDENTIAL_ALGORITHM;
+      // SEMPRE roda o Argon2id, com o hash real quando existe ou o fictício
+      // fixo quando não — nunca pula essa chamada, senão o tempo de resposta
+      // por si só revelaria se o e-mail existe.
+      const passwordMatches = await verifyPassword(
+        hasRealCredential ? credential!.passwordHash : DUMMY_PASSWORD_HASH,
+        dto.password,
+      );
+
+      const userActive = !!user && user.status === UserStatus.ACTIVE;
+      if (!hasRealCredential || !passwordMatches || !userActive) {
+        throw new InvalidCredentialsError();
+      }
+
+      const memberships = await manager.find(Membership, { where: { userId: user.id } });
+      if (memberships.length !== 1) {
+        // Ver AmbiguousSessionContextError: schema não define contexto ativo
+        // para múltiplos vínculos — nunca inventamos uma escolha aqui.
+        throw new AmbiguousSessionContextError();
+      }
+      const membership = memberships[0];
+
+      const tenant = await manager.findOne(Tenant, { where: { id: membership.tenantId } });
+      if (!tenant || !isTenantUsableForSession(tenant.status)) {
+        throw new InvalidCredentialsError();
+      }
+
+      const { token, tokenHash } = generateSessionToken();
+      const session = manager.create(Session, {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(context.now.getTime() + DEFAULT_SESSION_MAX_AGE_MS),
+        userAgent: context.userAgent,
+        ipAddress: context.ipAddress,
+      });
+      await manager.save(session);
+
+      const unit = await manager.findOne(Unit, {
+        where: { tenantId: tenant.id, isPrimary: true },
+      });
+      const plan = await manager.findOne(Plan, { where: { id: tenant.planId } });
+      if (!plan) {
+        throw new PlanUnavailableError();
+      }
+      const { trialStartAt, trialEndAt } = computeTrialWindow(tenant.createdAt);
+
+      return {
+        token,
+        user: { id: user.id, name: user.name, email: user.email },
+        tenant: { id: tenant.id, slug: tenant.slug, status: tenant.status },
+        unit: unit ? { id: unit.id, name: unit.name, isPrimary: unit.isPrimary } : null,
+        membership: { id: membership.id, role: membership.role },
+        plan: { code: plan.code, name: plan.name, priceCents: plan.priceCents },
+        trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
+      };
+    });
+  }
+
+  /** POST /auth/logout (Lote 6B.5). Idempotente por natureza: cookie
+   * ausente, token malformado, sessão desconhecida ou já revogada terminam em
+   * no-op silencioso (controller sempre responde 204, nunca revela qual
+   * caso). Só quando a sessão existe e está válida é que roda dentro de uma
+   * transação (revogação atômica). Nenhum AuditLog aqui ainda — pendência
+   * documentada (`AuditAction` não tem LOGIN_SUCCEEDED/LOGOUT; adicionar
+   * exigiria migration, fora do escopo deste lote). */
+  async logout(rawToken: string | undefined): Promise<void> {
+    if (!rawToken || !isValidSessionTokenFormat(rawToken)) {
+      return;
+    }
+    const tokenHash = hashSessionToken(rawToken);
+
+    await this.dataSource.transaction(async (manager) => {
+      const session = await manager.findOne(Session, { where: { tokenHash } });
+      if (!session || session.revokedAt) {
+        return;
+      }
+      session.revokedAt = new Date();
+      await manager.save(session);
+    });
   }
 }

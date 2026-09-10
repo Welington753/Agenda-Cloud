@@ -32,3 +32,18 @@ export function buildSessionCookieOptions(
     maxAge: maxAgeMs,
   };
 }
+
+/** Opções para `res.clearCookie` (logout) — mesma identidade do cookie
+ * (httpOnly/sameSite/secure/path), mas SEM `maxAge`: `clearCookie` funciona
+ * sobrescrevendo `Expires` para uma data no passado, mas `Max-Age` tem
+ * precedência sobre `Expires` no navegador — se herdássemos o `maxAge` de 30
+ * dias de `buildSessionCookieOptions`, o cookie nunca seria limpo de
+ * verdade. */
+export function buildClearSessionCookieOptions(nodeEnv: string): CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: nodeEnv === 'production',
+    path: '/',
+  };
+}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CREDENTIAL_ALGORITHM, hashPassword, verifyPassword } from './password-hasher.js';
+import {
+  CREDENTIAL_ALGORITHM,
+  DUMMY_PASSWORD_HASH,
+  hashPassword,
+  verifyPassword,
+} from './password-hasher.js';
 
 describe('hashPassword', () => {
   it('gera um hash Argon2id verificável', async () => {
@@ -27,5 +32,17 @@ describe('hashPassword', () => {
     const hash1 = await hashPassword('mesma-senha-123');
     const hash2 = await hashPassword('mesma-senha-123');
     expect(hash1).not.toBe(hash2);
+  });
+});
+
+describe('DUMMY_PASSWORD_HASH', () => {
+  it('é um hash Argon2id fixo e válido (usado para mitigar timing em login)', () => {
+    expect(DUMMY_PASSWORD_HASH.startsWith('$argon2id$')).toBe(true);
+  });
+
+  it('é verificável (custo Argon2id real, não um atalho) e nunca bate com senha nenhuma plausível', async () => {
+    await expect(verifyPassword(DUMMY_PASSWORD_HASH, 'qualquer-senha-de-usuario')).resolves.toBe(
+      false,
+    );
   });
 });
