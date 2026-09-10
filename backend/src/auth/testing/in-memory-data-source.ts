@@ -126,6 +126,18 @@ export class InMemoryStore {
     return this.committed.auditLogs.values();
   }
 
+  liveMemberships(): IterableIterator<Membership> {
+    return this.committed.memberships.values();
+  }
+
+  liveTenants(): IterableIterator<Tenant> {
+    return this.committed.tenants.values();
+  }
+
+  liveUnits(): IterableIterator<Unit> {
+    return this.committed.units.values();
+  }
+
   seedPlan(overrides: Partial<Plan> = {}): Plan {
     const plan = Object.assign(new Plan(), {
       id: generateId(),
@@ -173,6 +185,60 @@ export class InMemoryStore {
     });
     this.committed.tenants.set(tenant.id, tenant as Tenant);
     return tenant as Tenant;
+  }
+
+  seedCredential(overrides: Partial<Credential> = {}): Credential {
+    const credential = Object.assign(new Credential(), {
+      id: generateId(),
+      userId: 'user_x',
+      passwordHash: '$argon2id$fake$',
+      algorithm: 'argon2id',
+      updatedAt: new Date(),
+      ...overrides,
+    });
+    this.committed.credentials.set(credential.id, credential as Credential);
+    return credential as Credential;
+  }
+
+  seedMembership(overrides: Partial<Membership> = {}): Membership {
+    const membership = Object.assign(new Membership(), {
+      id: generateId(),
+      userId: 'user_x',
+      tenantId: 'tenant_x',
+      role: 'DONO',
+      createdAt: new Date(),
+      ...overrides,
+    });
+    this.committed.memberships.set(membership.id, membership as Membership);
+    return membership as Membership;
+  }
+
+  seedUnit(overrides: Partial<Unit> = {}): Unit {
+    const unit = Object.assign(new Unit(), {
+      id: generateId(),
+      tenantId: 'tenant_x',
+      name: 'Unidade Principal',
+      address: '',
+      timezone: 'America/Sao_Paulo',
+      isPrimary: true,
+      createdAt: new Date(),
+      ...overrides,
+    });
+    this.committed.units.set(unit.id, unit as Unit);
+    return unit as Unit;
+  }
+
+  seedSession(overrides: Partial<Session> = {}): Session {
+    const session = Object.assign(new Session(), {
+      id: generateId(),
+      userId: 'user_x',
+      tokenHash: 'hash-fake',
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      ...overrides,
+    });
+    this.committed.sessions.set(session.id, session as Session);
+    return session as Session;
   }
 
   /** Instância isolada de trabalho para uma transação — começa como cópia do
@@ -258,6 +324,35 @@ export class TransactionScope {
     return null;
   }
 
+  find<T extends object>(
+    EntityClass: EntityCtor,
+    options: { where: Record<string, unknown> },
+  ): T[] {
+    this.assertNotAborted();
+    const name = mapNameFor(new EntityClass());
+    if (!name) throw new Error(`Fake find não suporta ${EntityClass.name}`);
+
+    // Dedup por id: linhas não tocadas nesta transação existem tanto em
+    // `working` (cópia feita no início da transação) quanto no commitado "ao
+    // vivo" — sem isto, `find` devolveria cada uma duas vezes. `working`
+    // ganha (é a versão mais atual desta transação); só entra do commitado o
+    // que `working` ainda não tem (linha só visível por corrida — outro
+    // processo commitou depois do início desta transação).
+    const byId = new Map<string, object>();
+    for (const entity of this.store.liveCommittedMapFor(name).values()) {
+      byId.set((entity as Record<string, unknown>).id as string, entity);
+    }
+    for (const entity of this.working.mapFor(name).values()) {
+      byId.set((entity as Record<string, unknown>).id as string, entity);
+    }
+
+    return [...byId.values()].filter((entity) =>
+      Object.entries(options.where).every(
+        ([key, value]) => (entity as Record<string, unknown>)[key] === value,
+      ),
+    ) as T[];
+  }
+
   save<T extends object>(entity: T): T {
     this.assertNotAborted();
     const name = mapNameFor(entity);
@@ -312,14 +407,58 @@ export function createFakeEntityManager(scope: TransactionScope): EntityManager 
     ): Promise<T | null> {
       return scope.findOne<T>(EntityClass, options);
     },
+    async find<T extends object>(
+      EntityClass: EntityCtor,
+      options: { where: Record<string, unknown> },
+    ): Promise<T[]> {
+      return scope.find<T>(EntityClass, options);
+    },
     async save<T extends object>(entity: T): Promise<T> {
       return scope.save(entity);
     },
   } as unknown as EntityManager;
 }
 
+/** Manager só-leitura, sem transação — equivalente a `DataSource.manager` no
+ * TypeORM real (auto-commit por consulta). Usado pelo guard de sessão, que
+ * nunca escreve nada (ver session.guard.ts): ler direto do estado commitado,
+ * sem o overhead/estado de uma `TransactionScope`. */
+function createReadOnlyFakeEntityManager(store: InMemoryStore): EntityManager {
+  return {
+    async findOne<T extends object>(
+      EntityClass: EntityCtor,
+      options: { where: Record<string, unknown> },
+    ): Promise<T | null> {
+      const name = mapNameFor(new EntityClass());
+      if (!name) throw new Error(`Fake findOne não suporta ${EntityClass.name}`);
+      for (const entity of store.liveCommittedMapFor(name).values()) {
+        const matches = Object.entries(options.where).every(
+          ([key, value]) => (entity as Record<string, unknown>)[key] === value,
+        );
+        if (matches) return entity as T;
+      }
+      return null;
+    },
+    async find<T extends object>(
+      EntityClass: EntityCtor,
+      options: { where: Record<string, unknown> },
+    ): Promise<T[]> {
+      const name = mapNameFor(new EntityClass());
+      if (!name) throw new Error(`Fake find não suporta ${EntityClass.name}`);
+      return [...store.liveCommittedMapFor(name).values()].filter((entity) =>
+        Object.entries(options.where).every(
+          ([key, value]) => (entity as Record<string, unknown>)[key] === value,
+        ),
+      ) as T[];
+    },
+  } as unknown as EntityManager;
+}
+
 export function createFakeDataSource(store: InMemoryStore): DataSource {
   return {
+    get manager(): EntityManager {
+      return createReadOnlyFakeEntityManager(store);
+    },
     async transaction<T>(runInTransaction: (manager: EntityManager) => Promise<T>): Promise<T> {
       const scope = store.beginTransaction();
       const result = await runInTransaction(createFakeEntityManager(scope));

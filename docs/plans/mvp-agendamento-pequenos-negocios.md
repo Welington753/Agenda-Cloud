@@ -19,9 +19,39 @@
 - **Senha:** hash com Argon2id (nunca outro algoritmo), gerado só no servidor; texto puro nunca é persistido, logado ou aparece em mensagem de erro.
 - **Sessão:** opaca (nunca JWT) — token aleatório de 32+ bytes via `node:crypto`, exposto ao cliente só pelo cookie `session_token` (HttpOnly, SameSite=Lax, Secure em produção, Path=/); o banco guarda somente o SHA-256 do token. O cookie só é emitido depois do COMMIT da transação.
 - **Rate limit:** 5 tentativas de cadastro por IP a cada 15 minutos (`express-rate-limit`, `MemoryStore`). O `MemoryStore` só é aceitável para o MVP em instância única — hospedagem horizontal (múltiplas instâncias) vai exigir um store compartilhado (Redis ou equivalente) para o limite valer entre processos, o que ainda não existe.
-- **Pendente para o Lote 6B.4:** login, `GET /auth/me` e logout continuam não implementados — o cadastro cria a sessão inicial, mas não há forma de autenticar de novo com a mesma credencial ainda.
 - **Ainda não verificados:** telefone e e-mail são só armazenados/normalizados no cadastro — nenhuma verificação (código por SMS, confirmação por e-mail) existe nesta etapa.
 - **Frontend:** ainda não conectado a este endpoint — o formulário de onboarding em `/onboarding` continua demonstrativo (ver Lote 6A), sem chamar `POST /auth/register` de verdade.
+
+## Login, sessão e logout (Lotes 6B.4 e 6B.5)
+
+- **Implementado no backend:** `POST /auth/login`, `GET /auth/me` e `POST /auth/logout` (`backend/src/auth/`), reaproveitando o mesmo mecanismo de sessão opaca do cadastro (token de 32+ bytes, SHA-256 no banco, cookie `session_token` HttpOnly/SameSite=Lax/Secure em produção). Nenhuma migration foi necessária — os três endpoints usam só colunas já existentes (`Session.tokenHash/expiresAt/revokedAt`, `Membership`, `Tenant`, `Unit`, `Plan`).
+- **Login:** e-mail normalizado (lowercase/trim) e senha verificada com Argon2id; todo caminho de recusa de IDENTIDADE (e-mail inexistente, senha errada, credencial ausente, algoritmo desconhecido, usuário inativo) responde com o mesmo 401 genérico, sem revelar qual etapa falhou. Quando o e-mail não existe (ou a credencial/algoritmo não é utilizável), a verificação Argon2id ainda roda contra um hash fictício fixo (`DUMMY_PASSWORD_HASH`, gerado uma única vez, nunca por request) para não haver diferença de tempo óbvia entre "e-mail existe" e "e-mail não existe". Sucesso cria uma sessão nova (nunca reaproveita token do cliente — sem fixação) e emite o cookie só depois do COMMIT. Um tenant inativo (SUSPENDED/PAST_DUE/CANCELED) **não invalida a identidade** — o login continua funcionando, o tenant só fica fora da lista de `contexts` da resposta (ver correção multi-tenant abaixo).
+- **GET /auth/me:** protegido por `SessionGuard`, que autentica só a IDENTIDADE (sessão válida + usuário ativo) — sem cookie, cookie malformado, token desconhecido, sessão expirada/revogada ou usuário inativo retornam 401 (formato inválido nunca chega a consultar o banco); o guard nunca toca Membership/Tenant/Unit/Plan/Credential. Depois do guard, o controller pede a `AuthService.getSessionContext(userId)` a lista de estabelecimentos utilizáveis — consulta própria, nunca duplicando o trabalho do guard.
+- **POST /auth/logout:** idempotente — sempre 204, com ou sem cookie, token válido ou não. Sessão válida recebe `revokedAt`; cookie é sempre limpo (`buildClearSessionCookieOptions`, sem `maxAge` — `Max-Age` teria precedência sobre `Expires` no navegador e o cookie nunca seria limpo de verdade).
+- **Rate limit do login:** limiter próprio (`login-rate-limit.ts`), 5 tentativas por IP a cada 15 minutos, instância separada do limiter de cadastro (esgotar um nunca afeta o outro). `GET /auth/me` e `POST /auth/logout` não têm rate limit neste lote.
+- **Pendência explícita — auditoria de login/logout:** o enum `AuditAction` (tipo `audit_action` do Postgres) não tem valores para login/logout bem-sucedidos; adicionar exigiria `ALTER TYPE` (migration), fora do escopo permitido nesta tarefa. Login e logout **não geram `AuditLog`** por enquanto. Antes de qualquer exigência de trilha de auditoria de sessão: criar migration adicionando `LOGIN_SUCCEEDED`/`LOGOUT` (ou equivalentes) ao enum, depois implementar os `AuditLog` correspondentes. `Session.createdAt`/`expiresAt`/`revokedAt` continuam servindo de rastreabilidade mínima e provisória enquanto isso não existe.
+- **Frontend:** ainda não conectado a nenhum destes três endpoints.
+
+### Correção multi-tenant (Lote 6B.6)
+
+Um usuário com múltiplos estabelecimentos (várias `Membership`) é um estado de negócio **válido**, nunca um erro — a versão anterior deste lote tratava isso incorretamente como `AmbiguousSessionContextError`/500. Corrigido separando dois contextos:
+
+- **`IdentityContext`** (só o que `SessionGuard` prova): `userId` + `sessionId`. Nunca inclui tenant/membership — um usuário com 0, 1 ou N vínculos autentica exatamente da mesma forma.
+- **`TenantContext`** (um vínculo utilizável — Membership + tenant TRIAL/ACTIVE): `membershipId`, `tenantId`, `tenantName` (derivado do nome da Unit principal, já que `Tenant` não tem coluna própria de nome — cai para `tenantSlug` se não houver unit principal), `tenantSlug`, `role`, `unit` principal, `planCode`, `planName`, `trial` calculado (ver abaixo) e `tenantStatus`. Tenant inativo nunca vira `TenantContext` — fica de fora da lista, silenciosamente.
+
+`POST /auth/login` e `GET /auth/me` devolvem a mesma forma — `{ user, contexts, activeContext, requiresTenantSelection, hasEstablishmentAccess }`:
+
+| `contexts.length` | `activeContext` | `requiresTenantSelection` | `hasEstablishmentAccess` |
+|---|---|---|---|
+| 0 | `null` | `false` | `false` |
+| 1 | o único contexto | `false` | `true` |
+| ≥2 | `null` (nunca o primeiro escolhido arbitrariamente) | `true` | `true` |
+
+Zero contexts (usuário autenticado sem nenhum estabelecimento utilizável) **nunca é erro 500** — é uma resposta 200 normal com `hasEstablishmentAccess: false`. Só sessão ausente/inválida/expirada/revogada ou usuário inativo retornam 401 (decidido pelo guard, antes de qualquer contexto ser resolvido).
+
+**Trial por contexto:** cada `TenantContext` calcula seu próprio `trial` do mesmo jeito do cadastro — `trialStartAt = Tenant.createdAt`, `trialEndAt = trialStartAt + 14 dias`, sempre UTC, sempre **derivado** (nunca persistido), centralizado em `trial-policy.ts` para toda substituição futura por assinatura real acontecer num único lugar.
+
+**Pendência explícita — endpoint de seleção de contexto:** nenhum endpoint de seleção/troca de tenant ativo foi criado neste lote. Quando `requiresTenantSelection: true`, o cliente sabe que precisa perguntar ao usuário qual estabelecimento usar, mas ainda não há como comunicar essa escolha ao backend. Um futuro endpoint autenticado vai receber `membershipId` (nunca um `tenantId` solto) e validar que pertence ao usuário da sessão antes de qualquer coisa. Até lá — e mesmo depois —, **nenhuma rota de negócio pode aceitar um `tenantId` arbitrário vindo do cliente sem validar a Membership correspondente**; isso é responsabilidade de cada rota de negócio, nunca do `SessionGuard`.
 
 ## Requisitos obrigatórios antes do piloto
 

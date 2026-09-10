@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SESSION_MAX_AGE_MS,
   SESSION_COOKIE_NAME,
+  buildClearSessionCookieOptions,
   buildSessionCookieOptions,
 } from './session-cookie.config.js';
 
@@ -38,5 +39,24 @@ describe('buildSessionCookieOptions', () => {
   it('nome do cookie é estável e não revela informação sensível', () => {
     expect(SESSION_COOKIE_NAME).toBe('session_token');
     expect(SESSION_COOKIE_NAME).not.toMatch(/hash|secret|token-real/i);
+  });
+});
+
+describe('buildClearSessionCookieOptions', () => {
+  it('mesmos atributos de identidade do cookie (httpOnly/sameSite/path/secure), para o navegador reconhecer o cookie a limpar', () => {
+    const options = buildClearSessionCookieOptions('production');
+    expect(options.httpOnly).toBe(true);
+    expect(options.sameSite).toBe('lax');
+    expect(options.path).toBe('/');
+    expect(options.secure).toBe(true);
+  });
+
+  it('secure=false fora de produção, igual ao cookie de emissão', () => {
+    expect(buildClearSessionCookieOptions('development').secure).toBe(false);
+  });
+
+  it('NUNCA inclui maxAge — Max-Age sobrepõe Expires no navegador e impediria o clearCookie de limpar de verdade', () => {
+    const options = buildClearSessionCookieOptions('production') as Record<string, unknown>;
+    expect(options.maxAge).toBeUndefined();
   });
 });
