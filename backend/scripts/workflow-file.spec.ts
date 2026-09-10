@@ -97,4 +97,46 @@ describe('.github/workflows/apply-lote6b2-production.yml', () => {
     expect(content).toMatch(/working-directory:\s*backend/);
     expect(content).toContain('npm ci');
   });
+
+  it('actions/checkout e actions/setup-node fixadas por SHA completo de 40 caracteres, nunca por tag móvel', () => {
+    const usesLines = content.match(/uses:\s*\S+/g) ?? [];
+    expect(usesLines.length).toBeGreaterThan(0);
+    for (const line of usesLines) {
+      expect(line).toMatch(/uses:\s*actions\/(checkout|setup-node)@[0-9a-f]{40}/);
+      expect(line).not.toMatch(/@v\d/);
+      expect(line).not.toMatch(/@main\b/);
+    }
+  });
+
+  it('nenhuma Action de terceiro — só actions/checkout e actions/setup-node', () => {
+    const usesLines = content.match(/uses:\s*(\S+)/g) ?? [];
+    for (const line of usesLines) {
+      expect(line).toMatch(/^uses:\s*actions\/(checkout|setup-node)@/);
+    }
+  });
+
+  it('runner é GitHub-hosted (ubuntu-latest), nunca self-hosted', () => {
+    expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
+    expect(content).not.toMatch(/self-hosted/);
+  });
+
+  it('nenhum cache configurado no setup-node nem via actions/cache', () => {
+    expect(content).not.toMatch(/actions\/cache/);
+    expect(content).not.toMatch(/cache:\s*['"]?npm['"]?/);
+  });
+
+  it('checkout usa o SHA exato do disparo (github.sha), nunca ref por input arbitrário', () => {
+    expect(content).toMatch(/ref:\s*\$\{\{\s*github\.sha\s*\}\}/);
+    expect(content).not.toMatch(/inputs\.ref/);
+  });
+
+  it('confirmation e ref_name nunca interpolados direto dentro de um bloco run — sempre via env intermediária', () => {
+    const runBlocks = content.match(/run:\s*\|[\s\S]*?(?=\n\s{6}-\s|\n\s{4}-\s(?!\s)|$)/g) ?? [];
+    for (const block of runBlocks) {
+      expect(block).not.toMatch(/\$\{\{\s*inputs\.confirmation\s*\}\}/);
+      expect(block).not.toMatch(/\$\{\{\s*github\.ref_name\s*\}\}/);
+    }
+    expect(content).toContain('CONFIRMATION_INPUT: ${{ inputs.confirmation }}');
+    expect(content).toContain('CURRENT_REF_NAME: ${{ github.ref_name }}');
+  });
 });

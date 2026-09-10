@@ -108,7 +108,23 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       return { success: false, code: 'ERR_BASELINE_MISMATCH' };
     }
 
-    const productionEnv = { ...deps.env, DIRECT_URL: secrets.productionDirectUrl } as NodeJS.ProcessEnv;
+    // Deny-list explícita, nunca allow-list: o processo filho do TypeORM CLI
+    // precisa do ambiente normal do runner (PATH, HOME, etc.) para achar
+    // node/npm — só os seis valores que o workflow injeta como secret/var
+    // são removidos daqui, nunca repassados ao subprocesso. Isso garante que
+    // a URL de backup, os Endpoint IDs e a frase de confirmação nunca chegam
+    // ao ambiente de `migration:show`/`migration:run`, mesmo que um script
+    // malicioso dentro da própria migration tentasse ler `process.env`.
+    const {
+      L6B2_PRODUCTION_DIRECT_URL: _productionUrl,
+      L6B2_BACKUP_DIRECT_URL: _backupUrl,
+      L6B2_PRODUCTION_ENDPOINT_ID: _productionEndpointId,
+      L6B2_BACKUP_ENDPOINT_ID: _backupEndpointId,
+      L6B2_VALIDATION_ENDPOINT_ID: _validationEndpointId,
+      CONFIRMATION: _confirmation,
+      ...restOfEnv
+    } = deps.env;
+    const productionEnv = { ...restOfEnv, DIRECT_URL: secrets.productionDirectUrl } as NodeJS.ProcessEnv;
     const showResult = await deps.processRunner.run('npm', ['run', 'migration:show'], {
       cwd: 'backend',
       env: productionEnv,
@@ -140,7 +156,12 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
     const productionPostValid = isPostMigrationBaselineValid(productionPostReport);
     deps.log(`BASELINE_PRODUCTION_POST: ${productionPostValid}`);
     if (!productionPostValid) {
-      return { success: false, code: 'ERR_BASELINE_MISMATCH' };
+      // Código distinto dos baselines pré-escrita: aqui `migration:run` já
+      // rodou e saiu com código 0 — escrita ocorreu, só a validação pós não
+      // bateu. Isso é operacionalmente diferente (e mais sério) de nunca ter
+      // tocado em production, e quem lê só o CODE final precisa distinguir
+      // os dois sem abrir o log inteiro.
+      return { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
 
     return { success: true };

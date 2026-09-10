@@ -4,11 +4,14 @@ Este runbook cobre o workflow manual `.github/workflows/apply-lote6b2-production
 
 **Este documento nunca contém, e nunca deve passar a conter, um valor real de credencial, URL de conexão, Endpoint ID ou senha.** Onde um valor real é necessário, o texto diz isso explicitamente e a ação fica para quem está operando, pela interface do GitHub — nunca aqui, nunca colado numa conversa com o Claude.
 
+**Antes de cadastrar qualquer secret, revise o conteúdo do workflow** (`.github/workflows/apply-lote6b2-production.yml`) e dos scripts que ele chama (`backend/scripts/`) — confirme que ainda são só `workflow_dispatch`, que as Actions continuam fixadas por SHA completo (`actions/checkout` e `actions/setup-node`, nunca `@v5` solto), e que nenhum passo novo foi adicionado que imprima variável de ambiente. Só depois disso cadastre os secrets — cadastrar segredo num workflow ainda não revisado é dar acesso a production a qualquer coisa que esteja lá.
+
 ## 1. Criar o GitHub Environment `production`
 
 1. No repositório, vá em **Settings → Environments → New environment**.
 2. Nomeie exatamente `production` (o workflow referencia esse nome; um nome diferente quebra a associação com os secrets).
 3. (Opcional, recomendado) Configure **required reviewers** — ver seção 3.
+4. Em **Deployment branches and tags**, restrinja para **Selected branches** e adicione só `integration/nestjs-typeorm-frontend`. Isso é uma segunda barreira, independente da checagem `Verify branch` dentro do próprio workflow: mesmo que alguém altere o `.yml` numa outra branch para burlar aquela checagem, o GitHub recusa liberar os secrets do environment `production` para qualquer branch fora da lista.
 
 ## 2. Adicionar os cinco secrets
 
@@ -43,6 +46,8 @@ Em **Settings → Environments → production → Deployment protection rules**,
 
 Se seu plano do GitHub não tiver essa opção disponível para repositórios privados, a frase de confirmação exata (seção 4) continua sendo a barreira manual obrigatória.
 
+**Se você é o único mantenedor**, não ative "Prevent self-review" nessa configuração sem ter outra pessoa cadastrada como reviewer — isso deixaria o ambiente `production` travado, sem ninguém apto a aprovar. Nesse caso, o required reviewer serve como confirmação de "eu realmente cliquei em Run workflow", não como segunda pessoa independente — a frase de confirmação exata continua sendo a barreira real contra disparo acidental.
+
 ## 4. Disparar o workflow
 
 1. Confirme que `integration/nestjs-typeorm-frontend` está com tudo que você quer aplicado (o workflow recusa rodar de qualquer outra branch — `ERR_WRONG_BRANCH`).
@@ -63,7 +68,16 @@ O log do workflow mostra só:
 - nomes das migrations aplicadas;
 - `RESULT: SUCCESS` ou `RESULT: FAILURE` + um `CODE:` sanitizado (ex.: `ERR_BASELINE_MISMATCH`).
 
-**Nunca aparece** no log: URL, hostname, usuário, senha, Endpoint ID, query string ou stack trace bruto de erro de conexão — tudo isso é filtrado antes de qualquer `console.log` (ver `backend/scripts/lib/sanitize.ts`). Se você vir algo que parece um pedaço de connection string no log de qualquer execução, trate como incidente de segurança: pare, rotacione as credenciais envolvidas (Neon) e investigue antes de rodar de novo.
+O `CODE:` final distingue os quatro estados possíveis — importante para saber o que fazer a seguir sem precisar reconstruir o que aconteceu:
+
+| Situação | `CODE:` |
+|---|---|
+| Falhou antes de qualquer escrita (confirmação, branch, secret, URL, baseline pré-migration) | `ERR_CONFIRMATION_MISMATCH`, `ERR_WRONG_BRANCH`, `ERR_MISSING_SECRET`, `ERR_INVALID_SCHEME`, `ERR_POOLER_FORBIDDEN`, `ERR_ENDPOINT_MISMATCH`, `ERR_ENDPOINTS_NOT_DISTINCT`, `ERR_BACKUP_AS_PRODUCTION`, `ERR_VALIDATION_AS_PRODUCTION`, ou `ERR_BASELINE_MISMATCH` (quando a checagem que falhou foi `BASELINE_BACKUP` ou `BASELINE_PRODUCTION_PRE` no log) |
+| `migration:run` terminou com código de saída inesperado (estado ambíguo — pode ter escrito parcialmente) | `ERR_AMBIGUOUS_RESULT` |
+| `migration:run` terminou com sucesso (código 0), mas a validação pós-migration não bateu | `ERR_POST_MIGRATION_BASELINE_MISMATCH` |
+| Sucesso integral | `RESULT: SUCCESS`, sem `CODE:` |
+
+**Nunca aparece** no log: URL, hostname, usuário, senha, Endpoint ID, query string ou stack trace bruto de erro de conexão — tudo isso é filtrado antes de qualquer `console.log` (ver `backend/scripts/lib/sanitize.ts`). Se você vir algo que parece um pedaço de connection string no log de qualquer execução, trate como incidente de segurança: **cancele a execução em andamento** (se ainda estiver rodando), **apague o log** da execução (Actions → a execução → ⋯ → Delete workflow run logs — ou peça a um administrador do repositório), e **rotacione imediatamente** as credenciais envolvidas no painel do Neon antes de investigar mais ou rodar de novo.
 
 ## 6. Parar diante de divergência
 
@@ -77,7 +91,7 @@ Se o resultado for `CODE: ERR_AMBIGUOUS_RESULT` (o `migration:run` terminou com 
 
 ## 7. Restaurar usando o backup
 
-Este workflow **nunca escreve no backup** — ele só lê o backup (dentro de uma transação `READ ONLY`, sempre terminando em `ROLLBACK`) para confirmar que o baseline esperado bate antes de tocar em production. O backup existe para uma restauração manual, fora deste workflow, se algo em production precisar ser revertido:
+O branch de backup **permanece intacto depois de qualquer execução** do workflow, sucesso ou falha — nada aqui o substitui, apaga ou expira automaticamente; ele continua existindo até alguém removê-lo manualmente no painel do Neon. Este workflow **nunca escreve no backup** — ele só lê o backup (dentro de uma transação `READ ONLY`, sempre terminando em `ROLLBACK`) para confirmar que o baseline esperado bate antes de tocar em production. O backup existe para uma restauração manual, fora deste workflow, se algo em production precisar ser revertido:
 
 1. Pelo painel do Neon, localize o branch de backup (`L6B2_BACKUP_BRANCH_NAME`).
 2. Use o mecanismo de restore/branch-reset do próprio Neon para promover o backup ou criar um novo branch de production a partir dele — isso é uma operação do painel do Neon, não deste workflow.

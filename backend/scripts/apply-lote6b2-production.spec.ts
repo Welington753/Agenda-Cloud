@@ -227,6 +227,35 @@ describe('applyLote6b2Production', () => {
     expect(runCalls.some((c) => c.args.includes('migration:run'))).toBe(true);
   });
 
+  it('pós-baseline divergente DEPOIS de migration:run bem-sucedido: código distinto de falha pré-escrita', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPostClient } = buildSequencedClient([row(999) /* pós diverge */]);
+    let prodClientCallCount = 0;
+    const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
+
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show')) {
+        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    });
+
+    const { deps } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: prodClientFactory,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_POST_MIGRATION_BASELINE_MISMATCH');
+    expect(result.code).not.toBe('ERR_BASELINE_MISMATCH');
+  });
+
   it('migration:run com código de saída não-zero: reporta falha e NUNCA tenta de novo automaticamente', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
     const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
@@ -287,6 +316,44 @@ describe('applyLote6b2Production', () => {
       (args as string[]).includes('migration:run'),
     );
     expect(migrationRunCalls).toHaveLength(0);
+  });
+
+  it('env do processo filho (migration:show/migration:run) nunca contém secrets além de DIRECT_URL de production', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPostClient } = buildSequencedClient(buildValidPostMigrationSequence());
+    let prodClientCallCount = 0;
+    const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
+
+    const envsSeenByChildProcess: NodeJS.ProcessEnv[] = [];
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args, options) => {
+      envsSeenByChildProcess.push(options?.env ?? {});
+      if (args.includes('migration:show')) {
+        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    });
+
+    const { deps } = buildDeps({
+      env: { ...VALID_ENV, CONFIRMATION: VALID_CONFIRMATION },
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: prodClientFactory,
+      },
+      processRunnerRun,
+    });
+
+    await applyLote6b2Production(deps);
+
+    expect(envsSeenByChildProcess.length).toBeGreaterThan(0);
+    for (const env of envsSeenByChildProcess) {
+      expect(env.L6B2_BACKUP_DIRECT_URL).toBeUndefined();
+      expect(env.L6B2_PRODUCTION_ENDPOINT_ID).toBeUndefined();
+      expect(env.L6B2_BACKUP_ENDPOINT_ID).toBeUndefined();
+      expect(env.L6B2_VALIDATION_ENDPOINT_ID).toBeUndefined();
+      expect(env.CONFIRMATION).toBeUndefined();
+      expect(env.DIRECT_URL).toBe(VALID_ENV.L6B2_PRODUCTION_DIRECT_URL);
+    }
   });
 
   it('saída (log) nunca contém URL/host/senha — só linhas sanitizadas', async () => {

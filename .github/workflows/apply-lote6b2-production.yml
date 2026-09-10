@@ -29,30 +29,57 @@ jobs:
     timeout-minutes: 20
     environment: production
     steps:
+      # Nunca interpola ${{ }} direto dentro do bloco `run:` — valor passa por
+      # variável de ambiente intermediária primeiro. `github.ref_name` e
+      # `inputs.confirmation` são texto vindo de fora do repositório (o
+      # segundo é digitado livremente por quem dispara); interpolar qualquer
+      # um dos dois direto na string do shell permite escapar aspas e injetar
+      # comando (ex.: digitar `"; comando_malicioso; echo "` no campo
+      # confirmation). Usar `$VAR` depois de um `env:` não sofre desse
+      # problema — o shell recebe o valor já como argumento, nunca como parte
+      # do script.
       - name: Verify branch
+        env:
+          CURRENT_REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.ref_name }}" != "integration/nestjs-typeorm-frontend" ]; then
+          if [ "$CURRENT_REF_NAME" != "integration/nestjs-typeorm-frontend" ]; then
             echo "REFUSED: workflow only runs from integration/nestjs-typeorm-frontend"
             exit 1
           fi
 
       - name: Verify confirmation phrase
+        env:
+          CONFIRMATION_INPUT: ${{ inputs.confirmation }}
         run: |
-          if [ "${{ inputs.confirmation }}" != "APLICAR_LOTE_6B2_PRODUCTION" ]; then
+          if [ "$CONFIRMATION_INPUT" != "APLICAR_LOTE_6B2_PRODUCTION" ]; then
             echo "REFUSED: confirmation phrase did not match"
             exit 1
           fi
 
+      # SHA completo (não tag móvel `@v5`) — cada SHA abaixo é o commit
+      # exato por trás da tag oficial no momento da auditoria (conferido via
+      # `gh api repos/actions/<repo>/tags` contra o repositório oficial
+      # `actions/*`). `ref: ${{ github.sha }}` faz checkout do commit exato
+      # que o disparo do workflow apontava — nunca a ponta móvel da branch,
+      # que poderia já ter avançado entre o disparo e este passo. Não há
+      # input de ref: só a branch selecionada na UI do workflow_dispatch
+      # (já validada acima) decide o que roda; nunca PR, fork ou input livre.
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: integration/nestjs-typeorm-frontend
+          ref: ${{ github.sha }}
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
 
+      # `--ignore-scripts` avaliado e descartado: `argon2` (usado no hash de
+      # senha do backend) tem um script `install` (`node-gyp-build`) que
+      # busca/prepara o binário nativo da lib — sem rodar esse script o
+      # pacote fica sem o binário e o backend quebra ao importar `argon2`.
+      # `package-lock.json` é obrigatório e está versionado (`npm ci` falha
+      # sem ele) — nenhum lockfile é gerado/alterado neste passo.
       - name: Install backend dependencies
         working-directory: backend
         run: npm ci
