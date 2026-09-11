@@ -92,6 +92,23 @@ function runNpmScript(scriptName: string): Promise<{ code: number | null; stdout
 }
 
 describe('runner real de migrate:production:guarded (regressão)', () => {
+  it('@types/pg declarado direto no backend — nunca depender de node_modules herdado da raiz', () => {
+    // `pg` (usado em `scripts/lib/pg-client.ts`) não vem com tipos próprios;
+    // sem `@types/pg` como devDependency DIRETA do backend, `tsc
+    // -p tsconfig.scripts.json` só passa por acidente quando roda de dentro
+    // do monorepo completo (a resolução de módulo sobe a árvore e acha
+    // `@types/pg` no node_modules da raiz) — um checkout isolado do backend
+    // (like o runner do CI antes de rodar `npm ci` na raiz) falha com
+    // TS7016. Ver commit que introduziu este teste para o incidente real.
+    const dependenciesHavePg = Boolean(
+      (packageJson as unknown as { dependencies?: Record<string, string> }).dependencies?.pg,
+    );
+    expect(dependenciesHavePg).toBe(true);
+    const devDependencies = (packageJson as unknown as { devDependencies?: Record<string, string> })
+      .devDependencies;
+    expect(devDependencies?.['@types/pg']).toBeDefined();
+  });
+
   it('workflow e package.json usam exatamente o mesmo comando — sem runner divergente', () => {
     const workflowContent = readFileSync(workflowPath, 'utf-8');
     expect(workflowContent).toContain('run: npm run migrate:production:guarded');
