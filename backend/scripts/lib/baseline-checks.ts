@@ -7,11 +7,21 @@
 // chamador (ver apply-lote6b2-production.ts) NUNCA prossegue para
 // `migration:run`.
 import type { PgClientLike } from './pg-client.js';
+import { parseNonNegativeInteger } from './pg-value-parsers.js';
 
 export const EXPECTED_PUBLIC_TABLE_COUNT = 31;
 export const EXPECTED_PLAN_COUNT_POST_MIGRATION = 3;
 export const EXPECTED_FEATURE_COUNT_POST_MIGRATION = 13;
 export const EXPECTED_PLAN_FEATURE_LINK_COUNT_POST_MIGRATION = 22;
+// Nome exato que o TypeORM grava em `typeorm_migrations.name` — a classe
+// `InitialSchema1788782400000` em `src/migrations/1788782400000-InitialSchema.ts`
+// (TypeORM usa o nome da CLASSE, que já inclui o timestamp colado, nunca só
+// a parte textual). O timestamp aqui nunca precisa virar `Number`: ele só
+// existe como parte de um nome opaco comparado por igualdade de string —
+// não há aritmética nem ordenação feita com ele neste código, então
+// comparar a string canônica inteira é suficiente e mais simples que
+// separar e validar um campo numérico à parte.
+export const EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME = 'InitialSchema1788782400000';
 
 async function rollbackSafely(client: PgClientLike): Promise<void> {
   try {
@@ -70,13 +80,13 @@ export async function runPreMigrationBaselineCheck(
     await client.query('ROLLBACK');
 
     return {
-      tableCount: Number(tableCountResult.rows[0]?.count ?? 0),
+      tableCount: parseNonNegativeInteger(tableCountResult.rows[0]?.count, 'table_count'),
       migrationNames: migrationsResult.rows.map((row) => row.name),
       priceCentsIsNotNull: priceCentsResult.rows[0]?.is_nullable === 'NO',
-      planCount: Number(planCountResult.rows[0]?.count ?? 0),
-      featureCount: Number(featureCountResult.rows[0]?.count ?? 0),
-      tenantCount: Number(tenantCountResult.rows[0]?.count ?? 0),
-      userCount: Number(userCountResult.rows[0]?.count ?? 0),
+      planCount: parseNonNegativeInteger(planCountResult.rows[0]?.count, 'plan_count'),
+      featureCount: parseNonNegativeInteger(featureCountResult.rows[0]?.count, 'feature_count'),
+      tenantCount: parseNonNegativeInteger(tenantCountResult.rows[0]?.count, 'tenant_count'),
+      userCount: parseNonNegativeInteger(userCountResult.rows[0]?.count, 'user_count'),
       extensionsPresent: extensionsResult.rows.length >= 1,
     };
   } catch (error) {
@@ -85,18 +95,25 @@ export async function runPreMigrationBaselineCheck(
   }
 }
 
+/** Categorias sanitizadas reprovadas — nomes fixos, nunca dado de query,
+ * seguro para aparecer no log do workflow. Lista vazia = baseline válido;
+ * `isPreMigrationBaselineValid` é só `.length === 0` disto. */
+export function describePreMigrationBaselineFailures(report: PreMigrationBaselineReport): string[] {
+  const failedChecks: string[] = [];
+  if (report.tableCount !== EXPECTED_PUBLIC_TABLE_COUNT) failedChecks.push('table_count');
+  if (report.migrationNames.length !== 1 || report.migrationNames[0] !== EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME) {
+    failedChecks.push('migration_history');
+  }
+  if (!report.priceCentsIsNotNull) failedChecks.push('price_nullability');
+  if (report.planCount !== 0 || report.featureCount !== 0 || report.tenantCount !== 0 || report.userCount !== 0) {
+    failedChecks.push('business_counts');
+  }
+  if (!report.extensionsPresent) failedChecks.push('extensions');
+  return failedChecks;
+}
+
 export function isPreMigrationBaselineValid(report: PreMigrationBaselineReport): boolean {
-  return (
-    report.tableCount === EXPECTED_PUBLIC_TABLE_COUNT &&
-    report.migrationNames.length === 1 &&
-    report.migrationNames[0] === 'InitialSchema' &&
-    report.priceCentsIsNotNull &&
-    report.planCount === 0 &&
-    report.featureCount === 0 &&
-    report.tenantCount === 0 &&
-    report.userCount === 0 &&
-    report.extensionsPresent
-  );
+  return describePreMigrationBaselineFailures(report).length === 0;
 }
 
 export interface PostMigrationBaselineReport {
@@ -142,13 +159,16 @@ export async function runPostMigrationBaselineCheck(
     await client.query('ROLLBACK');
 
     return {
-      migrationCount: Number(migrationCountResult.rows[0]?.count ?? 0),
+      migrationCount: parseNonNegativeInteger(migrationCountResult.rows[0]?.count, 'migration_count'),
       priceCentsIsNullable: priceCentsResult.rows[0]?.is_nullable === 'YES',
-      planCount: Number(planCountResult.rows[0]?.count ?? 0),
-      featureCount: Number(featureCountResult.rows[0]?.count ?? 0),
-      planFeatureLinkCount: Number(planFeatureLinkCountResult.rows[0]?.count ?? 0),
-      tenantCount: Number(tenantCountResult.rows[0]?.count ?? 0),
-      userCount: Number(userCountResult.rows[0]?.count ?? 0),
+      planCount: parseNonNegativeInteger(planCountResult.rows[0]?.count, 'plan_count'),
+      featureCount: parseNonNegativeInteger(featureCountResult.rows[0]?.count, 'feature_count'),
+      planFeatureLinkCount: parseNonNegativeInteger(
+        planFeatureLinkCountResult.rows[0]?.count,
+        'plan_feature_link_count',
+      ),
+      tenantCount: parseNonNegativeInteger(tenantCountResult.rows[0]?.count, 'tenant_count'),
+      userCount: parseNonNegativeInteger(userCountResult.rows[0]?.count, 'user_count'),
     };
   } catch (error) {
     await rollbackSafely(client);
@@ -156,14 +176,21 @@ export async function runPostMigrationBaselineCheck(
   }
 }
 
+export function describePostMigrationBaselineFailures(report: PostMigrationBaselineReport): string[] {
+  const failedChecks: string[] = [];
+  if (report.migrationCount !== 3) failedChecks.push('migration_history');
+  if (!report.priceCentsIsNullable) failedChecks.push('price_nullability');
+  if (
+    report.planCount !== EXPECTED_PLAN_COUNT_POST_MIGRATION ||
+    report.featureCount !== EXPECTED_FEATURE_COUNT_POST_MIGRATION ||
+    report.planFeatureLinkCount !== EXPECTED_PLAN_FEATURE_LINK_COUNT_POST_MIGRATION
+  ) {
+    failedChecks.push('business_counts');
+  }
+  if (report.tenantCount !== 0 || report.userCount !== 0) failedChecks.push('business_counts');
+  return [...new Set(failedChecks)];
+}
+
 export function isPostMigrationBaselineValid(report: PostMigrationBaselineReport): boolean {
-  return (
-    report.migrationCount === 3 &&
-    report.priceCentsIsNullable &&
-    report.planCount === EXPECTED_PLAN_COUNT_POST_MIGRATION &&
-    report.featureCount === EXPECTED_FEATURE_COUNT_POST_MIGRATION &&
-    report.planFeatureLinkCount === EXPECTED_PLAN_FEATURE_LINK_COUNT_POST_MIGRATION &&
-    report.tenantCount === 0 &&
-    report.userCount === 0
-  );
+  return describePostMigrationBaselineFailures(report).length === 0;
 }

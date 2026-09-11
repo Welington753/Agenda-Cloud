@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PgClientLike, PgQueryResult } from './lib/pg-client.js';
 import type { ProcessResult, ProcessRunner } from './lib/process-runner.js';
 import { applyLote6b2Production } from './apply-lote6b2-production.js';
+import { EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME } from './lib/baseline-checks.js';
 
 const VALID_ENV = {
   L6B2_PRODUCTION_DIRECT_URL: 'postgresql://u:p@ep-prod-1.sa-east-1.aws.neon.tech/db',
@@ -21,7 +22,7 @@ function row(count: string | number): PgQueryResult<Record<string, unknown>> {
 function buildValidPreMigrationSequence(): PgQueryResult<Record<string, unknown>>[] {
   return [
     row(31),
-    { rows: [{ name: 'InitialSchema' }] },
+    { rows: [{ name: EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME }] },
     { rows: [{ is_nullable: 'NO' }] },
     row(0),
     row(0),
@@ -150,7 +151,10 @@ describe('applyLote6b2Production', () => {
   });
 
   it('baseline do backup divergente: para SEM nunca conectar em production', async () => {
-    const backupClient = buildSequencedClient([row(30) /* tableCount errado */]).client;
+    const backupClient = buildSequencedClient([
+      row(30), // tableCount errado — resto do relatório completo e válido
+      ...buildValidPreMigrationSequence().slice(1),
+    ]).client;
     const { deps, createClientCalls, processRunner } = buildDeps({
       clientsByUrl: { [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient },
     });
@@ -163,9 +167,29 @@ describe('applyLote6b2Production', () => {
     expect(processRunner.run).not.toHaveBeenCalled();
   });
 
+  it('count malformado do backup (ex.: decimal) nunca vira aprovação — fail-closed, nunca chega em production', async () => {
+    const backupClient = buildSequencedClient([
+      row('31.5'), // tableCount malformado — nunca deve virar número aprovado
+      ...buildValidPreMigrationSequence().slice(1),
+    ]).client;
+    const { deps, createClientCalls, processRunner } = buildDeps({
+      clientsByUrl: { [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient },
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_BASELINE_VALUE_MALFORMED');
+    expect(createClientCalls).toEqual([VALID_ENV.L6B2_BACKUP_DIRECT_URL]);
+    expect(processRunner.run).not.toHaveBeenCalled();
+  });
+
   it('backup só recebe SELECT/BEGIN/ROLLBACK — nunca uma função de escrita', async () => {
     const { client: backupClient, queryLog } = buildSequencedClient(buildValidPreMigrationSequence());
-    const { client: prodClient } = buildSequencedClient([row(30) /* production diverge, para aqui */]);
+    const { client: prodClient } = buildSequencedClient([
+      row(30), // production diverge, para aqui — resto do relatório completo e válido
+      ...buildValidPreMigrationSequence().slice(1),
+    ]);
     const { deps } = buildDeps({
       clientsByUrl: {
         [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
@@ -182,7 +206,10 @@ describe('applyLote6b2Production', () => {
 
   it('baseline pré-migration de production divergente: para sem chamar migration:run', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
-    const { client: prodClient } = buildSequencedClient([row(999) /* tableCount errado */]);
+    const { client: prodClient } = buildSequencedClient([
+      row(999), // tableCount errado — resto do relatório completo e válido
+      ...buildValidPreMigrationSequence().slice(1),
+    ]);
     const { deps, processRunner } = buildDeps({
       clientsByUrl: {
         [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
@@ -230,7 +257,10 @@ describe('applyLote6b2Production', () => {
   it('pós-baseline divergente DEPOIS de migration:run bem-sucedido: código distinto de falha pré-escrita', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
     const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
-    const { client: prodPostClient } = buildSequencedClient([row(999) /* pós diverge */]);
+    const { client: prodPostClient } = buildSequencedClient([
+      row(999), // migrationCount diverge — resto do relatório completo e válido
+      ...buildValidPostMigrationSequence().slice(1),
+    ]);
     let prodClientCallCount = 0;
     const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
 
@@ -296,7 +326,11 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show')) {
-        return { code: 0, stdout: '[X] InitialSchema\n[X] AllowUndefinedPlanPrice\n[X] InitialPlanCatalog', stderr: '' };
+        return {
+          code: 0,
+          stdout: `[X] ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\n[X] AllowUndefinedPlanPrice\n[X] InitialPlanCatalog`,
+          stderr: '',
+        };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
