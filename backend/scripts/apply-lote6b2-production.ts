@@ -32,8 +32,8 @@ import type { PgClientLike } from './lib/pg-client.js';
 import type { ProcessRunner } from './lib/process-runner.js';
 import { toSanitizedFailure, type SanitizedErrorCode } from './lib/sanitize.js';
 import {
-  isPostMigrationBaselineValid,
-  isPreMigrationBaselineValid,
+  describePostMigrationBaselineFailures,
+  describePreMigrationBaselineFailures,
   runPostMigrationBaselineCheck,
   runPreMigrationBaselineCheck,
 } from './lib/baseline-checks.js';
@@ -90,10 +90,17 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       validation: secrets.validationEndpointId,
     });
 
-    const backupReport = await withClient(deps, secrets.backupDirectUrl, runPreMigrationBaselineCheck);
-    const backupValid = isPreMigrationBaselineValid(backupReport);
+    // `_FAILED_CHECKS` loga só nomes fixos de categoria (ver
+    // baseline-checks.ts) — nunca valor de query, nunca URL/host/endpoint.
+    // Existe pra diagnosticar sem precisar reabrir o banco: "table_count"
+    // sozinho aponta contagem de tabela errada, "migration_history" aponta
+    // histórico de migration inesperado, e assim por diante.
+    const backupReportValue = await withClient(deps, secrets.backupDirectUrl, runPreMigrationBaselineCheck);
+    const backupFailedChecks = describePreMigrationBaselineFailures(backupReportValue);
+    const backupValid = backupFailedChecks.length === 0;
     deps.log(`BASELINE_BACKUP: ${backupValid}`);
     if (!backupValid) {
+      deps.log(`BASELINE_BACKUP_FAILED_CHECKS: ${backupFailedChecks.join(',')}`);
       return { success: false, code: 'ERR_BASELINE_MISMATCH' };
     }
 
@@ -102,9 +109,11 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       secrets.productionDirectUrl,
       runPreMigrationBaselineCheck,
     );
-    const productionPreValid = isPreMigrationBaselineValid(productionPreReport);
+    const productionPreFailedChecks = describePreMigrationBaselineFailures(productionPreReport);
+    const productionPreValid = productionPreFailedChecks.length === 0;
     deps.log(`BASELINE_PRODUCTION_PRE: ${productionPreValid}`);
     if (!productionPreValid) {
+      deps.log(`BASELINE_PRODUCTION_PRE_FAILED_CHECKS: ${productionPreFailedChecks.join(',')}`);
       return { success: false, code: 'ERR_BASELINE_MISMATCH' };
     }
 
@@ -153,7 +162,8 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       secrets.productionDirectUrl,
       runPostMigrationBaselineCheck,
     );
-    const productionPostValid = isPostMigrationBaselineValid(productionPostReport);
+    const productionPostFailedChecks = describePostMigrationBaselineFailures(productionPostReport);
+    const productionPostValid = productionPostFailedChecks.length === 0;
     deps.log(`BASELINE_PRODUCTION_POST: ${productionPostValid}`);
     if (!productionPostValid) {
       // Código distinto dos baselines pré-escrita: aqui `migration:run` já
@@ -161,6 +171,7 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       // bateu. Isso é operacionalmente diferente (e mais sério) de nunca ter
       // tocado em production, e quem lê só o CODE final precisa distinguir
       // os dois sem abrir o log inteiro.
+      deps.log(`BASELINE_PRODUCTION_POST_FAILED_CHECKS: ${productionPostFailedChecks.join(',')}`);
       return { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
 
