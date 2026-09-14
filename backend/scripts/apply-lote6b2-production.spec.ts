@@ -234,7 +234,7 @@ describe('applyLote6b2Production', () => {
     const runCalls: Array<{ command: string; args: string[] }> = [];
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (command, args) => {
       runCalls.push({ command, args });
-      if (args.includes('migration:show')) {
+      if (args.includes('migration:show:compiled')) {
         return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
@@ -251,7 +251,7 @@ describe('applyLote6b2Production', () => {
     const result = await applyLote6b2Production(deps);
 
     expect(result.success).toBe(true);
-    expect(runCalls.some((c) => c.args.includes('migration:run'))).toBe(true);
+    expect(runCalls.some((c) => c.args.includes('migration:run:compiled'))).toBe(true);
   });
 
   it('pós-baseline divergente DEPOIS de migration:run bem-sucedido: código distinto de falha pré-escrita', async () => {
@@ -265,7 +265,7 @@ describe('applyLote6b2Production', () => {
     const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
-      if (args.includes('migration:show')) {
+      if (args.includes('migration:show:compiled')) {
         return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
@@ -292,10 +292,10 @@ describe('applyLote6b2Production', () => {
 
     let migrationRunCalls = 0;
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
-      if (args.includes('migration:show')) {
+      if (args.includes('migration:show:compiled')) {
         return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice', stderr: '' };
       }
-      if (args.includes('migration:run')) {
+      if (args.includes('migration:run:compiled')) {
         migrationRunCalls++;
         return { code: 1, stdout: '', stderr: 'connect ETIMEDOUT postgresql://u:p@ep-prod-1.neon.tech/db' };
       }
@@ -317,6 +317,36 @@ describe('applyLote6b2Production', () => {
     expect(migrationRunCalls).toBe(1);
   });
 
+  it('migration:run rejeita (ex.: spawn falhou) depois de MIGRATION_RUN_STARTED: ERR_AMBIGUOUS_RESULT, nunca ERR_UNEXPECTED, nunca retry', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+
+    let migrationRunCalls = 0;
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show:compiled')) {
+        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice', stderr: '' };
+      }
+      migrationRunCalls++;
+      throw new Error('spawn npm ENOENT');
+    });
+
+    const { deps, logLines } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: () => prodPreClient,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_AMBIGUOUS_RESULT');
+    expect(result.code).not.toBe('ERR_UNEXPECTED');
+    expect(migrationRunCalls).toBe(1);
+    expect(logLines).toContain('MIGRATION_RUN_STARTED');
+  });
+
   it('segunda execução (nada pendente): pula migration:run, ainda valida pós-baseline e sucede', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
     const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
@@ -325,7 +355,7 @@ describe('applyLote6b2Production', () => {
     const prodClientFactory = () => (prodCallCount++ === 0 ? prodPreClient : prodPostClient);
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
-      if (args.includes('migration:show')) {
+      if (args.includes('migration:show:compiled')) {
         return {
           code: 0,
           stdout: `[X] ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\n[X] AllowUndefinedPlanPrice\n[X] InitialPlanCatalog`,
@@ -347,7 +377,7 @@ describe('applyLote6b2Production', () => {
 
     expect(result.success).toBe(true);
     const migrationRunCalls = (processRunnerRun as ReturnType<typeof vi.fn>).mock.calls.filter(([, args]) =>
-      (args as string[]).includes('migration:run'),
+      (args as string[]).includes('migration:run:compiled'),
     );
     expect(migrationRunCalls).toHaveLength(0);
   });
@@ -362,7 +392,7 @@ describe('applyLote6b2Production', () => {
     const envsSeenByChildProcess: NodeJS.ProcessEnv[] = [];
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args, options) => {
       envsSeenByChildProcess.push(options?.env ?? {});
-      if (args.includes('migration:show')) {
+      if (args.includes('migration:show:compiled')) {
         return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
@@ -388,6 +418,69 @@ describe('applyLote6b2Production', () => {
       expect(env.CONFIRMATION).toBeUndefined();
       expect(env.DIRECT_URL).toBe(VALID_ENV.L6B2_PRODUCTION_DIRECT_URL);
     }
+  });
+
+  it('migration:show falha ao iniciar o subprocesso (ex.: spawn ENOENT): nunca chama migration:run, código específico pré-escrita, nunca ERR_UNEXPECTED', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+
+    let migrationRunCalls = 0;
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show:compiled')) {
+        // Reproduz falha de spawn (ex.: ENOENT por cwd relativo incorreto) —
+        // o processo filho nunca chega a existir, então rejeita em vez de
+        // resolver com um `code` não-zero.
+        throw new Error('spawn npm ENOENT');
+      }
+      migrationRunCalls++;
+      return { code: 0, stdout: '', stderr: '' };
+    });
+
+    const { deps, logLines } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: () => prodPreClient,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_MIGRATION_SHOW_FAILED');
+    expect(result.code).not.toBe('ERR_UNEXPECTED');
+    expect(migrationRunCalls).toBe(0);
+    expect(logLines).not.toContain('MIGRATION_RUN_STARTED');
+  });
+
+  it('caminho feliz: registra os marcadores de estágio MIGRATION_SHOW_STARTED e MIGRATION_RUN_STARTED, nada além disso sobre o subprocesso', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPostClient } = buildSequencedClient(buildValidPostMigrationSequence());
+    let prodClientCallCount = 0;
+    const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
+
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show:compiled')) {
+        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    });
+
+    const { deps, logLines } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: prodClientFactory,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(true);
+    expect(logLines).toContain('MIGRATION_SHOW_STARTED');
+    expect(logLines).toContain('MIGRATION_RUN_STARTED');
+    expect(logLines.join('\n')).not.toContain('npm run migration');
   });
 
   it('saída (log) nunca contém URL/host/senha — só linhas sanitizadas', async () => {
