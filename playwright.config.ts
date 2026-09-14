@@ -21,14 +21,20 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
+      // `PORT` fixado aqui (nunca herdado do ambiente do job) — um `PORT`
+      // exportado no nível do job de CI vazaria para os DOIS processos
+      // (backend e frontend), fazendo os dois tentarem escutar a mesma porta
+      // (`EADDRINUSE`, causa real de uma falha anterior deste workflow).
       command: "node dist/main.js",
       cwd: "backend",
+      env: { PORT: "3001" },
       url: "http://localhost:3001/auth/me",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
-      command: "npm run start",
+      command: "npm run start -- -p 3000",
+      env: { PORT: "3000" },
       url: "http://localhost:3000/login",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

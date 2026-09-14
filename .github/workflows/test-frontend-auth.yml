@@ -138,10 +138,13 @@ jobs:
       # start) via `webServer` (ver playwright.config.ts) — nunca substitui a
       # UI real nem o backend real por fixture/mocks; só o banco é
       # descartável.
+      # `PORT` nunca aqui — cada processo (backend/frontend) recebe a sua
+      # própria porta fixa via `env` de cada entrada `webServer` do
+      # playwright.config.ts; um `PORT` neste nível vazaria para os dois
+      # processos e faria ambos tentarem escutar a mesma porta.
       - name: Run real browser cookie-flow test (login/session/logout)
         env:
           NODE_ENV: development
-          PORT: "3001"
           DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
           DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
           FRONTEND_URL: "http://localhost:3000"
