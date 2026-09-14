@@ -10,6 +10,11 @@ import { spawn } from 'node:child_process';
 
 export interface ProcessResult {
   code: number | null;
+  // Sinal que encerrou o processo (ex.: `SIGKILL`, `SIGTERM`) quando não
+  // terminou via exit code normal — nunca populado junto com `code`
+  // não-nulo. Usado só para diagnóstico seguro (nunca stdout/stderr bruto,
+  // ver apply-lote6b2-production.ts).
+  signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
 }
@@ -46,7 +51,7 @@ export function createChildProcessRunner(): ProcessRunner {
           stderr += chunk.toString();
         });
         child.on('error', reject);
-        child.on('close', (code) => resolve({ code, stdout, stderr }));
+        child.on('close', (code, signal) => resolve({ code, signal, stdout, stderr }));
       });
     },
   };

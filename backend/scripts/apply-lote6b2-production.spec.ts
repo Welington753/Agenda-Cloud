@@ -90,7 +90,7 @@ function buildDeps(overrides: {
   const processRunner: ProcessRunner = {
     run:
       overrides.processRunnerRun ??
-      vi.fn(async (): Promise<ProcessResult> => ({ code: 0, stdout: '', stderr: '' })),
+      vi.fn(async (): Promise<ProcessResult> => ({ code: 0, stdout: '', stderr: '', signal: null })),
   };
 
   return {
@@ -251,9 +251,9 @@ describe('applyLote6b2Production', () => {
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (command, args) => {
       runCalls.push({ command, args });
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps } = buildDeps({
@@ -282,9 +282,9 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps } = buildDeps({
@@ -309,13 +309,13 @@ describe('applyLote6b2Production', () => {
     let migrationRunCalls = 0;
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
       if (args.includes('migration:run:compiled')) {
         migrationRunCalls++;
-        return { code: 1, stdout: '', stderr: 'connect ETIMEDOUT postgresql://u:p@ep-prod-1.neon.tech/db' };
+        return { code: 1, stdout: '', stderr: 'connect ETIMEDOUT postgresql://u:p@ep-prod-1.neon.tech/db', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps } = buildDeps({
@@ -340,7 +340,7 @@ describe('applyLote6b2Production', () => {
     let migrationRunCalls = 0;
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
       migrationRunCalls++;
       throw new Error('spawn npm ENOENT');
@@ -378,9 +378,9 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ALL_APPLIED, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ALL_APPLIED, stderr: '', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps, logLines } = buildDeps({
@@ -422,9 +422,9 @@ describe('applyLote6b2Production', () => {
 
       const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
         if (args.includes('migration:show:compiled')) {
-          return { code: 0, stdout, stderr: '' };
+          return { code: 0, stdout, stderr: '', signal: null };
         }
-        return { code: 0, stdout: '', stderr: '' };
+        return { code: 0, stdout: '', stderr: '', signal: null };
       });
 
       const { deps } = buildDeps({
@@ -446,6 +446,79 @@ describe('applyLote6b2Production', () => {
     },
   );
 
+  it('saída vazia de migration:show: diagnóstico seguro (bytes/contagens/sinal), nunca stdout/stderr bruto no log', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show:compiled')) {
+        return { code: 0, stdout: '', stderr: 'connect ETIMEDOUT postgresql://u:p@ep-prod-1.neon.tech/db', signal: null };
+      }
+      return { code: 0, stdout: '', stderr: '', signal: null };
+    });
+
+    const { deps, logLines } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: () => prodPreClient,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_MIGRATION_SHOW_INCONSISTENT');
+    expect(logLines).toContain('MIGRATION_SHOW_VALIDATION_FAILED: empty_or_unrecognized');
+    expect(logLines).toContain('MIGRATION_SHOW_STDOUT_BYTES: 0');
+    expect(logLines).toContain('MIGRATION_SHOW_STDERR_BYTES: 57');
+    expect(logLines).toContain('MIGRATION_SHOW_RECOGNIZED_LINE_COUNT: 0');
+    expect(logLines).toContain('MIGRATION_SHOW_SIGNAL: none');
+    const joined = logLines.join('\n');
+    expect(joined).not.toContain('postgresql://');
+    expect(joined).not.toContain('ETIMEDOUT');
+    expect(joined).not.toContain('ep-prod-1');
+  });
+
+  // Causa raiz real da execução #6 (Linux, GitHub Actions): sob `CI=true`,
+  // o TypeORM CLI envolve `[X]`/`[ ]` em ANSI mesmo com stdout sendo um
+  // pipe. `NO_COLOR` no env do subprocesso (ver produção do `productionEnv`
+  // acima) neutraliza isso na origem, então este teste prova que, MESMO que
+  // a saída real ainda viesse com ANSI (defesa em profundidade), o
+  // orquestrador reconhece as migrations e segue o caminho feliz.
+  it('caminho feliz mesmo com saída de migration:show envolta em ANSI (defesa em profundidade contra CI=true)', async () => {
+    const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+    const { client: prodPostClient } = buildSequencedClient(buildValidPostMigrationSequence());
+    let prodClientCallCount = 0;
+    const prodClientFactory = () => (prodClientCallCount++ === 0 ? prodPreClient : prodPostClient);
+
+    const ansiWrappedStdout = [
+      `\x1b[4m[X] 1 ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\x1b[24m`,
+      '\x1b[4m[ ] AllowUndefinedPlanPrice1788782450000\x1b[24m',
+      '\x1b[4m[ ] InitialPlanCatalog1788782460000\x1b[24m',
+    ].join('\n');
+
+    const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+      if (args.includes('migration:show:compiled')) {
+        return { code: 0, stdout: ansiWrappedStdout, stderr: '', signal: null };
+      }
+      return { code: 0, stdout: '', stderr: '', signal: null };
+    });
+
+    const { deps } = buildDeps({
+      clientsByUrl: {
+        [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: prodClientFactory,
+      },
+      processRunnerRun,
+    });
+
+    const result = await applyLote6b2Production(deps);
+
+    expect(result.success).toBe(true);
+  });
+
   it('env do processo filho (migration:show/migration:run) nunca contém secrets além de DIRECT_URL de production', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
     const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
@@ -457,9 +530,9 @@ describe('applyLote6b2Production', () => {
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args, options) => {
       envsSeenByChildProcess.push(options?.env ?? {});
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps } = buildDeps({
@@ -481,6 +554,11 @@ describe('applyLote6b2Production', () => {
       expect(env.L6B2_VALIDATION_ENDPOINT_ID).toBeUndefined();
       expect(env.CONFIRMATION).toBeUndefined();
       expect(env.DIRECT_URL).toBe(VALID_ENV.L6B2_PRODUCTION_DIRECT_URL);
+      // Causa raiz real (execução #6): sem isso, sob `CI=true` do runner do
+      // GitHub Actions, o TypeORM CLI imprime `[X]`/`[ ]` envoltos em ANSI
+      // (ver migration-output.ts) e o parser deixa de reconhecer qualquer
+      // linha.
+      expect(env.NO_COLOR).toBe('1');
     }
   });
 
@@ -497,7 +575,7 @@ describe('applyLote6b2Production', () => {
         throw new Error('spawn npm ENOENT');
       }
       migrationRunCalls++;
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps, logLines } = buildDeps({
@@ -526,9 +604,9 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '', signal: null };
       }
-      return { code: 0, stdout: '', stderr: '' };
+      return { code: 0, stdout: '', stderr: '', signal: null };
     });
 
     const { deps, logLines } = buildDeps({
