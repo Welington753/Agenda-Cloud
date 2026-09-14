@@ -12,7 +12,8 @@
 // qual estado resulta de cada resposta vive lá, não aqui.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import * as authApi from "@/lib/api/auth-api";
-import type { ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
+import type { DadosCadastroReal, ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
+import { decidirFluxoCadastro, type ResultadoFluxoCadastro } from "./cadastro-fluxo";
 import {
   podeAplicarResultado,
   reduzirResultadoSessao,
@@ -31,6 +32,12 @@ export interface ResultadoLogout {
 interface RealAuthContextValue {
   estado: EstadoAutenticacaoReal;
   login: (email: string, senha: string) => Promise<ResultadoAutenticacaoReal<SessaoRealContexto>>;
+  /** POST /auth/register e, só se ele confirmar, restauração do contexto por
+   * /auth/me. Nunca reenvia o cadastro por conta própria. */
+  cadastrar: (dados: DadosCadastroReal) => Promise<ResultadoFluxoCadastro>;
+  /** Repete SÓ o /auth/me — recuperação do estado `sessao_pendente` sem
+   * reenviar POST /auth/register. */
+  restaurarSessao: () => Promise<ResultadoFluxoCadastro>;
   logout: () => Promise<ResultadoLogout>;
   recarregar: () => void;
   selecionarTenantAtivo: (tenantId: string) => boolean;
@@ -47,11 +54,16 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   // /auth/me restaurar a sessão depois de um logout.
   const geracaoRef = useRef(0);
 
-  const carregarSessao = useCallback(async () => {
+  // Devolve o estado efetivamente aplicado, ou `null` quando a resposta
+  // chegou tarde demais (geração mudou) e foi descartada — quem chamou
+  // precisa saber a diferença entre "sessão restaurada" e "não deu".
+  const carregarSessao = useCallback(async (): Promise<EstadoAutenticacaoReal | null> => {
     const geracaoDaChamada = geracaoRef.current;
     const resultado = await authApi.buscarSessaoAtual();
-    if (!podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) return;
-    setEstado(reduzirResultadoSessao(resultado, lerPreferenciaTenant()));
+    if (!podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) return null;
+    const proximo = reduzirResultadoSessao(resultado, lerPreferenciaTenant());
+    setEstado(proximo);
+    return proximo;
   }, []);
 
   useEffect(() => {
@@ -67,6 +79,30 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     }
     return resultado;
   }, []);
+
+  // `cadastrar` nunca repete o POST sozinho: uma única tentativa por chamada.
+  // Se o register confirmar (201) mas o /auth/me falhar, o resultado é
+  // `sessao_pendente` — a conta JÁ existe, e a recuperação correta é
+  // `restaurarSessao` (só /auth/me), nunca outro cadastro.
+  const cadastrar = useCallback(
+    async (dados: DadosCadastroReal): Promise<ResultadoFluxoCadastro> => {
+      const resultado = await authApi.cadastrar(dados);
+      if (!resultado.ok) return decidirFluxoCadastro(false, resultado.falha, null);
+
+      // Cadastro confirmado: a partir daqui o cookie de sessão já existe no
+      // navegador, então qualquer /auth/me em voo de antes está obsoleto.
+      geracaoRef.current += 1;
+      const estadoFinal = await carregarSessao();
+      return decidirFluxoCadastro(true, null, estadoFinal);
+    },
+    [carregarSessao],
+  );
+
+  const restaurarSessao = useCallback(async (): Promise<ResultadoFluxoCadastro> => {
+    geracaoRef.current += 1;
+    const estadoFinal = await carregarSessao();
+    return decidirFluxoCadastro(true, null, estadoFinal);
+  }, [carregarSessao]);
 
   const logout = useCallback(async (): Promise<ResultadoLogout> => {
     // Sai imediatamente na UI (otimista) — nunca deixa a tela autenticada
@@ -96,7 +132,9 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <RealAuthContext.Provider value={{ estado, login, logout, recarregar, selecionarTenantAtivo }}>
+    <RealAuthContext.Provider
+      value={{ estado, login, cadastrar, restaurarSessao, logout, recarregar, selecionarTenantAtivo }}
+    >
       {children}
     </RealAuthContext.Provider>
   );
