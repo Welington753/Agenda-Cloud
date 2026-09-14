@@ -200,6 +200,15 @@ function LoginPageConteudo() {
             </Botao>
           </form>
 
+          {/* Cadastro real (Lote 6C.2) — outra conta de verdade, nunca a
+              demonstração abaixo. */}
+          <p className="text-center text-sm text-ink-soft">
+            Ainda não tem conta?{" "}
+            <Link href="/cadastro" className="font-medium text-accent hover:underline">
+              Criar conta
+            </Link>
+          </p>
+
           <details className="rounded-[var(--radius-card)] border border-dashed border-border">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink">
               Ambiente de demonstração (sem conta real)

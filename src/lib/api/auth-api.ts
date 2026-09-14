@@ -1,4 +1,5 @@
-// Funções tipadas de POST /auth/login, GET /auth/me e POST /auth/logout —
+// Funções tipadas de POST /auth/register, POST /auth/login, GET /auth/me e
+// POST /auth/logout —
 // espelha exatamente o contrato de `backend/src/auth/session-context.ts` e
 // `auth.controller.ts`. Nenhum campo inventado aqui: `role`/`tenantStatus` são
 // os literais do enum do backend (`EstablishmentRole`/`TenantStatus`), nunca
@@ -92,4 +93,83 @@ export async function logout(): Promise<ResultadoAutenticacaoReal<void>> {
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (resultado.kind === "http-error") return { ok: false, falha: { tipo: "indisponivel" } };
   return { ok: true, dados: undefined };
+}
+
+// --- Cadastro (Lote 6C.2) -------------------------------------------------
+// Espelha `backend/src/auth/register.dto.ts` (corpo enviado) e o retorno de
+// `AuthController.register` (que NÃO é o mesmo shape de `/auth/login`: aqui
+// vem `tenant`/`unit`/`membership`/`plan`/`trial` soltos, sem `contexts`).
+// Por isso o contexto de sessão depois do cadastro vem sempre de `/auth/me`,
+// nunca de uma conversão adivinhada desta resposta.
+
+export interface DadosCadastroReal {
+  ownerName: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  /** Nunca persistida em lugar nenhum do cliente — só viaja no corpo do POST. */
+  password: string;
+}
+
+export interface CadastroRealResposta {
+  user: { id: string; name: string; email: string };
+  tenant: { id: string; slug: string; status: StatusTenantReal };
+  unit: { id: string; name: string; isPrimary: boolean };
+  membership: { role: PapelEstabelecimentoReal };
+  plan: { code: string; name: string; priceCents: number | null };
+  trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
+}
+
+export type FalhaCadastroReal =
+  /** 400 do `ZodValidationPipe`: o backend recusou o formato. `mensagem` é a
+   * do próprio backend, que por contrato nunca ecoa o valor recebido. */
+  | { tipo: "dados_invalidos"; mensagem: string | null }
+  | { tipo: "email_em_uso" }
+  | { tipo: "limite_tentativas" }
+  | { tipo: "falha_comunicacao" }
+  | { tipo: "indisponivel" };
+
+export type ResultadoCadastroReal =
+  | { ok: true; dados: CadastroRealResposta }
+  | { ok: false; falha: FalhaCadastroReal };
+
+function ehCadastroRealResposta(valor: unknown): valor is CadastroRealResposta {
+  if (typeof valor !== "object" || valor === null) return false;
+  const v = valor as Record<string, unknown>;
+  const user = v.user as Record<string, unknown> | undefined;
+  const tenant = v.tenant as Record<string, unknown> | undefined;
+  if (!user || typeof user.id !== "string" || typeof user.email !== "string") return false;
+  return !!tenant && typeof tenant.id === "string" && typeof tenant.slug === "string";
+}
+
+function mensagemDeErroDoBackend(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const mensagem = (data as Record<string, unknown>).message;
+  return typeof mensagem === "string" ? mensagem : null;
+}
+
+/**
+ * POST /auth/register. Em caso de sucesso o backend já emitiu o cookie
+ * HttpOnly de sessão (ver auth.controller.ts) — esta função nunca devolve
+ * token nenhum e nunca guarda a senha.
+ *
+ * `network-error` aqui significa APENAS "não houve resposta"; é impossível
+ * saber se o servidor chegou a criar a conta, então o tipo devolvido é
+ * `falha_comunicacao` e quem mostra a mensagem nunca pode afirmar que a conta
+ * não foi criada (ver `mensagemFalhaCadastro`).
+ */
+export async function cadastrar(dados: DadosCadastroReal): Promise<ResultadoCadastroReal> {
+  const resultado = await apiRequest<unknown>("/auth/register", { method: "POST", body: dados });
+
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    if (resultado.status === 400) {
+      return { ok: false, falha: { tipo: "dados_invalidos", mensagem: mensagemDeErroDoBackend(resultado.data) } };
+    }
+    if (resultado.status === 409) return { ok: false, falha: { tipo: "email_em_uso" } };
+    if (resultado.status === 429) return { ok: false, falha: { tipo: "limite_tentativas" } };
+    return { ok: false, falha: { tipo: "indisponivel" } };
+  }
+  if (!ehCadastroRealResposta(resultado.data)) return { ok: false, falha: { tipo: "indisponivel" } };
+  return { ok: true, dados: resultado.data };
 }

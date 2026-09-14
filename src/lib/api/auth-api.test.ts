@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { buscarSessaoAtual, login, logout } from "./auth-api";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { buscarSessaoAtual, cadastrar, login, logout } from "./auth-api";
 
 const SESSAO_VALIDA = {
   user: { id: "user_1", name: "Maria Souza", email: "maria@example.com" },
@@ -121,5 +121,94 @@ describe("logout", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 
     expect(await logout()).toEqual({ ok: false, falha: { tipo: "falha_comunicacao" } });
+  });
+});
+
+const CADASTRO_VALIDO = {
+  ownerName: "Maria Souza",
+  businessName: "Studio Bela",
+  email: "maria@example.com",
+  phone: "11999998888",
+  password: "senha-de-teste-123",
+};
+
+const RESPOSTA_CADASTRO = {
+  user: { id: "user_1", name: "Maria Souza", email: "maria@example.com" },
+  tenant: { id: "tenant_1", slug: "studio-bela", status: "TRIAL" },
+  unit: { id: "unit_1", name: "Studio Bela", isPrimary: true },
+  membership: { role: "DONO" },
+  plan: { code: "equipe", name: "Gestão", priceCents: null },
+  trial: { trialStartAt: "2026-09-10T12:00:00.000Z", trialEndAt: "2026-09-24T12:00:00.000Z", durationDays: 14 },
+};
+
+describe("cadastrar", () => {
+  it("201 com contrato válido vira ok:true com os dados da conta criada", async () => {
+    mockFetch(201, RESPOSTA_CADASTRO);
+
+    const resultado = await cadastrar(CADASTRO_VALIDO);
+
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) expect(resultado.dados.tenant.slug).toBe("studio-bela");
+  });
+
+  it("envia exatamente os campos do DTO para /auth/register, com cookies e sem cache", async () => {
+    mockFetch(201, RESPOSTA_CADASTRO);
+
+    await cadastrar(CADASTRO_VALIDO);
+
+    const [url, init] = (globalThis.fetch as unknown as Mock<(u: string, i: RequestInit) => unknown>).mock.calls[0];
+    expect(url).toContain("/auth/register");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(String(init.body))).toEqual(CADASTRO_VALIDO);
+  });
+
+  it("409 vira email_em_uso, nunca uma falha genérica", async () => {
+    mockFetch(409, { message: "E-mail já cadastrado." });
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({ ok: false, falha: { tipo: "email_em_uso" } });
+  });
+
+  it("400 vira dados_invalidos preservando a mensagem do backend", async () => {
+    mockFetch(400, { message: "Dados inválidos. Campos com problema: phone." });
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({
+      ok: false,
+      falha: { tipo: "dados_invalidos", mensagem: "Dados inválidos. Campos com problema: phone." },
+    });
+  });
+
+  it("400 sem corpo JSON (ex.: texto puro) ainda vira dados_invalidos, com mensagem nula", async () => {
+    mockFetch(400, undefined);
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({
+      ok: false,
+      falha: { tipo: "dados_invalidos", mensagem: null },
+    });
+  });
+
+  it("429 do rate limit de cadastro vira limite_tentativas", async () => {
+    mockFetch(429, undefined);
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({ ok: false, falha: { tipo: "limite_tentativas" } });
+  });
+
+  it("503 (plano indisponível no catálogo) vira indisponivel", async () => {
+    mockFetch(503, { message: "Cadastro temporariamente indisponível." });
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({ ok: false, falha: { tipo: "indisponivel" } });
+  });
+
+  it("falha de rede vira falha_comunicacao — nunca email_em_uso nem sucesso", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({ ok: false, falha: { tipo: "falha_comunicacao" } });
+  });
+
+  it("201 com corpo fora do contrato vira indisponivel, nunca sucesso silencioso", async () => {
+    mockFetch(201, { user: { id: "user_1", name: "Maria", email: "maria@example.com" } });
+
+    expect(await cadastrar(CADASTRO_VALIDO)).toEqual({ ok: false, falha: { tipo: "indisponivel" } });
   });
 });

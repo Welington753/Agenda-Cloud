@@ -1,4 +1,4 @@
-name: "Test — Lote 6C.1 frontend auth (real cookie flow, disposable PostgreSQL)"
+name: "Test — frontend auth (cadastro, login, sessão e logout reais; PostgreSQL descartável)"
 
 # Só PR para a integration (e disparo manual pra depuração) — nunca
 # workflow_dispatch de production, nunca Environment `production`, nunca
@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   test:
-    name: login/sessão/logout reais no navegador contra PostgreSQL descartável
+    name: cadastro/login/sessão/logout reais no navegador contra PostgreSQL descartável
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -142,7 +142,7 @@ jobs:
       # própria porta fixa via `env` de cada entrada `webServer` do
       # playwright.config.ts; um `PORT` neste nível vazaria para os dois
       # processos e faria ambos tentarem escutar a mesma porta.
-      - name: Run real browser cookie-flow test (login/session/logout)
+      - name: Run real browser flows (registration via the UI + login/session/logout)
         env:
           NODE_ENV: development
           DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
