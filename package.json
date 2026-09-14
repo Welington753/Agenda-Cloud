@@ -10,7 +10,8 @@
     "lint:fix": "eslint . --fix",
     "lint:types": "eslint --config eslint.typed.config.mjs .",
     "test": "vitest run",
-    "test:db": "vitest run --config vitest.db.config.ts"
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@next/env": "16.3.4",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "8.23.1",

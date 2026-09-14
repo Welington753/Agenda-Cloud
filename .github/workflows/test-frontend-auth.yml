@@ -1,0 +1,166 @@
+name: "Test — Lote 6C.1 frontend auth (real cookie flow, disposable PostgreSQL)"
+
+# Só PR para a integration (e disparo manual pra depuração) — nunca
+# workflow_dispatch de production, nunca Environment `production`, nunca
+# secret nenhum. O PostgreSQL usado aqui é sempre um container descartável
+# criado dentro deste job, com credenciais fictícias, nunca Neon nem
+# qualquer banco existente. Mesma disciplina de
+# test-migration-lote6b2.yml (Lote 6B.10).
+on:
+  pull_request:
+    branches:
+      - integration/nestjs-typeorm-frontend
+    paths:
+      - "src/**"
+      - "tests/browser/**"
+      - "playwright.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "backend/src/auth/**"
+      - "backend/src/config/**"
+      - ".github/workflows/test-frontend-auth.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-frontend-auth-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: login/sessão/logout reais no navegador contra PostgreSQL descartável
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Falha rápida antes de gastar tempo com Postgres/Playwright.
+      - name: Frontend unit tests
+        run: npm run test
+
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Frontend typed lint
+        run: npm run lint:types
+
+      # Mesmo container/receita de test-migration-lote6b2.yml: certificado
+      # self-signed gerado DENTRO do container (evita descompasso de
+      # UID/permissão entre host e container do bind mount), TLS ligado só
+      # depois de subir (`ssl` exige reinício do postmaster).
+      # `rejectUnauthorized: true` do driver Node nunca é enfraquecido — o
+      # certificado é confiado via `NODE_EXTRA_CA_CERTS`, nunca via flag do
+      # driver.
+      - name: Start disposable PostgreSQL container
+        run: |
+          docker run -d --name frontend-auth-e2e-postgres \
+            -e POSTGRES_USER=disposable_user \
+            -e POSTGRES_PASSWORD=disposable_pass \
+            -e POSTGRES_DB=disposable_db \
+            -p 55433:5432 \
+            postgres:17
+
+          for i in $(seq 1 30); do
+            if docker exec frontend-auth-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1; then
+              echo "postgres pronto (sem TLS ainda)"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Enable TLS on the disposable PostgreSQL (self-signed, test-only cert generated inside the container)
+        run: |
+          docker exec -u root frontend-auth-e2e-postgres bash -c '
+            set -e
+            command -v openssl >/dev/null || (apt-get update && apt-get install -y --no-install-recommends openssl)
+            cd /var/lib/postgresql/data
+            openssl req -new -x509 -days 1 -nodes -subj "/CN=localhost" -out server.crt -keyout server.key
+            chown postgres:postgres server.crt server.key
+            chmod 600 server.key
+            chmod 644 server.crt
+          '
+          docker exec -u postgres frontend-auth-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl = on;"
+          docker exec -u postgres frontend-auth-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl_cert_file = 'server.crt';"
+          docker exec -u postgres frontend-auth-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl_key_file = 'server.key';"
+          docker restart frontend-auth-e2e-postgres
+
+          for i in $(seq 1 30); do
+            if docker exec frontend-auth-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1; then
+              echo "postgres pronto (TLS ligado)"
+              break
+            fi
+            sleep 1
+          done
+          docker exec frontend-auth-e2e-postgres psql -U disposable_user -d disposable_db -c "SHOW ssl;"
+
+          mkdir -p /tmp/frontend-auth-e2e-certs
+          docker cp frontend-auth-e2e-postgres:/var/lib/postgresql/data/server.crt /tmp/frontend-auth-e2e-certs/server.crt
+
+      - name: Apply schema + plan catalog migrations (real migration:run, same runtime as production)
+        working-directory: backend
+        env:
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+        run: |
+          npm run build:migrations-runtime
+          npm run migration:run:compiled
+
+      - name: Build backend (Nest)
+        working-directory: backend
+        run: npm run build
+
+      # `NEXT_PUBLIC_*` é embutido em BUILD time pelo Next.js — precisa estar
+      # presente aqui, não só quando o servidor sobe depois.
+      - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+        run: npm run build
+
+      - name: Install Playwright browser (chromium only)
+        run: npx playwright install --with-deps chromium
+
+      # Playwright sobe backend real (dist/main.js) e frontend real (next
+      # start) via `webServer` (ver playwright.config.ts) — nunca substitui a
+      # UI real nem o backend real por fixture/mocks; só o banco é
+      # descartável.
+      - name: Run real browser cookie-flow test (login/session/logout)
+        env:
+          NODE_ENV: development
+          PORT: "3001"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+        run: npm run test:browser
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: git diff --check (sem conflito/whitespace residual)
+        run: git diff --check
+
+      - name: Remove disposable PostgreSQL container
+        if: always()
+        run: docker rm -f frontend-auth-e2e-postgres || true

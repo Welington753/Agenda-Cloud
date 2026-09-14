@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
+// Login (Lote 6C.1) — o formulário principal agora fala com o backend real
+// (POST /auth/login, cookie HttpOnly). A demonstração continua existindo,
+// mas como um fluxo EXPLICITAMENTE separado (ver seção "Acessos para
+// demonstração" abaixo): clicar numa conta demo nunca preenche o formulário
+// real para depois submetê-lo — isso tentaria autenticar um e-mail fictício
+// contra o backend de verdade e falharia. Em vez disso, entra direto pela
+// simulação local (`autenticar`/`entrarComo`, inalterados desde antes deste
+// lote), sem nunca tocar a API real.
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Building2, Crown, Headset, KeyRound, ShieldCheck, Store, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { autenticar, SENHA_DEMONSTRACAO } from "@/lib/auth/autenticacao";
 import { ROTA_INICIAL_POR_PAPEL_ESTABELECIMENTO, ROTA_INICIAL_POR_PAPEL_PLATAFORMA } from "@/lib/permissions";
+import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -34,42 +44,69 @@ const CONTAS_DEMONSTRACAO: ContaDemonstracao[] = [
 ];
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageConteudo />
+    </Suspense>
+  );
+}
+
+// `useSearchParams` (para `?next=`) exige um limite de Suspense em builds de
+// produção (ver node_modules/next/dist/docs, "Missing Suspense boundary with
+// useSearchParams") — por isso o conteúdo real fica separado do export
+// default acima.
+function LoginPageConteudo() {
   const { entrarComo } = useAuth();
+  const { login } = useRealAuth();
   const { notificar } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [lembrar, setLembrar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [entrando, setEntrando] = useState(false);
 
-  function preencherComConta(conta: ContaDemonstracao) {
-    setEmail(conta.email);
-    setSenha(SENHA_DEMONSTRACAO);
-    setErro(null);
+  function destinoPosLogin(): string {
+    const next = sanitizarDestinoInterno(searchParams.get("next"));
+    return next ?? ROTA_PADRAO_POS_LOGIN;
   }
 
-  function aoEnviar(e: React.FormEvent) {
+  async function aoEnviar(e: FormEvent) {
     e.preventDefault();
+    if (entrando) return;
     setEntrando(true);
     setErro(null);
 
-    const resultado = autenticar(email, senha);
+    const resultado = await login(email, senha);
+    setEntrando(false);
+
     if (!resultado.ok) {
-      setErro(resultado.erro);
-      setEntrando(false);
+      switch (resultado.falha.tipo) {
+        case "credenciais_invalidas":
+          setErro("E-mail ou senha inválidos.");
+          break;
+        case "limite_tentativas":
+          setErro("Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.");
+          break;
+        case "falha_comunicacao":
+          setErro("Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.");
+          break;
+        default:
+          setErro("Não foi possível entrar agora. Tente novamente em instantes.");
+      }
       return;
     }
 
-    // "Lembrar acesso" (estado `lembrar` acima) é só um rótulo nesta simulação —
-    // a sessão já vive em sessionStorage independentemente do checkbox. Uma
-    // autenticação real usaria isto para decidir entre um cookie de sessão curto
-    // e um token de longa duração (refresh token).
+    notificar(`Bem-vindo(a), ${resultado.dados.user.name.split(" ")[0]}.`, "sucesso");
+    router.push(destinoPosLogin());
+  }
 
+  function entrarComContaDemonstracao(conta: ContaDemonstracao) {
+    const resultado = autenticar(conta.email, SENHA_DEMONSTRACAO);
+    if (!resultado.ok) return;
     entrarComo(resultado.sessao);
-    notificar(`Bem-vindo(a), ${resultado.sessao.nome.split(" ")[0]}.`, "sucesso");
-
+    notificar(`Bem-vindo(a), ${resultado.sessao.nome.split(" ")[0]}. (ambiente de demonstração)`, "sucesso");
     const destino =
       resultado.sessao.escopo === "plataforma"
         ? ROTA_INICIAL_POR_PAPEL_PLATAFORMA[resultado.sessao.papel as PapelPlataforma]
@@ -94,7 +131,7 @@ export default function LoginPage() {
             agendam direto pela página pública do estabelecimento.
           </p>
         </div>
-        <p className="text-xs text-white/40">Protótipo de demonstração — autenticação simulada.</p>
+        <p className="text-xs text-white/40">Protótipo em transição para autenticação real.</p>
       </div>
 
       <div className="flex flex-col justify-center px-4 py-10 sm:px-10">
@@ -104,10 +141,10 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-ink">Entrar</h1>
-            <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe. Autenticação simulada.</p>
+            <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
           </div>
 
-          <form onSubmit={aoEnviar} className="space-y-4">
+          <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
             <div>
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
                 E-mail
@@ -139,17 +176,17 @@ export default function LoginPage() {
               />
             </div>
 
-            {erro && <p className="text-sm text-[color:var(--color-danger)]">{erro}</p>}
+            {erro && (
+              <p role="alert" className="text-sm text-[color:var(--color-danger)]">
+                {erro}
+              </p>
+            )}
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-ink-soft">
-                <input type="checkbox" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} />
-                Lembrar acesso
-              </label>
+            <div className="flex items-center justify-end text-sm">
               <button
                 type="button"
                 onClick={() =>
-                  notificar("Recuperação de senha por e-mail ainda não existe nesta demonstração.", "info")
+                  notificar("Recuperação de senha por e-mail ainda não existe nesta fase.", "info")
                 }
                 className="font-medium text-accent hover:underline"
               >
@@ -165,13 +202,12 @@ export default function LoginPage() {
 
           <details className="rounded-[var(--radius-card)] border border-dashed border-border">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink">
-              Acessos para demonstração
+              Ambiente de demonstração (sem conta real)
             </summary>
             <div className="space-y-4 border-t border-border px-4 py-4">
               <p className="text-xs text-ink-soft">
-                Clique numa conta para preencher o formulário (senha de demonstração:{" "}
-                <code className="rounded bg-paper-muted px-1 py-0.5">{SENHA_DEMONSTRACAO}</code>). Nenhuma senha real
-                existe neste protótipo.
+                Clique numa conta para entrar direto num ambiente simulado, sem senha e sem se conectar ao servidor
+                real. Nenhuma destas contas existe de verdade — são só para navegar pelas telas.
               </p>
               {(["Administração da plataforma", "Equipe dos estabelecimentos"] as const).map((grupo) => (
                 <div key={grupo} className="space-y-1.5">
@@ -182,7 +218,7 @@ export default function LoginPage() {
                       <button
                         key={conta.email}
                         type="button"
-                        onClick={() => preencherComConta(conta)}
+                        onClick={() => entrarComContaDemonstracao(conta)}
                         className="flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-xs hover:bg-paper-muted"
                       >
                         <Icone size={14} className="shrink-0 text-ink-soft" />

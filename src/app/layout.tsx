@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/auth-context";
+import { RealAuthProvider } from "@/lib/auth/real-auth-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { NOME_PRODUTO } from "@/lib/config";
 
@@ -21,7 +22,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="pt-BR" className={`${jakarta.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-paper text-ink">
         <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <RealAuthProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </RealAuthProvider>
         </AuthProvider>
       </body>
     </html>
