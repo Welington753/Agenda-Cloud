@@ -26,8 +26,29 @@ export const EXPECTED_LOTE_6B2_MIGRATION_NAMES = [
 const APPLIED_MARKER_PATTERN = /^\s*\[X\]\s+\S+\s+(\S+)\s*$/;
 const PENDING_MARKER_PATTERN = /^\s*\[\s\]\s+(\S+)\s*$/;
 
+// Causa raiz real (execução #6): sob `CI=true` + qualquer variável de
+// ambiente com "GITHUB" no nome (sempre presentes no runner do GitHub
+// Actions), a detecção de cor do `ansis` — dependência do TypeORM usada por
+// `PlatformTools.log()` — ativa cor mesmo com stdout sendo um pipe (nunca é
+// TTY aqui), ao contrário do padrão usual "sem TTY = sem cor" (comprovado
+// reproduzindo localmente com `CI=true GITHUB_ACTIONS=true`, ver
+// migration-output.spec.ts). Isso envolve cada linha de `[X]`/`[ ]` em
+// `\x1b[4m...\x1b[24m`, fazendo a linha não começar mais literalmente com
+// `[`. A correção primária é `NO_COLOR=1` no ambiente do subprocesso (ver
+// apply-lote6b2-production.ts, que neutraliza isso na origem); remover
+// qualquer sequência de escape ANSI (CSI) aqui é defesa em profundidade
+// contra qualquer dependência futura que ignore `NO_COLOR`.
+// `\x1b` (ESC) é o caractere real que abre toda sequência de escape
+// ANSI/CSI — é literalmente o que esta regex precisa casar, não um acidente.
+// oxlint-disable-next-line no-control-regex
+const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;]*[a-zA-Z]/g;
+
+function stripAnsiCodes(line: string): string {
+  return line.replace(ANSI_ESCAPE_PATTERN, '');
+}
+
 export function countPendingMigrations(showOutput: string): number {
-  return showOutput.split('\n').filter((line) => PENDING_MARKER_PATTERN.test(line.trimEnd())).length;
+  return showOutput.split('\n').filter((line) => PENDING_MARKER_PATTERN.test(stripAnsiCodes(line).trimEnd())).length;
 }
 
 export interface MigrationShowStatus {
@@ -44,7 +65,9 @@ export function parseMigrationShowOutput(showOutput: string): MigrationShowStatu
   for (const rawLine of showOutput.split('\n')) {
     // `\r` residual (CRLF) nunca deve impedir o reconhecimento da linha —
     // `trimEnd()` remove espaço e `\r` finais antes de testar os padrões.
-    const line = rawLine.trimEnd();
+    // `stripAnsiCodes` remove qualquer código de escape (cor/underline)
+    // antes do `[X]`/`[ ]` — ver nota na constante `ANSI_ESCAPE_PATTERN`.
+    const line = stripAnsiCodes(rawLine).trimEnd();
     const appliedMatch = APPLIED_MARKER_PATTERN.exec(line);
     if (appliedMatch) {
       appliedNames.push(appliedMatch[1]);

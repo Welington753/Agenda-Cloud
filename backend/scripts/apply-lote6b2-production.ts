@@ -141,7 +141,23 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
     // resolveria para um subdiretório inexistente e o `spawn` falharia com
     // ENOENT antes mesmo de o processo filho existir. Ver evidência da falha
     // real em `apply-lote6b2-production.regression.spec.ts`.
-    const productionEnv = { ...restOfEnv, DIRECT_URL: secrets.productionDirectUrl } as NodeJS.ProcessEnv;
+    //
+    // `NO_COLOR: '1'` — causa raiz real da execução #6: sob `CI=true` (e
+    // qualquer env var com "GITHUB" no nome, sempre presentes num runner do
+    // GitHub Actions), a detecção de cor do `ansis` (dependência do
+    // TypeORM) ativa cor mesmo com stdout sendo um pipe, nunca um TTY.
+    // `migration:show`/`migration:run` então imprimem `[X]`/`[ ]` envoltos
+    // em sequência ANSI, e o parser de texto (`migration-output.ts`) para de
+    // reconhecer qualquer linha — reproduzido byte a byte com `CI=true
+    // GITHUB_ACTIONS=true`. `NO_COLOR` é respeitado pelo `ansis` com
+    // prioridade sobre a detecção de CI e neutraliza isso na origem; o
+    // parser também tolera ANSI residual como defesa em profundidade (ver
+    // stripAnsiCodes em migration-output.ts).
+    const productionEnv = {
+      ...restOfEnv,
+      DIRECT_URL: secrets.productionDirectUrl,
+      NO_COLOR: '1',
+    } as NodeJS.ProcessEnv;
 
     deps.log('MIGRATION_SHOW_STARTED');
     let showResult: ProcessResult;
@@ -168,18 +184,32 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
 
     // Execução real #5: `migration:show` saiu com código 0 e o fluxo tratou
     // isso como "0 pendentes" mesmo com o baseline pré-migration confirmando
-    // que faltavam duas migrations — nunca foi provado o motivo exato (saída
-    // vazia/truncada não foi reproduzida com Postgres real, ver
-    // apply-lote6b2-production.spec.ts), mas o sintoma comprovado é este:
-    // uma saída vazia, incompleta, duplicada ou com nomes desconhecidos é
-    // indistinguível de "tudo aplicado" se só se contam linhas `[ ]`. A
-    // partir daqui, "0 pendentes" só é aceito quando a lista total bate
-    // EXATAMENTE com as três migrations deste lote — fail-closed contra
-    // qualquer outra forma de saída.
+    // que faltavam duas migrations. Execução real #6 (Linux, GitHub Actions)
+    // comprovou a causa: sob `CI=true`, o TypeORM (via `ansis`) envolve
+    // `[X]`/`[ ]` em ANSI mesmo com stdout sendo um pipe, e nenhuma linha
+    // batia o parser — `NO_COLOR` acima neutraliza isso na origem, e o
+    // parser também tolera ANSI residual (ver migration-output.ts). De todo
+    // modo, uma saída vazia, incompleta, duplicada ou com nomes desconhecidos
+    // continua indistinguível de "tudo aplicado" se só se contam linhas
+    // `[ ]` — "0 pendentes" só é aceito quando a lista total bate EXATAMENTE
+    // com as três migrations deste lote, fail-closed contra qualquer outra
+    // forma de saída.
     const showStatus = parseMigrationShowOutput(showResult.stdout);
     const showValidationFailure = validateMigrationShowStatus(showStatus);
     if (showValidationFailure) {
+      // Diagnóstico seguro: só contagens e categorias fixas — nunca stdout
+      // bruto (poderia carregar erro de conexão do driver `pg`) nem
+      // environment. Suficiente para distinguir, sem reabrir o log de
+      // production, entre "nenhum byte capturado", "saída só com cabeçalho
+      // do npm" e "linhas existem mas não reconhecidas".
       deps.log(`MIGRATION_SHOW_VALIDATION_FAILED: ${showValidationFailure.category}`);
+      deps.log(`MIGRATION_SHOW_STDOUT_BYTES: ${Buffer.byteLength(showResult.stdout, 'utf-8')}`);
+      deps.log(`MIGRATION_SHOW_STDERR_BYTES: ${Buffer.byteLength(showResult.stderr, 'utf-8')}`);
+      deps.log(`MIGRATION_SHOW_STDOUT_LINE_COUNT: ${showResult.stdout.split('\n').length}`);
+      deps.log(
+        `MIGRATION_SHOW_RECOGNIZED_LINE_COUNT: ${showStatus.appliedNames.length + showStatus.pendingNames.length}`,
+      );
+      deps.log(`MIGRATION_SHOW_SIGNAL: ${showResult.signal ?? 'none'}`);
       throw new GuardedMigrationError(
         'ERR_MIGRATION_SHOW_INCONSISTENT',
         'migration:show retornou uma lista de migrations vazia, incompleta, duplicada ou não reconhecida.',

@@ -1,0 +1,133 @@
+name: "Test — Lote 6B.2 migration (disposable PostgreSQL)"
+
+# Só PR para a integration (e disparo manual pra depuração) — nunca
+# workflow_dispatch de production, nunca Environment `production`, nunca
+# secret nenhum. O PostgreSQL usado aqui é sempre um container descartável
+# criado dentro deste job, com credenciais fictícias, nunca Neon nem
+# qualquer banco existente.
+on:
+  pull_request:
+    branches:
+      - integration/nestjs-typeorm-frontend
+    paths:
+      - "backend/scripts/**"
+      - "backend/src/database/**"
+      - "backend/src/entities/**"
+      - "backend/src/migrations/**"
+      - "backend/tsconfig.migrations.json"
+      - "backend/tsconfig.scripts.json"
+      - "backend/package.json"
+      - ".github/workflows/test-migration-lote6b2.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-migration-lote6b2-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: migration:show/run reais contra PostgreSQL descartável
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Container descartável, credenciais fictícias fixas no próprio
+      # workflow (nunca secret) — TLS ligado depois de subir, porque `ssl`
+      # exige reinício do postmaster e o certificado precisa existir e
+      # pertencer ao usuário `postgres` dentro do container (gerar fora e
+      # montar via bind mount esbarra em UID/permissão entre host e
+      # container). `rejectUnauthorized: true` do lado do driver Node nunca é
+      # enfraquecido — o certificado é confiado via `NODE_EXTRA_CA_CERTS`,
+      # nunca via flag do driver.
+      - name: Start disposable PostgreSQL container
+        run: |
+          docker run -d --name migration-e2e-postgres \
+            -e POSTGRES_USER=disposable_user \
+            -e POSTGRES_PASSWORD=disposable_pass \
+            -e POSTGRES_DB=disposable_db \
+            -p 55432:5432 \
+            postgres:17
+
+          for i in $(seq 1 30); do
+            if docker exec migration-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1; then
+              echo "postgres pronto (sem TLS ainda)"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Enable TLS on the disposable PostgreSQL (self-signed, test-only cert generated inside the container)
+        run: |
+          docker exec -u root migration-e2e-postgres bash -c '
+            set -e
+            command -v openssl >/dev/null || (apt-get update && apt-get install -y --no-install-recommends openssl)
+            cd /var/lib/postgresql/data
+            openssl req -new -x509 -days 1 -nodes -subj "/CN=localhost" -out server.crt -keyout server.key
+            chown postgres:postgres server.crt server.key
+            chmod 600 server.key
+            chmod 644 server.crt
+          '
+          docker exec -u postgres migration-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl = on;"
+          docker exec -u postgres migration-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl_cert_file = 'server.crt';"
+          docker exec -u postgres migration-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl_key_file = 'server.key';"
+          docker restart migration-e2e-postgres
+
+          for i in $(seq 1 30); do
+            if docker exec migration-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1; then
+              echo "postgres pronto (TLS ligado)"
+              break
+            fi
+            sleep 1
+          done
+          docker exec migration-e2e-postgres psql -U disposable_user -d disposable_db -c "SHOW ssl;"
+
+          mkdir -p /tmp/migration-e2e-certs
+          docker cp migration-e2e-postgres:/var/lib/postgresql/data/server.crt /tmp/migration-e2e-certs/server.crt
+
+      - name: Build migrations runtime
+        working-directory: backend
+        run: npm run build:migrations-runtime
+
+      # Nunca substitui a saída do CLI real por fixture: usa o mesmo
+      # process-runner e o mesmo parser reais de production, contra o
+      # PostgreSQL descartável acima — nunca Neon, nunca secret.
+      - name: Run real migration integration test (disposable PostgreSQL only)
+        working-directory: backend
+        env:
+          MIGRATION_E2E_DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55432/disposable_db"
+          NODE_EXTRA_CA_CERTS: /tmp/migration-e2e-certs/server.crt
+        run: npm run test:migration-e2e
+
+      - name: Run affected unit tests
+        working-directory: backend
+        run: npx vitest run scripts/ src/database/
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Build guarded migration scripts
+        working-directory: backend
+        run: npm run build:guarded-migration-scripts
+
+      - name: Build (Nest)
+        working-directory: backend
+        run: npm run build
+
+      - name: Remove disposable PostgreSQL container
+        if: always()
+        run: docker rm -f migration-e2e-postgres || true

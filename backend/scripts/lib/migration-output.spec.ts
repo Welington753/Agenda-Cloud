@@ -69,6 +69,33 @@ describe('parseMigrationShowOutput', () => {
       pendingNames: ['AllowUndefinedPlanPrice1788782450000'],
     });
   });
+
+  // Causa raiz comprovada da execução real #6: sob `CI=true` +
+  // `GITHUB_ACTIONS=true` (sempre presentes no runner do GitHub Actions), a
+  // detecção de cor do `ansis` (dependência do TypeORM, ver
+  // node_modules/ansis/index.cjs) ativa cor mesmo com stdout sendo um pipe —
+  // ao contrário do padrão usual "sem TTY = sem cor". `PlatformTools.log()`
+  // (node_modules/typeorm/platform/PlatformTools.js) então envolve CADA
+  // linha de `logSchemaBuild` em `\x1b[4m...\x1b[24m` (underline),
+  // reproduzido byte a byte com `CI=true GITHUB_ACTIONS=true node
+  // <script que chama AdvancedConsoleLogger.logSchemaBuild>`. A linha deixa
+  // de começar literalmente com `[`, então nenhum padrão batia —
+  // exatamente o `MIGRATION_SHOW_VALIDATION_FAILED: empty_or_unrecognized`
+  // visto no log real. `parseMigrationShowOutput` precisa tolerar isso
+  // mesmo que a correção primária (`NO_COLOR=1` no ambiente do subprocesso,
+  // ver apply-lote6b2-production.ts) já deva neutralizar a cor na origem —
+  // defesa em profundidade contra qualquer dependência futura que ignore
+  // `NO_COLOR`.
+  it('remove sequências ANSI (cor/underline injetadas sob CI=true) antes de reconhecer as linhas', () => {
+    const output = ['\x1b[4m[X] 1 InitialSchema1788782400000\x1b[24m', '\x1b[4m[ ] AllowUndefinedPlanPrice1788782450000\x1b[24m'].join(
+      '\n',
+    );
+
+    expect(parseMigrationShowOutput(output)).toEqual({
+      appliedNames: ['InitialSchema1788782400000'],
+      pendingNames: ['AllowUndefinedPlanPrice1788782450000'],
+    });
+  });
 });
 
 describe('validateMigrationShowStatus — fail-closed contra lista vazia/incompleta/duplicada/desconhecida', () => {
