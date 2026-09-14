@@ -28,7 +28,7 @@ import {
   validateDirectUrl,
 } from './lib/connection-guard.js';
 import { readRequiredSecrets } from './lib/env-secrets.js';
-import { countPendingMigrations } from './lib/migration-output.js';
+import { parseMigrationShowOutput, validateMigrationShowStatus } from './lib/migration-output.js';
 import type { PgClientLike } from './lib/pg-client.js';
 import type { ProcessResult, ProcessRunner } from './lib/process-runner.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './lib/sanitize.js';
@@ -165,7 +165,42 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
         'migration:show encerrou com código de saída diferente de zero.',
       );
     }
-    const pending = countPendingMigrations(showResult.stdout);
+
+    // Execução real #5: `migration:show` saiu com código 0 e o fluxo tratou
+    // isso como "0 pendentes" mesmo com o baseline pré-migration confirmando
+    // que faltavam duas migrations — nunca foi provado o motivo exato (saída
+    // vazia/truncada não foi reproduzida com Postgres real, ver
+    // apply-lote6b2-production.spec.ts), mas o sintoma comprovado é este:
+    // uma saída vazia, incompleta, duplicada ou com nomes desconhecidos é
+    // indistinguível de "tudo aplicado" se só se contam linhas `[ ]`. A
+    // partir daqui, "0 pendentes" só é aceito quando a lista total bate
+    // EXATAMENTE com as três migrations deste lote — fail-closed contra
+    // qualquer outra forma de saída.
+    const showStatus = parseMigrationShowOutput(showResult.stdout);
+    const showValidationFailure = validateMigrationShowStatus(showStatus);
+    if (showValidationFailure) {
+      deps.log(`MIGRATION_SHOW_VALIDATION_FAILED: ${showValidationFailure.category}`);
+      throw new GuardedMigrationError(
+        'ERR_MIGRATION_SHOW_INCONSISTENT',
+        'migration:show retornou uma lista de migrations vazia, incompleta, duplicada ou não reconhecida.',
+      );
+    }
+
+    // Segunda camada, independente do parser de texto: o baseline
+    // pré-migration (SQL direto, já rodado acima) é a fonte mais confiável
+    // de quantas migrations deste lote já estavam aplicadas ANTES desta
+    // execução. Se `migration:show` diz que já não há nada pendente, isso só
+    // é coerente quando bate com o que o baseline já tinha confirmado —
+    // nunca um motivo, por si só, para pular `migration:run` e seguir como
+    // se fosse conclusão.
+    const pending = showStatus.pendingNames.length;
+    if (pending === 0 && showStatus.appliedNames.length !== productionPreReport.migrationNames.length) {
+      deps.log('MIGRATION_SHOW_VALIDATION_FAILED: baseline_mismatch');
+      throw new GuardedMigrationError(
+        'ERR_MIGRATION_SHOW_INCONSISTENT',
+        'migration:show reportou zero pendentes, mas isso diverge do baseline pré-migration já confirmado.',
+      );
+    }
 
     if (pending === 0) {
       deps.log('MIGRATION_RUN: SKIPPED_NO_PENDING');

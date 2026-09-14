@@ -4,6 +4,22 @@ import type { ProcessResult, ProcessRunner } from './lib/process-runner.js';
 import { applyLote6b2Production } from './apply-lote6b2-production.js';
 import { EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME } from './lib/baseline-checks.js';
 
+// Saída real de `migration:show:compiled` (comprovada com Postgres
+// descartável real, ver relatório) — nome completo com timestamp em cada
+// linha, nunca a versão truncada que os testes antigos usavam (a validação
+// estrita de `validateMigrationShowStatus` rejeitaria um nome incompleto).
+const MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING = [
+  `[X] 1 ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}`,
+  '[ ] AllowUndefinedPlanPrice1788782450000',
+  '[ ] InitialPlanCatalog1788782460000',
+].join('\n');
+
+const MIGRATION_SHOW_STDOUT_ALL_APPLIED = [
+  `[X] 1 ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}`,
+  '[X] 2 AllowUndefinedPlanPrice1788782450000',
+  '[X] 3 InitialPlanCatalog1788782460000',
+].join('\n');
+
 const VALID_ENV = {
   L6B2_PRODUCTION_DIRECT_URL: 'postgresql://u:p@ep-prod-1.sa-east-1.aws.neon.tech/db',
   L6B2_BACKUP_DIRECT_URL: 'postgresql://u:p@ep-backup-1.sa-east-1.aws.neon.tech/db',
@@ -235,7 +251,7 @@ describe('applyLote6b2Production', () => {
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (command, args) => {
       runCalls.push({ command, args });
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
@@ -266,7 +282,7 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
@@ -293,7 +309,7 @@ describe('applyLote6b2Production', () => {
     let migrationRunCalls = 0;
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       if (args.includes('migration:run:compiled')) {
         migrationRunCalls++;
@@ -324,7 +340,7 @@ describe('applyLote6b2Production', () => {
     let migrationRunCalls = 0;
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       migrationRunCalls++;
       throw new Error('spawn npm ENOENT');
@@ -347,40 +363,88 @@ describe('applyLote6b2Production', () => {
     expect(logLines).toContain('MIGRATION_RUN_STARTED');
   });
 
-  it('segunda execução (nada pendente): pula migration:run, ainda valida pós-baseline e sucede', async () => {
+  // Reprodução exata da execução real #5 (Lote 6B.10): baseline pré-migration
+  // confirma 1 migration aplicada (InitialSchema) + 2 pendentes esperadas
+  // deste lote, mas `migration:show` reporta as três já aplicadas — uma
+  // divergência real entre o que o baseline (SQL direto) e o CLI dizem, que
+  // nunca deve virar "SKIPPED_NO_PENDING" seguido de sucesso silencioso. O
+  // baseline pré deste lote é fail-closed especificamente para o estado
+  // "antes de aplicar as duas migrations pendentes" — se `migration:show` já
+  // diz que as três estão aplicadas nesse ponto, isso é uma inconsistência a
+  // ser investigada, nunca interpretada como idempotência.
+  it('migration:show reporta tudo já aplicado mas diverge do baseline pré-migration: ERR_MIGRATION_SHOW_INCONSISTENT, nunca sucesso silencioso', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
     const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
-    const { client: prodPostClient } = buildSequencedClient(buildValidPostMigrationSequence());
-    let prodCallCount = 0;
-    const prodClientFactory = () => (prodCallCount++ === 0 ? prodPreClient : prodPostClient);
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return {
-          code: 0,
-          stdout: `[X] ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\n[X] AllowUndefinedPlanPrice\n[X] InitialPlanCatalog`,
-          stderr: '',
-        };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ALL_APPLIED, stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
 
-    const { deps } = buildDeps({
+    const { deps, logLines } = buildDeps({
       clientsByUrl: {
         [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
-        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: prodClientFactory,
+        [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: () => prodPreClient,
       },
       processRunnerRun,
     });
 
     const result = await applyLote6b2Production(deps);
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.code).toBe('ERR_MIGRATION_SHOW_INCONSISTENT');
+    expect(result.code).not.toBe('ERR_UNEXPECTED');
     const migrationRunCalls = (processRunnerRun as ReturnType<typeof vi.fn>).mock.calls.filter(([, args]) =>
       (args as string[]).includes('migration:run:compiled'),
     );
     expect(migrationRunCalls).toHaveLength(0);
+    expect(logLines).toContain('MIGRATION_SHOW_VALIDATION_FAILED: baseline_mismatch');
   });
+
+  it.each([
+    ['saída vazia', ''],
+    ['saída não reconhecida (formato mudou/sem match nenhum)', 'nenhuma linha reconhecível aqui'],
+    [
+      'lista incompleta (falta uma migration do lote)',
+      `[X] 1 ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\n[ ] AllowUndefinedPlanPrice1788782450000`,
+    ],
+    [
+      'nome duplicado',
+      `[X] 1 ${EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME}\n[ ] AllowUndefinedPlanPrice1788782450000\n[ ] AllowUndefinedPlanPrice1788782450000`,
+    ],
+  ])(
+    'migration:show com saída %s: ERR_MIGRATION_SHOW_INCONSISTENT antes de qualquer migration:run',
+    async (_description, stdout) => {
+      const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
+      const { client: prodPreClient } = buildSequencedClient(buildValidPreMigrationSequence());
+
+      const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
+        if (args.includes('migration:show:compiled')) {
+          return { code: 0, stdout, stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      });
+
+      const { deps } = buildDeps({
+        clientsByUrl: {
+          [VALID_ENV.L6B2_BACKUP_DIRECT_URL]: () => backupClient,
+          [VALID_ENV.L6B2_PRODUCTION_DIRECT_URL]: () => prodPreClient,
+        },
+        processRunnerRun,
+      });
+
+      const result = await applyLote6b2Production(deps);
+
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('ERR_MIGRATION_SHOW_INCONSISTENT');
+      const migrationRunCalls = (processRunnerRun as ReturnType<typeof vi.fn>).mock.calls.filter(([, args]) =>
+        (args as string[]).includes('migration:run:compiled'),
+      );
+      expect(migrationRunCalls).toHaveLength(0);
+    },
+  );
 
   it('env do processo filho (migration:show/migration:run) nunca contém secrets além de DIRECT_URL de production', async () => {
     const { client: backupClient } = buildSequencedClient(buildValidPreMigrationSequence());
@@ -393,7 +457,7 @@ describe('applyLote6b2Production', () => {
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args, options) => {
       envsSeenByChildProcess.push(options?.env ?? {});
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
@@ -462,7 +526,7 @@ describe('applyLote6b2Production', () => {
 
     const processRunnerRun: ProcessRunner['run'] = vi.fn(async (_command, args) => {
       if (args.includes('migration:show:compiled')) {
-        return { code: 0, stdout: '[ ] AllowUndefinedPlanPrice\n[ ] InitialPlanCatalog', stderr: '' };
+        return { code: 0, stdout: MIGRATION_SHOW_STDOUT_ONE_APPLIED_TWO_PENDING, stderr: '' };
       }
       return { code: 0, stdout: '', stderr: '' };
     });
