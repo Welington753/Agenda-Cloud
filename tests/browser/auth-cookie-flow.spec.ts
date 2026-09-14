@@ -44,7 +44,10 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await page.getByLabel("Senha").fill("senha-que-nao-existe-123");
     await page.getByRole("button", { name: "Entrar" }).click();
 
-    await expect(page.getByRole("alert")).toHaveText("E-mail ou senha inválidos.");
+    // Não usa getByRole("alert") sozinho: o Next.js injeta seu próprio
+    // `__next-route-announcer__` com role="alert" em toda página, e o
+    // locator ficaria ambíguo entre os dois elementos.
+    await expect(page.getByText("E-mail ou senha inválidos.")).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
   });
 
