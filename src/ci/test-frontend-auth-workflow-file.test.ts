@@ -1,4 +1,5 @@
-// Rede de segurança sobre o workflow de teste (Lote 6C.1) — checagem textual
+// Rede de segurança sobre o workflow de teste de auth do frontend (Lotes
+// 6C.1 e 6C.2) — checagem textual
 // simples (sem parser de YAML, para não introduzir dependência nova só por
 // isto), mesma disciplina de cautela do Lote 6B.10: garante que o workflow
 // nunca ganhe, por acidente numa edição futura, acesso a secret nenhum, ao
@@ -10,7 +11,7 @@ import { describe, expect, it } from "vitest";
 const WORKFLOW_PATH = path.resolve(__dirname, "../../.github/workflows/test-frontend-auth.yml");
 const conteudo = readFileSync(WORKFLOW_PATH, "utf-8");
 
-describe("workflow de teste do Lote 6C.1 (test-frontend-auth.yml)", () => {
+describe("workflow de teste de auth do frontend (test-frontend-auth.yml)", () => {
   it("nunca referencia nenhum GitHub secret", () => {
     expect(conteudo).not.toMatch(/secrets\./);
   });
