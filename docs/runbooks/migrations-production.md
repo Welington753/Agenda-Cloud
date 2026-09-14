@@ -68,14 +68,19 @@ O log do workflow mostra só:
 - nomes das migrations aplicadas;
 - `RESULT: SUCCESS` ou `RESULT: FAILURE` + um `CODE:` sanitizado (ex.: `ERR_BASELINE_MISMATCH`).
 
-O `CODE:` final distingue os quatro estados possíveis — importante para saber o que fazer a seguir sem precisar reconstruir o que aconteceu:
+O log também mostra dois marcadores fixos de estágio, só para localizar em qual subprocesso do TypeORM CLI a execução estava — nunca o comando completo, nunca dado de conexão: `MIGRATION_SHOW_STARTED` (antes de rodar `migration:show`) e `MIGRATION_RUN_STARTED` (antes de rodar `migration:run`, só quando há migration pendente).
+
+O `CODE:` final distingue os estados possíveis — importante para saber o que fazer a seguir sem precisar reconstruir o que aconteceu:
 
 | Situação | `CODE:` |
 |---|---|
 | Falhou antes de qualquer escrita (confirmação, branch, secret, URL, baseline pré-migration) | `ERR_CONFIRMATION_MISMATCH`, `ERR_WRONG_BRANCH`, `ERR_MISSING_SECRET`, `ERR_INVALID_SCHEME`, `ERR_POOLER_FORBIDDEN`, `ERR_ENDPOINT_MISMATCH`, `ERR_ENDPOINTS_NOT_DISTINCT`, `ERR_BACKUP_AS_PRODUCTION`, `ERR_VALIDATION_AS_PRODUCTION`, ou `ERR_BASELINE_MISMATCH` (quando a checagem que falhou foi `BASELINE_BACKUP` ou `BASELINE_PRODUCTION_PRE` no log) |
-| `migration:run` terminou com código de saída inesperado (estado ambíguo — pode ter escrito parcialmente) | `ERR_AMBIGUOUS_RESULT` |
+| `migration:show` falhou ao iniciar ou terminou com código de saída diferente de zero — **antes** de `MIGRATION_RUN_STARTED`, nenhuma escrita foi sequer tentada | `ERR_MIGRATION_SHOW_FAILED` |
+| `migration:run` terminou com código de saída inesperado, ou o subprocesso falhou ao iniciar **depois** de `MIGRATION_RUN_STARTED` (estado ambíguo — pode ter escrito parcialmente) | `ERR_AMBIGUOUS_RESULT` |
 | `migration:run` terminou com sucesso (código 0), mas a validação pós-migration não bateu | `ERR_POST_MIGRATION_BASELINE_MISMATCH` |
 | Sucesso integral | `RESULT: SUCCESS`, sem `CODE:` |
+
+`ERR_MIGRATION_SHOW_FAILED` e `ERR_AMBIGUOUS_RESULT` parecem próximos mas são operacionalmente muito diferentes: o primeiro é seguro (nenhum comando de escrita chegou a ser tentado), o segundo nunca é — trate sempre como se pudesse ter escrito parcialmente, nunca dispare de novo sem investigar manualmente.
 
 **Nunca aparece** no log: URL, hostname, usuário, senha, Endpoint ID, query string ou stack trace bruto de erro de conexão — tudo isso é filtrado antes de qualquer `console.log` (ver `backend/scripts/lib/sanitize.ts`). Se você vir algo que parece um pedaço de connection string no log de qualquer execução, trate como incidente de segurança: **cancele a execução em andamento** (se ainda estiver rodando), **apague o log** da execução (Actions → a execução → ⋯ → Delete workflow run logs — ou peça a um administrador do repositório), e **rotacione imediatamente** as credenciais envolvidas no painel do Neon antes de investigar mais ou rodar de novo.
 
@@ -87,7 +92,9 @@ Se qualquer guarda de baseline falhar (`CODE: ERR_BASELINE_MISMATCH`), o workflo
 2. Investigue manualmente (fora deste workflow) o estado real do banco correspondente.
 3. Só dispare de novo depois de entender e corrigir a causa raiz — nunca "tentar de novo" às cegas.
 
-Se o resultado for `CODE: ERR_AMBIGUOUS_RESULT` (o `migration:run` terminou com um código de saída inesperado), o workflow **nunca tenta de novo sozinho** — isso é deliberado: um estado ambíguo em production (a migration pode ter aplicado parcialmente, ou falhado antes de começar) exige investigação humana antes de qualquer nova tentativa, nunca um retry automático que poderia aplicar a mesma coisa duas vezes ou piorar um estado já inconsistente.
+Se o resultado for `CODE: ERR_MIGRATION_SHOW_FAILED`, nada em production foi tocado — o `migration:show` falhou (ou nunca chegou a rodar) antes de qualquer decisão sobre aplicar migration. Investigue a causa (log do passo `Run guarded production migration`, nunca segredo nenhum nele) antes de disparar de novo — mas, ao contrário de `ERR_AMBIGUOUS_RESULT`, aqui não há dúvida sobre o estado de production.
+
+Se o resultado for `CODE: ERR_AMBIGUOUS_RESULT` (o `migration:run` terminou com um código de saída inesperado, ou o subprocesso falhou depois de `MIGRATION_RUN_STARTED`), o workflow **nunca tenta de novo sozinho** — isso é deliberado: um estado ambíguo em production (a migration pode ter aplicado parcialmente, ou falhado antes de começar) exige investigação humana antes de qualquer nova tentativa, nunca um retry automático que poderia aplicar a mesma coisa duas vezes ou piorar um estado já inconsistente.
 
 ## 7. Restaurar usando o backup
 

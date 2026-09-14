@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist-migrations",
+    "declaration": false,
+    "incremental": false
+  },
+  "include": [
+    "src/entities/**/*.ts",
+    "src/migrations/**/*.ts",
+    "src/database/migrations-data-source.ts",
+    "src/database/snake-naming-strategy.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-scripts", "dist-migrations", "**/*.spec.ts", "src/**/testing/**"]
+}

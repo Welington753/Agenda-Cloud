@@ -22,8 +22,11 @@
     "migration:run": "typeorm-ts-node-esm migration:run -d src/database/migrations-data-source.ts",
     "migration:show": "typeorm-ts-node-esm migration:show -d src/database/migrations-data-source.ts",
     "schema:log": "typeorm-ts-node-esm schema:log -d src/database/migrations-data-source.ts",
+    "build:migrations-runtime": "tsc -p tsconfig.migrations.json",
+    "migration:show:compiled": "typeorm migration:show -d dist-migrations/database/migrations-data-source.js",
+    "migration:run:compiled": "typeorm migration:run -d dist-migrations/database/migrations-data-source.js",
     "build:guarded-migration-scripts": "tsc -p tsconfig.scripts.json",
-    "migrate:production:guarded": "npm run build:guarded-migration-scripts && node dist-scripts/run-apply-lote6b2-production.js"
+    "migrate:production:guarded": "npm run build:migrations-runtime && npm run build:guarded-migration-scripts && node dist-scripts/run-apply-lote6b2-production.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

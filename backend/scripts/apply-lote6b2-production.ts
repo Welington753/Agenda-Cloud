@@ -13,8 +13,9 @@
 //   5. os três endpoints distintos entre si
 //   6. baseline do BACKUP (só leitura — nunca aplica migration nele)
 //   7. baseline PRÉ-migration de production
-//   8. `migration:show`; se nada pendente, pula `migration:run` (idempotente)
-//   9. `migration:run -- -t all` (uma única tentativa — nunca retry automático)
+//   8. `migration:show:compiled` (TypeORM CLI puro contra `dist-migrations/`,
+//      sem `ts-node/esm`); se nada pendente, pula `migration:run` (idempotente)
+//   9. `migration:run:compiled -- -t all` (uma única tentativa — nunca retry)
 //  10. baseline PÓS-migration de production
 //
 // Qualquer etapa que falhe retorna `{success:false, code}` sem lançar — o
@@ -29,8 +30,8 @@ import {
 import { readRequiredSecrets } from './lib/env-secrets.js';
 import { countPendingMigrations } from './lib/migration-output.js';
 import type { PgClientLike } from './lib/pg-client.js';
-import type { ProcessRunner } from './lib/process-runner.js';
-import { toSanitizedFailure, type SanitizedErrorCode } from './lib/sanitize.js';
+import type { ProcessResult, ProcessRunner } from './lib/process-runner.js';
+import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './lib/sanitize.js';
 import {
   describePostMigrationBaselineFailures,
   describePreMigrationBaselineFailures,
@@ -133,23 +134,56 @@ export async function applyLote6b2Production(deps: ApplyLote6b2Deps): Promise<Ap
       CONFIRMATION: _confirmation,
       ...restOfEnv
     } = deps.env;
+    // Sem `cwd` explícito: este processo já roda com cwd igual ao diretório
+    // backend (tanto no workflow real, que seta `working-directory: backend`,
+    // quanto em qualquer chamada local de `npm run migrate:production:guarded`
+    // dentro do próprio backend) — fixar um segundo nível relativo aqui
+    // resolveria para um subdiretório inexistente e o `spawn` falharia com
+    // ENOENT antes mesmo de o processo filho existir. Ver evidência da falha
+    // real em `apply-lote6b2-production.regression.spec.ts`.
     const productionEnv = { ...restOfEnv, DIRECT_URL: secrets.productionDirectUrl } as NodeJS.ProcessEnv;
-    const showResult = await deps.processRunner.run('npm', ['run', 'migration:show'], {
-      cwd: 'backend',
-      env: productionEnv,
-    });
+
+    deps.log('MIGRATION_SHOW_STARTED');
+    let showResult: ProcessResult;
+    try {
+      showResult = await deps.processRunner.run('npm', ['run', 'migration:show:compiled'], {
+        env: productionEnv,
+      });
+    } catch {
+      // Subprocesso nunca chegou a existir (ex.: spawn ENOENT) — nenhuma
+      // escrita foi sequer tentada. Código distinto de `ERR_UNEXPECTED`
+      // porque o ponto exato da falha (antes de `migration:run`) é conhecido
+      // e seguro de comunicar.
+      throw new GuardedMigrationError(
+        'ERR_MIGRATION_SHOW_FAILED',
+        'migration:show falhou ao iniciar ou encerrou antes de produzir saída.',
+      );
+    }
+    if (showResult.code !== 0) {
+      throw new GuardedMigrationError(
+        'ERR_MIGRATION_SHOW_FAILED',
+        'migration:show encerrou com código de saída diferente de zero.',
+      );
+    }
     const pending = countPendingMigrations(showResult.stdout);
 
     if (pending === 0) {
       deps.log('MIGRATION_RUN: SKIPPED_NO_PENDING');
     } else {
-      // Uma única tentativa — nunca um loop de retry. Um resultado ambíguo
-      // (código de saída != 0) é reportado e para aqui; decidir se/como
-      // tentar de novo é uma decisão humana (ver runbook), nunca automática.
-      const runResult = await deps.processRunner.run('npm', ['run', 'migration:run', '--', '-t', 'all'], {
-        cwd: 'backend',
-        env: productionEnv,
-      });
+      // Uma única tentativa — nunca um loop de retry. A partir daqui, QUALQUER
+      // falha (rejeição do subprocesso ou código de saída != 0) é sempre
+      // ambígua, nunca classificada como segura para retry automático:
+      // decidir se/como tentar de novo é uma decisão humana (ver runbook).
+      deps.log('MIGRATION_RUN_STARTED');
+      let runResult: ProcessResult;
+      try {
+        runResult = await deps.processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'all'], {
+          env: productionEnv,
+        });
+      } catch {
+        deps.log('MIGRATION_RUN: FAILED');
+        return { success: false, code: 'ERR_AMBIGUOUS_RESULT' };
+      }
       if (runResult.code !== 0) {
         deps.log('MIGRATION_RUN: FAILED');
         return { success: false, code: 'ERR_AMBIGUOUS_RESULT' };
