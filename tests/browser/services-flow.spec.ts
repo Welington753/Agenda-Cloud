@@ -86,18 +86,18 @@ test.describe("gestão real de serviços", () => {
     // Validação de campo acontece no cliente, sem gastar uma ida à API.
     await page.getByRole("button", { name: "Cadastrar serviço" }).click();
     await page.getByLabel("Duração (minutos)").fill("0");
-    await page.getByLabel("Preço").fill("abc");
+    await page.getByLabel("Preço", { exact: true }).fill("abc");
     await page.getByRole("button", { name: "Cadastrar serviço" }).click();
     await expect(page.getByText("Informe o nome do serviço.")).toBeVisible();
     await expect(page.getByText(/Informe um valor válido/)).toBeVisible();
     expect(chamadasInvalidas, "formulário inválido nunca chega na API").toBe(0);
     page.off("request", contarCriacao);
 
-    await page.getByLabel("Preço").fill("");
+    await page.getByLabel("Preço", { exact: true }).fill("");
     await page.getByLabel("Nome do serviço").fill("Atendimento padrão");
     await page.getByLabel("Descrição curta").fill("Sessão inicial");
     await page.getByLabel("Duração (minutos)").fill("50");
-    await page.getByLabel("Preço").fill("85,50");
+    await page.getByLabel("Preço", { exact: true }).fill("85,50");
 
     // Envio duplicado: o botão fica desabilitado enquanto a requisição está em
     // voo, então dois cliques nunca viram dois POST.
@@ -245,6 +245,10 @@ test.describe("gestão real de serviços", () => {
     // Sem sessão nenhuma, a API recusa antes de qualquer consulta.
     const semSessao = await browser.newContext();
     const paginaAnonima = await semSessao.newPage();
+    // Precisa navegar antes de usar `fetch`: em `about:blank` a origem é
+    // opaca e o navegador recusa a requisição por CORS antes de ela sair,
+    // o que testaria o navegador em vez da API.
+    await paginaAnonima.goto("/login");
     const anonimo = await paginaAnonima.evaluate(async (tenantId) => {
       const r = await fetch(`http://localhost:3001/tenants/${tenantId}/services`, {
         credentials: "include",
