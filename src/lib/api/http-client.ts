@@ -18,7 +18,7 @@ export type ApiResult<T> =
   | { kind: "network-error" };
 
 export interface ApiRequestInit {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 }

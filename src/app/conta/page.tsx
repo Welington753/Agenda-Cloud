@@ -7,7 +7,7 @@
 // central da seção 6 do AGENTS.md deste lote.
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Store, Users2, Wrench } from "lucide-react";
+import { LogOut, Store, UserRound, Users2, Wrench } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
@@ -107,6 +107,18 @@ export default function ContaPage() {
                 >
                   <Wrench size={14} className="mr-1.5" />
                   Gerenciar serviços
+                </Botao>
+                {/* Profissionais é a segunda funcionalidade de negócio real
+                    desta conta (Lote 6D.2) — nunca a tela demonstrativa de
+                    /painel/profissionais. */}
+                <Botao
+                  type="button"
+                  variante="secundaria"
+                  tamanho="sm"
+                  onClick={() => router.push("/conta/profissionais")}
+                >
+                  <UserRound size={14} className="mr-1.5" />
+                  Gerenciar profissionais
                 </Botao>
                 {sessao.contexts.length > 1 && (
                   <Botao

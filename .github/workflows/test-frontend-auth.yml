@@ -187,6 +187,20 @@ jobs:
           CI: "true"
         run: npm run test:browser:services
 
+      # Invocação SEPARADA do Playwright (Lote 6D.2), mesmo motivo da suíte de
+      # serviços: orçamento de POST /auth/register por IP, backend novo com
+      # limiter zerado a cada invocação sob CI.
+      - name: Run real browser flows (professionals management, cross-tenant attacks on the API)
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+        run: npm run test:browser:professionals
+
       # Integração do backend contra o MESMO Postgres descartável: prova o
       # comportamento real das consultas com escopo de tenant e das
       # constraints (nenhum fake em memória cobre isso). `DB_E2E_DIRECT_URL` é
