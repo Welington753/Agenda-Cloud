@@ -41,9 +41,14 @@ export class Service {
   @Column({ type: 'varchar' })
   shortDescription!: string;
 
-  // Ausente = sem preço definido ("sob consulta"). Sempre inteiro/centavos.
+  // `null` = sem preço definido ("sob consulta"). Sempre inteiro/centavos.
+  //
+  // Tipado como `number | null` (não opcional) de propósito: com `?: number`,
+  // atribuir `undefined` para limpar o preço faria o TypeORM tratar a coluna
+  // como "não informada" e PULAR essa coluna no UPDATE, deixando o valor
+  // antigo no banco. Com `null` explícito, o UPDATE grava NULL de verdade.
   @Column({ type: 'int', nullable: true })
-  priceCents?: number;
+  priceCents!: number | null;
 
   @Column({ type: 'boolean', default: true })
   priceVisible!: boolean;

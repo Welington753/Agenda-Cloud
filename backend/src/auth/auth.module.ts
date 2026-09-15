@@ -25,6 +25,10 @@ import { SessionGuard } from './session.guard.js';
   imports: [ConfigModule],
   controllers: [AuthController],
   providers: [AuthService, SessionGuard],
+  // Exportado para o ServicesModule (Lote 6D.1) reutilizar EXATAMENTE este
+  // provider — nunca declarar um segundo SessionGuard em outro módulo, o que
+  // criaria duas instâncias da mesma regra de autenticação.
+  exports: [SessionGuard],
 })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
