@@ -1,4 +1,4 @@
-name: "Test — frontend auth (cadastro, login, sessão e logout reais; PostgreSQL descartável)"
+name: "Test — frontend auth + gestão real de serviços (PostgreSQL descartável)"
 
 # Só PR para a integration (e disparo manual pra depuração) — nunca
 # workflow_dispatch de production, nunca Environment `production`, nunca
@@ -16,8 +16,10 @@ on:
       - "playwright.config.ts"
       - "package.json"
       - "package-lock.json"
-      - "backend/src/auth/**"
-      - "backend/src/config/**"
+      - "backend/src/**"
+      - "backend/test/**"
+      - "backend/package.json"
+      - "backend/vitest.config.db-e2e.ts"
       - ".github/workflows/test-frontend-auth.yml"
   workflow_dispatch: {}
 
@@ -30,7 +32,7 @@ permissions:
 
 jobs:
   test:
-    name: cadastro/login/sessão/logout reais no navegador contra PostgreSQL descartável
+    name: auth real e serviços reais (navegador + API) contra PostgreSQL descartável
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -58,6 +60,21 @@ jobs:
 
       - name: Frontend typed lint
         run: npm run lint:types
+
+      # Backend: unidade (política de acesso, DTOs, isolamento) e E2E HTTP das
+      # rotas. Ambos sem banco — a parte que precisa de Postgres real roda
+      # depois, no passo `test:db-e2e`.
+      - name: Backend lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: npm run test
+
+      - name: Backend HTTP e2e tests
+        working-directory: backend
+        run: npm run test:e2e
 
       # Mesmo container/receita de test-migration-lote6b2.yml: certificado
       # self-signed gerado DENTRO do container (evita descompasso de
@@ -151,7 +168,35 @@ jobs:
           NEXT_PUBLIC_API_URL: "http://localhost:3001"
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
-        run: npm run test:browser
+        run: npm run test:browser:auth
+
+      # Invocação SEPARADA do Playwright (Lote 6D.1), no MESMO Postgres
+      # descartável — nada de infraestrutura duplicada. Separada por um motivo
+      # concreto: o rate limit de POST /auth/register é de 5 por 15 min por IP
+      # com store em memória do processo do backend, e as duas suítes juntas
+      # passariam disso. Como `reuseExistingServer` é falso sob CI, esta
+      # invocação sobe um backend novo, com o limiter zerado.
+      - name: Run real browser flows (services management, cross-tenant attacks on the API)
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+        run: npm run test:browser:services
+
+      # Integração do backend contra o MESMO Postgres descartável: prova o
+      # comportamento real das consultas com escopo de tenant e das
+      # constraints (nenhum fake em memória cobre isso). `DB_E2E_DIRECT_URL` é
+      # o que liga esta suíte — sem ela, os testes se marcam como skip.
+      - name: Backend integration against the disposable PostgreSQL (tenant-scoped queries, real constraints)
+        working-directory: backend
+        env:
+          DB_E2E_DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+        run: npm run test:db-e2e
 
       - name: Upload Playwright report on failure
         if: failure()
