@@ -87,7 +87,7 @@ test.describe("gestão real de serviços", () => {
     await page.getByRole("button", { name: "Cadastrar serviço" }).click();
     await page.getByLabel("Duração (minutos)").fill("0");
     await page.getByLabel("Preço", { exact: true }).fill("abc");
-    await page.getByRole("button", { name: "Cadastrar serviço" }).click();
+    await page.locator('form button[type="submit"]').click();
     await expect(page.getByText("Informe o nome do serviço.")).toBeVisible();
     await expect(page.getByText(/Informe um valor válido/)).toBeVisible();
     expect(chamadasInvalidas, "formulário inválido nunca chega na API").toBe(0);
@@ -105,9 +105,25 @@ test.describe("gestão real de serviços", () => {
     page.on("request", (req) => {
       if (req.method() === "POST" && /\/services$/.test(req.url())) criacoes += 1;
     });
-    const salvar = page.getByRole("button", { name: "Cadastrar serviço" });
+
+    // Segura a resposta da criação para o segundo clique acontecer com a
+    // requisição comprovadamente em voo — sem isso ele poderia cair depois de
+    // a gravação terminar e não provaria nada. A requisição continua indo ao
+    // backend real; nada é simulado.
+    await page.route("**/tenants/*/services", async (rota) => {
+      if (rota.request().method() === "POST") {
+        await new Promise((resolver) => setTimeout(resolver, 1_500));
+      }
+      await rota.continue();
+    });
+
+    // Localizador pelo `type`, nunca pelo texto: durante a gravação o rótulo
+    // do botão vira "Salvando...", e um locator por nome deixaria de casar.
+    const salvar = page.locator('form button[type="submit"]');
     await salvar.click();
-    await salvar.click({ force: true }).catch(() => undefined);
+    await expect(salvar).toBeDisabled();
+    await salvar.click({ force: true });
+    await page.unroute("**/tenants/*/services");
 
     await expect(page.getByText("Atendimento padrão")).toBeVisible();
     // R$ 85,50 formatado pelo Intl usa espaço não separável.
