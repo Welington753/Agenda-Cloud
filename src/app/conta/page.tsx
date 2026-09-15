@@ -7,7 +7,7 @@
 // central da seção 6 do AGENTS.md deste lote.
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Store, Users2 } from "lucide-react";
+import { LogOut, Store, Users2, Wrench } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
@@ -95,19 +95,33 @@ export default function ContaPage() {
               <p className="text-xs text-ink-soft">
                 Período de teste até {formatarData(contexto.trial.trialEndAt)}.
               </p>
-              {sessao.contexts.length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                {/* Serviços é a primeira funcionalidade de negócio real desta
+                    conta (Lote 6D.1) — nunca a tela demonstrativa de
+                    /painel/servicos. */}
                 <Botao
                   type="button"
                   variante="secundaria"
                   tamanho="sm"
-                  onClick={() => router.push("/conta/selecionar-estabelecimento")}
+                  onClick={() => router.push("/conta/servicos")}
                 >
-                  <Users2 size={14} className="mr-1.5" />
-                  Trocar de estabelecimento
+                  <Wrench size={14} className="mr-1.5" />
+                  Gerenciar serviços
                 </Botao>
-              )}
+                {sessao.contexts.length > 1 && (
+                  <Botao
+                    type="button"
+                    variante="secundaria"
+                    tamanho="sm"
+                    onClick={() => router.push("/conta/selecionar-estabelecimento")}
+                  >
+                    <Users2 size={14} className="mr-1.5" />
+                    Trocar de estabelecimento
+                  </Botao>
+                )}
+              </div>
               <p className="border-t border-dashed border-border pt-3 text-xs text-ink-soft">
-                Agenda, equipe, serviços e demais funcionalidades desta conta real ainda não estão conectadas nesta
+                Agenda, equipe e demais funcionalidades desta conta real ainda não estão conectadas nesta
                 fase — chegam em um próximo lote.
               </p>
             </CartaoCorpo>
