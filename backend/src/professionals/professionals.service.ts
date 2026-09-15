@@ -173,10 +173,36 @@ export class ProfessionalsService {
     }));
   }
 
-  /** Valida que todos os ids pedidos existem, pertencem ao tenant e estão
+  /**
+   * Valida que todos os ids pedidos existem, pertencem ao tenant e estão
    * ATIVOS — usada só para vínculos NOVOS (ver cabeçalho de `setServices`).
    * Tudo ou nada: um id inexistente/inativo/de outro tenant rejeita o pedido
-   * inteiro, sem gravar nada. */
+   * inteiro, sem gravar nada.
+   *
+   * PRECISA rodar DENTRO da transação que grava os vínculos, e com
+   * `FOR SHARE` (`pessimistic_read`). Os dois juntos, nunca um só:
+   *
+   *  - fora da transação (ou dentro dela, mas sem lock), o banco roda em
+   *    READ COMMITTED e nada impede um `UPDATE services SET active = false`
+   *    de commitar entre esta consulta e o INSERT — o vínculo novo nasceria
+   *    apontando para um serviço já inativo, violando a regra que este
+   *    método existe para impor;
+   *  - a FK composta não cobre esse buraco: o INSERT em
+   *    `professional_services` pega `FOR KEY SHARE` na linha de `services`,
+   *    que NÃO conflita com o `FOR NO KEY UPDATE` de um UPDATE em `active`
+   *    (coluna não-chave). `FOR SHARE` é o lock mais fraco que conflita.
+   *
+   * Ordem de aquisição (sem risco de deadlock): esta transação trava as
+   * linhas de `services` ANTES de escrever em `professionals`/
+   * `professional_services`, e a desativação (services.service.ts) trava
+   * exatamente uma linha de `services` e não espera por mais nada enquanto
+   * a segura. Duas requisições de vínculo só tomam locks compartilhados
+   * entre si, que não conflitam.
+   *
+   * Só os vínculos NOVOS entram aqui: manter um vínculo antigo não trava
+   * nada, então desativar um serviço nunca fica esperando por quem está
+   * apenas preservando vínculos existentes.
+   */
   private async validateEligibleServiceIds(
     manager: EntityManager,
     tenantId: string,
@@ -186,6 +212,7 @@ export class ProfessionalsService {
 
     const encontrados = await manager.find(Service, {
       where: { tenantId, id: In(serviceIds), active: true },
+      lock: { mode: 'pessimistic_read' },
     });
     if (encontrados.length !== serviceIds.length) {
       throw new BadRequestException(INVALID_SERVICES_MESSAGE);
@@ -203,8 +230,8 @@ export class ProfessionalsService {
     return this.toViews(manager, authorized.tenantId, professionals);
   }
 
-  /** Criação — transacional quando há serviços iniciais: o profissional e
-   * seus vínculos nascem juntos, ou nenhum dos dois nasce. */
+  /** Criação — transacional: validação dos serviços escolhidos, profissional
+   * e vínculos acontecem na mesma transação, ou nada acontece. */
   async create(
     userId: string,
     tenantId: string,
@@ -214,11 +241,14 @@ export class ProfessionalsService {
     const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
 
     const serviceIds = [...new Set(dto.serviceIds)];
-    await this.validateEligibleServiceIds(manager, authorized.tenantId, serviceIds);
-
     const { avatarInitials, avatarColor } = deriveAvatar(dto.name);
 
     const saved = await this.dataSource.transaction(async (tx) => {
+      // Primeiro statement da transação, e travando os serviços escolhidos:
+      // ver `validateEligibleServiceIds`. Recusa aqui dentro significa
+      // rollback — o profissional nunca chega a existir.
+      await this.validateEligibleServiceIds(tx, authorized.tenantId, serviceIds);
+
       const professional = await tx.save(
         tx.create(Professional, {
           tenantId: authorized.tenantId,
@@ -368,10 +398,12 @@ export class ProfessionalsService {
     const paraAdicionar = desired.filter((serviceId) => !existentesPorServico.has(serviceId));
     const paraRemover = existentes.filter((link) => !desired.includes(link.serviceId));
 
-    await this.validateEligibleServiceIds(manager, authorized.tenantId, paraAdicionar);
-
     try {
       await this.dataSource.transaction(async (tx) => {
+        // Primeiro statement da transação, e travando só os serviços que
+        // viram vínculo NOVO: ver `validateEligibleServiceIds`.
+        await this.validateEligibleServiceIds(tx, authorized.tenantId, paraAdicionar);
+
         if (paraRemover.length > 0) {
           await tx.remove(paraRemover);
         }
