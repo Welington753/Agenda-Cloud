@@ -9,6 +9,9 @@
 // passo anterior do workflow de CI; este arquivo nunca cria nem altera tabela.
 // `rejectUnauthorized: true` nunca é enfraquecido: o certificado autoassinado
 // do container é confiado via `NODE_EXTRA_CA_CERTS`.
+import { globSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -32,6 +35,36 @@ import { User } from '../src/entities/user.entity.js';
 import { ServicesService } from '../src/services/services.service.js';
 
 const DIRECT_URL = process.env.DB_E2E_DIRECT_URL;
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Carrega TODAS as classes de entidade a partir do mesmo padrão de arquivos
+ * que `runtime-data-source.ts` usa em `entities:` — nunca um registro
+ * paralelo. O `import()` dinâmico é o ponto: ele passa pelo transform do
+ * Vitest, enquanto o glob resolvido pelo próprio TypeORM leria o `.ts` cru
+ * com o loader do Node.
+ *
+ * O conjunto precisa ser completo: as entidades se referenciam entre si por
+ * nome, então uma lista parcial quebraria o metadata de quem ficou de fora.
+ */
+async function carregarEntidades(): Promise<(new () => object)[]> {
+  const arquivos = globSync(
+    path.join(testDir, '../src/entities/**/*.entity.ts').replaceAll('\\', '/'),
+  );
+  if (arquivos.length === 0) {
+    throw new Error('Nenhuma entidade encontrada — o padrão de arquivos saiu do lugar.');
+  }
+
+  const classes: (new () => object)[] = [];
+  for (const arquivo of arquivos) {
+    const modulo = (await import(pathToFileURL(arquivo).href)) as Record<string, unknown>;
+    for (const exportado of Object.values(modulo)) {
+      if (typeof exportado === 'function') classes.push(exportado as new () => object);
+    }
+  }
+  return classes;
+}
 
 /** Dados mínimos de um estabelecimento com um dono — criados direto pelo
  * DataSource porque são FIXTURE (o que está sob teste é `ServicesService`,
@@ -88,12 +121,20 @@ describe.skipIf(!DIRECT_URL)('serviços contra PostgreSQL descartável (Lote 6D.
 
   beforeAll(async () => {
     // Reaproveita a MESMA construção de opções do runtime (naming strategy,
-    // glob de entidades, synchronize:false e `ssl.rejectUnauthorized: true`,
-    // que nunca é enfraquecido aqui) — só a URL muda, para o banco
-    // descartável. O glob importa: as entidades se referenciam entre si por
-    // nome, então uma lista explícita e parcial quebraria o metadata.
+    // synchronize:false e `ssl.rejectUnauthorized: true`, que nunca é
+    // enfraquecido aqui) — só a URL e a forma de carregar as entidades mudam.
+    //
+    // Por que `entities` é substituído: o runtime aponta para um GLOB de
+    // arquivos, e o TypeORM resolve esse glob lendo os arquivos direto com o
+    // loader do Node. Sob o Vitest isso alcançaria os `.ts` crus, sem passar
+    // pelo transform, e quebraria com "SyntaxError: Invalid or unexpected
+    // token". As classes são carregadas aqui pelo `import()` dinâmico (que
+    // passa pelo pipeline do Vitest) a partir do MESMO glob — nunca uma lista
+    // mantida à mão em paralelo, que poderia divergir das entidades reais.
+    const entidades = await carregarEntidades();
     dataSource = new DataSource({
       ...buildRuntimeDataSourceOptions(DIRECT_URL as string),
+      entities: entidades,
       logging: ['error'],
     });
     await dataSource.initialize();
