@@ -155,9 +155,12 @@ describe('autorização por requisição', () => {
   ])('%s com vínculo ativo recebe 403 — vínculo não é permissão', async (role) => {
     const { servicos } = montar({ role });
     await expect(servicos.list(USUARIO_DONO, TENANT_A)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
-  it('DONO com DENIED em SERVICOS_GERENCIAR lê, mas não cria', async () => {
+  it('DONO com DENIED em SERVICOS_GERENCIAR lê, mas não cria nem reativa', async () => {
     const { servicos } = montar({
       overrides: [
         {
@@ -183,6 +186,9 @@ describe('autorização por requisição', () => {
         requiresManualConfirmation: false,
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
@@ -201,6 +207,9 @@ describe('isolamento entre estabelecimentos', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       servicos.deactivate(USUARIO_DONO, TENANT_A, 'service_b1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_b1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -294,5 +303,71 @@ describe('criação, edição e desativação', () => {
 
     expect(lista).toHaveLength(1);
     expect(lista[0].active).toBe(false);
+  });
+});
+
+describe('reativação', () => {
+  it('reativação preserva o registro, o id e só muda `active`', async () => {
+    const { manager, servicos } = montar();
+    await servicos.deactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    const reativado = await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    expect(reativado.id).toBe('service_a1');
+    expect(reativado.active).toBe(true);
+    expect(reativado.name).toBe('Serviço service_a1');
+    expect(reativado.priceCents).toBe(5000);
+    expect(manager.services.some((s) => s.id === 'service_a1')).toBe(true);
+    expect(manager.services).toHaveLength(2);
+  });
+
+  it('reativar não cria registro novo nem altera outros campos', async () => {
+    const { manager, servicos } = montar();
+    await servicos.deactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+    const antes = manager.services.find((s) => s.id === 'service_a1');
+
+    await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    expect(manager.services).toHaveLength(2);
+    const depois = manager.services.find((s) => s.id === 'service_a1');
+    expect(depois?.tenantId).toBe(antes?.tenantId);
+    expect(depois?.durationMinutes).toBe(antes?.durationMinutes);
+    expect(depois?.createdAt).toEqual(antes?.createdAt);
+  });
+
+  it('reativar um serviço já ativo é idempotente, nunca erro', async () => {
+    const { servicos } = montar();
+    const resultado = await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    expect(resultado.active).toBe(true);
+  });
+
+  it('reativar duas vezes seguidas é idempotente', async () => {
+    const { servicos } = montar();
+    await servicos.deactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+    await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+    const segunda = await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    expect(segunda.active).toBe(true);
+  });
+
+  it('reativação usa `{ id, tenantId }` no where — nunca só o id', async () => {
+    const { servicos } = montar();
+    await servicos.deactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+    wheresDeServico.length = 0;
+
+    await servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1');
+
+    expect(wheresDeServico.length).toBeGreaterThan(0);
+    for (const where of wheresDeServico) {
+      expect(where.tenantId).toBe(TENANT_A);
+    }
+  });
+
+  it('tenant inativo bloqueia a reativação mesmo com membership de DONO', async () => {
+    const { servicos } = montar({ statusTenantA: TenantStatus.SUSPENDED });
+    await expect(
+      servicos.reactivate(USUARIO_DONO, TENANT_A, 'service_a1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

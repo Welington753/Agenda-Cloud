@@ -89,4 +89,21 @@ export class ServicesController {
     );
     return { service };
   }
+
+  /** Reativação como ação própria, espelho de `deactivate` — nunca pelo
+   * PATCH genérico (que exclui `active` de propósito, ver service.dto.ts). */
+  @Post(':serviceId/reactivate')
+  @HttpCode(200)
+  async reactivate(
+    @Param('tenantId') tenantId: string,
+    @Param('serviceId') serviceId: string,
+    @Req() req: Request,
+  ) {
+    const service = await this.servicesService.reactivate(
+      identityOf(req).userId,
+      tenantId,
+      serviceId,
+    );
+    return { service };
+  }
 }

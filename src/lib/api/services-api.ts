@@ -163,3 +163,19 @@ export function desativarServico(
     signal,
   );
 }
+
+/** Reativação — espelho de `desativarServico`. Nunca cria registro novo:
+ * é a MESMA linha do banco, só a coluna `active` volta para `true` (ver
+ * services.service.ts, `reactivate`). */
+export function reativarServico(
+  tenantId: string,
+  serviceId: string,
+  signal?: AbortSignal,
+): Promise<ResultadoServicosReal<ServicoReal>> {
+  return enviarServico(
+    `${caminhoBase(tenantId)}/${encodeURIComponent(serviceId)}/reactivate`,
+    "POST",
+    undefined,
+    signal,
+  );
+}

@@ -1,9 +1,9 @@
 "use client";
 
-// Gestão real de serviços do estabelecimento ativo (Lote 6D.1). Vive sob
-// `/conta`, que já é área REAL: nenhum dado, repositório ou seed da
-// demonstração é importado aqui (ver o layout de `/conta` e a auditoria de
-// `sem-dados-demo.test.ts`).
+// Gestão real de serviços do estabelecimento ativo (Lote 6D.1, reativação no
+// complemento seguinte). Vive sob `/conta`, que já é área REAL: nenhum dado,
+// repositório ou seed da demonstração é importado aqui (ver o layout de
+// `/conta` e a auditoria de `sem-dados-demo.test.ts`).
 //
 // Sem estabelecimento ativo, a tela nunca inventa um: encaminha para a seleção
 // já existente quando há vários vínculos, ou mostra o estado de ausência de
@@ -36,21 +36,28 @@ export default function ServicosPage() {
   const tenantIdAtivo = estadoSessao.status === "autenticado" ? estadoSessao.tenantIdAtivo : null;
   const precisaSelecionar = !!sessao && sessao.requiresTenantSelection && !tenantIdAtivo;
 
-  const { estado, gravando, recarregar, criar, editar, desativar } = useServicosReais(tenantIdAtivo);
+  const { estado, gravando, recarregar, criar, editar, desativar, reativar } =
+    useServicosReais(tenantIdAtivo);
   const [edicao, setEdicao] = useState<Edicao>({ modo: "fechado" });
   const [erroFormulario, setErroFormulario] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<ServicoReal | null>(null);
+  // Só para trocar o rótulo do botão clicado ("Reativando...") — o bloqueio
+  // de fato contra clique duplicado é `gravando` (compartilhado por toda
+  // gravação, ver use-servicos-reais.ts), nunca este estado sozinho.
+  const [reativandoId, setReativandoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
   }, [precisaSelecionar, router]);
 
   // Trocar de estabelecimento fecha qualquer formulário/confirmação aberta —
-  // continuar editando um serviço do tenant anterior não faria sentido.
+  // continuar editando ou reativando um serviço do tenant anterior não faria
+  // sentido.
   useEffect(() => {
     setEdicao({ modo: "fechado" });
     setErroFormulario(null);
     setConfirmando(null);
+    setReativandoId(null);
   }, [tenantIdAtivo]);
 
   if (!sessao || precisaSelecionar) return null;
@@ -107,6 +114,22 @@ export default function ServicosPage() {
       resultado.ok
         ? "Serviço desativado. O histórico foi preservado."
         : mensagemFalhaServicos(resultado.falha),
+      resultado.ok ? "sucesso" : "info",
+    );
+  }
+
+  async function aoReativar(servico: ServicoReal) {
+    // Segunda barreira contra envio duplicado, além do `disabled` do botão:
+    // um clique já despachado antes do re-render nunca dispara uma segunda
+    // chamada.
+    if (gravando) return;
+
+    setReativandoId(servico.id);
+    const resultado = await reativar(servico.id);
+    setReativandoId(null);
+
+    notificar(
+      resultado.ok ? "Serviço reativado." : mensagemFalhaServicos(resultado.falha),
       resultado.ok ? "sucesso" : "info",
     );
   }
@@ -186,6 +209,7 @@ export default function ServicosPage() {
               servicos={estado.servicos}
               gravando={gravando}
               confirmando={confirmando}
+              reativandoId={reativandoId}
               aoEditar={(servico) => {
                 setErroFormulario(null);
                 setEdicao({ modo: "editar", servico });
@@ -193,6 +217,7 @@ export default function ServicosPage() {
               aoPedirDesativacao={setConfirmando}
               aoCancelarDesativacao={() => setConfirmando(null)}
               aoConfirmarDesativacao={(servico) => void aoConfirmarDesativacao(servico)}
+              aoReativar={(servico) => void aoReativar(servico)}
             />
           )}
         </>

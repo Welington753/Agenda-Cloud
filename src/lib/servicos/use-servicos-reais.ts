@@ -41,6 +41,7 @@ export interface ServicosReais {
     dados: Partial<DadosServicoReal>,
   ) => Promise<ResultadoServicosReal<ServicoReal>>;
   desativar: (serviceId: string) => Promise<ResultadoServicosReal<ServicoReal>>;
+  reativar: (serviceId: string) => Promise<ResultadoServicosReal<ServicoReal>>;
 }
 
 export function useServicosReais(tenantId: string | null): ServicosReais {
@@ -143,5 +144,16 @@ export function useServicosReais(tenantId: string | null): ServicosReais {
     [gravar],
   );
 
-  return { estado, gravando, recarregar, criar, editar, desativar };
+  /** Espelho de `desativar`: mesma proteção de troca de tenant, mesmo bloqueio
+   * de envio concorrente (via `gravar`) e sem gravação automática após falha. */
+  const reativar = useCallback(
+    (serviceId: string) =>
+      gravar(
+        (tenant) => servicosApi.reativarServico(tenant, serviceId),
+        (servicos, salvo) => servicos.map((s) => (s.id === salvo.id ? salvo : s)),
+      ),
+    [gravar],
+  );
+
+  return { estado, gravando, recarregar, criar, editar, desativar, reativar };
 }

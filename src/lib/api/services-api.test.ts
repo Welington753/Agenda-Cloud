@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   criarServico,
   desativarServico,
+  reativarServico,
   editarServico,
   listarServicos,
 } from "./services-api";
@@ -187,5 +188,55 @@ describe("desativarServico", () => {
     expect(init.method).not.toBe("DELETE");
     expect(resultado.ok).toBe(true);
     if (resultado.ok) expect(resultado.dados.active).toBe(false);
+  });
+});
+
+describe("reativarServico", () => {
+  it("chama a ação própria de reativação, nunca PATCH com active:true", async () => {
+    mockFetch(200, { service: { ...SERVICO_VALIDO, active: true } });
+
+    const resultado = await reativarServico("tenant_1", "service_1");
+
+    const [url, init] = ultimaChamada();
+    expect(url).toContain("/tenants/tenant_1/services/service_1/reactivate");
+    expect(init.method).toBe("POST");
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) expect(resultado.dados.active).toBe(true);
+  });
+
+  it("nunca envia corpo — reativação não recebe dados do cliente", async () => {
+    mockFetch(200, { service: SERVICO_VALIDO });
+
+    await reativarServico("tenant_1", "service_1");
+
+    const [, init] = ultimaChamada();
+    expect(init.body).toBeUndefined();
+  });
+
+  it("404 de serviço de outro estabelecimento vira sem_acesso", async () => {
+    mockFetch(404, { message: "Serviço não encontrado." });
+
+    expect(await reativarServico("tenant_1", "service_de_outro")).toEqual({
+      ok: false,
+      falha: { tipo: "sem_acesso" },
+    });
+  });
+
+  it("403 sem permissão vira sem_permissao", async () => {
+    mockFetch(403, { message: "Sem permissão." });
+
+    expect(await reativarServico("tenant_1", "service_1")).toEqual({
+      ok: false,
+      falha: { tipo: "sem_permissao" },
+    });
+  });
+
+  it("falha de rede é distinta de qualquer resposta HTTP", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+
+    expect(await reativarServico("tenant_1", "service_1")).toEqual({
+      ok: false,
+      falha: { tipo: "falha_comunicacao" },
+    });
   });
 });
