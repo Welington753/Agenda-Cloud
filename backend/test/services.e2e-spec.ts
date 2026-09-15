@@ -51,6 +51,7 @@ describe('rotas de serviços (e2e)', () => {
   let createMock: ReturnType<typeof vi.fn>;
   let updateMock: ReturnType<typeof vi.fn>;
   let deactivateMock: ReturnType<typeof vi.fn>;
+  let reactivateMock: ReturnType<typeof vi.fn>;
   let guardMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -58,6 +59,7 @@ describe('rotas de serviços (e2e)', () => {
     createMock = vi.fn().mockResolvedValue(FAKE_SERVICE);
     updateMock = vi.fn().mockResolvedValue(FAKE_SERVICE);
     deactivateMock = vi.fn().mockResolvedValue({ ...FAKE_SERVICE, active: false });
+    reactivateMock = vi.fn().mockResolvedValue({ ...FAKE_SERVICE, active: true });
     guardMock = vi.fn().mockImplementation((context) => {
       const req = context.switchToHttp().getRequest();
       req.auth = FAKE_IDENTITY_CONTEXT;
@@ -75,6 +77,7 @@ describe('rotas de serviços (e2e)', () => {
         create: createMock,
         update: updateMock,
         deactivate: deactivateMock,
+        reactivate: reactivateMock,
       })
       .overrideGuard(SessionGuard)
       .useValue({ canActivate: guardMock })
@@ -110,7 +113,7 @@ describe('rotas de serviços (e2e)', () => {
     );
   });
 
-  it('PATCH edita e POST /deactivate desativa', async () => {
+  it('PATCH edita, POST /deactivate desativa e POST /reactivate reativa', async () => {
     await request(app.getHttpServer())
       .patch('/tenants/tenant_a/services/service_1')
       .send({ name: 'Corte masculino' })
@@ -124,6 +127,12 @@ describe('rotas de serviços (e2e)', () => {
       .expect(200);
     expect(resposta.body.service.active).toBe(false);
     expect(deactivateMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'service_1');
+
+    const respostaReativacao = await request(app.getHttpServer())
+      .post('/tenants/tenant_a/services/service_1/reactivate')
+      .expect(200);
+    expect(respostaReativacao.body.service.active).toBe(true);
+    expect(reactivateMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'service_1');
   });
 
   it('nenhuma rota de serviço existe sem sessão — o guard recusa antes do serviço', async () => {
@@ -143,11 +152,15 @@ describe('rotas de serviços (e2e)', () => {
     await request(app.getHttpServer())
       .post('/tenants/tenant_a/services/service_1/deactivate')
       .expect(401);
+    await request(app.getHttpServer())
+      .post('/tenants/tenant_a/services/service_1/reactivate')
+      .expect(401);
 
     expect(listMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
     expect(deactivateMock).not.toHaveBeenCalled();
+    expect(reactivateMock).not.toHaveBeenCalled();
   });
 
   it('sem vínculo vira 404 e sem permissão vira 403, com a mensagem do domínio', async () => {
@@ -159,6 +172,11 @@ describe('rotas de serviços (e2e)', () => {
       .post('/tenants/tenant_a/services')
       .send(CORPO_VALIDO)
       .expect(403);
+
+    reactivateMock.mockRejectedValueOnce(new NotFoundException('Serviço não encontrado.'));
+    await request(app.getHttpServer())
+      .post('/tenants/tenant_a/services/service_de_outro/reactivate')
+      .expect(404);
   });
 
   it('corpo inválido é 400 antes de chegar no serviço', async () => {

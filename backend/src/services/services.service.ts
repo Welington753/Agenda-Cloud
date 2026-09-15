@@ -228,4 +228,31 @@ export class ServicesService {
     const saved = await manager.save(service);
     return toServiceView(saved);
   }
+
+  /**
+   * Reativação — espelho exato de `deactivate`, nunca um caminho novo de
+   * autorização. NÃO usa o PATCH genérico: `updateServiceSchema` exclui
+   * `active` de propósito (ver service.dto.ts), porque misturar a mudança de
+   * estado com a edição de campo abriria espaço para um PATCH silenciosamente
+   * reativar um serviço junto de uma edição não relacionada. A ação fica
+   * própria e explícita, como `deactivate`.
+   *
+   * Nunca cria registro novo nem toca em vínculo nenhum (profissionais,
+   * comissões, agendamentos) — é a MESMA linha, só a coluna `active` muda de
+   * volta. Idempotente: reativar um serviço já ativo devolve o mesmo estado,
+   * sem erro.
+   */
+  async reactivate(userId: string, tenantId: string, serviceId: string): Promise<ServiceView> {
+    const manager = this.dataSource.manager;
+    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const service = await this.findScopedService(manager, authorized.tenantId, serviceId);
+
+    if (service.active) {
+      return toServiceView(service);
+    }
+
+    service.active = true;
+    const saved = await manager.save(service);
+    return toServiceView(saved);
+  }
 }

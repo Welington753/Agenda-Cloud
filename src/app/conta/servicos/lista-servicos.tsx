@@ -6,8 +6,10 @@
 // orçamento do lint.
 //
 // O serviço inativo continua visível e claramente marcado — desativar nunca
-// esconde o registro, porque ele segue existindo no banco.
-import { Ban, Pencil } from "lucide-react";
+// esconde o registro, porque ele segue existindo no banco. Reativação é ação
+// direta (sem confirmação): reverter uma desativação não é destrutivo, então
+// não exige o mesmo passo extra.
+import { Ban, Pencil, RotateCcw } from "lucide-react";
 import type { ServicoReal } from "@/lib/api/services-api";
 import { formatarPrecoServico } from "@/lib/servicos/dinheiro";
 import { formatarDuracao } from "@/lib/format";
@@ -24,25 +26,32 @@ interface ListaServicosProps {
   servicos: ServicoReal[];
   gravando: boolean;
   confirmando: ServicoReal | null;
+  /** Id do serviço sendo reativado agora, para trocar só o rótulo daquele
+   * botão — `gravando` sozinho não diria QUAL serviço está em voo. */
+  reativandoId: string | null;
   aoEditar: (servico: ServicoReal) => void;
   aoPedirDesativacao: (servico: ServicoReal) => void;
   aoCancelarDesativacao: () => void;
   aoConfirmarDesativacao: (servico: ServicoReal) => void;
+  aoReativar: (servico: ServicoReal) => void;
 }
 
 export function ListaServicos({
   servicos,
   gravando,
   confirmando,
+  reativandoId,
   aoEditar,
   aoPedirDesativacao,
   aoCancelarDesativacao,
   aoConfirmarDesativacao,
+  aoReativar,
 }: ListaServicosProps) {
   return (
     <ul className="space-y-3">
       {servicos.map((servico) => {
         const confirmandoEste = confirmando?.id === servico.id;
+        const reativandoEste = reativandoId === servico.id;
         return (
           <li key={servico.id}>
             <Cartao className={servico.active ? undefined : "opacity-70"}>
@@ -73,22 +82,37 @@ export function ListaServicos({
                         type="button"
                         variante="secundaria"
                         tamanho="sm"
+                        disabled={gravando}
                         onClick={() => aoEditar(servico)}
                         aria-label={`Editar ${servico.name}`}
                       >
                         <Pencil size={14} className="mr-1" />
                         Editar
                       </Botao>
-                      {servico.active && (
+                      {servico.active ? (
                         <Botao
                           type="button"
                           variante="secundaria"
                           tamanho="sm"
+                          disabled={gravando}
                           onClick={() => aoPedirDesativacao(servico)}
                           aria-label={`Desativar ${servico.name}`}
                         >
                           <Ban size={14} className="mr-1" />
                           Desativar
+                        </Botao>
+                      ) : (
+                        <Botao
+                          type="button"
+                          variante="secundaria"
+                          tamanho="sm"
+                          disabled={gravando}
+                          aria-busy={reativandoEste}
+                          onClick={() => aoReativar(servico)}
+                          aria-label={`Reativar ${servico.name}`}
+                        >
+                          <RotateCcw size={14} className="mr-1" />
+                          {reativandoEste ? "Reativando..." : "Reativar"}
                         </Botao>
                       )}
                     </div>

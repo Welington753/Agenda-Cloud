@@ -422,4 +422,160 @@ describe.skipIf(!DIRECT_URL)('serviços contra PostgreSQL descartável (Lote 6D.
     expect(doBanco?.bufferAfterMinutes).toBe(5);
     expect(doBanco?.tenantId).toBe(cenario.tenantId);
   });
+
+  it('reativação real: desativar → reativar → reler do banco, mesmo id e vínculos preservados', async () => {
+    const cenario = await criarCenario('reativar');
+
+    const servico = await servicos.create(cenario.ownerUserId, cenario.tenantId, {
+      name: 'Serviço com histórico',
+      shortDescription: 'Descrição original',
+      priceCents: 6000,
+      priceVisible: true,
+      durationMinutes: 40,
+      bufferAfterMinutes: 5,
+      modality: ServiceModality.IN_PERSON,
+      activeInPublicBooking: true,
+      requiresManualConfirmation: false,
+    });
+
+    // Mesma referência real via FK composta usada no teste de desativação —
+    // reativar não pode desfazer nem recriar esse vínculo.
+    const profissional = await dataSource.manager.save(
+      dataSource.manager.create(Professional, {
+        tenantId: cenario.tenantId,
+        name: 'Profissional reativação',
+        avatarInitials: 'PR',
+        avatarColor: '#0f766e',
+        active: true,
+      }),
+    );
+    const vinculo = await dataSource.manager.save(
+      dataSource.manager.create(ProfessionalService, {
+        tenantId: cenario.tenantId,
+        professionalId: profissional.id,
+        serviceId: servico.id,
+      }),
+    );
+
+    await servicos.deactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+    const desativadoNoBanco = await dataSource.manager.findOne(Service, { where: { id: servico.id } });
+    expect(desativadoNoBanco?.active).toBe(false);
+
+    const reativado = await servicos.reactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+    expect(reativado.id).toBe(servico.id);
+    expect(reativado.active).toBe(true);
+
+    // Relido direto do banco — nunca só o objeto devolvido em memória.
+    const reativadoNoBanco = await dataSource.manager.findOne(Service, { where: { id: servico.id } });
+    expect(reativadoNoBanco?.active).toBe(true);
+    expect(reativadoNoBanco?.id).toBe(servico.id);
+    expect(reativadoNoBanco?.tenantId).toBe(cenario.tenantId);
+    expect(reativadoNoBanco?.name).toBe('Serviço com histórico');
+    expect(reativadoNoBanco?.priceCents).toBe(6000);
+    expect(reativadoNoBanco?.durationMinutes).toBe(40);
+
+    // Nenhum registro novo foi criado e o vínculo de profissional continua
+    // apontando para a MESMA linha de serviço.
+    const referencia = await dataSource.manager.findOne(ProfessionalService, {
+      where: { id: vinculo.id },
+    });
+    expect(referencia?.serviceId).toBe(servico.id);
+    expect(referencia?.professionalId).toBe(profissional.id);
+
+    const lista = await servicos.list(cenario.ownerUserId, cenario.tenantId);
+    expect(lista.filter((s) => s.id === servico.id)).toHaveLength(1);
+    expect(lista.find((s) => s.id === servico.id)?.active).toBe(true);
+  });
+
+  it('reativação real é idempotente: reativar duas vezes não gera erro nem segunda linha', async () => {
+    const cenario = await criarCenario('reativar-idempotente');
+
+    const servico = await servicos.create(cenario.ownerUserId, cenario.tenantId, {
+      name: 'Idempotência',
+      shortDescription: '',
+      priceCents: null,
+      priceVisible: true,
+      durationMinutes: 20,
+      bufferAfterMinutes: 0,
+      modality: ServiceModality.REMOTE,
+      activeInPublicBooking: true,
+      requiresManualConfirmation: false,
+    });
+
+    await servicos.deactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+    await servicos.reactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+    const segunda = await servicos.reactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+
+    expect(segunda.active).toBe(true);
+    const lista = await servicos.list(cenario.ownerUserId, cenario.tenantId);
+    expect(lista.filter((s) => s.id === servico.id)).toHaveLength(1);
+  });
+
+  it('reativação real: serviceId de outro estabelecimento é 404, o registro fica intacto', async () => {
+    const a = await criarCenario('reativar-cross-a');
+    const b = await criarCenario('reativar-cross-b');
+
+    const doB = await servicos.create(b.ownerUserId, b.tenantId, {
+      name: 'Serviço protegido inativo',
+      shortDescription: '',
+      priceCents: 4000,
+      priceVisible: true,
+      durationMinutes: 25,
+      bufferAfterMinutes: 0,
+      modality: ServiceModality.IN_PERSON,
+      activeInPublicBooking: true,
+      requiresManualConfirmation: false,
+    });
+    await servicos.deactivate(b.ownerUserId, b.tenantId, doB.id);
+
+    // O dono do A conhece o id real do serviço inativo de B e mesmo assim
+    // não consegue reativá-lo.
+    await expect(
+      servicos.reactivate(a.ownerUserId, a.tenantId, doB.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    const intacto = await dataSource.manager.findOne(Service, { where: { id: doB.id } });
+    expect(intacto?.active).toBe(false);
+    expect(intacto?.tenantId).toBe(b.tenantId);
+  });
+
+  it('reativação real: papel sem permissão recebe 403 mesmo com vínculo ativo', async () => {
+    const gerente = await criarCenario('reativar-sem-permissao', TenantStatus.ACTIVE, EstablishmentRole.GERENTE);
+
+    await expect(
+      servicos.reactivate(gerente.ownerUserId, gerente.tenantId, 'qualquer-id'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('reativação real: override DENIED gravado no banco bloqueia a reativação do DONO', async () => {
+    const cenario = await criarCenario('reativar-denied');
+    const servico = await servicos.create(cenario.ownerUserId, cenario.tenantId, {
+      name: 'Bloqueado para reativar',
+      shortDescription: '',
+      priceCents: null,
+      priceVisible: true,
+      durationMinutes: 15,
+      bufferAfterMinutes: 0,
+      modality: ServiceModality.IN_PERSON,
+      activeInPublicBooking: true,
+      requiresManualConfirmation: false,
+    });
+    await servicos.deactivate(cenario.ownerUserId, cenario.tenantId, servico.id);
+
+    await dataSource.manager.save(
+      dataSource.manager.create(MembershipPermissionOverride, {
+        tenantId: cenario.tenantId,
+        membershipId: cenario.membershipId,
+        permission: Permission.SERVICOS_GERENCIAR,
+        mode: PermissionMode.DENIED,
+      }),
+    );
+
+    await expect(
+      servicos.reactivate(cenario.ownerUserId, cenario.tenantId, servico.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const aindaInativo = await dataSource.manager.findOne(Service, { where: { id: servico.id } });
+    expect(aindaInativo?.active).toBe(false);
+  });
 });

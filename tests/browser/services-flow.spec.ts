@@ -5,11 +5,13 @@
 // O que é provado pela UI e o que é provado pela API, deliberadamente
 // separados:
 //  - o FLUXO (cadastro/login → criar → listar → reload → editar → desativar →
-//    persistiu) roda na tela real, preenchendo formulários de verdade;
-//  - a AUTORIZAÇÃO (acesso cruzado entre estabelecimentos) é atacada
-//    DIRETAMENTE na API, nunca só pela UI: um botão escondido não é controle
-//    de acesso, e um teste que só olhasse a tela não provaria nada sobre o
-//    servidor.
+//    reativar → reload) roda na tela real, preenchendo formulários de
+//    verdade e clicando nos botões reais — nunca chamando a API direto para
+//    simular a ação de uma pessoa;
+//  - a AUTORIZAÇÃO (acesso cruzado entre estabelecimentos, incluindo
+//    reativação) é atacada DIRETAMENTE na API, nunca só pela UI: um botão
+//    escondido não é controle de acesso, e um teste que só olhasse a tela
+//    não provaria nada sobre o servidor.
 //
 // Orçamento de POST /auth/register: o rate limit real é de 5 por 15 min por IP
 // (backend/src/auth/register-rate-limit.ts, MemoryStore no processo do
@@ -155,6 +157,35 @@ test.describe("gestão real de serviços", () => {
     await page.reload();
     await expect(page.getByText("Inativo")).toBeVisible();
     await expect(page.getByText("Atendimento estendido")).toBeVisible();
+
+    // Envio duplicado também vale para reativação: segura a resposta e
+    // clica duas vezes com a primeira chamada comprovadamente em voo.
+    let reativacoes = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && /\/reactivate$/.test(req.url())) reativacoes += 1;
+    });
+    await page.route("**/tenants/*/services/*/reactivate", async (rota) => {
+      await new Promise((resolver) => setTimeout(resolver, 1_500));
+      await rota.continue();
+    });
+
+    const reativar = page.getByRole("button", { name: "Reativar Atendimento estendido" });
+    await reativar.click();
+    await expect(reativar).toBeDisabled();
+    await reativar.click({ force: true });
+    await page.unroute("**/tenants/*/services/*/reactivate");
+
+    // Reativado some da marcação de inativo e volta a mostrar "Desativar".
+    await expect(page.getByText("Inativo")).toHaveCount(0);
+    await expect(page.getByText("Atendimento estendido")).toBeVisible();
+    expect(reativacoes, "um envio só, mesmo com dois cliques").toBe(1);
+
+    // Persistência real: reload confirma que a reativação gravou no banco,
+    // não só no estado do React.
+    await page.reload();
+    await expect(page.getByText("Inativo")).toHaveCount(0);
+    await expect(page.getByText("Atendimento estendido")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Desativar Atendimento estendido" })).toBeVisible();
   });
 
   test("isolamento entre estabelecimentos, atacado direto na API com sessão válida", async ({
@@ -246,6 +277,14 @@ test.describe("gestão real de serviços", () => {
         tenantId: tenantA,
       })).status,
     ).toBe(400);
+
+    // 7. Reativar o serviço de A — bloqueado mesmo já estando ativo: a
+    //    autorização é verificada ANTES de checar o estado atual do serviço,
+    //    então nem um serviço já ativo revela nada sobre si a quem não tem
+    //    vínculo.
+    expect(
+      (await comoB(`/tenants/${tenantB}/services/${servicoDeA.id}/reactivate`, "POST")).status,
+    ).toBe(404);
 
     // Nada disso alterou o serviço de A nem plantou serviço em ninguém.
     await paginaA.reload();
