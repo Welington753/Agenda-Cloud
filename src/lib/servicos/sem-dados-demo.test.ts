@@ -1,5 +1,6 @@
-// Auditoria estática (Lote 6D.1): a área REAL (`/conta/**` e
-// `src/lib/servicos/**`) nunca pode importar o domínio da demonstração —
+// Auditoria estática (Lote 6D.1, estendida no 6D.2): a área REAL (`/conta/**`,
+// `src/lib/servicos/**` e `src/lib/profissionais/**`) nunca pode importar o
+// domínio da demonstração —
 // repositórios locais, seeds, o contexto de sessão simulada ou os tipos em
 // português da simulação. Varre o código-fonte em vez de montar componentes
 // (não há testing-library nesta suíte — ver vitest.config.ts), mesma
@@ -8,7 +9,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const DIRETORIOS_ALVO = ["src/app/conta", "src/lib/servicos"];
+const DIRETORIOS_ALVO = ["src/app/conta", "src/lib/servicos", "src/lib/profissionais"];
 
 function listarArquivos(diretorio: string): string[] {
   return readdirSync(diretorio).flatMap((entrada) => {
