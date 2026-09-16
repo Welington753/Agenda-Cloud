@@ -96,7 +96,10 @@ export default function HorariosDoProfissionalPage() {
     setSemana((atual) => (atual ? { ...atual, [weekday]: intervals } : atual));
   }
 
-  async function aoSalvar() {
+  async function aoSalvar(evento: React.FormEvent) {
+    evento.preventDefault();
+    // Segunda barreira contra envio duplicado, além do `disabled` do botão:
+    // um clique já despachado antes do re-render nunca dispara um segundo PUT.
     if (!semana || gravando) return;
 
     const validacao = validarSemana(semana);
@@ -163,38 +166,37 @@ export default function HorariosDoProfissionalPage() {
             </CartaoCorpo>
           </Cartao>
 
-          <EditorSemana
-            semana={semana}
-            errosDeCampo={errosDeCampo}
-            erroDoDia={erroDoDia}
-            desabilitado={gravando}
-            aoAlterar={alterarDia}
-          />
+          {/* Form de verdade: o botão de salvar é o `submit`, então Enter
+              também grava e o estado de envio fica preso a um só lugar. */}
+          <form onSubmit={(evento) => void aoSalvar(evento)} className="space-y-6" noValidate>
+            <EditorSemana
+              semana={semana}
+              errosDeCampo={errosDeCampo}
+              erroDoDia={erroDoDia}
+              desabilitado={gravando}
+              aoAlterar={alterarDia}
+            />
 
-          {erroGeral && (
-            <p role="alert" className="text-sm text-[color:var(--color-danger)]">
-              {erroGeral}
-            </p>
-          )}
+            {erroGeral && (
+              <p role="alert" className="text-sm text-[color:var(--color-danger)]">
+                {erroGeral}
+              </p>
+            )}
 
-          <div className="flex gap-2">
-            <Botao
-              type="button"
-              disabled={gravando}
-              aria-busy={gravando}
-              onClick={() => void aoSalvar()}
-            >
-              {gravando ? "Salvando..." : "Salvar horários"}
-            </Botao>
-            <Botao
-              type="button"
-              variante="secundaria"
-              disabled={gravando}
-              onClick={() => router.push("/conta/profissionais")}
-            >
-              Voltar para profissionais
-            </Botao>
-          </div>
+            <div className="flex gap-2">
+              <Botao type="submit" disabled={gravando} aria-busy={gravando}>
+                {gravando ? "Salvando..." : "Salvar horários"}
+              </Botao>
+              <Botao
+                type="button"
+                variante="secundaria"
+                disabled={gravando}
+                onClick={() => router.push("/conta/profissionais")}
+              >
+                Voltar para profissionais
+              </Botao>
+            </div>
+          </form>
         </>
       )}
     </Pagina>

@@ -102,6 +102,10 @@ test.describe("horários semanais reais", () => {
     await page.getByLabel("Início 2 — Segunda-feira").fill("13:00");
     await page.getByLabel("Fim 2 — Segunda-feira").fill("18:00");
 
+    // Localizador pelo `type`, nunca pelo texto: durante a gravação o rótulo
+    // vira "Salvando...", e um locator por nome deixaria de casar.
+    const salvar = page.locator('form button[type="submit"]');
+
     // Sobreposição é recusada com mensagem, sem ir à API.
     let gravacoesInvalidas = 0;
     const contarPut = (req: { method: () => string; url: () => string }) => {
@@ -109,7 +113,7 @@ test.describe("horários semanais reais", () => {
     };
     page.on("request", contarPut);
     await page.getByLabel("Fim 1 — Segunda-feira").fill("14:00");
-    await page.getByRole("button", { name: "Salvar horários" }).click();
+    await salvar.click();
     await expect(page.getByText(/se sobrep/)).toBeVisible();
     expect(gravacoesInvalidas, "semana inválida nunca chega na API").toBe(0);
     page.off("request", contarPut);
@@ -122,18 +126,23 @@ test.describe("horários semanais reais", () => {
     page.on("request", (req) => {
       if (req.method() === "PUT" && /\/schedule$/.test(req.url())) gravacoes += 1;
     });
-    await page.route("**/professionals/*/schedule", async (rota) => {
+    // Matcher por função, não por glob: o caminho tem duas partes variáveis
+    // (tenant e profissional) e um padrão que não casasse deixaria a
+    // requisição passar direto — a gravação terminaria antes do teste
+    // conseguir observar o botão desabilitado, e o bloqueio de envio
+    // duplicado ficaria sem prova nenhuma.
+    const ehGravacaoDeHorarios = (url: URL) => url.pathname.endsWith("/schedule");
+    await page.route(ehGravacaoDeHorarios, async (rota) => {
       if (rota.request().method() === "PUT") {
         await new Promise((resolver) => setTimeout(resolver, 1_500));
       }
       await rota.continue();
     });
 
-    const salvar = page.getByRole("button", { name: "Salvar horários" });
     await salvar.click();
     await expect(salvar).toBeDisabled();
     await salvar.click({ force: true });
-    await page.unroute("**/professionals/*/schedule");
+    await page.unroute(ehGravacaoDeHorarios);
 
     await expect(page.getByText("Horários salvos.")).toBeVisible();
     expect(gravacoes, "um envio só, mesmo com dois cliques").toBe(1);
@@ -151,7 +160,7 @@ test.describe("horários semanais reais", () => {
     await page.getByRole("button", { name: "Adicionar intervalo em Quarta-feira" }).click();
     await page.getByLabel("Início 1 — Quarta-feira").fill("10:00");
     await page.getByLabel("Fim 1 — Quarta-feira").fill("16:00");
-    await page.getByRole("button", { name: "Salvar horários" }).click();
+    await salvar.click();
     await expect(page.getByText("Horários salvos.")).toBeVisible();
 
     await page.reload();
