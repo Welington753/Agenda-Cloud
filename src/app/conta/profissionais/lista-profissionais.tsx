@@ -5,7 +5,7 @@
 // registro); cada serviço vinculado mostra seu próprio estado, porque um
 // vínculo pode continuar existindo com o serviço já desativado.
 import Link from "next/link";
-import { Ban, CalendarClock, Pencil, RotateCcw } from "lucide-react";
+import { Ban, CalendarClock, CalendarSearch, Pencil, RotateCcw } from "lucide-react";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -101,6 +101,19 @@ export function ListaProfissionais({
                         <CalendarClock size={14} className="mr-1" />
                         Horários
                       </Link>
+                      {/* Consulta de disponibilidade (Lote 6D.4) — só faz
+                          sentido para quem atende: o profissional desativado
+                          não tem agenda a oferecer. */}
+                      {profissional.active && (
+                        <Link
+                          href={`/conta/profissionais/${profissional.id}/disponibilidade`}
+                          aria-label={`Disponibilidade de ${profissional.name}`}
+                          className="inline-flex items-center rounded-[var(--radius-control)] border border-border px-2.5 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                        >
+                          <CalendarSearch size={14} className="mr-1" />
+                          Disponibilidade
+                        </Link>
+                      )}
                       {profissional.active ? (
                         <Botao
                           type="button"
