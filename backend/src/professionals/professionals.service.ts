@@ -4,7 +4,8 @@
 // REGRA CENTRAL DE ISOLAMENTO: nenhuma consulta e nenhuma alteração aqui usa
 // um id sozinho. Todo acesso a `Professional`/`Service` é feito por
 // `{ id, tenantId }`, com o `tenantId` vindo SEMPRE de
-// `resolveAuthorizedTenant` (que prova a Membership no servidor), nunca do
+// `resolveAuthorizedProfessionalsTenant` (que prova a Membership no
+// servidor, ver professional-tenant-access.ts), nunca do
 // corpo/query/path sem passar por essa prova. Um `professionalId` ou
 // `serviceId` de outro estabelecimento simplesmente não é encontrado.
 //
@@ -15,43 +16,26 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import type { EntityManager } from 'typeorm';
-import { isTenantUsableForSession } from '../auth/tenant-access.js';
-import { Membership } from '../entities/membership.entity.js';
-import { MembershipPermissionOverride } from '../entities/membership-permission-override.entity.js';
 import { Professional } from '../entities/professional.entity.js';
 import { ProfessionalService } from '../entities/professional-service.entity.js';
 import { Service } from '../entities/service.entity.js';
-import { Tenant } from '../entities/tenant.entity.js';
-import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { deriveAvatar } from './avatar.js';
-import { canManageProfessionals, canViewProfessionals } from './professional-access.js';
+import { resolveAuthorizedProfessionalsTenant } from './professional-tenant-access.js';
 import type {
   CreateProfessionalDto,
   SetProfessionalServicesDto,
   UpdateProfessionalDto,
 } from './professional.dto.js';
 
-const TENANT_NOT_FOUND_MESSAGE = 'Estabelecimento não encontrado.';
 const PROFESSIONAL_NOT_FOUND_MESSAGE = 'Profissional não encontrado.';
-const FORBIDDEN_MESSAGE =
-  'Você não tem permissão para gerenciar os profissionais deste estabelecimento.';
 const INVALID_SERVICES_MESSAGE =
   'Um ou mais serviços informados não existem, estão inativos ou pertencem a outro estabelecimento.';
 const DUPLICATE_SERVICE_MESSAGE = 'Este serviço já está vinculado ao profissional.';
-
-/** Vínculo já PROVADO no servidor: existe Membership deste usuário neste
- * tenant, e o tenant está utilizável. Única origem aceitável de `tenantId`. */
-export interface AuthorizedTenant {
-  tenantId: string;
-  membershipId: string;
-  role: EstablishmentRole;
-}
 
 /** Serviço vinculado, na forma exposta pela API — inclui se o SERVIÇO em si
  * está ativo, para a UI marcar vínculos com serviço desativado sem escondê-los. */
@@ -75,41 +59,6 @@ export interface ProfessionalView {
 @Injectable()
 export class ProfessionalsService {
   constructor(private readonly dataSource: DataSource) {}
-
-  /** Prova, no servidor e a cada requisição, que este usuário pode operar
-   * neste tenant — espelho de ServicesService.resolveAuthorizedTenant.
-   * `NotFoundException` (não 403) quando não há vínculo ou o tenant está
-   * inativo: um 403 confirmaria que o estabelecimento existe. */
-  private async resolveAuthorizedTenant(
-    manager: EntityManager,
-    userId: string,
-    tenantId: string,
-    operation: 'view' | 'manage',
-  ): Promise<AuthorizedTenant> {
-    const membership = await manager.findOne(Membership, { where: { userId, tenantId } });
-    if (!membership) {
-      throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
-    }
-
-    const tenant = await manager.findOne(Tenant, { where: { id: tenantId } });
-    if (!tenant || !isTenantUsableForSession(tenant.status)) {
-      throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
-    }
-
-    const overrides = await manager.find(MembershipPermissionOverride, {
-      where: { tenantId, membershipId: membership.id },
-    });
-
-    const permitted =
-      operation === 'manage'
-        ? canManageProfessionals(membership.role, overrides)
-        : canViewProfessionals(membership.role, overrides);
-    if (!permitted) {
-      throw new ForbiddenException(FORBIDDEN_MESSAGE);
-    }
-
-    return { tenantId, membershipId: membership.id, role: membership.role };
-  }
 
   /** Busca SEMPRE por `{ id, tenantId }` — nunca só pelo id. */
   private async findScopedProfessional(
@@ -221,7 +170,7 @@ export class ProfessionalsService {
 
   async list(userId: string, tenantId: string): Promise<ProfessionalView[]> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'view');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'view');
 
     const professionals = await manager.find(Professional, {
       where: { tenantId: authorized.tenantId },
@@ -238,7 +187,7 @@ export class ProfessionalsService {
     dto: CreateProfessionalDto,
   ): Promise<ProfessionalView> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
 
     const serviceIds = [...new Set(dto.serviceIds)];
     const { avatarInitials, avatarColor } = deriveAvatar(dto.name);
@@ -285,7 +234,7 @@ export class ProfessionalsService {
     dto: UpdateProfessionalDto,
   ): Promise<ProfessionalView> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
     const professional = await this.findScopedProfessional(
       manager,
       authorized.tenantId,
@@ -315,7 +264,7 @@ export class ProfessionalsService {
     professionalId: string,
   ): Promise<ProfessionalView> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
     const professional = await this.findScopedProfessional(
       manager,
       authorized.tenantId,
@@ -340,7 +289,7 @@ export class ProfessionalsService {
     professionalId: string,
   ): Promise<ProfessionalView> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
     const professional = await this.findScopedProfessional(
       manager,
       authorized.tenantId,
@@ -382,7 +331,7 @@ export class ProfessionalsService {
     dto: SetProfessionalServicesDto,
   ): Promise<ProfessionalView> {
     const manager = this.dataSource.manager;
-    const authorized = await this.resolveAuthorizedTenant(manager, userId, tenantId, 'manage');
+    const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
     const professional = await this.findScopedProfessional(
       manager,
       authorized.tenantId,

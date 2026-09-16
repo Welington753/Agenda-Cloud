@@ -4,7 +4,8 @@
 // profissional inativo continua visível e marcado (nunca esconde o
 // registro); cada serviço vinculado mostra seu próprio estado, porque um
 // vínculo pode continuar existindo com o serviço já desativado.
-import { Ban, Pencil, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { Ban, CalendarClock, Pencil, RotateCcw } from "lucide-react";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -90,6 +91,16 @@ export function ListaProfissionais({
                         <Pencil size={14} className="mr-1" />
                         Editar
                       </Botao>
+                      {/* Horários semanais (Lote 6D.3) — tela própria, porque
+                          é outro recurso do backend (professional_schedules). */}
+                      <Link
+                        href={`/conta/profissionais/${profissional.id}/horarios`}
+                        aria-label={`Horários de ${profissional.name}`}
+                        className="inline-flex items-center rounded-[var(--radius-control)] border border-border px-2.5 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                      >
+                        <CalendarClock size={14} className="mr-1" />
+                        Horários
+                      </Link>
                       {profissional.active ? (
                         <Botao
                           type="button"
