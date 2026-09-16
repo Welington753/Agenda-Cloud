@@ -170,8 +170,12 @@ test.describe("consulta real de disponibilidade", () => {
     await definirJornada(page, tenantId, profissionalId, [{ start: "09:00", end: "12:00" }]);
     await page.getByRole("button", { name: "Consultar horários" }).click();
 
-    await expect(page.getByTestId("horarios")).toBeVisible();
-    expect(await horariosNaTela(page)).toEqual([
+    // `expect.poll` (não uma leitura síncrona única): o container de
+    // horários já existia visível de uma consulta anterior em outros pontos
+    // deste teste, então `toBeVisible()` sozinho passaria mesmo antes do
+    // clique terminar de buscar os dados NOVOS — só o poll espera o conteúdo
+    // de verdade convergir para o que a nova consulta devolveu.
+    await expect.poll(() => horariosNaTela(page)).toEqual([
       "09:00",
       "09:15",
       "09:30",
@@ -201,14 +205,12 @@ test.describe("consulta real de disponibilidade", () => {
     // é repetível e não muda nada no servidor).
     await page.getByLabel("Data").fill(DATA);
     await page.getByRole("button", { name: "Consultar horários" }).click();
-    await expect(page.getByTestId("horarios")).toBeVisible();
-    expect(await horariosNaTela(page)).toHaveLength(9);
+    await expect.poll(() => horariosNaTela(page)).toHaveLength(9);
 
     // Jornada reduzida pela metade muda a lista — a tela lê o estado real.
     await definirJornada(page, tenantId, profissionalId, [{ start: "09:00", end: "10:00" }]);
     await page.getByRole("button", { name: "Consultar horários" }).click();
-    await expect(page.getByTestId("horarios")).toBeVisible();
-    expect(await horariosNaTela(page)).toEqual(["09:00"]);
+    await expect.poll(() => horariosNaTela(page)).toEqual(["09:00"]);
 
     // Data de calendário inexistente é recusada antes de virar consulta útil:
     // o backend responde 400 e a tela mostra a orientação dele.
