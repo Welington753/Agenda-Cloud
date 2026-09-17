@@ -7,7 +7,7 @@
 // central da seção 6 do AGENTS.md deste lote.
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Store, UserRound, Users2, Wrench } from "lucide-react";
+import { CalendarDays, LogOut, Store, UserRound, Users2, Wrench } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
@@ -120,6 +120,17 @@ export default function ContaPage() {
                   <UserRound size={14} className="mr-1.5" />
                   Gerenciar profissionais
                 </Botao>
+                {/* Agendamentos é a funcionalidade real do Lote 6D.5 —
+                    nunca a agenda demonstrativa de /painel/agenda. */}
+                <Botao
+                  type="button"
+                  variante="secundaria"
+                  tamanho="sm"
+                  onClick={() => router.push("/conta/agendamentos")}
+                >
+                  <CalendarDays size={14} className="mr-1.5" />
+                  Agendamentos
+                </Botao>
                 {sessao.contexts.length > 1 && (
                   <Botao
                     type="button"
@@ -133,7 +144,7 @@ export default function ContaPage() {
                 )}
               </div>
               <p className="border-t border-dashed border-border pt-3 text-xs text-ink-soft">
-                Agenda, equipe e demais funcionalidades desta conta real ainda não estão conectadas nesta
+                Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas nesta
                 fase — chegam em um próximo lote.
               </p>
             </CartaoCorpo>
