@@ -315,8 +315,11 @@ test.describe("agendamentos reais", () => {
 
     await paginaA.locator('form button[type="submit"]').click();
 
-    // A tela explica que o horário deixou de estar disponível...
-    await expect(paginaA.getByRole("alert")).toContainText(/ocupado/i);
+    // A tela explica que o horário deixou de estar disponível. Localizador
+    // pelo testid do erro da RESERVA, não por `role=alert`: a página tem mais
+    // de um alerta possível (disponibilidade e listagem), e um seletor
+    // ambíguo falharia por strict mode em vez de provar o comportamento.
+    await expect(paginaA.getByTestId("erro-reserva")).toContainText(/ocupado/i);
     // ...e a agenda do dia é recarregada, mostrando as duas reservas.
     await expect(paginaA.getByTestId("agenda-do-dia")).toBeVisible();
     await expect(paginaA.locator('[data-testid="horario-agendado"]')).toHaveCount(2);

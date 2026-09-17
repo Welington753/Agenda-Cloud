@@ -287,7 +287,11 @@ export function NovaReserva({
       )}
 
       {erro && (
-        <p role="alert" className="text-sm text-[color:var(--color-danger)]">
+        <p
+          role="alert"
+          data-testid="erro-reserva"
+          className="text-sm text-[color:var(--color-danger)]"
+        >
           {erro}
         </p>
       )}
