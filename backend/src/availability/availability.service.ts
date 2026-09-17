@@ -46,6 +46,7 @@ import {
   PASSO_PADRAO_MINUTOS,
   type JanelaOcupada,
   type MotivoSemHorario,
+  type ResultadoDeCalculo,
 } from './availability-rules.js';
 import type { AvailabilityQueryDto } from './availability.dto.js';
 import { ErroDeFuso, janelaDeCarregamento, type DataLocal } from './time-zone.js';
@@ -83,6 +84,25 @@ export interface HorarioDisponivelView {
    * volta — sem isto a lista teria entradas indistinguíveis. */
   offsetMinutes: number;
   offsetLabel: string;
+}
+
+/** Saída de `AvailabilityService.calcular` — os horários JÁ calculados mais
+ * as linhas reais que os produziram. A criação de agendamento precisa das
+ * linhas (duração, buffer e preço do serviço, unidade do profissional) e
+ * nunca deve relê-las por conta própria: seriam outras leituras, fora dos
+ * locks, podendo divergir do que foi validado. */
+export interface DisponibilidadeCalculada {
+  professional: Professional;
+  service: Service;
+  timezone: string;
+  data: DataLocal;
+  policy: BookingPolicy | null;
+  resultado: ResultadoDeCalculo;
+  /** As janelas já ocupadas que entraram no cálculo. A criação de
+   * agendamento usa isto para distinguir "o horário foi tomado" (409) de "o
+   * horário nunca foi válido" (400) — sem elas, os dois casos virariam a
+   * mesma resposta genérica. */
+  ocupados: readonly JanelaOcupada[];
 }
 
 export interface AvailabilityView {
@@ -130,82 +150,20 @@ export class AvailabilityService {
       mensagemProibido: AVAILABILITY_FORBIDDEN_MESSAGE,
     });
 
-    const professional = await manager.findOne(Professional, {
-      where: { id: professionalId, tenantId: authorized.tenantId },
-    });
-    if (!professional) throw new NotFoundException(PROFESSIONAL_NOT_FOUND_MESSAGE);
-    if (!professional.active) throw new BadRequestException(INACTIVE_PROFESSIONAL_MESSAGE);
-
-    const service = await manager.findOne(Service, {
-      where: { id: query.serviceId, tenantId: authorized.tenantId },
-    });
-    if (!service) throw new NotFoundException(SERVICE_NOT_FOUND_MESSAGE);
-    if (!service.active) throw new BadRequestException(INACTIVE_SERVICE_MESSAGE);
-
-    // O vínculo é elegibilidade: sem ele, o profissional não realiza o
-    // serviço e não há horário nenhum a oferecer.
-    const vinculo = await manager.findOne(ProfessionalService, {
-      where: {
-        tenantId: authorized.tenantId,
-        professionalId: professional.id,
-        serviceId: service.id,
-      },
-    });
-    if (!vinculo) throw new BadRequestException(MISSING_LINK_MESSAGE);
-
-    // A coluna é NOT NULL, mas nada no banco impede `0` ou negativo: uma
-    // duração assim geraria horários infinitos ou sem sentido, então é
-    // recusada explicitamente em vez de virar lista vazia silenciosa.
-    if (!Number.isInteger(service.durationMinutes) || service.durationMinutes <= 0) {
-      throw new BadRequestException(INVALID_DURATION_MESSAGE);
-    }
-
-    const timezone = await this.timezoneDoTenant(manager, authorized.tenantId);
-    const data = this.dataPedida(query.date);
-
-    const intervalos = await this.jornadaDoDia(
+    const calculo = await this.calcular(
       manager,
       authorized.tenantId,
-      professional.id,
-      diaDaSemanaDe(data),
+      professionalId,
+      query.serviceId,
+      query.date,
     );
-
-    const policy = await manager.findOne(BookingPolicy, {
-      where: { tenantId: authorized.tenantId },
-    });
-
-    const ocupados = await this.conflitosDoDia(
-      manager,
-      authorized.tenantId,
-      professional.id,
-      data,
-    );
-
-    const agora = this.agora();
-    let resultado;
-    try {
-      resultado = calcularHorariosDisponiveis({
-        data,
-        timeZone: timezone,
-        intervalos,
-        duracaoMinutos: service.durationMinutes,
-        bufferMinutos: service.bufferAfterMinutes,
-        passoMinutos: PASSO_PADRAO_MINUTOS,
-        ocupados,
-        agora,
-        antecedenciaMinimaMinutos: policy?.minLeadMinutes ?? 0,
-        limiteDiasFuturos: policy?.maxFutureDays ?? null,
-      });
-    } catch (erro) {
-      if (erro instanceof ErroDeFuso) throw new BadRequestException(TENANT_TIMEZONE_MESSAGE);
-      throw erro;
-    }
+    const { professional, service, policy, resultado } = calculo;
 
     return {
       professionalId: professional.id,
       serviceId: service.id,
       date: query.date,
-      timezone,
+      timezone: calculo.timezone,
       durationMinutes: service.durationMinutes,
       bufferAfterMinutes: service.bufferAfterMinutes,
       slotStepMinutes: PASSO_PADRAO_MINUTOS,
@@ -221,6 +179,100 @@ export class AvailabilityService {
       })),
       emptyReason: resultado.motivo,
     };
+  }
+
+  /**
+   * Carrega tudo o que o cálculo precisa e roda as regras puras — o ÚNICO
+   * lugar onde isso acontece. A consulta (`consult`) e a criação de
+   * agendamento (appointments.service.ts) chamam este mesmo método, para as
+   * duas jamais discordarem sobre o que está livre: uma segunda cópia do
+   * carregamento seria a forma mais fácil de o GET oferecer um horário que o
+   * POST recusa.
+   *
+   * `manager` é parâmetro (não `this.dataSource.manager`) exatamente para a
+   * criação poder passar o manager da SUA transação — validar disponibilidade
+   * fora da transação que grava não valeria nada.
+   *
+   * `travar` só faz sentido dentro de uma transação: pega `FOR SHARE`
+   * (`pessimistic_read`) no serviço, no profissional e no vínculo. É o lock
+   * mais fraco que conflita com o `FOR NO KEY UPDATE` de uma desativação e
+   * com o `FOR UPDATE` de uma remoção de vínculo — sem ele, nada impede
+   * `UPDATE services SET active = false` de commitar entre esta validação e o
+   * INSERT do agendamento.
+   *
+   * ORDEM DE AQUISIÇÃO: serviço, depois profissional, depois vínculo. É a
+   * mesma ordem que `professionals.service.ts` já usa (trava `services`
+   * antes de escrever em `professionals`/`professional_services`), então
+   * nenhum par desses caminhos toma os mesmos dois locks em ordem invertida.
+   * A troca de jornada (working-hours.service.ts) pega `FOR UPDATE` na linha
+   * do profissional e não toca em `services`, então também não fecha ciclo
+   * com esta ordem. Isso vale para os caminhos existentes hoje — não é uma
+   * promessa de que nenhum caminho futuro possa introduzir um ciclo.
+   */
+  async calcular(
+    manager: EntityManager,
+    tenantId: string,
+    professionalId: string,
+    serviceId: string,
+    date: string,
+    opcoes: { travar?: boolean } = {},
+  ): Promise<DisponibilidadeCalculada> {
+    const lock = opcoes.travar ? ({ lock: { mode: 'pessimistic_read' as const } } as const) : {};
+
+    const service = await manager.findOne(Service, {
+      where: { id: serviceId, tenantId },
+      ...lock,
+    });
+    if (!service) throw new NotFoundException(SERVICE_NOT_FOUND_MESSAGE);
+    if (!service.active) throw new BadRequestException(INACTIVE_SERVICE_MESSAGE);
+
+    const professional = await manager.findOne(Professional, {
+      where: { id: professionalId, tenantId },
+      ...lock,
+    });
+    if (!professional) throw new NotFoundException(PROFESSIONAL_NOT_FOUND_MESSAGE);
+    if (!professional.active) throw new BadRequestException(INACTIVE_PROFESSIONAL_MESSAGE);
+
+    // O vínculo é elegibilidade: sem ele, o profissional não realiza o
+    // serviço e não há horário nenhum a oferecer.
+    const vinculo = await manager.findOne(ProfessionalService, {
+      where: { tenantId, professionalId: professional.id, serviceId: service.id },
+      ...lock,
+    });
+    if (!vinculo) throw new BadRequestException(MISSING_LINK_MESSAGE);
+
+    // A coluna é NOT NULL, mas nada no banco impede `0` ou negativo: uma
+    // duração assim geraria horários infinitos ou sem sentido, então é
+    // recusada explicitamente em vez de virar lista vazia silenciosa.
+    if (!Number.isInteger(service.durationMinutes) || service.durationMinutes <= 0) {
+      throw new BadRequestException(INVALID_DURATION_MESSAGE);
+    }
+
+    const timezone = await this.timezoneDoTenant(manager, tenantId);
+    const data = this.dataPedida(date);
+
+    const intervalos = await this.jornadaDoDia(manager, tenantId, professional.id, diaDaSemanaDe(data));
+    const policy = await manager.findOne(BookingPolicy, { where: { tenantId } });
+    const ocupados = await this.conflitosDoDia(manager, tenantId, professional.id, data);
+
+    try {
+      const resultado = calcularHorariosDisponiveis({
+        data,
+        timeZone: timezone,
+        intervalos,
+        duracaoMinutos: service.durationMinutes,
+        bufferMinutos: service.bufferAfterMinutes,
+        passoMinutos: PASSO_PADRAO_MINUTOS,
+        ocupados,
+        agora: this.agora(),
+        antecedenciaMinimaMinutos: policy?.minLeadMinutes ?? 0,
+        limiteDiasFuturos: policy?.maxFutureDays ?? null,
+      });
+      return { professional, service, timezone, data, policy, resultado, ocupados };
+    } catch (erro) {
+      if (erro instanceof ErroDeFuso) throw new BadRequestException(TENANT_TIMEZONE_MESSAGE);
+      throw erro;
+    }
   }
 
   /** `"YYYY-MM-DD"` já validado pelo DTO vira data de calendário — sem hora e

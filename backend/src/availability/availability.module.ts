@@ -8,9 +8,13 @@ import { AuthModule } from '../auth/auth.module.js';
 import { AvailabilityController } from './availability.controller.js';
 import { AvailabilityService } from './availability.service.js';
 
+// `AvailabilityService` é exportado para o AppointmentsModule (Lote 6D.5)
+// reutilizar EXATAMENTE o mesmo carregamento e as mesmas regras na hora de
+// gravar — nunca uma segunda cópia do cálculo.
 @Module({
   imports: [AuthModule],
   controllers: [AvailabilityController],
   providers: [AvailabilityService],
+  exports: [AvailabilityService],
 })
 export class AvailabilityModule {}
