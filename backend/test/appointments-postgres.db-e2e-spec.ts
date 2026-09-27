@@ -494,12 +494,11 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     expect(lista.timezone).toBe('America/Sao_Paulo');
   });
 
-  it('divergência conhecida do NO_SHOW: o GET oferece, o INSERT recusa com 409', async () => {
-    // Não é o comportamento desejado — é o que o banco e o motor de
-    // disponibilidade fazem HOJE, e está fixado aqui para a divergência
-    // ficar visível em vez de virar surpresa em produção. A constraint só
-    // ignora `CANCELED`; o motor também libera `NO_SHOW`. Mudar isso exige
-    // decisão de negócio e migration (ver appointments.service.ts).
+  it('NO_SHOW mantém o horário ocupado: GET não oferece, POST recusa com 409 (Lote 6D.5.1)', async () => {
+    // Decisão de negócio: falta já ocorrida não libera o horário. Antes desta
+    // correção, o motor de disponibilidade divergia da constraint (liberava
+    // `NO_SHOW` no GET e o INSERT recusava com 409); agora as duas camadas
+    // concordam — o horário nem chega a ser oferecido.
     const cenario = await criarCenario('no-show');
     const view = await agendar(cenario);
 
@@ -509,22 +508,45 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
       status: AppointmentStatus.NO_SHOW,
     });
 
-    const livres = await disponibilidade.consult(
+    const disponibilidadeApos = await disponibilidade.consult(
       cenario.ownerUserId,
       cenario.tenantId,
       cenario.professionalId,
       { serviceId: cenario.serviceId, date: DATA },
     );
-    // O motor considera o horário livre de novo...
-    expect(livres.slots.map((s) => s.localStart)).toContain('09:00');
+    expect(disponibilidadeApos.slots.map((s) => s.localStart)).not.toContain('09:00');
 
-    // ...mas a constraint continua ocupando, então a gravação é recusada de
-    // forma controlada (409), nunca com erro cru de banco vazando.
+    // A constraint recusa a mesma reserva de forma controlada (409), nunca
+    // com erro cru de banco vazando.
     await expect(agendar(cenario)).rejects.toBeInstanceOf(ConflictException);
 
     expect(
       await dataSource.manager.count(Appointment, { where: { tenantId: cenario.tenantId } }),
     ).toBe(1);
+  });
+
+  it('CANCELED libera o horário: GET oferece de novo e o POST aceita a nova reserva', async () => {
+    const cenario = await criarCenario('canceled');
+    const view = await agendar(cenario);
+
+    await dataSource.manager.update(Appointment, { id: view.id }, {
+      status: AppointmentStatus.CANCELED,
+    });
+
+    const disponibilidadeApos = await disponibilidade.consult(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      cenario.professionalId,
+      { serviceId: cenario.serviceId, date: DATA },
+    );
+    expect(disponibilidadeApos.slots.map((s) => s.localStart)).toContain('09:00');
+
+    const nova = await agendar(cenario);
+    expect(nova.id).not.toBe(view.id);
+
+    expect(
+      await dataSource.manager.count(Appointment, { where: { tenantId: cenario.tenantId } }),
+    ).toBe(2);
   });
 
   it('a listagem de um dia nunca mostra agendamento de outro estabelecimento', async () => {

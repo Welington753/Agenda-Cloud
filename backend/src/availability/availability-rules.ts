@@ -37,11 +37,11 @@
 // 4. FIM EXCLUÍDO — toda janela é `[início, fim)`. Um atendimento que termina
 //    às 10:00 permite outro começar às 10:00; só um buffer explícito separa.
 //
-// 5. ESTADOS QUE OCUPAM — `PENDING | CONFIRMED | IN_PROGRESS | COMPLETED`.
-//    `CANCELED | NO_SHOW` liberam (ver appointment-status.enum.ts e a
-//    constraint anti-sobreposição, que também ignora `CANCELED`). A ocupação
-//    é `[start_at, end_at)` PERSISTIDO, nunca recalculado pela duração atual
-//    do catálogo.
+// 5. ESTADOS QUE OCUPAM — `PENDING | CONFIRMED | IN_PROGRESS | COMPLETED |
+//    NO_SHOW`. Só `CANCELED` libera (ver appointment-status.enum.ts e a
+//    constraint anti-sobreposição, que ignora exatamente o mesmo estado). A
+//    ocupação é `[start_at, end_at)` PERSISTIDO, nunca recalculado pela
+//    duração atual do catálogo.
 //
 // 6. BLOQUEIOS — `time_blocks` ocupa integralmente. A tabela não tem coluna
 //    de ativação: bloqueio existente sempre bloqueia. Não existe no schema

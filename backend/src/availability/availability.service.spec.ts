@@ -382,31 +382,29 @@ describe('AvailabilityService.consult — resposta', () => {
     expect(horas).toContain('14:00');
   });
 
-  it.each([AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW])(
-    '%s libera o horário',
-    async (status) => {
-      const servico = montar({
-        agendamentos: [
-          {
-            id: 'ag_1',
-            tenantId: TENANT_A,
-            professionalId: PROF_A,
-            status,
-            startAt: new Date('2026-09-20T12:00:00Z'),
-            endAt: new Date('2026-09-20T13:00:00Z'),
-          },
-        ],
-      });
+  it('CANCELED libera o horário', async () => {
+    const servico = montar({
+      agendamentos: [
+        {
+          id: 'ag_1',
+          tenantId: TENANT_A,
+          professionalId: PROF_A,
+          status: AppointmentStatus.CANCELED,
+          startAt: new Date('2026-09-20T12:00:00Z'),
+          endAt: new Date('2026-09-20T13:00:00Z'),
+        },
+      ],
+    });
 
-      expect((await consultar(servico)).slots.map((s) => s.localStart)).toContain('09:00');
-    },
-  );
+    expect((await consultar(servico)).slots.map((s) => s.localStart)).toContain('09:00');
+  });
 
   it.each([
     AppointmentStatus.PENDING,
     AppointmentStatus.CONFIRMED,
     AppointmentStatus.IN_PROGRESS,
     AppointmentStatus.COMPLETED,
+    AppointmentStatus.NO_SHOW,
   ])('%s ocupa o horário', async (status) => {
     const servico = montar({
       agendamentos: [
