@@ -591,10 +591,11 @@ export const CHECK_STATEMENTS: readonly string[] = [
 // argumento em vez de depender do default do construtor, para casar
 // literalmente com `end_at` sendo o instante em que o próximo agendamento já
 // pode começar. `WHERE (status <> 'CANCELED')` preservado tal como no
-// Prisma — `NO_SHOW` continua ocupando a exclusão (divergência pré-existente
-// entre banco e motor de disponibilidade da aplicação, ver
-// docs/plans/migracao-nestjs-typeorm-neon.md, seção 7.1 — decisão de negócio
-// em aberto, não "corrigida" nesta migration).
+// Prisma — `NO_SHOW` continua ocupando a exclusão. Decisão de negócio do
+// Lote 6D.5.1 (ver docs/plans/migracao-nestjs-typeorm-neon.md, seção 7.1):
+// `NO_SHOW` deve mesmo ocupar, então esta constraint já estava correta — foi
+// o motor de disponibilidade da aplicação que foi alinhado a ela
+// (availability.service.ts, `STATUS_QUE_OCUPAM`), sem tocar nesta migration.
 export const EXCLUSION_STATEMENTS: readonly string[] = [
   `ALTER TABLE appointments ADD CONSTRAINT appointments_no_overlap_excl
     EXCLUDE USING gist (

@@ -42,12 +42,13 @@
 //     recebe `23P01` e vira 409. Essa é a garantia real de exclusividade,
 //     não a validação em si.
 //
-// DIVERGÊNCIA CONHECIDA (pré-existente, documentada na migration): a
-// constraint só ignora `CANCELED`, enquanto o motor de disponibilidade
-// também trata `NO_SHOW` como horário livre. Um horário liberado por um
-// `NO_SHOW` pode então ser oferecido pelo GET e recusado no INSERT com 409.
-// Corrigir isso exige decisão de negócio e migration — não é feito aqui, e o
-// 409 resultante é honesto em vez de silencioso.
+// CONSISTÊNCIA GET/POST (Lote 6D.5.1): a constraint só ignora `CANCELED`, e
+// `STATUS_QUE_OCUPAM` (availability.service.ts) agora ignora exatamente o
+// mesmo estado — `NO_SHOW` ocupa nas duas camadas. Um horário liberado por
+// `CANCELED` é o único caso em que GET oferece e POST aceita; `NO_SHOW` nunca
+// é oferecido pelo GET, então o 409 da constraint por `NO_SHOW` deixou de
+// ser alcançável por este caminho (ver divergência corrigida, antes
+// documentada aqui e fixada em appointments-postgres.db-e2e-spec.ts).
 //
 // IDEMPOTÊNCIA: o schema não tem chave de idempotência (nem coluna, nem
 // tabela). Nenhuma é inventada aqui, e memória de processo não seria

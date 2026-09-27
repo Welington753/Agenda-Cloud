@@ -787,20 +787,17 @@ nenhuma tabela de personalização é compartilhável entre tenants.
   `horariosLivresDoProfissionalNoDia`/`horarioAindaDisponivelParaProfissional` —
   replicar a mesma assinatura no serviço (nunca excluir "qualquer agendamento
   do mesmo horário", só o que está sendo remarcado).
-- Cancelados fora do bloqueio — `STATUS_OCUPA_AGENDA` não muda:
-  `PENDING | CONFIRMED | IN_PROGRESS | COMPLETED` ocupam agenda; `CANCELED`/
-  `NO_SHOW` liberam. Mesma regra que a `EXCLUDE` do banco já aplica
-  (`WHERE status <> 'CANCELED'`) — **atenção**: a `EXCLUDE` do banco só exclui
-  `CANCELED`, não `NO_SHOW`; o motor de disponibilidade da aplicação já trata
-  os dois como liberando o horário (`STATUS_OCUPA_AGENDA` não inclui
-  `nao_compareceu`). Essa é uma divergência preexistente entre as duas camadas
-  de proteção (banco vs. aplicação) que já existe hoje mesmo antes desta
-  migração — **decisão**: manter como está (documentar, não "corrigir" aqui,
-  porque mudar a `EXCLUDE` para também liberar em `NO_SHOW` é uma mudança de
-  regra de negócio fora do escopo desta auditoria, não um bug óbvio — um
-  agendamento com falta do cliente já aconteceu no passado, sobrepor um novo
-  agendamento no mesmo intervalo é discutível). Marcado como pergunta em aberto
-  para o dono do produto, não decidido unilateralmente aqui.
+- Cancelados fora do bloqueio — `STATUS_QUE_OCUPAM` (backend,
+  `availability.service.ts`; era `STATUS_OCUPA_AGENDA` no motor pré-NestJS):
+  `PENDING | CONFIRMED | IN_PROGRESS | COMPLETED | NO_SHOW` ocupam agenda; só
+  `CANCELED` libera. Mesma regra que a `EXCLUDE` do banco aplica
+  (`WHERE status <> 'CANCELED'`). **Decisão de negócio (Lote 6D.5.1,
+  resolvendo a pergunta em aberto nº 1 da seção 13)**: `NO_SHOW` é falta já
+  ocorrida, não desistência — o horário permanece ocupado, como a `EXCLUDE`
+  do banco sempre tratou. A divergência preexistente estava no motor de
+  disponibilidade da aplicação (que liberava `NO_SHOW`, ao contrário do
+  banco); foi corrigida alinhando `STATUS_QUE_OCUPAM` à `EXCLUDE` — nenhuma
+  mudança na constraint ou migration.
 - Proteção contra dupla reserva: `CHECK (endAt > startAt)` + `EXCLUDE USING
   gist` — inalterado, já confirmado nas linhas 641/651 da migration existente.
 - Extensões `citext`/`btree_gist` — inalteradas.
@@ -1434,9 +1431,9 @@ planejamento.
 
 ## 13. Perguntas em aberto para o dono do produto (não decididas nesta auditoria)
 
-1. `NO_SHOW` deveria liberar a `EXCLUDE` do banco (hoje só `CANCELED` libera,
-   ver seção 7.1) — manter a divergência preexistente entre banco e aplicação,
-   ou alinhar as duas camadas?
+1. ~~`NO_SHOW` deveria liberar a `EXCLUDE` do banco...~~ **Resolvida no Lote
+   6D.5.1**: não. `NO_SHOW` ocupa, só `CANCELED` libera — a `EXCLUDE` do banco
+   já aplicava essa regra; a aplicação foi alinhada a ela (ver seção 7.1).
 2. Object storage para logo/fotos (seção 6.1) — qual provedor, e isso é
    pré-requisito bloqueante do Lote 10 ou pode ser adiado com URL manual?
 3. Biblioteca de hash de senha — `argon2id` (mais forte, exige binding nativo)

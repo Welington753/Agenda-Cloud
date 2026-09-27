@@ -293,15 +293,26 @@ describe.skipIf(!DIRECT_URL)('disponibilidade contra PostgreSQL descartável (Lo
     expect(horas[horas.length - 1]).toBe('19:00');
   });
 
-  it.each([AppointmentStatus.CANCELED, AppointmentStatus.NO_SHOW])(
-    'agendamento %s gravado no banco não ocupa',
-    async (status) => {
-      const cenario = await criarCenario(`livre-${status.toLowerCase()}`);
-      await agendar(cenario, '2026-09-20T13:00:00Z', '2026-09-20T14:00:00Z', { status });
+  it('agendamento CANCELED gravado no banco não ocupa', async () => {
+    const cenario = await criarCenario('livre-canceled');
+    await agendar(cenario, '2026-09-20T13:00:00Z', '2026-09-20T14:00:00Z', {
+      status: AppointmentStatus.CANCELED,
+    });
 
-      expect((await consultar(cenario)).slots.map((s) => s.localStart)).toContain('10:00');
-    },
-  );
+    expect((await consultar(cenario)).slots.map((s) => s.localStart)).toContain('10:00');
+  });
+
+  it('agendamento NO_SHOW gravado no banco continua ocupando', async () => {
+    // Decisão de negócio do Lote 6D.5.1: falta já ocorrida não libera o
+    // horário — mesma regra que a constraint appointments_no_overlap_excl
+    // já aplicava (`WHERE status <> 'CANCELED'`).
+    const cenario = await criarCenario('ocupado-no-show');
+    await agendar(cenario, '2026-09-20T13:00:00Z', '2026-09-20T14:00:00Z', {
+      status: AppointmentStatus.NO_SHOW,
+    });
+
+    expect((await consultar(cenario)).slots.map((s) => s.localStart)).not.toContain('10:00');
+  });
 
   it('bloqueio gravado em time_blocks ocupa', async () => {
     const cenario = await criarCenario('bloqueio');

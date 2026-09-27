@@ -62,15 +62,20 @@ const TENANT_TIMEZONE_MESSAGE =
   'O fuso horário do estabelecimento está inválido — corrija-o antes de consultar.';
 
 /**
- * Estados que OCUPAM a agenda. `CANCELED` e `NO_SHOW` liberam — a mesma
- * regra que a constraint anti-sobreposição do banco aplica para `CANCELED`
- * (ver appointment.entity.ts e appointment-status.enum.ts).
+ * Estados que OCUPAM a agenda. Só `CANCELED` libera — decisão de negócio do
+ * Lote 6D.5.1 (correção da divergência apontada no Lote 6D.5): `NO_SHOW` é
+ * falta já ocorrida, não desistência, então o horário permanece ocupado.
+ * Mesma regra que a constraint anti-sobreposição do banco já aplicava
+ * (`WHERE status <> 'CANCELED'`, ver appointment.entity.ts e
+ * appointment-status.enum.ts) — este é o lado da aplicação alinhando ao
+ * banco, não o contrário.
  */
 export const STATUS_QUE_OCUPAM: readonly AppointmentStatus[] = [
   AppointmentStatus.PENDING,
   AppointmentStatus.CONFIRMED,
   AppointmentStatus.IN_PROGRESS,
   AppointmentStatus.COMPLETED,
+  AppointmentStatus.NO_SHOW,
 ];
 
 export interface HorarioDisponivelView {
