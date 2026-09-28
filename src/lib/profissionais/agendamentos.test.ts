@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AgendamentoReal } from "@/lib/api/appointments-api";
+import type { AgendamentoReal, StatusAgendamentoReal } from "@/lib/api/appointments-api";
 import {
   comoDataDeCalendario,
   mensagemFalhaAgendamento,
+  mensagemFalhaCancelamento,
+  mensagemFalhaRemarcacao,
+  podeAlterarAgendamento,
   resumoDoAgendamento,
   ROTULO_STATUS,
   rotuloDaData,
@@ -135,5 +138,89 @@ describe("resumoDoAgendamento", () => {
     expect(resumo).toContain("Corte");
     expect(resumo).toContain("Ana");
     expect(resumo).toContain("Maria");
+  });
+});
+
+// --------------------------------------------------------------------------
+// Lote 6D.6 — elegibilidade e redações de cancelar/remarcar.
+describe("podeAlterarAgendamento", () => {
+  const AGORA = new Date("2026-09-19T12:00:00Z");
+  const futuro = (status: StatusAgendamentoReal) =>
+    ({ ...AGENDAMENTO, status, startAt: "2026-09-20T12:00:00.000Z" }) as AgendamentoReal;
+
+  it.each(["PENDING", "CONFIRMED"] as StatusAgendamentoReal[])(
+    "%s no futuro pode ser alterado",
+    (status) => {
+      expect(podeAlterarAgendamento(futuro(status), AGORA)).toBe(true);
+    },
+  );
+
+  it.each(["IN_PROGRESS", "COMPLETED", "NO_SHOW", "CANCELED"] as StatusAgendamentoReal[])(
+    "%s não pode ser alterado nem no futuro",
+    (status) => {
+      expect(podeAlterarAgendamento(futuro(status), AGORA)).toBe(false);
+    },
+  );
+
+  it("reserva que já começou não pode ser alterada", () => {
+    const passada = {
+      ...AGENDAMENTO,
+      status: "CONFIRMED",
+      startAt: "2026-09-18T12:00:00.000Z",
+    } as AgendamentoReal;
+    expect(podeAlterarAgendamento(passada, AGORA)).toBe(false);
+  });
+
+  it("compara o INSTANTE, não a hora local exibida", () => {
+    // Mesma hora local ("09:00") em dois dias diferentes: o que decide é o
+    // instante em `startAt`.
+    const reserva = {
+      ...AGENDAMENTO,
+      status: "CONFIRMED",
+      startAt: "2026-09-19T12:00:00.000Z",
+      localStart: "09:00",
+    } as AgendamentoReal;
+    expect(podeAlterarAgendamento(reserva, new Date("2026-09-19T11:59:59Z"))).toBe(true);
+    expect(podeAlterarAgendamento(reserva, new Date("2026-09-19T12:00:01Z"))).toBe(false);
+  });
+});
+
+describe("mensagemFalhaCancelamento", () => {
+  it("falha de rede NUNCA afirma que não cancelou, e manda conferir", () => {
+    const texto = mensagemFalhaCancelamento({ tipo: "falha_comunicacao" });
+    expect(texto).toMatch(/pode ter sido/i);
+    expect(texto).toMatch(/consulte a reserva/i);
+    expect(texto).not.toMatch(/não foi cancelad/i);
+  });
+
+  it("usa a mensagem do servidor no 400", () => {
+    expect(
+      mensagemFalhaCancelamento({ tipo: "nao_agendavel", mensagem: "Já começou." }),
+    ).toBe("Já começou.");
+  });
+
+  it("sem permissão fala de cancelar, não de agendar", () => {
+    expect(mensagemFalhaCancelamento({ tipo: "sem_permissao" })).toMatch(/cancelar/i);
+  });
+});
+
+describe("mensagemFalhaRemarcacao", () => {
+  it("falha de rede NUNCA afirma que não remarcou, e manda conferir", () => {
+    const texto = mensagemFalhaRemarcacao({ tipo: "falha_comunicacao" });
+    expect(texto).toMatch(/pode ter sido/i);
+    expect(texto).toMatch(/consulte a reserva/i);
+  });
+
+  it("repassa a mensagem do 409 — distingue ocupado de reserva alterada", () => {
+    expect(
+      mensagemFalhaRemarcacao({
+        tipo: "horario_ocupado",
+        mensagem: "Esta reserva mudou desde que a tela carregou.",
+      }),
+    ).toBe("Esta reserva mudou desde que a tela carregou.");
+  });
+
+  it("sem permissão fala de remarcar", () => {
+    expect(mensagemFalhaRemarcacao({ tipo: "sem_permissao" })).toMatch(/remarcar/i);
   });
 });

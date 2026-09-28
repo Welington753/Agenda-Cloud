@@ -19,6 +19,7 @@ import { AvailabilityService } from '../availability/availability.service.js';
 import { ConsumersService } from '../consumers/consumers.service.js';
 import { Appointment } from '../entities/appointment.entity.js';
 import { AppointmentItem } from '../entities/appointment-item.entity.js';
+import { AppointmentStatusChange } from '../entities/appointment-status-change.entity.js';
 import { BookingPolicy } from '../entities/booking-policy.entity.js';
 import { Consumer } from '../entities/consumer.entity.js';
 import { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
@@ -105,6 +106,16 @@ class FakeManager {
     return { ...dados };
   }
 
+  /** `tx.update(Entidade, where, patch)` — o cancelamento e a remarcação
+   * escrevem assim, sempre pelas duas chaves (`id` + `tenantId`). O fake
+   * aplica o patch nas linhas que casam e devolve quantas foram afetadas, o
+   * que permite provar que uma linha de OUTRO tenant nunca é atingida. */
+  update(entity: unknown, where: Registro, patch: Registro): Promise<{ affected: number }> {
+    const atingidas = this.colecaoDe(entity).filter((linha) => this.casa(linha, where));
+    for (const linha of atingidas) Object.assign(linha, patch);
+    return Promise.resolve({ affected: atingidas.length });
+  }
+
   save(entity: unknown, dados?: Registro): Promise<Registro> {
     // `save(objeto)` (uma entidade só) chega com o objeto no 1º parâmetro.
     const eClasse = typeof entity === 'function';
@@ -127,6 +138,7 @@ class FakeManager {
     if ('consumerNameSnapshot' in linha) return Appointment;
     if ('durationMinutesSnapshot' in linha) return AppointmentItem;
     if ('whatsappNormalized' in linha) return Consumer;
+    if ('toStatus' in linha) return AppointmentStatusChange;
     throw new Error('Não sei em qual coleção salvar este registro no teste');
   }
 }
@@ -141,6 +153,7 @@ interface Opcoes {
   vinculos?: Registro[];
   horarios?: Registro[];
   agendamentos?: Registro[];
+  itens?: Registro[];
   clientes?: Registro[];
   unidades?: Registro[];
   politicas?: Registro[];
@@ -252,7 +265,8 @@ function montar(opcoes: Opcoes = {}) {
       opcoes.unidades ?? [{ id: UNIDADE_A, tenantId: TENANT_A, isPrimary: true, createdAt: new Date() }],
     ],
     [Appointment, opcoes.agendamentos ?? []],
-    [AppointmentItem, []],
+    [AppointmentItem, opcoes.itens ?? []],
+    [AppointmentStatusChange, []],
     [TimeBlock, []],
     [BookingPolicy, opcoes.politicas ?? []],
   ]);
@@ -266,7 +280,7 @@ function montar(opcoes: Opcoes = {}) {
   const availability = new AvailabilityService(dataSource, () => AGORA);
   const consumers = new ConsumersService(dataSource);
   return {
-    servico: new AppointmentsService(dataSource, availability, consumers),
+    servico: new AppointmentsService(dataSource, availability, consumers, () => AGORA),
     colecoes,
     manager,
   };
@@ -648,5 +662,421 @@ describe('AppointmentsService.list', () => {
     await expect(
       montar().servico.list(USUARIO_DONO, TENANT_B, { date: DATA }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lote 6D.6 — cancelamento e remarcação.
+//
+// O que ESTES testes provam: autorização, isolamento por tenant, as regras de
+// estado/janela, a idempotência do cancelamento, a preservação dos snapshots e
+// que a remarcação não inventa transição de status. O que eles NÃO provam (e
+// está em test/appointments-postgres.db-e2e-spec.ts, contra PostgreSQL real):
+// a constraint de sobreposição, os locks `FOR UPDATE` e duas conexões
+// disputando o mesmo horário — um fake em memória não tem nada disso.
+
+const RESERVA = 'reserva_a';
+
+/** Uma reserva CONFIRMED às 09:00 local (12:00Z) com item de 60 min, no dia da
+ * jornada de teste. `AGORA` é 19/09, então ela está no futuro. */
+function comReserva(extra: Opcoes = {}, sobrescreveReserva: Registro = {}) {
+  return montar({
+    agendamentos: [
+      {
+        id: RESERVA,
+        tenantId: TENANT_A,
+        unitId: UNIDADE_A,
+        consumerId: CLIENTE_A,
+        consumerNameSnapshot: 'Maria Souza',
+        consumerWhatsappSnapshot: '(11) 90000-0000',
+        professionalId: PROF_A,
+        startAt: new Date(INICIO),
+        endAt: new Date('2026-09-20T13:00:00.000Z'),
+        status: AppointmentStatus.CONFIRMED,
+        createdAt: new Date('2026-09-18T10:00:00Z'),
+        ...sobrescreveReserva,
+      },
+    ],
+    itens: [
+      {
+        id: 'item_a',
+        tenantId: TENANT_A,
+        appointmentId: RESERVA,
+        serviceId: SERVICO_A,
+        priceCentsSnapshot: 5000,
+        durationMinutesSnapshot: 60,
+        position: 0,
+      },
+    ],
+    ...extra,
+  });
+}
+
+const negar = (permission: Permission): Registro[] => [
+  {
+    tenantId: TENANT_A,
+    membershipId: 'membership_a',
+    permission,
+    mode: PermissionMode.DENIED,
+  },
+];
+
+/** Serviço de A com o catálogo alterado — para provar que snapshot não é
+ * recalculado. */
+function servicoAlterado(campos: Registro): Registro[] {
+  return [
+    {
+      id: SERVICO_A,
+      tenantId: TENANT_A,
+      active: true,
+      name: 'Corte',
+      durationMinutes: 60,
+      bufferAfterMinutes: 0,
+      priceCents: 5000,
+      requiresManualConfirmation: false,
+      ...campos,
+    },
+  ];
+}
+
+describe('AppointmentsService.cancel', () => {
+  it('grava CANCELED e a transição, na mesma operação', async () => {
+    const { servico, colecoes } = comReserva();
+
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+
+    expect(view.status).toBe(AppointmentStatus.CANCELED);
+    const transicoes = colecoes.get(AppointmentStatusChange) ?? [];
+    expect(transicoes).toHaveLength(1);
+    expect(transicoes[0]).toMatchObject({
+      tenantId: TENANT_A,
+      appointmentId: RESERVA,
+      fromStatus: AppointmentStatus.CONFIRMED,
+      toStatus: AppointmentStatus.CANCELED,
+      // `changedBy` é o usuário autenticado, não um rótulo inventado.
+      changedBy: USUARIO_DONO,
+    });
+  });
+
+  it('repetir NÃO duplica o histórico e devolve o estado atual', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const segunda = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+
+    expect(segunda.status).toBe(AppointmentStatus.CANCELED);
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(1);
+  });
+
+  it('preserva o item da reserva — nada é apagado', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+
+    const itens = colecoes.get(AppointmentItem) ?? [];
+    expect(itens).toHaveLength(1);
+    expect(itens[0]).toMatchObject({ priceCentsSnapshot: 5000, durationMinutesSnapshot: 60 });
+  });
+
+  it('funciona com o serviço e o profissional DESATIVADOS depois da reserva', async () => {
+    // É o caso que quebraria se o cancelamento passasse pelo motor de
+    // disponibilidade: ele recusa serviço/profissional inativo com 400.
+    const { servico } = comReserva({
+      servicos: servicoAlterado({ active: false }),
+      professionais: [
+        { id: PROF_A, tenantId: TENANT_A, active: false, name: 'Ana', unitId: undefined },
+      ],
+    });
+
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    expect(view.status).toBe(AppointmentStatus.CANCELED);
+  });
+
+  it.each([
+    AppointmentStatus.IN_PROGRESS,
+    AppointmentStatus.COMPLETED,
+    AppointmentStatus.NO_SHOW,
+  ])('%s não pode ser cancelado', async (status) => {
+    const { servico } = comReserva({}, { status });
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('reserva que já começou não pode ser cancelada', async () => {
+    // `AGORA` é 19/09 12:00Z; esta começou 18/09.
+    const { servico } = comReserva(
+      {},
+      {
+        startAt: new Date('2026-09-18T12:00:00.000Z'),
+        endAt: new Date('2026-09-18T13:00:00.000Z'),
+      },
+    );
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('cancelar pelo tenant alheio é 404 — e nada é alterado', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await expect(servico.cancel(USUARIO_DONO, TENANT_B, RESERVA)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect((colecoes.get(Appointment) ?? [])[0].status).toBe(AppointmentStatus.CONFIRMED);
+  });
+
+  it('DENIED em AGENDAMENTO_CANCELAR é 403', async () => {
+    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_CANCELAR) });
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('DENIED em SERVICOS_VISUALIZAR NÃO impede cancelar', async () => {
+    // Cancelar não escolhe serviço — exigir essa permissão travaria o
+    // cancelamento sem motivo.
+    const { servico } = comReserva({ overrides: negar(Permission.SERVICOS_VISUALIZAR) });
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    expect(view.status).toBe(AppointmentStatus.CANCELED);
+  });
+});
+
+describe('AppointmentsService.reschedule', () => {
+  const DEZ_HORAS = '2026-09-20T13:00:00.000Z';
+
+  it('move o horário preservando id, cliente, status e snapshots', async () => {
+    const { servico, colecoes } = comReserva();
+
+    const view = await servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+      startAt: DEZ_HORAS,
+      expectedStartAt: INICIO,
+    });
+
+    expect(view.id).toBe(RESERVA);
+    expect(view.startAt).toBe(DEZ_HORAS);
+    expect(view.localStart).toBe('10:00');
+    expect(view.status).toBe(AppointmentStatus.CONFIRMED);
+    expect(view.consumer.id).toBe(CLIENTE_A);
+    // Preço e duração continuam os CONGELADOS.
+    expect(view.priceCents).toBe(5000);
+    expect(view.durationMinutes).toBe(60);
+    // Uma linha só: a reserva foi ATUALIZADA, não recriada.
+    expect(colecoes.get(Appointment) ?? []).toHaveLength(1);
+    expect(colecoes.get(AppointmentItem) ?? []).toHaveLength(1);
+  });
+
+  it('NÃO grava transição de status: o status não mudou', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+      startAt: DEZ_HORAS,
+      expectedStartAt: INICIO,
+    });
+
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
+  });
+
+  it('remarcar para o MESMO instante não altera nada', async () => {
+    const { servico, colecoes } = comReserva();
+    const antes = { ...(colecoes.get(Appointment) ?? [])[0] };
+
+    const view = await servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+      startAt: INICIO,
+      expectedStartAt: INICIO,
+    });
+
+    expect(view.startAt).toBe(INICIO);
+    expect((colecoes.get(Appointment) ?? [])[0]).toEqual(antes);
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
+  });
+
+  it('a ocupação nova tem a largura CONGELADA, não a do catálogo atual', async () => {
+    // Reserva de 60 min + 0 de buffer; o catálogo agora diz 30 min + 15 de
+    // buffer e outro preço. A janela gravada tem de continuar com 60 min.
+    const { servico, colecoes } = comReserva({
+      servicos: servicoAlterado({
+        durationMinutes: 30,
+        bufferAfterMinutes: 15,
+        priceCents: 9900,
+      }),
+    });
+
+    const view = await servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+      startAt: DEZ_HORAS,
+      expectedStartAt: INICIO,
+    });
+
+    const linha = (colecoes.get(Appointment) ?? [])[0];
+    const minutos = ((linha.endAt as Date).getTime() - (linha.startAt as Date).getTime()) / 60_000;
+    expect(minutos).toBe(60);
+    // E o preço/duração exibidos continuam os do snapshot, não os novos.
+    expect(view.priceCents).toBe(5000);
+    expect(view.durationMinutes).toBe(60);
+  });
+
+  it('a própria reserva não bloqueia o horário dela (ignorarAgendamentoId)', async () => {
+    // Sem ignorar, 09:00 apareceria ocupado pela própria reserva e mover para
+    // 09:15 (que sobrepõe a janela antiga) seria recusado.
+    const { servico } = comReserva();
+
+    const view = await servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+      startAt: '2026-09-20T12:15:00.000Z',
+      expectedStartAt: INICIO,
+    });
+
+    expect(view.localStart).toBe('09:15');
+  });
+
+  it('reserva CANCELED não pode ser remarcada', async () => {
+    const { servico } = comReserva({}, { status: AppointmentStatus.CANCELED });
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([
+    AppointmentStatus.IN_PROGRESS,
+    AppointmentStatus.COMPLETED,
+    AppointmentStatus.NO_SHOW,
+  ])('%s não pode ser remarcado', async (status) => {
+    const { servico } = comReserva({}, { status });
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('instante esperado diferente do gravado é 409 (tela desatualizada)', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        // A tela achava que a reserva era às 11:00 — não é.
+        expectedStartAt: '2026-09-20T14:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    // E o horário ORIGINAL fica intacto.
+    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+  });
+
+  it('horário fora da jornada é 400 e preserva o horário original', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        // 20:00 local — a jornada de teste termina 12:00.
+        startAt: '2026-09-20T23:00:00.000Z',
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+  });
+
+  it('serviço desativado depois da reserva impede REMARCAR (mas não cancelar)', async () => {
+    // A elegibilidade é conferida com as linhas ATUAIS: remarcar é escolher um
+    // horário novo, e um serviço desativado não pode receber horário novo.
+    const { servico } = comReserva({ servicos: servicoAlterado({ active: false }) });
+
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('remarcar pelo tenant alheio é 404 — e nada é alterado', async () => {
+    const { servico, colecoes } = comReserva();
+
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_B, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+  });
+
+  it('DENIED em AGENDAMENTO_EDITAR é 403', async () => {
+    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_EDITAR) });
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('erro da constraint de sobreposição vira 409', async () => {
+    const { servico, manager } = comReserva();
+    // Simula a constraint disparando no UPDATE: é o que acontece quando outra
+    // reserva ocupou o horário entre a validação e a gravação.
+    const original = manager.update.bind(manager);
+    manager.update = () =>
+      Promise.reject(
+        new QueryFailedError('update', [], {
+          code: '23P01',
+          constraint: OVERLAP_CONSTRAINT,
+        } as unknown as Error),
+      );
+
+    await expect(
+      servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
+        startAt: DEZ_HORAS,
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    manager.update = original;
+  });
+});
+
+describe('AppointmentsService.rescheduleOptions', () => {
+  it('oferece o horário da própria reserva (ela não bloqueia a si mesma)', async () => {
+    const { servico } = comReserva();
+
+    const opcoes = await servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, {
+      date: DATA,
+    });
+
+    expect(opcoes.appointmentId).toBe(RESERVA);
+    expect(opcoes.slots.map((s) => s.localStart)).toContain('09:00');
+    // Duração CONGELADA na reserva.
+    expect(opcoes.durationMinutes).toBe(60);
+  });
+
+  it('usa a ocupação congelada para montar a grade, não a do catálogo', async () => {
+    // Catálogo agora: 30 min. A reserva ocupa 60. Com 60 min de largura e
+    // jornada 09:00–12:00, o último início possível é 11:00.
+    const { servico } = comReserva({ servicos: servicoAlterado({ durationMinutes: 30 }) });
+
+    const opcoes = await servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, {
+      date: DATA,
+    });
+
+    expect(opcoes.durationMinutes).toBe(60);
+    expect(opcoes.slots.at(-1)?.localStart).toBe('11:00');
+    expect(opcoes.slots.map((s) => s.localStart)).not.toContain('11:30');
+  });
+
+  it('pelo tenant alheio é 404', async () => {
+    const { servico } = comReserva();
+    await expect(
+      servico.rescheduleOptions(USUARIO_DONO, TENANT_B, RESERVA, { date: DATA }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('DENIED em AGENDAMENTO_EDITAR é 403', async () => {
+    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_EDITAR) });
+    await expect(
+      servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, { date: DATA }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

@@ -110,6 +110,40 @@ export interface DisponibilidadeCalculada {
   ocupados: readonly JanelaOcupada[];
 }
 
+/**
+ * Opções INTERNAS de `calcular` (Lote 6D.6). Nenhuma delas é exposta em rota:
+ * quem as usa é a remarcação, depois de já ter autorizado a reserva.
+ */
+export interface OpcoesDeCalculo {
+  /** `FOR SHARE` em serviço, profissional e vínculo — só faz sentido dentro
+   * de uma transação que vai gravar. */
+  travar?: boolean;
+  /**
+   * Remarcação: ignora a ocupação de UM agendamento — o que está sendo
+   * movido. Sem isto, a própria reserva bloquearia o horário dela, e remarcar
+   * para o mesmo instante (ou para um horário encostado) seria recusado.
+   *
+   * É um id ÚNICO de propósito, nunca uma lista: uma lista de "ignore estes"
+   * vinda de fora viraria uma forma de mandar o motor esconder ocupação
+   * alheia. Além disso a exclusão acontece DENTRO da consulta já filtrada por
+   * `tenantId` e `professionalId`, então um id de outro estabelecimento
+   * simplesmente não casa com nada — não esconde nada nem confirma que
+   * existe.
+   */
+  ignorarAgendamentoId?: string;
+  /**
+   * Remarcação: usa a ocupação CONGELADA na reserva em vez da duração e do
+   * buffer atuais do catálogo. É o que garante que mudar
+   * `services.duration_minutes` ou `buffer_after_minutes` depois da reserva
+   * não reescreva o quanto ela ocupa na agenda.
+   *
+   * A elegibilidade (serviço ativo, profissional ativo, vínculo, jornada,
+   * políticas) continua sendo conferida com as linhas ATUAIS — é a ocupação
+   * que é histórica, não o direito de atender.
+   */
+  ocupacaoCongelada?: { duracaoMinutos: number; bufferMinutos: number };
+}
+
 export interface AvailabilityView {
   professionalId: string;
   serviceId: string;
@@ -220,7 +254,7 @@ export class AvailabilityService {
     professionalId: string,
     serviceId: string,
     date: string,
-    opcoes: { travar?: boolean } = {},
+    opcoes: OpcoesDeCalculo = {},
   ): Promise<DisponibilidadeCalculada> {
     const lock = opcoes.travar ? ({ lock: { mode: 'pessimistic_read' as const } } as const) : {};
 
@@ -258,15 +292,26 @@ export class AvailabilityService {
 
     const intervalos = await this.jornadaDoDia(manager, tenantId, professional.id, diaDaSemanaDe(data));
     const policy = await manager.findOne(BookingPolicy, { where: { tenantId } });
-    const ocupados = await this.conflitosDoDia(manager, tenantId, professional.id, data);
+    const ocupados = await this.conflitosDoDia(
+      manager,
+      tenantId,
+      professional.id,
+      data,
+      opcoes.ignorarAgendamentoId,
+    );
+
+    // Catálogo atual por padrão; ocupação congelada da reserva quando quem
+    // chama é a remarcação (ver `OpcoesDeCalculo.ocupacaoCongelada`).
+    const duracaoMinutos = opcoes.ocupacaoCongelada?.duracaoMinutos ?? service.durationMinutes;
+    const bufferMinutos = opcoes.ocupacaoCongelada?.bufferMinutos ?? service.bufferAfterMinutes;
 
     try {
       const resultado = calcularHorariosDisponiveis({
         data,
         timeZone: timezone,
         intervalos,
-        duracaoMinutos: service.durationMinutes,
-        bufferMinutos: service.bufferAfterMinutes,
+        duracaoMinutos,
+        bufferMinutos,
         passoMinutos: PASSO_PADRAO_MINUTOS,
         ocupados,
         agora: this.agora(),
@@ -334,10 +379,11 @@ export class AvailabilityService {
     tenantId: string,
     professionalId: string,
     data: DataLocal,
+    ignorarAgendamentoId?: string,
   ): Promise<JanelaOcupada[]> {
     const janela = janelaDeCarregamento(data);
 
-    const agendamentos = await manager.find(Appointment, {
+    const encontrados = await manager.find(Appointment, {
       where: {
         tenantId,
         professionalId,
@@ -348,6 +394,14 @@ export class AvailabilityService {
       // Só as colunas de tempo: nada de consumidor, snapshot ou observação.
       select: { id: true, startAt: true, endAt: true },
     });
+
+    // A remoção é feita AQUI (e não com um `Not(...)` no `where`) para a
+    // consulta continuar sendo a mesma para todos os chamadores: o filtro por
+    // `tenantId`/`professionalId` acima é o que garante que este id só pode
+    // remover uma ocupação DESTE profissional neste estabelecimento.
+    const agendamentos = ignorarAgendamentoId
+      ? encontrados.filter((appointment) => appointment.id !== ignorarAgendamentoId)
+      : encontrados;
 
     const bloqueios = await manager.find(TimeBlock, {
       where: {

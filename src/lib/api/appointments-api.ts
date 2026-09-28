@@ -81,10 +81,40 @@ export type FalhaAgendamentoReal =
   /** 400: horário fora da jornada/grade, serviço ou profissional inativo,
    * vínculo ausente, dados recusados. A mensagem vem do servidor. */
   | { tipo: "nao_agendavel"; mensagem: string | null }
-  /** 409: o horário foi ocupado por outra reserva entre a consulta e o envio. */
+  /** 409: o horário foi ocupado por outra reserva entre a consulta e o envio,
+   * OU (na remarcação) a reserva mudou desde que a tela carregou. Os dois vêm
+   * com a mensagem do servidor, que distingue os casos. */
   | { tipo: "horario_ocupado"; mensagem: string | null }
   | { tipo: "falha_comunicacao" }
   | { tipo: "indisponivel" };
+
+/** Horários oferecidos para remarcar UMA reserva (Lote 6D.6) — espelha
+ * `RescheduleOptionsView` do backend. A duração é a CONGELADA na reserva. */
+export interface OpcoesDeRemarcacao {
+  appointmentId: string;
+  date: string;
+  timezone: string;
+  durationMinutes: number;
+  slots: {
+    startAt: string;
+    endAt: string;
+    localStart: string;
+    localEnd: string;
+    offsetMinutes: number;
+    offsetLabel: string;
+  }[];
+  emptyReason: string | null;
+}
+
+/** Remarcação: só o novo instante e o que a tela estava mostrando. Nenhum
+ * outro campo existe no contrato do backend. */
+export interface DadosRemarcacaoReal {
+  /** Instante copiado do slot devolvido pelo servidor — nunca remontado. */
+  startAt: string;
+  /** Instante atual da reserva conforme a tela: o servidor recusa se a
+   * reserva já tiver sido movida por outra pessoa ou outra aba. */
+  expectedStartAt: string;
+}
 
 export type ResultadoAgendamentoReal<T> =
   | { ok: true; dados: T }
@@ -124,6 +154,33 @@ function ehAgendamento(valor: unknown): valor is AgendamentoReal {
     pessoa(v.professional) &&
     pessoa(v.service) &&
     pessoa(v.consumer)
+  );
+}
+
+function ehSlotDeRemarcacao(valor: unknown): boolean {
+  if (typeof valor !== "object" || valor === null) return false;
+  const v = valor as Record<string, unknown>;
+  return (
+    typeof v.startAt === "string" &&
+    typeof v.endAt === "string" &&
+    typeof v.localStart === "string" &&
+    typeof v.localEnd === "string" &&
+    typeof v.offsetMinutes === "number" &&
+    typeof v.offsetLabel === "string"
+  );
+}
+
+function ehOpcoesDeRemarcacao(valor: unknown): valor is OpcoesDeRemarcacao {
+  if (typeof valor !== "object" || valor === null) return false;
+  const v = valor as Record<string, unknown>;
+  return (
+    typeof v.appointmentId === "string" &&
+    typeof v.date === "string" &&
+    typeof v.timezone === "string" &&
+    typeof v.durationMinutes === "number" &&
+    Array.isArray(v.slots) &&
+    v.slots.every(ehSlotDeRemarcacao) &&
+    (v.emptyReason === null || typeof v.emptyReason === "string")
   );
 }
 
@@ -180,6 +237,79 @@ export async function criarAgendamento(
     body: dados,
     signal,
   });
+
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
+  }
+
+  const corpo = resultado.data as { appointment?: unknown };
+  if (!ehAgendamento(corpo?.appointment)) return { ok: false, falha: { tipo: "indisponivel" } };
+  return { ok: true, dados: corpo.appointment };
+}
+
+/**
+ * Cancela a reserva. `POST .../cancel` com corpo VAZIO: o backend recusa
+ * qualquer campo no corpo, e QUAL reserva cancelar vai no caminho.
+ */
+export async function cancelarAgendamento(
+  tenantId: string,
+  appointmentId: string,
+  signal?: AbortSignal,
+): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
+  const resultado = await apiRequest<unknown>(
+    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/cancel`,
+    { method: "POST", body: {}, signal },
+  );
+
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
+  }
+
+  const corpo = resultado.data as { appointment?: unknown };
+  if (!ehAgendamento(corpo?.appointment)) return { ok: false, falha: { tipo: "indisponivel" } };
+  return { ok: true, dados: corpo.appointment };
+}
+
+/** Horários que o servidor aceita para remarcar ESTA reserva, num dia. O
+ * profissional e o serviço não são enviados: o backend os lê da reserva. */
+export async function listarHorariosParaRemarcar(
+  tenantId: string,
+  appointmentId: string,
+  date: string,
+  signal?: AbortSignal,
+): Promise<ResultadoAgendamentoReal<OpcoesDeRemarcacao>> {
+  const resultado = await apiRequest<unknown>(
+    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}` +
+      `/reschedule-options?date=${encodeURIComponent(date)}`,
+    { method: "GET", signal },
+  );
+
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
+  }
+
+  const corpo = resultado.data as { options?: unknown };
+  if (!ehOpcoesDeRemarcacao(corpo?.options)) {
+    return { ok: false, falha: { tipo: "indisponivel" } };
+  }
+  return { ok: true, dados: corpo.options };
+}
+
+/** Move SÓ o horário da reserva. O id, o cliente, o profissional, o serviço,
+ * o status, o preço e a duração são preservados pelo servidor. */
+export async function remarcarAgendamento(
+  tenantId: string,
+  appointmentId: string,
+  dados: DadosRemarcacaoReal,
+  signal?: AbortSignal,
+): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
+  const resultado = await apiRequest<unknown>(
+    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/reschedule`,
+    { method: "POST", body: dados, signal },
+  );
 
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (resultado.kind === "http-error") {

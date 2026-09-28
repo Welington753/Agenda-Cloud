@@ -108,3 +108,48 @@ export const listAppointmentsSchema = z
   .strict();
 
 export type ListAppointmentsDto = z.infer<typeof listAppointmentsSchema>;
+
+/**
+ * Cancelamento (Lote 6D.6): corpo VAZIO e `.strict()`.
+ *
+ * Não é um objeto sem uso: `.strict()` é o que recusa explicitamente um corpo
+ * com `status`, `priceCents`, `tenantId` ou qualquer outro campo — a rota
+ * nunca aceita do navegador nada que o servidor decide. QUAL reserva cancelar
+ * vem do caminho (`:appointmentId`), sempre conferido junto do tenant, nunca
+ * do corpo.
+ */
+export const cancelAppointmentSchema = z.object({}).strict();
+
+export type CancelAppointmentDto = z.infer<typeof cancelAppointmentSchema>;
+
+/**
+ * Remarcação (Lote 6D.6): SÓ o novo instante e o instante que a tela estava
+ * mostrando.
+ *
+ * O que NÃO está aqui, de propósito: profissional, serviço, cliente, unidade,
+ * duração, buffer, preço e status. Remarcar move o horário da MESMA reserva —
+ * tudo mais é preservado, e o servidor lê essas colunas da própria linha, não
+ * do corpo. Trocar de profissional ou de serviço seria outra operação.
+ *
+ * `expectedStartAt` é o controle de concorrência otimista, com um campo que
+ * existe de verdade (`appointments.start_at`) — não há coluna de versão na
+ * tabela. Se a reserva já foi movida (por outra aba, outra pessoa ou outra
+ * remarcação) o instante gravado não bate com o que a tela mostrava, e o
+ * servidor recusa em vez de mover uma reserva que a pessoa não estava vendo.
+ */
+export const rescheduleAppointmentSchema = z
+  .object({
+    startAt: instanteSchema,
+    expectedStartAt: instanteSchema,
+  })
+  .strict();
+
+export type RescheduleAppointmentDto = z.infer<typeof rescheduleAppointmentSchema>;
+
+/** Horários oferecidos para remarcar UMA reserva, num dia. O profissional e o
+ * serviço NÃO são parâmetros: vêm da própria reserva (ver
+ * `AppointmentsService.rescheduleOptions`), então o cliente não pode pedir a
+ * grade de uma combinação que não é a dela. */
+export const rescheduleOptionsSchema = z.object({ date: dateSchema }).strict();
+
+export type RescheduleOptionsDto = z.infer<typeof rescheduleOptionsSchema>;

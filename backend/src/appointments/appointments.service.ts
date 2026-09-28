@@ -60,11 +60,13 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { DataSource, In, LessThan, MoreThan } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { STATUS_QUE_OCUPAM } from '../availability/availability.service.js';
+import type { MotivoSemHorario } from '../availability/availability-rules.js';
 import {
   dataLocalDe,
   horaLocalDe,
@@ -76,18 +78,28 @@ import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { ConsumersService } from '../consumers/consumers.service.js';
 import { Appointment } from '../entities/appointment.entity.js';
 import { AppointmentItem } from '../entities/appointment-item.entity.js';
+import { AppointmentStatusChange } from '../entities/appointment-status-change.entity.js';
 import { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { Professional } from '../entities/professional.entity.js';
 import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { Unit } from '../entities/unit.entity.js';
 import {
+  APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
   APPOINTMENT_CREATE_FORBIDDEN_MESSAGE,
+  APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
   APPOINTMENTS_FORBIDDEN_MESSAGE,
+  canCancelAppointments,
   canCreateAppointments,
+  canRescheduleAppointments,
   canViewAppointments,
 } from './appointment-access.js';
-import type { CreateAppointmentDto, ListAppointmentsDto } from './appointment.dto.js';
+import type {
+  CreateAppointmentDto,
+  ListAppointmentsDto,
+  RescheduleAppointmentDto,
+  RescheduleOptionsDto,
+} from './appointment.dto.js';
 
 /** Nome exato da constraint do banco (ver 1788782400000-InitialSchema.ts).
  * Só ela vira 409 — qualquer outro erro sobe como está. */
@@ -105,6 +117,24 @@ const SLOT_NOT_OFFERED_MESSAGE =
   'Este horário não está disponível para o serviço escolhido. Consulte os horários disponíveis e escolha um deles.';
 const MISSING_UNIT_MESSAGE =
   'Este estabelecimento não tem unidade cadastrada — cadastre uma antes de agendar.';
+const CANCEL_NOT_ALLOWED_MESSAGE =
+  'Só é possível cancelar uma reserva aguardando confirmação ou confirmada que ainda não começou.';
+const RESCHEDULE_NOT_ALLOWED_MESSAGE =
+  'Só é possível remarcar uma reserva aguardando confirmação ou confirmada que ainda não começou.';
+const RESCHEDULE_CANCELED_MESSAGE =
+  'Esta reserva foi cancelada e não pode ser remarcada. Crie uma nova reserva.';
+const RESCHEDULE_STALE_MESSAGE =
+  'Esta reserva mudou desde que a tela carregou. Consulte a agenda novamente antes de remarcar.';
+
+/**
+ * Estados em que cancelar e remarcar são permitidos (Lote 6D.6). Regra
+ * PROPOSTA e ADOTADA por este lote — o schema não tem tabela de transições
+ * permitidas, e nenhuma foi inventada além destas duas ações.
+ */
+export const STATUS_ALTERAVEIS: readonly AppointmentStatus[] = [
+  AppointmentStatus.PENDING,
+  AppointmentStatus.CONFIRMED,
+];
 
 export interface AppointmentView {
   id: string;
@@ -134,12 +164,40 @@ export interface AppointmentView {
   createdAt: string;
 }
 
+/** Horários oferecidos para remarcar UMA reserva (Lote 6D.6). Mesma forma dos
+ * slots da consulta de disponibilidade, para a tela não precisar de dois
+ * formatos — mas calculados com a ocupação congelada da reserva. */
+export interface RescheduleOptionsView {
+  appointmentId: string;
+  date: string;
+  timezone: string;
+  /** Duração congelada na reserva, nunca a atual do catálogo. */
+  durationMinutes: number;
+  slots: {
+    startAt: string;
+    endAt: string;
+    localStart: string;
+    localEnd: string;
+    offsetMinutes: number;
+    offsetLabel: string;
+  }[];
+  /** Preenchido só quando `slots` está vazio — lista vazia legítima nunca se
+   * confunde com falha. */
+  emptyReason: MotivoSemHorario | null;
+}
+
 @Injectable()
 export class AppointmentsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly availability: AvailabilityService,
     private readonly consumers: ConsumersService,
+    /** Relógio injetável, mesmo padrão de AvailabilityService: a elegibilidade
+     * de cancelar/remarcar depende de "já começou?", e nenhum teste pode
+     * depender da hora em que roda. `@Optional()` é o que faz o Nest não
+     * tentar resolver este parâmetro no container. */
+    @Optional()
+    private readonly agora: () => Date = () => new Date(),
   ) {}
 
   /**
@@ -353,6 +411,337 @@ export class AppointmentsService {
       timezone,
       date: query.date,
       appointments: await this.toViews(manager, authorized.tenantId, doDia),
+    };
+  }
+
+  /**
+   * Cancela a reserva (Lote 6D.6).
+   *
+   * NÃO chama o motor de disponibilidade, de propósito: cancelar precisa
+   * funcionar mesmo que o serviço ou o profissional tenha sido desativado
+   * depois da reserva, e `calcular` recusaria os dois casos com 400. Cancelar
+   * não escolhe nada — só muda o estado de uma linha que já existe.
+   *
+   * IDEMPOTENTE: repetir o cancelamento de uma reserva já cancelada devolve o
+   * estado dela e NÃO grava uma segunda transição. Sem isso, um duplo clique
+   * ou um reenvio depois de falha de rede encheria o histórico de linhas
+   * `CANCELED -> CANCELED`.
+   *
+   * O horário só fica livre depois do COMMIT: a constraint
+   * `appointments_no_overlap_excl` ignora `CANCELED`, mas até a transação
+   * confirmar nenhuma outra sessão vê o novo estado — então não existe
+   * intervalo em que duas reservas se considerem donas do mesmo horário.
+   */
+  async cancel(
+    userId: string,
+    tenantId: string,
+    appointmentId: string,
+  ): Promise<AppointmentView> {
+    const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
+      permitido: canCancelAppointments,
+      mensagemProibido: APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
+    });
+
+    const salvo = await this.dataSource.transaction(async (tx) => {
+      const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId);
+
+      // Já cancelada: devolve o estado, sem gravar nada.
+      if (appointment.status === AppointmentStatus.CANCELED) return appointment;
+
+      this.exigirEstadoAlteravel(appointment, CANCEL_NOT_ALLOWED_MESSAGE);
+
+      const anterior = appointment.status;
+      await tx.update(
+        Appointment,
+        // Sempre pelas DUAS chaves: id sozinho poderia casar com a linha de
+        // outro estabelecimento se o id viesse errado.
+        { id: appointment.id, tenantId: authorized.tenantId },
+        { status: AppointmentStatus.CANCELED },
+      );
+
+      // Transição gravada na MESMA transação da mudança de estado: um
+      // cancelamento sem histórico (ou um histórico sem cancelamento) nunca
+      // pode ficar visível.
+      await tx.save(
+        tx.create(AppointmentStatusChange, {
+          tenantId: authorized.tenantId,
+          appointmentId: appointment.id,
+          fromStatus: anterior,
+          toStatus: AppointmentStatus.CANCELED,
+          // `changedBy` é `varchar` livre (ainda não é FK de `users`, ver
+          // appointment-status-change.entity.ts) — grava o id do usuário
+          // autenticado, que é o dado real disponível hoje.
+          changedBy: userId,
+        }),
+      );
+
+      // `appointment_items` e qualquer outro registro filho ficam intactos:
+      // nada é apagado, o histórico da reserva continua legível.
+      //
+      // A entidade em memória acompanha o que acabou de ser gravado (em vez de
+      // uma segunda leitura só para montar a resposta).
+      appointment.status = AppointmentStatus.CANCELED;
+      return appointment;
+    });
+
+    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+    return view;
+  }
+
+  /**
+   * Remarca SÓ o horário da mesma reserva (Lote 6D.6).
+   *
+   * O que é PRESERVADO: o id, o cliente (e os snapshots dele), a unidade, o
+   * profissional, o serviço, o status e — o mais fácil de errar — o preço, a
+   * duração e o buffer CONGELADOS. A nova ocupação tem exatamente a mesma
+   * largura da antiga (`end_at - start_at`), calculada da própria linha e
+   * nunca relida do catálogo: um serviço que hoje dura 90 min não estica uma
+   * reserva de 60 min feita ontem.
+   *
+   * A reserva é ATUALIZADA. Nunca é cancelada para criar outra: isso trocaria
+   * o id, duplicaria o histórico e perderia a ligação com `appointment_items`.
+   *
+   * A validação reusa `AvailabilityService.calcular` — a mesma função do GET e
+   * da criação —, com dois parâmetros internos: ignorar a ocupação DESTA
+   * reserva e usar a ocupação congelada dela. Não existe segunda cópia das
+   * regras de jornada, fuso, grade ou política.
+   */
+  async reschedule(
+    userId: string,
+    tenantId: string,
+    appointmentId: string,
+    dto: RescheduleAppointmentDto,
+  ): Promise<AppointmentView> {
+    const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
+      permitido: canRescheduleAppointments,
+      mensagemProibido: APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
+    });
+
+    const novoInicio = new Date(dto.startAt);
+    const esperado = new Date(dto.expectedStartAt);
+
+    try {
+      const salvo = await this.dataSource.transaction(async (tx) => {
+        const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId);
+
+        // Cancelada nunca é remarcada: reviver uma reserva cancelada é uma
+        // decisão de negócio (e outra operação), não um efeito de mover a hora.
+        if (appointment.status === AppointmentStatus.CANCELED) {
+          throw new BadRequestException(RESCHEDULE_CANCELED_MESSAGE);
+        }
+        this.exigirEstadoAlteravel(appointment, RESCHEDULE_NOT_ALLOWED_MESSAGE);
+
+        // Concorrência otimista com uma coluna REAL: se a reserva já foi
+        // movida depois de a tela carregar, o instante gravado não bate com o
+        // que a pessoa estava vendo.
+        if (appointment.startAt.getTime() !== esperado.getTime()) {
+          throw new ConflictException(RESCHEDULE_STALE_MESSAGE);
+        }
+
+        const congelada = await this.ocupacaoCongelada(tx, authorized.tenantId, appointment);
+
+        // Remarcar para o instante em que a reserva JÁ está é uma operação sem
+        // alteração: nada é gravado e nenhuma transição é criada. Sai antes da
+        // revalidação de propósito — a reserva já ocupa esse horário
+        // legitimamente, e recusá-la porque a jornada mudou depois faria a
+        // tela acusar conflito de uma reserva com ela mesma.
+        if (appointment.startAt.getTime() === novoInicio.getTime()) return appointment;
+
+        const timezone = await this.timezoneDoTenant(tx, authorized.tenantId);
+        const date = dataLocalDe(novoInicio, timezone);
+
+        const calculo = await this.availability.calcular(
+          tx,
+          authorized.tenantId,
+          appointment.professionalId,
+          congelada.serviceId,
+          date,
+          {
+            travar: true,
+            ignorarAgendamentoId: appointment.id,
+            ocupacaoCongelada: {
+              duracaoMinutos: congelada.duracaoMinutos,
+              bufferMinutos: congelada.bufferMinutos,
+            },
+          },
+        );
+
+        const slot = calculo.resultado.slots.find(
+          (candidato) => candidato.startAt.getTime() === novoInicio.getTime(),
+        );
+        if (!slot) throw this.recusaDeHorario(novoInicio, calculo);
+
+        const novoFim = new Date(novoInicio.getTime() + congelada.ocupacaoMinutos * 60_000);
+        await tx.update(
+          Appointment,
+          { id: appointment.id, tenantId: authorized.tenantId },
+          { startAt: novoInicio, endAt: novoFim },
+        );
+
+        // NENHUMA transição de status é gravada: o status não mudou. Ver a
+        // limitação registrada em appointment-status-change.entity.ts — aquela
+        // tabela é um histórico de STATUS (`from_status`/`to_status`), e não
+        // tem coluna para horário antigo/novo. Inventar uma transição
+        // `CONFIRMED -> CONFIRMED` para "registrar algo" produziria histórico
+        // falso.
+        appointment.startAt = novoInicio;
+        appointment.endAt = novoFim;
+        return appointment;
+      });
+
+      const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+      return view;
+    } catch (error) {
+      // Mesmo tratamento da criação: SÓ a constraint de sobreposição vira 409.
+      // Qualquer outra falha sobe como está — e como tudo acima corre numa
+      // transação, o horário ORIGINAL da reserva fica intacto.
+      if (isExclusionViolation(error, OVERLAP_CONSTRAINT)) {
+        throw new ConflictException(SLOT_TAKEN_MESSAGE);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Horários oferecidos para remarcar ESTA reserva, num dia.
+   *
+   * O profissional e o serviço vêm da própria reserva, nunca da query: assim
+   * não existe como pedir a grade de uma combinação que não é a dela. A
+   * ocupação da própria reserva é ignorada e a ocupação congelada é
+   * respeitada, para a lista ser exatamente a que o POST vai aceitar.
+   */
+  async rescheduleOptions(
+    userId: string,
+    tenantId: string,
+    appointmentId: string,
+    query: RescheduleOptionsDto,
+  ): Promise<RescheduleOptionsView> {
+    const manager = this.dataSource.manager;
+    const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
+      permitido: canRescheduleAppointments,
+      mensagemProibido: APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
+    });
+
+    const appointment = await manager.findOne(Appointment, {
+      where: { id: appointmentId, tenantId: authorized.tenantId },
+    });
+    if (!appointment) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
+
+    const congelada = await this.ocupacaoCongelada(manager, authorized.tenantId, appointment);
+
+    const calculo = await this.availability.calcular(
+      manager,
+      authorized.tenantId,
+      appointment.professionalId,
+      congelada.serviceId,
+      query.date,
+      {
+        ignorarAgendamentoId: appointment.id,
+        ocupacaoCongelada: {
+          duracaoMinutos: congelada.duracaoMinutos,
+          bufferMinutos: congelada.bufferMinutos,
+        },
+      },
+    );
+
+    return {
+      appointmentId: appointment.id,
+      date: query.date,
+      timezone: calculo.timezone,
+      /** Duração CONGELADA — nunca a do catálogo atual. */
+      durationMinutes: congelada.duracaoMinutos,
+      slots: calculo.resultado.slots.map((slot) => ({
+        startAt: slot.startAt.toISOString(),
+        endAt: slot.endAt.toISOString(),
+        localStart: slot.localStart,
+        localEnd: slot.localEnd,
+        offsetMinutes: slot.offsetMinutes,
+        offsetLabel: slot.offsetLabel,
+      })),
+      emptyReason: calculo.resultado.motivo,
+    };
+  }
+
+  /**
+   * Trava a linha da reserva (`FOR UPDATE`) pelas DUAS chaves.
+   *
+   * ORDEM DE LOCKS (Lote 6D.6): a reserva é travada ANTES de qualquer lock de
+   * serviço/profissional/vínculo que `calcular({ travar: true })` pegue
+   * depois. Nenhum caminho existente trava linha de `appointments` (a criação
+   * só INSERE), então começar por ela não inverte nenhum par já usado; e
+   * cancelar e remarcar usam a MESMA ordem, então não podem travar em sentidos
+   * opostos entre si. Duas ações simultâneas sobre a mesma reserva
+   * serializam aqui: a segunda só prossegue depois do commit da primeira, e
+   * então já lê o estado novo.
+   */
+  private async travarReserva(
+    tx: EntityManager,
+    tenantId: string,
+    appointmentId: string,
+  ): Promise<Appointment> {
+    const appointment = await tx.findOne(Appointment, {
+      where: { id: appointmentId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    // Id de outro estabelecimento é indistinguível de inexistente.
+    if (!appointment) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
+    return appointment;
+  }
+
+  /**
+   * Estados e janela em que cancelar/remarcar fazem sentido: `PENDING` e
+   * `CONFIRMED` que ainda não começaram.
+   *
+   * `IN_PROGRESS`, `COMPLETED` e `NO_SHOW` descrevem algo que já aconteceu —
+   * mexer nisso é decisão de negócio de outro lote, não efeito colateral
+   * destas ações. Início no passado também não: reescrever a agenda de um
+   * atendimento que já deveria ter ocorrido apagaria o registro do que houve.
+   */
+  private exigirEstadoAlteravel(appointment: Appointment, mensagem: string): void {
+    if (!STATUS_ALTERAVEIS.includes(appointment.status)) {
+      throw new BadRequestException(mensagem);
+    }
+    if (appointment.startAt.getTime() <= this.agora().getTime()) {
+      throw new BadRequestException(mensagem);
+    }
+  }
+
+  /**
+   * Ocupação CONGELADA da reserva, lida da própria linha e do item.
+   *
+   * `ocupacaoMinutos` vem de `end_at - start_at` (duração + buffer no momento
+   * da reserva) e é o que define a largura da nova janela. A duração vem do
+   * snapshot do item; o buffer é a diferença entre os dois — não existe coluna
+   * de buffer congelado (ver availability-rules.ts, item 2), e derivá-lo assim
+   * é exato, sem consultar o catálogo.
+   */
+  private async ocupacaoCongelada(
+    manager: EntityManager,
+    tenantId: string,
+    appointment: Appointment,
+  ): Promise<{
+    serviceId: string;
+    duracaoMinutos: number;
+    bufferMinutos: number;
+    ocupacaoMinutos: number;
+  }> {
+    const item = await manager.findOne(AppointmentItem, {
+      where: { tenantId, appointmentId: appointment.id },
+      order: { position: 'ASC' },
+    });
+    if (!item) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
+
+    const ocupacaoMinutos = Math.round(
+      (appointment.endAt.getTime() - appointment.startAt.getTime()) / 60_000,
+    );
+    // A duração do snapshot nunca pode passar da ocupação gravada; se passar,
+    // a ocupação manda (é ela que a constraint aplica) e o buffer é zero.
+    const duracaoMinutos = Math.min(item.durationMinutesSnapshot, ocupacaoMinutos);
+    return {
+      serviceId: item.serviceId,
+      duracaoMinutos,
+      bufferMinutos: ocupacaoMinutos - duracaoMinutos,
+      ocupacaoMinutos,
     };
   }
 
