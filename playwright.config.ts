@@ -13,7 +13,16 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // `list` só: nenhum relatório HTML é gerado, então NADA cria
+  // `playwright-report/` — quem precisa do diagnóstico usa o `trace.zip` que
+  // `trace: "retain-on-failure"` grava em `outputDir` (ver
+  // test-frontend-auth.yml, passo que sobe `test-results/`).
   reporter: [["list"]],
+  // Um subdiretório por invocação do Playwright no CI: são seis invocações
+  // separadas no mesmo job, e cada uma LIMPA o próprio `outputDir` ao
+  // começar. Sem separar, a invocação seguinte apagaria o trace da anterior.
+  // Fora do CI continua em `test-results/`, como antes.
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
