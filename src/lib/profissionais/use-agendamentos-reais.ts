@@ -17,6 +17,7 @@ import type {
   AgendaDoDiaReal,
   AgendamentoReal,
   DadosAgendamentoReal,
+  DadosRemarcacaoReal,
   FalhaAgendamentoReal,
   ResultadoAgendamentoReal,
 } from "@/lib/api/appointments-api";
@@ -28,11 +29,17 @@ export type EstadoAgenda =
 
 export interface AgendamentosReaisControlados {
   estado: EstadoAgenda;
-  /** `true` enquanto uma criação está em voo — a UI usa isto para impedir
-   * envio duplicado. */
+  /** `true` enquanto uma criação, cancelamento ou remarcação está em voo — a
+   * UI usa isto para impedir envio duplicado. Uma flag só para as três porque
+   * a tela nunca deve permitir duas gravações concorrentes na mesma agenda. */
   gravando: boolean;
   recarregar: () => void;
   criar: (dados: DadosAgendamentoReal) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
+  cancelar: (appointmentId: string) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
+  remarcar: (
+    appointmentId: string,
+    dados: DadosRemarcacaoReal,
+  ) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
 }
 
 export function useAgendamentosReais(
@@ -82,25 +89,67 @@ export function useAgendamentosReais(
 
   const recarregar = useCallback(() => setRecarga((n) => n + 1), []);
 
-  const criar = useCallback(
-    async (dados: DadosAgendamentoReal): Promise<ResultadoAgendamentoReal<AgendamentoReal>> => {
+  /**
+   * Disciplina única das três gravações (criar, cancelar, remarcar):
+   *
+   * - `gravandoRef` barra um segundo envio que já foi despachado antes do
+   *   re-render desabilitar o botão — o `disabled` sozinho não cobre isso;
+   * - resposta que chega depois de trocar de estabelecimento ou de dia nunca
+   *   escreve na tela do novo contexto;
+   * - só sucesso recarrega a agenda. Falha de comunicação NÃO recarrega nem
+   *   reenvia: quem decide é a pessoa, depois de conferir a reserva.
+   *
+   * Uma função só para as três de propósito: duas cópias desta lógica
+   * divergiriam, e é justamente aqui que mora a proteção contra duplicar uma
+   * gravação que o servidor não sabe desfazer.
+   */
+  const gravandoRef = useRef(false);
+
+  const enviar = useCallback(
+    async (
+      acao: () => Promise<ResultadoAgendamentoReal<AgendamentoReal>>,
+    ): Promise<ResultadoAgendamentoReal<AgendamentoReal>> => {
       const contextoDaChamada = contextoRef.current;
       if (!tenantId || !contextoDaChamada) {
         return { ok: false, falha: { tipo: "sem_acesso" } };
       }
+      // Segunda barreira contra envio duplicado, além do `disabled` do botão.
+      if (gravandoRef.current) return { ok: false, falha: { tipo: "indisponivel" } };
 
+      gravandoRef.current = true;
       setGravando(true);
-      const resultado = await agendamentosApi.criarAgendamento(tenantId, dados);
-      setGravando(false);
-
-      // Resposta que chega depois de trocar de estabelecimento ou de dia
-      // nunca escreve na tela do novo contexto.
-      if (contextoRef.current !== contextoDaChamada) return resultado;
-      if (resultado.ok) setRecarga((n) => n + 1);
-      return resultado;
+      try {
+        const resultado = await acao();
+        if (contextoRef.current !== contextoDaChamada) return resultado;
+        if (resultado.ok) setRecarga((n) => n + 1);
+        return resultado;
+      } finally {
+        gravandoRef.current = false;
+        setGravando(false);
+      }
     },
     [tenantId],
   );
 
-  return { estado, gravando, recarregar, criar };
+  const criar = useCallback(
+    (dados: DadosAgendamentoReal) =>
+      enviar(() => agendamentosApi.criarAgendamento(tenantId as string, dados)),
+    [enviar, tenantId],
+  );
+
+  const cancelar = useCallback(
+    (appointmentId: string) =>
+      enviar(() => agendamentosApi.cancelarAgendamento(tenantId as string, appointmentId)),
+    [enviar, tenantId],
+  );
+
+  const remarcar = useCallback(
+    (appointmentId: string, dados: DadosRemarcacaoReal) =>
+      enviar(() =>
+        agendamentosApi.remarcarAgendamento(tenantId as string, appointmentId, dados),
+      ),
+    [enviar, tenantId],
+  );
+
+  return { estado, gravando, recarregar, criar, cancelar, remarcar };
 }

@@ -4,8 +4,10 @@
 // REAL: nada de repositório, seed ou dado da demonstração entra aqui
 // (auditado por lib/servicos/sem-dados-demo.test.ts).
 //
-// ESCOPO: criar e consultar. Não há cancelamento, remarcação nem mudança
-// manual de status neste lote — o backend também não tem rota para isso.
+// ESCOPO: criar, consultar, CANCELAR e REMARCAR (Lote 6D.6). Remarcar move só
+// o horário da mesma reserva; não há mudança manual de status nem exclusão —
+// o backend também não tem rota para isso. A lista do dia e as ações por
+// reserva vivem em agenda-do-dia.tsx / acoes-reserva.tsx.
 //
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
@@ -13,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, RefreshCw, Store } from "lucide-react";
+import { ArrowLeft, RefreshCw, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
@@ -21,17 +23,17 @@ import { useAgendamentosReais } from "@/lib/profissionais/use-agendamentos-reais
 import {
   comoDataDeCalendario,
   mensagemFalhaAgendamento,
+  mensagemFalhaCancelamento,
+  mensagemFalhaRemarcacao,
   resumoDoAgendamento,
   ROTULO_STATUS,
   rotuloDaData,
-  rotuloDeDuracao,
-  rotuloDePreco,
 } from "@/lib/profissionais/agendamentos";
 import type { AgendamentoReal, SelecaoDeCliente } from "@/lib/api/appointments-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { AgendaDoDia } from "./agenda-do-dia";
 import { NovaReserva } from "./nova-reserva";
 
 export default function AgendamentosPage() {
@@ -49,8 +51,15 @@ export default function AgendamentosPage() {
   const [date, setDate] = useState(() => comoDataDeCalendario(new Date()));
   const [erroReserva, setErroReserva] = useState<string | null>(null);
   const [ultimaReserva, setUltimaReserva] = useState<AgendamentoReal | null>(null);
+  /** Erro das ações sobre uma reserva JÁ existente, separado do erro da nova
+   * reserva: misturar os dois mostraria a falha do cancelamento dentro do
+   * formulário de criação. */
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
 
-  const { estado, gravando, recarregar, criar } = useAgendamentosReais(tenantIdAtivo, date);
+  const { estado, gravando, recarregar, criar, cancelar, remarcar } = useAgendamentosReais(
+    tenantIdAtivo,
+    date,
+  );
   const { estado: estadoProfissionais } = useProfissionaisReais(tenantIdAtivo);
 
   useEffect(() => {
@@ -62,7 +71,14 @@ export default function AgendamentosPage() {
   useEffect(() => {
     setUltimaReserva(null);
     setErroReserva(null);
+    setErroAcao(null);
   }, [tenantIdAtivo]);
+
+  // Trocar de dia também invalida o erro de uma ação: ele falava de uma reserva
+  // que não está mais na tela.
+  useEffect(() => {
+    setErroAcao(null);
+  }, [date]);
 
   if (!sessao || precisaSelecionar) return null;
 
@@ -110,6 +126,53 @@ export default function AgendamentosPage() {
     // mensagem orienta a conferir a agenda, e o botão abaixo faz isso quando
     // a pessoa decidir.
     return null;
+  }
+
+  /**
+   * Cancelamento e remarcação compartilham o tratamento do resultado:
+   *
+   * - sucesso: avisa; a agenda já foi recarregada pelo hook;
+   * - 409 (horário ocupado, ou reserva alterada por outra tela) e 400 (já
+   *   começou, já cancelada): recarrega, para a pessoa ver o estado REAL que
+   *   causou a recusa em vez de continuar olhando o desatualizado;
+   * - falha de comunicação: NÃO recarrega e NÃO reenvia. A mensagem diz que a
+   *   operação PODE ter acontecido e manda consultar a reserva — afirmar que não
+   *   aconteceu seria mentira, e reenviar às cegas poderia cancelar ou mover
+   *   algo que já foi gravado.
+   */
+  async function aoCancelar(appointmentId: string): Promise<boolean> {
+    setErroAcao(null);
+    const resultado = await cancelar(appointmentId);
+
+    if (resultado.ok) {
+      notificar("Reserva cancelada. O horário voltou a ficar livre.", "sucesso");
+      return true;
+    }
+
+    setErroAcao(mensagemFalhaCancelamento(resultado.falha));
+    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
+      recarregar();
+    }
+    return false;
+  }
+
+  async function aoRemarcar(
+    appointmentId: string,
+    dados: { startAt: string; expectedStartAt: string },
+  ): Promise<boolean> {
+    setErroAcao(null);
+    const resultado = await remarcar(appointmentId, dados);
+
+    if (resultado.ok) {
+      notificar(`Reserva remarcada para ${resultado.dados.localStart}.`, "sucesso");
+      return true;
+    }
+
+    setErroAcao(mensagemFalhaRemarcacao(resultado.falha));
+    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
+      recarregar();
+    }
+    return false;
   }
 
   const agenda = estado.status === "carregada" ? estado.agenda : null;
@@ -166,75 +229,16 @@ export default function AgendamentosPage() {
         aoConfirmar={aoConfirmar}
       />
 
-      <div className="space-y-3">
-        <p className="text-sm font-semibold text-ink">Agenda do dia</p>
-
-        {estado.status === "carregando" && (
-          <div className="space-y-2" aria-busy="true">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-        )}
-
-        {estado.status === "falha" && (
-          <Cartao>
-            <CartaoCorpo className="space-y-3">
-              <p role="alert" className="text-sm text-ink">
-                {mensagemFalhaAgendamento(estado.falha)}
-              </p>
-              {estado.falha.tipo !== "sem_permissao" && estado.falha.tipo !== "sem_acesso" && (
-                <Botao type="button" onClick={recarregar}>
-                  Tentar novamente
-                </Botao>
-              )}
-            </CartaoCorpo>
-          </Cartao>
-        )}
-
-        {agenda && agenda.appointments.length === 0 && (
-          <Cartao>
-            <CartaoCorpo className="flex items-start gap-3">
-              <CalendarDays size={18} className="mt-0.5 shrink-0 text-ink-soft" />
-              <p data-testid="agenda-vazia" className="text-sm text-ink-soft">
-                Nenhum agendamento neste dia.
-              </p>
-            </CartaoCorpo>
-          </Cartao>
-        )}
-
-        {agenda && agenda.appointments.length > 0 && (
-          <ul data-testid="agenda-do-dia" className="space-y-2">
-            {agenda.appointments.map((agendamento) => (
-              <li key={agendamento.id}>
-                <Cartao>
-                  <CartaoCorpo className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-ink" data-testid="horario-agendado">
-                        {agendamento.localStart}–{agendamento.localServiceEnd}
-                      </p>
-                      <p className="text-sm text-ink">
-                        {agendamento.service.name} · com {agendamento.professional.name}
-                      </p>
-                      <p className="text-xs text-ink-soft">
-                        {agendamento.consumer.name} · {agendamento.consumer.whatsapp}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                        {ROTULO_STATUS[agendamento.status]}
-                      </span>
-                      <p className="mt-1 text-xs text-ink-soft">
-                        {rotuloDeDuracao(agendamento.durationMinutes)} ·{" "}
-                        {rotuloDePreco(agendamento.priceCents)}
-                      </p>
-                    </div>
-                  </CartaoCorpo>
-                </Cartao>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <AgendaDoDia
+        tenantId={tenantIdAtivo}
+        estado={estado}
+        agenda={agenda}
+        gravando={gravando}
+        erroAcao={erroAcao}
+        recarregar={recarregar}
+        aoCancelar={aoCancelar}
+        aoRemarcar={aoRemarcar}
+      />
     </Pagina>
   );
 }

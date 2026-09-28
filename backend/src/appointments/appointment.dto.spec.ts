@@ -1,6 +1,12 @@
 // Contrato de criação e listagem de agendamentos (Lote 6D.5).
 import { describe, expect, it } from 'vitest';
-import { createAppointmentSchema, listAppointmentsSchema } from './appointment.dto.js';
+import {
+  cancelAppointmentSchema,
+  createAppointmentSchema,
+  listAppointmentsSchema,
+  rescheduleAppointmentSchema,
+  rescheduleOptionsSchema,
+} from './appointment.dto.js';
 
 const VALIDO = {
   professionalId: 'professional_1',
@@ -122,4 +128,94 @@ describe('listAppointmentsSchema', () => {
       listAppointmentsSchema.safeParse({ date: '2026-09-20', tenantId: 'outro' }).success,
     ).toBe(false);
   });
+});
+
+// --------------------------------------------------------------------------
+// Lote 6D.6 — contratos de cancelar e remarcar.
+describe('cancelAppointmentSchema', () => {
+  it('aceita corpo vazio', () => {
+    expect(cancelAppointmentSchema.safeParse({}).success).toBe(true);
+  });
+
+  it.each([
+    { status: 'CANCELED' },
+    { priceCents: 0 },
+    { tenantId: 'outro' },
+    { appointmentId: 'outro' },
+    { startAt: '2026-09-20T12:00:00.000Z' },
+  ])('recusa campo que o servidor decide: %o', (corpo) => {
+    // `.strict()` é o que impede o navegador de tentar ditar status, preço,
+    // tenant ou QUAL reserva — este último vem sempre do caminho da rota.
+    expect(cancelAppointmentSchema.safeParse(corpo).success).toBe(false);
+  });
+});
+
+describe('rescheduleAppointmentSchema', () => {
+  const valido = {
+    startAt: '2026-09-20T13:00:00.000Z',
+    expectedStartAt: '2026-09-20T12:00:00.000Z',
+  };
+
+  it('aceita os dois instantes com fuso explícito', () => {
+    expect(rescheduleAppointmentSchema.safeParse(valido).success).toBe(true);
+  });
+
+  it('aceita deslocamento explícito, não só Z', () => {
+    expect(
+      rescheduleAppointmentSchema.safeParse({
+        startAt: '2026-09-20T10:00:00-03:00',
+        expectedStartAt: '2026-09-20T09:00:00-03:00',
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each(['expectedStartAt', 'startAt'])('exige %s', (campo) => {
+    const corpo: Record<string, unknown> = { ...valido };
+    delete corpo[campo];
+    expect(rescheduleAppointmentSchema.safeParse(corpo).success).toBe(false);
+  });
+
+  it.each([
+    // Sem fuso: seria interpretado pelo relógio do servidor.
+    '2026-09-20T13:00:00',
+    // Data que não existe no calendário.
+    '2026-02-30T13:00:00.000Z',
+    '20/09/2026 13:00',
+    '',
+  ])('recusa instante inválido: %s', (startAt) => {
+    expect(rescheduleAppointmentSchema.safeParse({ ...valido, startAt }).success).toBe(false);
+  });
+
+  it.each([
+    { status: 'CONFIRMED' },
+    { priceCents: 1 },
+    { durationMinutes: 30 },
+    { professionalId: 'outro' },
+    { serviceId: 'outro' },
+    { consumer: { mode: 'existing', consumerId: 'x' } },
+    { tenantId: 'outro' },
+  ])('recusa campo fora do escopo da remarcação: %o', (extra) => {
+    // Remarcar move SÓ o horário: trocar profissional, serviço, cliente,
+    // preço, duração ou status não é remarcação, e o contrato nem aceita.
+    expect(rescheduleAppointmentSchema.safeParse({ ...valido, ...extra }).success).toBe(false);
+  });
+});
+
+describe('rescheduleOptionsSchema', () => {
+  it('aceita só a data', () => {
+    expect(rescheduleOptionsSchema.safeParse({ date: '2026-09-20' }).success).toBe(true);
+  });
+
+  it.each(['2026-02-30', '2026-9-20', '20/09/2026'])('recusa data inválida: %s', (date) => {
+    expect(rescheduleOptionsSchema.safeParse({ date }).success).toBe(false);
+  });
+
+  it.each([{ professionalId: 'outro' }, { serviceId: 'outro' }])(
+    'recusa %o — profissional e serviço vêm da reserva, não da query',
+    (extra) => {
+      expect(rescheduleOptionsSchema.safeParse({ date: '2026-09-20', ...extra }).success).toBe(
+        false,
+      );
+    },
+  );
 });

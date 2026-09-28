@@ -8,10 +8,11 @@
 // na API: botão escondido não é controle de acesso.
 //
 // Orçamento de POST /auth/register: o rate limit real é 5 por 15 min por IP e
-// este arquivo gasta 2 (fluxo + isolamento). Roda em invocação SEPARADA do
-// Playwright, com backend novo e limiter zerado (ver
-// .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado para
-// o teste passar.
+// este arquivo gasta 3 — fluxo, isolamento e, no Lote 6D.6, remarcar/cancelar.
+// Roda em invocação SEPARADA do Playwright, com backend novo e limiter zerado
+// (ver .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado
+// para o teste passar; se o orçamento apertar, o caminho é outra invocação
+// separada, nunca mexer no limiter.
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 // Domingo no futuro, DERIVADO do relógio a cada execução, e os instantes UTC
 // calculados a partir dele no fuso do estabelecimento (09:00 local segue sendo
@@ -143,6 +144,12 @@ async function definirJornada(
 
 async function horariosLivres(pagina: Page): Promise<string[]> {
   return pagina.locator('[data-testid="horario-livre"]').allTextContents();
+}
+
+/** Horários oferecidos pelo painel de remarcação — vêm da rota
+ * reschedule-options, calculados com a ocupação congelada da reserva. */
+async function horariosDeRemarcacao(pagina: Page): Promise<string[]> {
+  return pagina.locator('[data-testid="horario-remarcacao"]').allTextContents();
 }
 
 test.describe("agendamentos reais", () => {
@@ -410,4 +417,92 @@ test.describe("agendamentos reais", () => {
     await contextoA.close();
     await contextoB.close();
   });
+
+  test("remarcar e cancelar na tela, com reload provando que persistiu (Lote 6D.6)", async ({
+    page,
+    request,
+  }) => {
+    const conta = await criarConta(request, "acoes");
+    await entrar(page, conta);
+    const tenantId = await tenantDe(page);
+
+    const servicoId = await criarServico(page, tenantId, "Corte", 60);
+    const profissionalId = await criarProfissional(page, tenantId, "Ana Souza", [servicoId]);
+    await definirJornada(page, tenantId, profissionalId);
+
+    await page.goto("/conta/agendamentos");
+    await page.getByLabel("Dia").fill(DATA);
+
+    // Uma reserva às 09:00, criada pela tela.
+    await page.getByRole("button", { name: "Cadastrar novo" }).click();
+    await page.getByLabel("Nome do cliente").fill("Cliente das Ações");
+    await page.getByLabel("WhatsApp").fill("(11) 95555-4444");
+    await page.getByRole("button", { name: "Ver horários livres" }).click();
+    await expect.poll(() => horariosLivres(page)).toContain("09:00");
+    await page.locator('[data-testid="horario-livre"]').first().click();
+    await page.locator('form button[type="submit"]').click();
+    await expect(page.getByTestId("confirmacao")).toBeVisible();
+    await expect(page.getByTestId("horario-agendado")).toHaveText("09:00–10:00");
+
+    // ---------------------------------------------------------------- remarcar
+    await page.getByTestId("abrir-remarcacao").click();
+    // O painel mostra o horário ATUAL antes de qualquer escolha.
+    await expect(page.getByTestId("horario-atual")).toContainText("09:00–10:00");
+
+    // Os horários vêm do servidor (rota de reschedule-options), nunca montados
+    // na tela — e o horário da própria reserva aparece, porque ela não bloqueia
+    // a si mesma.
+    await expect.poll(() => horariosDeRemarcacao(page)).toContain("09:00");
+    await page
+      .locator(`[data-testid="horario-remarcacao"][data-inicio="${instanteLocalDe("10:00")}"]`)
+      .click();
+
+    // O resumo mostra DE → PARA antes de confirmar, com cliente e serviço
+    // preservados.
+    await expect(page.getByTestId("resumo-remarcacao")).toContainText("De 09:00–10:00 para 10:00");
+    await expect(page.getByTestId("resumo-remarcacao")).toContainText("Cliente das Ações");
+
+    await page.getByTestId("confirmar-remarcacao").click();
+    await expect(page.getByTestId("horario-agendado")).toHaveText("10:00–11:00");
+
+    // Persistência real: o reload relê do banco pela API.
+    await page.reload();
+    await page.getByLabel("Dia").fill(DATA);
+    await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
+    await expect(page.getByTestId("horario-agendado")).toHaveText("10:00–11:00");
+    await expect(page.getByTestId("agenda-do-dia")).toContainText("Cliente das Ações");
+    // O status não mudou com a remarcação.
+    await expect(page.getByTestId("status-agendado")).toHaveText("Confirmado");
+
+    // 09:00 voltou a ficar livre (a ocupação andou junto com a reserva).
+    await page.getByRole("button", { name: "Ver horários livres" }).click();
+    await expect.poll(() => horariosLivres(page)).toContain("09:00");
+    await expect.poll(() => horariosLivres(page)).not.toContain("10:00");
+
+    // --------------------------------------------------------------- cancelar
+    await page.getByTestId("abrir-cancelamento").click();
+    // A confirmação NOMEIA a reserva — não é um "tem certeza?" genérico.
+    await expect(page.getByTestId("reserva-a-cancelar")).toContainText("10:00–11:00");
+    await expect(page.getByTestId("reserva-a-cancelar")).toContainText("Cliente das Ações");
+
+    await page.getByTestId("confirmar-cancelamento-botao").click();
+    // A reserva continua listada, agora como cancelada (nada é apagado), e as
+    // ações desaparecem dela.
+    await expect(page.getByTestId("status-agendado")).toHaveText("Cancelado");
+    await expect(page.getByTestId("acoes-reserva")).toHaveCount(0);
+
+    // Reload: o cancelamento persistiu.
+    await page.reload();
+    await page.getByLabel("Dia").fill(DATA);
+    await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
+    await expect(page.getByTestId("status-agendado")).toHaveText("Cancelado");
+
+    // E o horário 10:00 voltou a ser oferecido para uma nova reserva.
+    await page.getByRole("button", { name: "Cadastrar novo" }).click();
+    await page.getByLabel("Nome do cliente").fill("Outro Cliente");
+    await page.getByLabel("WhatsApp").fill("(11) 96666-5555");
+    await page.getByRole("button", { name: "Ver horários livres" }).click();
+    await expect.poll(() => horariosLivres(page)).toContain("10:00");
+  });
+
 });

@@ -97,3 +97,76 @@ export function resumoDoAgendamento(agendamento: AgendamentoReal): string {
     `para ${agendamento.consumer.name}`,
   ].join(" · ");
 }
+
+/**
+ * Estados em que a tela oferece cancelar e remarcar (Lote 6D.6) — os MESMOS
+ * do backend (`STATUS_ALTERAVEIS` em appointments.service.ts). Esta é uma
+ * cópia de APRESENTAÇÃO: esconder o botão não é controle nenhum, quem decide é
+ * sempre o servidor. Ela existe para a tela não oferecer uma ação que já se
+ * sabe que será recusada.
+ */
+const STATUS_ALTERAVEIS: readonly StatusAgendamentoReal[] = ["PENDING", "CONFIRMED"];
+
+/**
+ * A reserva ainda pode ser cancelada/remarcada?
+ *
+ * `agora` é PARÂMETRO, nunca `new Date()` aqui dentro: o mesmo motivo do resto
+ * do projeto — nenhum teste pode depender da hora em que roda. O instante
+ * comparado é `startAt` (UTC, inequívoco), não a hora local exibida.
+ *
+ * O relógio do navegador pode estar errado, então isto NUNCA é garantia: o
+ * servidor revalida dentro da transação e recusa com 400 se já começou.
+ */
+export function podeAlterarAgendamento(agendamento: AgendamentoReal, agora: Date): boolean {
+  if (!STATUS_ALTERAVEIS.includes(agendamento.status)) return false;
+  return new Date(agendamento.startAt).getTime() > agora.getTime();
+}
+
+export function mensagemFalhaCancelamento(falha: FalhaAgendamentoReal): string {
+  switch (falha.tipo) {
+    case "sem_permissao":
+      return "Você não tem permissão para cancelar agendamentos neste estabelecimento.";
+    case "nao_agendavel":
+      return (
+        falha.mensagem ??
+        "Esta reserva não pode mais ser cancelada. Atualize a agenda para ver o estado atual."
+      );
+    case "falha_comunicacao":
+      // NUNCA afirma que o cancelamento não aconteceu: a requisição não teve
+      // resposta, então é impossível saber. Também não reenvia sozinho.
+      return (
+        "A conexão falhou antes de o servidor confirmar. " +
+        "O cancelamento pode ter sido gravado: consulte a reserva na agenda antes de tentar de novo."
+      );
+    default:
+      return mensagemFalhaAgendamento(falha);
+  }
+}
+
+export function mensagemFalhaRemarcacao(falha: FalhaAgendamentoReal): string {
+  switch (falha.tipo) {
+    case "sem_permissao":
+      return "Você não tem permissão para remarcar agendamentos neste estabelecimento.";
+    case "horario_ocupado":
+      // A mensagem do servidor distingue "o horário foi ocupado" de "a reserva
+      // mudou desde que a tela carregou" — as duas pedem a mesma ação (conferir
+      // a agenda), mas dizer qual das duas foi evita a pessoa procurar o
+      // problema no lugar errado.
+      return (
+        falha.mensagem ??
+        "Este horário acabou de ser ocupado. Consulte os horários disponíveis novamente."
+      );
+    case "nao_agendavel":
+      return (
+        falha.mensagem ??
+        "Não foi possível remarcar para este horário. Consulte os horários disponíveis."
+      );
+    case "falha_comunicacao":
+      return (
+        "A conexão falhou antes de o servidor confirmar. " +
+        "A remarcação pode ter sido gravada: consulte a reserva na agenda antes de tentar de novo."
+      );
+    default:
+      return mensagemFalhaAgendamento(falha);
+  }
+}
