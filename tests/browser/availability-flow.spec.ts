@@ -12,13 +12,14 @@
 // Playwright, com backend novo e limiter zerado (ver
 // .github/workflows/test-frontend-auth.yml).
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+// Domingo no futuro, DERIVADO do relógio a cada execução (e o dia da semana
+// derivado dele). Uma data fixa aqui envelhece: depois de vencida, o motor de
+// disponibilidade corta corretamente todo horário já passado e a lista chega
+// vazia — ver o porquê em data-de-teste.ts.
+import { DATA, DATA_SEGUINTE, WEEKDAY_DA_DATA } from "./data-de-teste";
 
 const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-disponibilidade-e2e-123";
-
-/** Domingo, bem no futuro: nenhum teste depende do dia em que roda. */
-const DATA = "2026-09-20";
-const WEEKDAY_DA_DATA = 0;
 
 interface ContaCriada {
   email: string;
@@ -198,7 +199,7 @@ test.describe("consulta real de disponibilidade", () => {
     // teste de navegador poder criar o conflito.
 
     // Mudar a seleção invalida o resultado na tela: ele é de outra consulta.
-    await page.getByLabel("Data").fill("2026-09-21");
+    await page.getByLabel("Data").fill(DATA_SEGUINTE);
     await expect(page.getByTestId("horarios")).toHaveCount(0);
 
     // Consultar de novo a data original reproduz o mesmo resultado (consulta

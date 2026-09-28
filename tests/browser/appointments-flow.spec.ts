@@ -13,13 +13,14 @@
 // .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado para
 // o teste passar.
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+// Domingo no futuro, DERIVADO do relógio a cada execução, e os instantes UTC
+// calculados a partir dele no fuso do estabelecimento (09:00 local segue sendo
+// 12:00Z, como antes). Uma data fixa aqui envelhece e o horário deixa de ser
+// oferecido — ver o porquê em data-de-teste.ts.
+import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
 
 const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-agendamentos-e2e-123";
-
-/** Domingo, bem no futuro: nenhum teste depende do dia em que roda. */
-const DATA = "2026-09-20";
-const WEEKDAY_DA_DATA = 0;
 
 interface ContaCriada {
   email: string;
@@ -295,9 +296,9 @@ test.describe("agendamentos reais", () => {
         },
       );
 
-    expect(await ocupar("2026-09-20T12:00:00.000Z")).toBe(201);
+    expect(await ocupar(instanteLocalDe("09:00"))).toBe(201);
     // O mesmo horário de novo é 409 — a constraint do banco é quem decide.
-    expect(await ocupar("2026-09-20T12:00:00.000Z")).toBe(409);
+    expect(await ocupar(instanteLocalDe("09:00"))).toBe(409);
 
     // Na tela: escolher um horário livre, deixar outra reserva ocupá-lo por
     // fora e confirmar — o 409 precisa ser explicado e a agenda atualizada.
@@ -309,9 +310,9 @@ test.describe("agendamentos reais", () => {
     await paginaA.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(paginaA)).toContain("10:00");
 
-    await paginaA.locator('[data-testid="horario-livre"][data-inicio="2026-09-20T13:00:00.000Z"]').click();
+    await paginaA.locator(`[data-testid="horario-livre"][data-inicio="${instanteLocalDe("10:00")}"]`).click();
     // Alguém ocupa 10:00 por fora, depois da consulta e antes da confirmação.
-    expect(await ocupar("2026-09-20T13:00:00.000Z")).toBe(201);
+    expect(await ocupar(instanteLocalDe("10:00"))).toBe(201);
 
     await paginaA.locator('form button[type="submit"]').click();
 
@@ -350,7 +351,7 @@ test.describe("agendamentos reais", () => {
         await comoB(`/tenants/${tenantA}/appointments`, "POST", {
           professionalId: profissionalA,
           serviceId: servicoA,
-          startAt: "2026-09-20T14:00:00.000Z",
+          startAt: instanteLocalDe("11:00"),
           consumer: { mode: "new", data: { name: "Invasor", whatsapp: "(11) 93333-2222" } },
         })
       ).status,
@@ -362,7 +363,7 @@ test.describe("agendamentos reais", () => {
         await comoB(`/tenants/${tenantB}/appointments`, "POST", {
           professionalId: profissionalA,
           serviceId: servicoB,
-          startAt: "2026-09-20T14:00:00.000Z",
+          startAt: instanteLocalDe("11:00"),
           consumer: { mode: "new", data: { name: "Invasor", whatsapp: "(11) 93333-2222" } },
         })
       ).status,
@@ -379,7 +380,7 @@ test.describe("agendamentos reais", () => {
         await comoB(`/tenants/${tenantB}/appointments`, "POST", {
           professionalId: profissionalB,
           serviceId: servicoB,
-          startAt: "2026-09-20T14:00:00.000Z",
+          startAt: instanteLocalDe("11:00"),
           consumer: { mode: "new", data: { name: "X", whatsapp: "(11) 93333-2222" } },
           priceCents: 1,
           status: "COMPLETED",
