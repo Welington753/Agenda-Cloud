@@ -36,7 +36,10 @@ import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { TimeBlock } from '../entities/time-block.entity.js';
 import { Unit } from '../entities/unit.entity.js';
-import { AppointmentsService, OVERLAP_CONSTRAINT } from './appointments.service.js';
+import {
+  AppointmentsService,
+  OVERLAP_CONSTRAINT,
+} from './appointments.service.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -94,12 +97,19 @@ class FakeManager {
     });
   }
 
-  findOne(entity: unknown, options: { where: Registro }): Promise<Registro | null> {
-    return Promise.resolve(this.colecaoDe(entity).find((l) => this.casa(l, options.where)) ?? null);
+  findOne(
+    entity: unknown,
+    options: { where: Registro },
+  ): Promise<Registro | null> {
+    return Promise.resolve(
+      this.colecaoDe(entity).find((l) => this.casa(l, options.where)) ?? null,
+    );
   }
 
   find(entity: unknown, options: { where: Registro }): Promise<Registro[]> {
-    return Promise.resolve(this.colecaoDe(entity).filter((l) => this.casa(l, options.where)));
+    return Promise.resolve(
+      this.colecaoDe(entity).filter((l) => this.casa(l, options.where)),
+    );
   }
 
   create(_entity: unknown, dados: Registro): Registro {
@@ -110,8 +120,14 @@ class FakeManager {
    * escrevem assim, sempre pelas duas chaves (`id` + `tenantId`). O fake
    * aplica o patch nas linhas que casam e devolve quantas foram afetadas, o
    * que permite provar que uma linha de OUTRO tenant nunca é atingida. */
-  update(entity: unknown, where: Registro, patch: Registro): Promise<{ affected: number }> {
-    const atingidas = this.colecaoDe(entity).filter((linha) => this.casa(linha, where));
+  update(
+    entity: unknown,
+    where: Registro,
+    patch: Registro,
+  ): Promise<{ affected: number }> {
+    const atingidas = this.colecaoDe(entity).filter((linha) =>
+      this.casa(linha, where),
+    );
     for (const linha of atingidas) Object.assign(linha, patch);
     return Promise.resolve({ affected: atingidas.length });
   }
@@ -127,7 +143,11 @@ class FakeManager {
     }
 
     proximoId += 1;
-    const salvo = { id: `gerado_${proximoId}`, createdAt: new Date(), ...linha };
+    const salvo = {
+      id: `gerado_${proximoId}`,
+      createdAt: new Date(),
+      ...linha,
+    };
     this.colecaoDe(classe).push(salvo);
     return Promise.resolve(salvo);
   }
@@ -170,7 +190,11 @@ function montar(opcoes: Opcoes = {}) {
           status: opcoes.statusTenant ?? TenantStatus.ACTIVE,
           timezone: 'America/Sao_Paulo',
         },
-        { id: TENANT_B, status: TenantStatus.ACTIVE, timezone: 'America/Sao_Paulo' },
+        {
+          id: TENANT_B,
+          status: TenantStatus.ACTIVE,
+          timezone: 'America/Sao_Paulo',
+        },
       ],
     ],
     [
@@ -190,8 +214,20 @@ function montar(opcoes: Opcoes = {}) {
     [
       Professional,
       opcoes.professionais ?? [
-        { id: PROF_A, tenantId: TENANT_A, active: true, name: 'Ana', unitId: undefined },
-        { id: PROF_B, tenantId: TENANT_B, active: true, name: 'Bia', unitId: undefined },
+        {
+          id: PROF_A,
+          tenantId: TENANT_A,
+          active: true,
+          name: 'Ana',
+          unitId: undefined,
+        },
+        {
+          id: PROF_B,
+          tenantId: TENANT_B,
+          active: true,
+          name: 'Bia',
+          unitId: undefined,
+        },
       ],
     ],
     [
@@ -222,7 +258,12 @@ function montar(opcoes: Opcoes = {}) {
     [
       ProfessionalService,
       opcoes.vinculos ?? [
-        { id: 'link_a', tenantId: TENANT_A, professionalId: PROF_A, serviceId: SERVICO_A },
+        {
+          id: 'link_a',
+          tenantId: TENANT_A,
+          professionalId: PROF_A,
+          serviceId: SERVICO_A,
+        },
       ],
     ],
     [
@@ -262,7 +303,14 @@ function montar(opcoes: Opcoes = {}) {
     ],
     [
       Unit,
-      opcoes.unidades ?? [{ id: UNIDADE_A, tenantId: TENANT_A, isPrimary: true, createdAt: new Date() }],
+      opcoes.unidades ?? [
+        {
+          id: UNIDADE_A,
+          tenantId: TENANT_A,
+          isPrimary: true,
+          createdAt: new Date(),
+        },
+      ],
     ],
     [Appointment, opcoes.agendamentos ?? []],
     [AppointmentItem, opcoes.itens ?? []],
@@ -274,13 +322,19 @@ function montar(opcoes: Opcoes = {}) {
   const manager = new FakeManager(colecoes, opcoes.falharAoSalvar);
   const dataSource = {
     manager,
-    transaction: async (cb: (tx: FakeManager) => Promise<unknown>) => cb(manager),
+    transaction: async (cb: (tx: FakeManager) => Promise<unknown>) =>
+      cb(manager),
   } as unknown as DataSource;
 
   const availability = new AvailabilityService(dataSource, () => AGORA);
   const consumers = new ConsumersService(dataSource);
   return {
-    servico: new AppointmentsService(dataSource, availability, consumers, () => AGORA),
+    servico: new AppointmentsService(
+      dataSource,
+      availability,
+      consumers,
+      () => AGORA,
+    ),
     colecoes,
     manager,
   };
@@ -302,9 +356,9 @@ function criar(
 
 describe('AppointmentsService.create — autorização', () => {
   it('sem vínculo com o estabelecimento é 404, nunca 403', async () => {
-    await expect(criar(montar({ semMembership: true }).servico)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      criar(montar({ semMembership: true }).servico),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('tenant inativo é 404 — a existência dele não é confirmada', async () => {
@@ -318,7 +372,9 @@ describe('AppointmentsService.create — autorização', () => {
     EstablishmentRole.RECEPCIONISTA,
     EstablishmentRole.PROFISSIONAL,
   ])('papel %s é 403 neste lote', async (role) => {
-    await expect(criar(montar({ role }).servico)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(criar(montar({ role }).servico)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it.each([
@@ -328,7 +384,12 @@ describe('AppointmentsService.create — autorização', () => {
   ])('DENIED em %s é 403 mesmo para o DONO', async (permission) => {
     const { servico } = montar({
       overrides: [
-        { tenantId: TENANT_A, membershipId: 'membership_a', permission, mode: PermissionMode.DENIED },
+        {
+          tenantId: TENANT_A,
+          membershipId: 'membership_a',
+          permission,
+          mode: PermissionMode.DENIED,
+        },
       ],
     });
     await expect(criar(servico)).rejects.toBeInstanceOf(ForbiddenException);
@@ -344,32 +405,38 @@ describe('AppointmentsService.create — autorização', () => {
 
 describe('AppointmentsService.create — isolamento', () => {
   it('profissional de outro estabelecimento não é encontrado', async () => {
-    await expect(criar(montar().servico, { professionalId: PROF_B })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      criar(montar().servico, { professionalId: PROF_B }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('serviço de outro estabelecimento não é encontrado', async () => {
-    await expect(criar(montar().servico, { serviceId: SERVICO_B })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      criar(montar().servico, { serviceId: SERVICO_B }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('cliente de outro estabelecimento é 404, indistinguível de inexistente', async () => {
     await expect(
-      criar(montar().servico, { consumer: { mode: 'existing', consumerId: CLIENTE_B } }),
+      criar(montar().servico, {
+        consumer: { mode: 'existing', consumerId: CLIENTE_B },
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('agendar pelo tenant alheio é 404 mesmo com sessão válida', async () => {
-    await expect(criar(montar().servico, {}, TENANT_B)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(criar(montar().servico, {}, TENANT_B)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
 
 describe('AppointmentsService.create — elegibilidade', () => {
   it('profissional desativado recusa', async () => {
     const { servico } = montar({
-      professionais: [{ id: PROF_A, tenantId: TENANT_A, active: false, name: 'Ana' }],
+      professionais: [
+        { id: PROF_A, tenantId: TENANT_A, active: false, name: 'Ana' },
+      ],
     });
     await expect(criar(servico)).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -393,9 +460,9 @@ describe('AppointmentsService.create — elegibilidade', () => {
   });
 
   it('sem vínculo profissional/serviço recusa', async () => {
-    await expect(criar(montar({ vinculos: [] }).servico)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      criar(montar({ vinculos: [] }).servico),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('sem unidade cadastrada recusa explicitamente — nunca inventa um id', async () => {
@@ -461,7 +528,9 @@ describe('AppointmentsService.create — o que é gravado', () => {
 
     const [gravado] = colecoes.get(Appointment)!;
     // 12:00Z + 60 de atendimento + 10 de buffer.
-    expect((gravado.endAt as Date).toISOString()).toBe('2026-09-20T13:10:00.000Z');
+    expect((gravado.endAt as Date).toISOString()).toBe(
+      '2026-09-20T13:10:00.000Z',
+    );
     // A view separa os dois: o atendimento termina 13:00Z, a ocupação 13:10Z.
     expect(view.serviceEndAt).toBe('2026-09-20T13:00:00.000Z');
     expect(view.occupancyEndAt).toBe('2026-09-20T13:10:00.000Z');
@@ -495,7 +564,9 @@ describe('AppointmentsService.create — o que é gravado', () => {
 
     const view = await criar(servico);
 
-    expect(colecoes.get(AppointmentItem)![0].priceCentsSnapshot).toBeUndefined();
+    expect(
+      colecoes.get(AppointmentItem)![0].priceCentsSnapshot,
+    ).toBeUndefined();
     expect(view.priceCents).toBeNull();
     expect(view.priceCents).not.toBe(0);
   });
@@ -534,7 +605,13 @@ describe('AppointmentsService.create — o que é gravado', () => {
   it('usa a unidade do profissional quando ele tem uma', async () => {
     const { servico } = montar({
       professionais: [
-        { id: PROF_A, tenantId: TENANT_A, active: true, name: 'Ana', unitId: 'unidade_do_prof' },
+        {
+          id: PROF_A,
+          tenantId: TENANT_A,
+          active: true,
+          name: 'Ana',
+          unitId: 'unidade_do_prof',
+        },
       ],
     });
     expect((await criar(servico)).unitId).toBe('unidade_do_prof');
@@ -548,7 +625,10 @@ describe('AppointmentsService.create — o que é gravado', () => {
     const { servico, colecoes } = montar();
 
     const view = await criar(servico, {
-      consumer: { mode: 'new', data: { name: 'João Novo', whatsapp: '(11) 98888-7777' } },
+      consumer: {
+        mode: 'new',
+        data: { name: 'João Novo', whatsapp: '(11) 98888-7777' },
+      },
     });
 
     expect(colecoes.get(Consumer)).toHaveLength(3);
@@ -567,7 +647,9 @@ describe('AppointmentsService.create — falhas de gravação', () => {
       constraint: OVERLAP_CONSTRAINT,
     };
 
-    const { servico } = montar({ falharAoSalvar: { entidade: Appointment, erro } });
+    const { servico } = montar({
+      falharAoSalvar: { entidade: Appointment, erro },
+    });
     await expect(criar(servico)).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -578,7 +660,9 @@ describe('AppointmentsService.create — falhas de gravação', () => {
       constraint: 'fk_appointments_unit',
     };
 
-    const { servico } = montar({ falharAoSalvar: { entidade: Appointment, erro } });
+    const { servico } = montar({
+      falharAoSalvar: { entidade: Appointment, erro },
+    });
     await expect(criar(servico)).rejects.not.toBeInstanceOf(ConflictException);
   });
 
@@ -587,12 +671,18 @@ describe('AppointmentsService.create — falhas de gravação', () => {
     // gravação do cliente acontece dentro da mesma transação do item, e não
     // antes dela, fora de qualquer transação.
     const { servico, colecoes } = montar({
-      falharAoSalvar: { entidade: AppointmentItem, erro: new Error('falhou no item') },
+      falharAoSalvar: {
+        entidade: AppointmentItem,
+        erro: new Error('falhou no item'),
+      },
     });
 
     await expect(
       criar(servico, {
-        consumer: { mode: 'new', data: { name: 'Órfão', whatsapp: '(11) 97777-6666' } },
+        consumer: {
+          mode: 'new',
+          data: { name: 'Órfão', whatsapp: '(11) 97777-6666' },
+        },
       }),
     ).rejects.toThrow('falhou no item');
 
@@ -653,9 +743,9 @@ describe('AppointmentsService.list', () => {
         },
       ],
     });
-    await expect(servico.list(USUARIO_DONO, TENANT_A, { date: DATA })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      servico.list(USUARIO_DONO, TENANT_A, { date: DATA }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('listar pelo tenant alheio é 404', async () => {
@@ -743,7 +833,9 @@ describe('AppointmentsService.cancel', () => {
   it('grava CANCELED e a transição, na mesma operação', async () => {
     const { servico, colecoes } = comReserva();
 
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
 
     expect(view.status).toBe(AppointmentStatus.CANCELED);
     const transicoes = colecoes.get(AppointmentStatusChange) ?? [];
@@ -761,8 +853,12 @@ describe('AppointmentsService.cancel', () => {
   it('repetir NÃO duplica o histórico e devolve o estado atual', async () => {
     const { servico, colecoes } = comReserva();
 
-    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
-    const segunda = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
+    const segunda = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
 
     expect(segunda.status).toBe(AppointmentStatus.CANCELED);
     expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(1);
@@ -771,11 +867,16 @@ describe('AppointmentsService.cancel', () => {
   it('preserva o item da reserva — nada é apagado', async () => {
     const { servico, colecoes } = comReserva();
 
-    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
 
     const itens = colecoes.get(AppointmentItem) ?? [];
     expect(itens).toHaveLength(1);
-    expect(itens[0]).toMatchObject({ priceCentsSnapshot: 5000, durationMinutesSnapshot: 60 });
+    expect(itens[0]).toMatchObject({
+      priceCentsSnapshot: 5000,
+      durationMinutesSnapshot: 60,
+    });
   });
 
   it('funciona com o serviço e o profissional DESATIVADOS depois da reserva', async () => {
@@ -784,11 +885,19 @@ describe('AppointmentsService.cancel', () => {
     const { servico } = comReserva({
       servicos: servicoAlterado({ active: false }),
       professionais: [
-        { id: PROF_A, tenantId: TENANT_A, active: false, name: 'Ana', unitId: undefined },
+        {
+          id: PROF_A,
+          tenantId: TENANT_A,
+          active: false,
+          name: 'Ana',
+          unitId: undefined,
+        },
       ],
     });
 
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
     expect(view.status).toBe(AppointmentStatus.CANCELED);
   });
 
@@ -798,9 +907,11 @@ describe('AppointmentsService.cancel', () => {
     AppointmentStatus.NO_SHOW,
   ])('%s não pode ser cancelado', async (status) => {
     const { servico } = comReserva({}, { status });
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('reserva que já começou não pode ser cancelada', async () => {
@@ -812,32 +923,95 @@ describe('AppointmentsService.cancel', () => {
         endAt: new Date('2026-09-18T13:00:00.000Z'),
       },
     );
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
-      BadRequestException,
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: '2026-09-18T12:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('horário mudou desde a confirmação: 409, sem cancelar e sem histórico', async () => {
+    // A tela mostrava 09:00 (INICIO); outra sessão já moveu a reserva.
+    const DEZ_HORAS = new Date('2026-09-20T13:00:00.000Z');
+    const { servico, colecoes } = comReserva(
+      {},
+      { startAt: DEZ_HORAS, endAt: new Date('2026-09-20T14:00:00.000Z') },
     );
+
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const reserva = (colecoes.get(Appointment) ?? [])[0];
+    expect(reserva.status).toBe(AppointmentStatus.CONFIRMED);
+    expect(reserva.startAt).toEqual(DEZ_HORAS);
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
+  });
+
+  it('o mesmo instante em outro deslocamento é o mesmo horário', async () => {
+    // 09:00-03:00 é 12:00Z: compara instantes, não o texto enviado.
+    const { servico } = comReserva();
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: '2026-09-20T09:00:00-03:00',
+    });
+    expect(view.status).toBe(AppointmentStatus.CANCELED);
+  });
+
+  it('já cancelada e o horário mudou desde a confirmação: 409, nada gravado', async () => {
+    // A tela antiga não pode receber "cancelada" como se tivesse cancelado a
+    // reserva que estava mostrando.
+    const { servico, colecoes } = comReserva(
+      {},
+      {
+        status: AppointmentStatus.CANCELED,
+        startAt: new Date('2026-09-20T13:00:00.000Z'),
+        endAt: new Date('2026-09-20T14:00:00.000Z'),
+      },
+    );
+
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
   });
 
   it('cancelar pelo tenant alheio é 404 — e nada é alterado', async () => {
     const { servico, colecoes } = comReserva();
 
-    await expect(servico.cancel(USUARIO_DONO, TENANT_B, RESERVA)).rejects.toBeInstanceOf(
-      NotFoundException,
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_B, RESERVA, {
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect((colecoes.get(Appointment) ?? [])[0].status).toBe(
+      AppointmentStatus.CONFIRMED,
     );
-    expect((colecoes.get(Appointment) ?? [])[0].status).toBe(AppointmentStatus.CONFIRMED);
   });
 
   it('DENIED em AGENDAMENTO_CANCELAR é 403', async () => {
-    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_CANCELAR) });
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    const { servico } = comReserva({
+      overrides: negar(Permission.AGENDAMENTO_CANCELAR),
+    });
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: INICIO,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('DENIED em SERVICOS_VISUALIZAR NÃO impede cancelar', async () => {
     // Cancelar não escolhe serviço — exigir essa permissão travaria o
     // cancelamento sem motivo.
-    const { servico } = comReserva({ overrides: negar(Permission.SERVICOS_VISUALIZAR) });
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const { servico } = comReserva({
+      overrides: negar(Permission.SERVICOS_VISUALIZAR),
+    });
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: INICIO,
+    });
     expect(view.status).toBe(AppointmentStatus.CANCELED);
   });
 });
@@ -908,7 +1082,9 @@ describe('AppointmentsService.reschedule', () => {
     });
 
     const linha = (colecoes.get(Appointment) ?? [])[0];
-    const minutos = ((linha.endAt as Date).getTime() - (linha.startAt as Date).getTime()) / 60_000;
+    const minutos =
+      ((linha.endAt as Date).getTime() - (linha.startAt as Date).getTime()) /
+      60_000;
     expect(minutos).toBe(60);
     // E o preço/duração exibidos continuam os do snapshot, não os novos.
     expect(view.priceCents).toBe(5000);
@@ -963,7 +1139,9 @@ describe('AppointmentsService.reschedule', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
     // E o horário ORIGINAL fica intacto.
-    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+    expect(
+      ((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString(),
+    ).toBe(INICIO);
   });
 
   it('horário fora da jornada é 400 e preserva o horário original', async () => {
@@ -976,13 +1154,17 @@ describe('AppointmentsService.reschedule', () => {
         expectedStartAt: INICIO,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+    expect(
+      ((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString(),
+    ).toBe(INICIO);
   });
 
   it('serviço desativado depois da reserva impede REMARCAR (mas não cancelar)', async () => {
     // A elegibilidade é conferida com as linhas ATUAIS: remarcar é escolher um
     // horário novo, e um serviço desativado não pode receber horário novo.
-    const { servico } = comReserva({ servicos: servicoAlterado({ active: false }) });
+    const { servico } = comReserva({
+      servicos: servicoAlterado({ active: false }),
+    });
 
     await expect(
       servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
@@ -1001,11 +1183,15 @@ describe('AppointmentsService.reschedule', () => {
         expectedStartAt: INICIO,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString()).toBe(INICIO);
+    expect(
+      ((colecoes.get(Appointment) ?? [])[0].startAt as Date).toISOString(),
+    ).toBe(INICIO);
   });
 
   it('DENIED em AGENDAMENTO_EDITAR é 403', async () => {
-    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_EDITAR) });
+    const { servico } = comReserva({
+      overrides: negar(Permission.AGENDAMENTO_EDITAR),
+    });
     await expect(
       servico.reschedule(USUARIO_DONO, TENANT_A, RESERVA, {
         startAt: DEZ_HORAS,
@@ -1042,9 +1228,14 @@ describe('AppointmentsService.rescheduleOptions', () => {
   it('oferece o horário da própria reserva (ela não bloqueia a si mesma)', async () => {
     const { servico } = comReserva();
 
-    const opcoes = await servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, {
-      date: DATA,
-    });
+    const opcoes = await servico.rescheduleOptions(
+      USUARIO_DONO,
+      TENANT_A,
+      RESERVA,
+      {
+        date: DATA,
+      },
+    );
 
     expect(opcoes.appointmentId).toBe(RESERVA);
     expect(opcoes.slots.map((s) => s.localStart)).toContain('09:00');
@@ -1055,11 +1246,18 @@ describe('AppointmentsService.rescheduleOptions', () => {
   it('usa a ocupação congelada para montar a grade, não a do catálogo', async () => {
     // Catálogo agora: 30 min. A reserva ocupa 60. Com 60 min de largura e
     // jornada 09:00–12:00, o último início possível é 11:00.
-    const { servico } = comReserva({ servicos: servicoAlterado({ durationMinutes: 30 }) });
-
-    const opcoes = await servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, {
-      date: DATA,
+    const { servico } = comReserva({
+      servicos: servicoAlterado({ durationMinutes: 30 }),
     });
+
+    const opcoes = await servico.rescheduleOptions(
+      USUARIO_DONO,
+      TENANT_A,
+      RESERVA,
+      {
+        date: DATA,
+      },
+    );
 
     expect(opcoes.durationMinutes).toBe(60);
     expect(opcoes.slots.at(-1)?.localStart).toBe('11:00');
@@ -1069,14 +1267,20 @@ describe('AppointmentsService.rescheduleOptions', () => {
   it('pelo tenant alheio é 404', async () => {
     const { servico } = comReserva();
     await expect(
-      servico.rescheduleOptions(USUARIO_DONO, TENANT_B, RESERVA, { date: DATA }),
+      servico.rescheduleOptions(USUARIO_DONO, TENANT_B, RESERVA, {
+        date: DATA,
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('DENIED em AGENDAMENTO_EDITAR é 403', async () => {
-    const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_EDITAR) });
+    const { servico } = comReserva({
+      overrides: negar(Permission.AGENDAMENTO_EDITAR),
+    });
     await expect(
-      servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, { date: DATA }),
+      servico.rescheduleOptions(USUARIO_DONO, TENANT_A, RESERVA, {
+        date: DATA,
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
