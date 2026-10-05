@@ -252,18 +252,17 @@ export async function criarAgendamento(
   return { ok: true, dados: corpo.appointment };
 }
 
-/**
- * Cancela a reserva. `POST .../cancel` só com o instante que a confirmação
- * mostrava: o backend recusa qualquer outro campo; QUAL reserva vai no caminho.
- */
-export async function cancelarAgendamento(
+/** `POST .../{appointmentId}/{acao}` sobre UMA reserva existente — base comum de
+ * cancelar, remarcar e do andamento (Lote 6D.7), com o mesmo mapeamento de falhas. */
+export async function acaoSobreReserva(
   tenantId: string,
   appointmentId: string,
-  dados: DadosCancelamentoReal,
+  acao: string,
+  dados: object,
   signal?: AbortSignal,
 ): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
   const resultado = await apiRequest<unknown>(
-    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/cancel`,
+    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/${acao}`,
     { method: "POST", body: dados, signal },
   );
 
@@ -275,6 +274,17 @@ export async function cancelarAgendamento(
   const corpo = resultado.data as { appointment?: unknown };
   if (!ehAgendamento(corpo?.appointment)) return { ok: false, falha: { tipo: "indisponivel" } };
   return { ok: true, dados: corpo.appointment };
+}
+
+/** Cancela a reserva, só com o instante que a confirmação mostrava: o backend
+ * recusa qualquer outro campo; QUAL reserva vai no caminho. */
+export function cancelarAgendamento(
+  tenantId: string,
+  appointmentId: string,
+  dados: DadosCancelamentoReal,
+  signal?: AbortSignal,
+): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
+  return acaoSobreReserva(tenantId, appointmentId, "cancel", dados, signal);
 }
 
 /** Horários que o servidor aceita para remarcar ESTA reserva, num dia. O
@@ -305,25 +315,13 @@ export async function listarHorariosParaRemarcar(
 
 /** Move SÓ o horário da reserva. O id, o cliente, o profissional, o serviço,
  * o status, o preço e a duração são preservados pelo servidor. */
-export async function remarcarAgendamento(
+export function remarcarAgendamento(
   tenantId: string,
   appointmentId: string,
   dados: DadosRemarcacaoReal,
   signal?: AbortSignal,
 ): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
-  const resultado = await apiRequest<unknown>(
-    `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/reschedule`,
-    { method: "POST", body: dados, signal },
-  );
-
-  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
-  if (resultado.kind === "http-error") {
-    return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
-  }
-
-  const corpo = resultado.data as { appointment?: unknown };
-  if (!ehAgendamento(corpo?.appointment)) return { ok: false, falha: { tipo: "indisponivel" } };
-  return { ok: true, dados: corpo.appointment };
+  return acaoSobreReserva(tenantId, appointmentId, "reschedule", dados, signal);
 }
 
 export async function buscarClientes(

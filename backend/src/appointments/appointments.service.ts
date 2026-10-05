@@ -88,13 +88,22 @@ import {
   APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
   APPOINTMENT_CREATE_FORBIDDEN_MESSAGE,
   APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
+  APPOINTMENT_STATUS_FORBIDDEN_MESSAGE,
   APPOINTMENTS_FORBIDDEN_MESSAGE,
   canCancelAppointments,
   canCreateAppointments,
+  canManageAppointmentStatus,
   canRescheduleAppointments,
   canViewAppointments,
 } from './appointment-access.js';
+import {
+  DESTINO_DA_ACAO,
+  mensagemDeRecusa,
+  transicaoPermitida,
+  type AcaoDeStatus,
+} from './appointment-status-transitions.js';
 import type {
+  AppointmentStatusActionDto,
   CancelAppointmentDto,
   CreateAppointmentDto,
   ListAppointmentsDto,
@@ -126,6 +135,8 @@ const RESCHEDULE_CANCELED_MESSAGE =
   'Esta reserva foi cancelada e não pode ser remarcada. Crie uma nova reserva.';
 const CANCEL_STALE_MESSAGE =
   'O horário desta reserva mudou desde que a confirmação foi aberta. Confira os dados atualizados antes de cancelar.';
+const STATUS_STALE_MESSAGE =
+  'O horário desta reserva mudou desde que a agenda foi carregada. Confira os dados atualizados antes de tentar de novo.';
 const RESCHEDULE_STALE_MESSAGE =
   'Esta reserva mudou desde que a tela carregou. Consulte a agenda novamente antes de remarcar.';
 
@@ -500,6 +511,82 @@ export class AppointmentsService {
       // A entidade em memória acompanha o que acabou de ser gravado (em vez de
       // uma segunda leitura só para montar a resposta).
       appointment.status = AppointmentStatus.CANCELED;
+      return appointment;
+    });
+
+    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+    return view;
+  }
+
+  /**
+   * Confirmar, iniciar, concluir ou registrar falta (Lote 6D.7).
+   *
+   * Mesma disciplina do cancelamento: trava e relê a reserva, confere o
+   * `expectedStartAt` que a tela mostrava (409 se divergir), e grava o novo
+   * status e a transição na MESMA transação. As regras de cada ação estão em
+   * appointment-status-transitions.ts.
+   *
+   * Muda SÓ o status. `start_at`, `end_at`, preço, duração, buffer e
+   * snapshots ficam intactos — e por isso não passa pelo motor de
+   * disponibilidade: nenhuma ocupação muda (NO_SHOW e COMPLETED continuam
+   * ocupando, como IN_PROGRESS e CONFIRMED já ocupavam).
+   *
+   * REPETIÇÃO: se o estado atual já é o destino da ação (duplo clique, reenvio
+   * depois de falha de rede), devolve o estado sem gravar nada.
+   *
+   * HISTÓRICO: grava SÓ a transição realizada (`PENDING -> IN_PROGRESS` ao
+   * iniciar de PENDING; `CONFIRMED -> COMPLETED` ao concluir direto de
+   * CONFIRMED). `occurred_at` é o momento em que a ação foi REGISTRADA no
+   * sistema, não prova do momento real do atendimento.
+   */
+  async changeStatus(
+    userId: string,
+    tenantId: string,
+    appointmentId: string,
+    acao: AcaoDeStatus,
+    dto: AppointmentStatusActionDto,
+  ): Promise<AppointmentView> {
+    const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
+      permitido: canManageAppointmentStatus,
+      mensagemProibido: APPOINTMENT_STATUS_FORBIDDEN_MESSAGE,
+    });
+
+    const esperado = new Date(dto.expectedStartAt);
+    const destino = DESTINO_DA_ACAO[acao];
+
+    const salvo = await this.dataSource.transaction(async (tx) => {
+      const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId);
+
+      // Mesmo controle otimista do cancelamento, antes de tudo: a tela que
+      // mostrava outro horário não age sobre a reserva movida.
+      if (appointment.startAt.getTime() !== esperado.getTime()) {
+        throw new ConflictException(STATUS_STALE_MESSAGE);
+      }
+
+      // Já está no destino: devolve o estado, sem gravar nada.
+      if (appointment.status === destino) return appointment;
+
+      if (!transicaoPermitida(acao, appointment.status, appointment.startAt, this.agora())) {
+        throw new BadRequestException(mensagemDeRecusa(acao));
+      }
+
+      const anterior = appointment.status;
+      await tx.update(
+        Appointment,
+        { id: appointment.id, tenantId: authorized.tenantId },
+        { status: destino },
+      );
+      await tx.save(
+        tx.create(AppointmentStatusChange, {
+          tenantId: authorized.tenantId,
+          appointmentId: appointment.id,
+          fromStatus: anterior,
+          toStatus: destino,
+          changedBy: userId,
+        }),
+      );
+
+      appointment.status = destino;
       return appointment;
     });
 

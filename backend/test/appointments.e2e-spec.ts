@@ -65,6 +65,7 @@ describe('rotas de agendamento (e2e)', () => {
   let listMock: ReturnType<typeof vi.fn>;
   let getMock: ReturnType<typeof vi.fn>;
   let cancelMock: ReturnType<typeof vi.fn>;
+  let changeStatusMock: ReturnType<typeof vi.fn>;
   let searchConsumersMock: ReturnType<typeof vi.fn>;
   let createConsumerMock: ReturnType<typeof vi.fn>;
   let guardMock: ReturnType<typeof vi.fn>;
@@ -78,6 +79,7 @@ describe('rotas de agendamento (e2e)', () => {
     });
     getMock = vi.fn().mockResolvedValue(AGENDAMENTO);
     cancelMock = vi.fn().mockResolvedValue({ ...AGENDAMENTO, status: 'CANCELED' });
+    changeStatusMock = vi.fn().mockResolvedValue({ ...AGENDAMENTO, status: 'CONFIRMED' });
     searchConsumersMock = vi.fn().mockResolvedValue([]);
     createConsumerMock = vi
       .fn()
@@ -95,7 +97,13 @@ describe('rotas de agendamento (e2e)', () => {
       .overrideProvider(DataSource)
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(AppointmentsService)
-      .useValue({ create: createMock, list: listMock, get: getMock, cancel: cancelMock })
+      .useValue({
+        create: createMock,
+        list: listMock,
+        get: getMock,
+        cancel: cancelMock,
+        changeStatus: changeStatusMock,
+      })
       .overrideProvider(ConsumersService)
       .useValue({ search: searchConsumersMock, create: createConsumerMock })
       .overrideGuard(SessionGuard)
@@ -236,7 +244,37 @@ describe('rotas de agendamento (e2e)', () => {
     expect(resposta.body.message).toMatch(/mudou/);
   });
 
-  it('não existe rota de cancelamento, remarcação ou mudança de status neste lote', async () => {
+  it.each(['confirm', 'start', 'complete', 'no-show'])(
+    'POST /%s chama a ação de status com o destino fixo pela rota',
+    async (acao) => {
+      const corpo = { expectedStartAt: '2026-09-20T12:00:00.000Z' };
+      await request(app.getHttpServer())
+        .post(`${CAMINHO}/appointment_1/${acao}`)
+        .send(corpo)
+        .expect(201);
+
+      expect(changeStatusMock).toHaveBeenCalledWith(
+        'user_1',
+        'tenant_a',
+        'appointment_1',
+        acao,
+        corpo,
+      );
+    },
+  );
+
+  it.each([{}, { expectedStartAt: '2026-09-20T12:00:00.000Z', status: 'COMPLETED' }])(
+    'POST /complete recusa corpo inválido com 400: %o',
+    async (corpo) => {
+      await request(app.getHttpServer())
+        .post(`${CAMINHO}/appointment_1/complete`)
+        .send(corpo)
+        .expect(400);
+      expect(changeStatusMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('não existe rota genérica de mudança de status nem exclusão', async () => {
     await request(app.getHttpServer()).delete(`${CAMINHO}/appointment_1`).expect(404);
     await request(app.getHttpServer()).patch(`${CAMINHO}/appointment_1`).send({}).expect(404);
     await request(app.getHttpServer()).put(`${CAMINHO}/appointment_1`).send({}).expect(404);

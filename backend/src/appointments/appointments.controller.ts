@@ -13,11 +13,13 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
 import { SessionGuard } from '../auth/session.guard.js';
 import {
+  appointmentStatusActionSchema,
   cancelAppointmentSchema,
   createAppointmentSchema,
   listAppointmentsSchema,
   rescheduleAppointmentSchema,
   rescheduleOptionsSchema,
+  type AppointmentStatusActionDto,
   type CancelAppointmentDto,
   type CreateAppointmentDto,
   type ListAppointmentsDto,
@@ -25,6 +27,7 @@ import {
   type RescheduleOptionsDto,
 } from './appointment.dto.js';
 import { AppointmentsService } from './appointments.service.js';
+import type { AcaoDeStatus } from './appointment-status-transitions.js';
 
 function identityOf(req: Request): IdentityContext {
   return (req as unknown as Record<string, unknown>)[
@@ -110,6 +113,68 @@ export class AppointmentsController {
       identityOf(req).userId,
       tenantId,
       appointmentId,
+      dto,
+    );
+    return { appointment };
+  }
+
+  /**
+   * Andamento do atendimento (Lote 6D.7): quatro ações EXPLÍCITAS, cada uma
+   * com o destino fixo pela rota. Não existe rota genérica que aceite um
+   * `status` qualquer do navegador.
+   */
+  @Post(':appointmentId/confirm')
+  confirm(
+    @Param('tenantId') tenantId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Body(new ZodValidationPipe(appointmentStatusActionSchema)) dto: AppointmentStatusActionDto,
+    @Req() req: Request,
+  ) {
+    return this.mudarStatus(req, tenantId, appointmentId, 'confirm', dto);
+  }
+
+  @Post(':appointmentId/start')
+  start(
+    @Param('tenantId') tenantId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Body(new ZodValidationPipe(appointmentStatusActionSchema)) dto: AppointmentStatusActionDto,
+    @Req() req: Request,
+  ) {
+    return this.mudarStatus(req, tenantId, appointmentId, 'start', dto);
+  }
+
+  @Post(':appointmentId/complete')
+  complete(
+    @Param('tenantId') tenantId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Body(new ZodValidationPipe(appointmentStatusActionSchema)) dto: AppointmentStatusActionDto,
+    @Req() req: Request,
+  ) {
+    return this.mudarStatus(req, tenantId, appointmentId, 'complete', dto);
+  }
+
+  @Post(':appointmentId/no-show')
+  noShow(
+    @Param('tenantId') tenantId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Body(new ZodValidationPipe(appointmentStatusActionSchema)) dto: AppointmentStatusActionDto,
+    @Req() req: Request,
+  ) {
+    return this.mudarStatus(req, tenantId, appointmentId, 'no-show', dto);
+  }
+
+  private async mudarStatus(
+    req: Request,
+    tenantId: string,
+    appointmentId: string,
+    acao: AcaoDeStatus,
+    dto: AppointmentStatusActionDto,
+  ) {
+    const appointment = await this.appointmentsService.changeStatus(
+      identityOf(req).userId,
+      tenantId,
+      appointmentId,
+      acao,
       dto,
     );
     return { appointment };

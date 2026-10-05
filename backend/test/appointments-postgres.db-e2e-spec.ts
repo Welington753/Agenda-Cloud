@@ -1162,4 +1162,258 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     expect(horas).not.toContain('10:00');
   });
 
+  // ------------------------------------------------------------------------
+  // Lote 6D.7 — ciclo básico do atendimento.
+  //
+  // As ações dependem do relógio (iniciar a partir de 30 min antes, concluir
+  // direto e falta a partir do início). O relógio é injetado no CONSTRUTOR do
+  // service usado pelo teste — nunca por uma rota de alteração de relógio.
+  // A reserva é criada pelo service normal (relógio em 01/09) e a ação é
+  // executada por outro service, sobre o MESMO banco, com o relógio do caso.
+
+  /** 09:00 local em São Paulo é 12:00Z (ver NOVE_HORAS). */
+  const instante = (iso: string) => new Date(iso);
+
+  function agendamentosEm(agora: Date): AppointmentsService {
+    return new AppointmentsService(dataSource, disponibilidade, clientes, () => agora);
+  }
+
+  async function historicoDe(appointmentId: string): Promise<AppointmentStatusChange[]> {
+    return dataSource.manager.find(AppointmentStatusChange, {
+      where: { appointmentId },
+      order: { occurredAt: 'ASC' },
+    });
+  }
+
+  it('ciclo completo: confirmar, iniciar e concluir — uma linha por transição', async () => {
+    const cenario = await criarCenario('ciclo', { requiresManualConfirmation: true });
+    const view = await agendar(cenario);
+    expect(view.status).toBe(AppointmentStatus.PENDING);
+    const corpo = { expectedStartAt: view.startAt };
+
+    // Confirmar antes do início (relógio de 01/09).
+    await agendamentos.changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'confirm',
+      corpo,
+    );
+    // Iniciar exatamente 30 min antes (08:30 local).
+    await agendamentosEm(instante('2026-09-20T11:30:00.000Z')).changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'start',
+      corpo,
+    );
+    // Concluir depois do horário.
+    const concluida = await agendamentosEm(instante('2026-09-20T13:05:00.000Z')).changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'complete',
+      corpo,
+    );
+    expect(concluida.status).toBe(AppointmentStatus.COMPLETED);
+
+    // Linha final: só o status mudou — horário e ocupação intactos.
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.COMPLETED);
+    expect(linha?.startAt.toISOString()).toBe(view.startAt);
+    expect(linha?.endAt.toISOString()).toBe(view.occupancyEndAt);
+    const itens = await dataSource.manager.find(AppointmentItem, {
+      where: { appointmentId: view.id },
+    });
+    expect(itens).toHaveLength(1);
+    expect(itens[0].priceCentsSnapshot).toBe(5000);
+
+    const historico = await historicoDe(view.id);
+    expect(historico.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+      [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+      [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
+      [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED],
+    ]);
+    expect(historico.every((h) => h.changedBy === cenario.ownerUserId)).toBe(true);
+    expect(historico.every((h) => h.tenantId === cenario.tenantId)).toBe(true);
+  });
+
+  it('iniciar de PENDING grava só PENDING -> IN_PROGRESS', async () => {
+    const cenario = await criarCenario('inicia-pendente', { requiresManualConfirmation: true });
+    const view = await agendar(cenario);
+
+    await agendamentosEm(instante(NOVE_HORAS)).changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'start',
+      { expectedStartAt: view.startAt },
+    );
+
+    const historico = await historicoDe(view.id);
+    expect(historico.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+      [AppointmentStatus.PENDING, AppointmentStatus.IN_PROGRESS],
+    ]);
+  });
+
+  it('concluir direto de CONFIRMED: recusa 1 ms antes do início, aceita no início', async () => {
+    const cenario = await criarCenario('conclui-direto');
+    const view = await agendar(cenario);
+    const corpo = { expectedStartAt: view.startAt };
+
+    await expect(
+      agendamentosEm(instante('2026-09-20T11:59:59.999Z')).changeStatus(
+        cenario.ownerUserId,
+        cenario.tenantId,
+        view.id,
+        'complete',
+        corpo,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(await historicoDe(view.id)).toHaveLength(0);
+
+    await agendamentosEm(instante(NOVE_HORAS)).changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'complete',
+      corpo,
+    );
+
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.COMPLETED);
+    // Nenhum início fictício.
+    const historico = await historicoDe(view.id);
+    expect(historico.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+      [AppointmentStatus.CONFIRMED, AppointmentStatus.COMPLETED],
+    ]);
+  });
+
+  it('falta: recusada no instante do início, gravada depois dele', async () => {
+    const cenario = await criarCenario('falta');
+    const view = await agendar(cenario);
+    const corpo = { expectedStartAt: view.startAt };
+
+    await expect(
+      agendamentosEm(instante(NOVE_HORAS)).changeStatus(
+        cenario.ownerUserId,
+        cenario.tenantId,
+        view.id,
+        'no-show',
+        corpo,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await agendamentosEm(instante('2026-09-20T12:20:00.000Z')).changeStatus(
+      cenario.ownerUserId,
+      cenario.tenantId,
+      view.id,
+      'no-show',
+      corpo,
+    );
+
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.NO_SHOW);
+    const historico = await historicoDe(view.id);
+    expect(historico.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+      [AppointmentStatus.CONFIRMED, AppointmentStatus.NO_SHOW],
+    ]);
+  });
+
+  it('iniciar e registrar falta juntos: a primeira vence, a segunda é recusada', async () => {
+    const cenario = await criarCenario('inicia-vs-falta');
+    const view = await agendar(cenario);
+    // 09:10: as duas ações seriam permitidas isoladamente.
+    const depoisDoInicio = agendamentosEm(instante('2026-09-20T12:10:00.000Z'));
+    const corpo = { expectedStartAt: view.startAt };
+
+    const trava = await segurarReserva(view.id);
+    const inicio = resultadoDe(
+      depoisDoInicio.changeStatus(cenario.ownerUserId, cenario.tenantId, view.id, 'start', corpo),
+    );
+    await aguardarBloqueadas(1);
+    const falta = resultadoDe(
+      depoisDoInicio.changeStatus(cenario.ownerUserId, cenario.tenantId, view.id, 'no-show', corpo),
+    );
+    await aguardarBloqueadas(2);
+    await trava.liberar();
+
+    expect(await inicio).toBe('ok');
+    // A falta relê a reserva já EM ATENDIMENTO e é recusada.
+    expect(await falta).toBeInstanceOf(BadRequestException);
+
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.IN_PROGRESS);
+    const historico = await historicoDe(view.id);
+    expect(historico.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+      [AppointmentStatus.CONFIRMED, AppointmentStatus.IN_PROGRESS],
+    ]);
+  });
+
+  it('concluir duas vezes ao mesmo tempo grava UMA transição', async () => {
+    const cenario = await criarCenario('conclui-2x');
+    const view = await agendar(cenario);
+    const depoisDoInicio = agendamentosEm(instante('2026-09-20T13:00:00.000Z'));
+    const corpo = { expectedStartAt: view.startAt };
+
+    const trava = await segurarReserva(view.id);
+    const primeira = resultadoDe(
+      depoisDoInicio.changeStatus(
+        cenario.ownerUserId,
+        cenario.tenantId,
+        view.id,
+        'complete',
+        corpo,
+      ),
+    );
+    await aguardarBloqueadas(1);
+    const segunda = resultadoDe(
+      depoisDoInicio.changeStatus(
+        cenario.ownerUserId,
+        cenario.tenantId,
+        view.id,
+        'complete',
+        corpo,
+      ),
+    );
+    await aguardarBloqueadas(2);
+    await trava.liberar();
+
+    // A segunda encontra o destino já gravado: devolve o estado, sem gravar.
+    expect(await primeira).toBe('ok');
+    expect(await segunda).toBe('ok');
+    expect(await historicoDe(view.id)).toHaveLength(1);
+  });
+
+  it('isolamento: B não muda o status da reserva de A', async () => {
+    const cenarioA = await criarCenario('iso-status-a', { requiresManualConfirmation: true });
+    const cenarioB = await criarCenario('iso-status-b');
+    const reservaDeA = await agendar(cenarioA);
+    const corpo = { expectedStartAt: reservaDeA.startAt };
+
+    // B com o próprio tenant e com o tenant de A: os dois são 404.
+    await expect(
+      agendamentos.changeStatus(
+        cenarioB.ownerUserId,
+        cenarioB.tenantId,
+        reservaDeA.id,
+        'confirm',
+        corpo,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      agendamentos.changeStatus(
+        cenarioB.ownerUserId,
+        cenarioA.tenantId,
+        reservaDeA.id,
+        'confirm',
+        corpo,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: reservaDeA.id } });
+    expect(linha?.status).toBe(AppointmentStatus.PENDING);
+    expect(await historicoDe(reservaDeA.id)).toHaveLength(0);
+  });
+
 });

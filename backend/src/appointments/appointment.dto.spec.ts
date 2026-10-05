@@ -1,6 +1,7 @@
 // Contrato de criação e listagem de agendamentos (Lote 6D.5).
 import { describe, expect, it } from 'vitest';
 import {
+  appointmentStatusActionSchema,
   cancelAppointmentSchema,
   createAppointmentSchema,
   listAppointmentsSchema,
@@ -238,4 +239,23 @@ describe('rescheduleOptionsSchema', () => {
       );
     },
   );
+});
+
+describe('appointmentStatusActionSchema (Lote 6D.7)', () => {
+  it('aceita só o instante que a tela mostrava', () => {
+    expect(
+      appointmentStatusActionSchema.safeParse({ expectedStartAt: '2026-09-20T12:00:00.000Z' })
+        .success,
+    ).toBe(true);
+  });
+
+  it.each([
+    {},
+    { expectedStartAt: '2026-09-20T12:00:00' },
+    // O destino vem da ROTA: o navegador não dita status.
+    { expectedStartAt: '2026-09-20T12:00:00.000Z', status: 'COMPLETED' },
+    { expectedStartAt: '2026-09-20T12:00:00.000Z', startAt: '2026-09-20T13:00:00.000Z' },
+  ])('recusa %o', (corpo) => {
+    expect(appointmentStatusActionSchema.safeParse(corpo).success).toBe(false);
+  });
 });

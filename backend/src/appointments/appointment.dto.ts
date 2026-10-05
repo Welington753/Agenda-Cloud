@@ -128,6 +128,17 @@ export const cancelAppointmentSchema = z.object({ expectedStartAt: instanteSchem
 export type CancelAppointmentDto = z.infer<typeof cancelAppointmentSchema>;
 
 /**
+ * Confirmar, iniciar, concluir e registrar falta (Lote 6D.7): o MESMO corpo do
+ * cancelamento — só o instante que a tela mostrava. O destino de cada ação é
+ * fixo pela rota, nunca vem do corpo: um `status` enviado pelo navegador é
+ * recusado pelo `.strict()`. Como no cancelamento, `expectedStartAt` cobre
+ * só o horário de início, não é versão da reserva inteira.
+ */
+export const appointmentStatusActionSchema = cancelAppointmentSchema;
+
+export type AppointmentStatusActionDto = z.infer<typeof appointmentStatusActionSchema>;
+
+/**
  * Remarcação (Lote 6D.6): SÓ o novo instante e o instante que a tela estava
  * mostrando.
  *
