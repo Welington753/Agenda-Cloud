@@ -131,20 +131,43 @@ test.describe("horários semanais reais", () => {
     // requisição passar direto — a gravação terminaria antes do teste
     // conseguir observar o botão desabilitado, e o bloqueio de envio
     // duplicado ficaria sem prova nenhuma.
+    //
+    // A gravação fica retida por uma condição que o PRÓPRIO teste libera
+    // (nunca um tempo fixo), e a interceptação só é removida depois de a
+    // resposta chegar: remover a rota com o handler ainda pendente deixa o
+    // destino da requisição retida fora do controle do teste.
     const ehGravacaoDeHorarios = (url: URL) => url.pathname.endsWith("/schedule");
+    const putInterceptado = Promise.withResolvers<void>();
+    const liberacao = Promise.withResolvers<void>();
     await page.route(ehGravacaoDeHorarios, async (rota) => {
       if (rota.request().method() === "PUT") {
-        await new Promise((resolver) => setTimeout(resolver, 1_500));
+        putInterceptado.resolve();
+        await liberacao.promise;
       }
       await rota.continue();
     });
 
-    await salvar.click();
-    await expect(salvar).toBeDisabled();
-    await salvar.click({ force: true });
-    await page.unroute(ehGravacaoDeHorarios);
-
-    await expect(page.getByText("Horários salvos.")).toBeVisible();
+    try {
+      // Armada ANTES do clique, para não perder a resposta.
+      const respostaDoPut = page.waitForResponse(
+        (resposta) =>
+          resposta.request().method() === "PUT" && ehGravacaoDeHorarios(new URL(resposta.url())),
+      );
+      try {
+        await salvar.click();
+        // A requisição está retida: é agora que o bloqueio precisa valer.
+        await putInterceptado.promise;
+        await expect(salvar).toBeDisabled();
+        await salvar.click({ force: true });
+      } finally {
+        // Libera mesmo se uma asserção acima falhar — nada fica pendurado.
+        liberacao.resolve();
+      }
+      expect((await respostaDoPut).ok()).toBe(true);
+      await expect(page.getByText("Horários salvos.")).toBeVisible();
+    } finally {
+      await page.unroute(ehGravacaoDeHorarios);
+    }
     expect(gravacoes, "um envio só, mesmo com dois cliques").toBe(1);
 
     // Persistência real: o reload relê do banco pela API.
