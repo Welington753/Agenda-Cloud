@@ -36,6 +36,7 @@ import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { TimeBlock } from '../entities/time-block.entity.js';
 import { Unit } from '../entities/unit.entity.js';
+import { DESTINO_DA_ACAO } from './appointment-status-transitions.js';
 import { AppointmentsService, OVERLAP_CONSTRAINT } from './appointments.service.js';
 
 interface Registro {
@@ -889,6 +890,280 @@ describe('AppointmentsService.cancel', () => {
     const { servico } = comReserva({ overrides: negar(Permission.SERVICOS_VISUALIZAR) });
     const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
     expect(view.status).toBe(AppointmentStatus.CANCELED);
+  });
+});
+
+describe('AppointmentsService.changeStatus (Lote 6D.7)', () => {
+  // `AGORA` é 19/09 12:00Z. Cada teste posiciona a reserva em relação a ele.
+  const MINUTO = 60_000;
+  const relativoAgora = (minutos: number) => new Date(AGORA.getTime() + minutos * MINUTO);
+
+  /** Reserva com início a `minutos` de AGORA e um status dado. */
+  function reserva(status: AppointmentStatus, minutos: number, extra: Opcoes = {}) {
+    const startAt = relativoAgora(minutos);
+    return {
+      ...comReserva(extra, { status, startAt, endAt: new Date(startAt.getTime() + 60 * MINUTO) }),
+      expectedStartAt: startAt.toISOString(),
+      startAt,
+    };
+  }
+
+  function linha(colecoes: Map<unknown, Registro[]>) {
+    return (colecoes.get(Appointment) ?? [])[0];
+  }
+
+  function historico(colecoes: Map<unknown, Registro[]>) {
+    return colecoes.get(AppointmentStatusChange) ?? [];
+  }
+
+  it('confirmar: PENDING -> CONFIRMED antes do início, com UMA linha de histórico', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.PENDING, 60);
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', {
+      expectedStartAt,
+    });
+
+    expect(view.status).toBe(AppointmentStatus.CONFIRMED);
+    expect(linha(colecoes).status).toBe(AppointmentStatus.CONFIRMED);
+    expect(historico(colecoes)).toHaveLength(1);
+    expect(historico(colecoes)[0]).toMatchObject({
+      tenantId: TENANT_A,
+      appointmentId: RESERVA,
+      fromStatus: AppointmentStatus.PENDING,
+      toStatus: AppointmentStatus.CONFIRMED,
+      changedBy: USUARIO_DONO,
+    });
+  });
+
+  it('confirmar depois do início é 400, sem gravar nada', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.PENDING, 0);
+
+    await expect(
+      servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', { expectedStartAt }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(linha(colecoes).status).toBe(AppointmentStatus.PENDING);
+    expect(historico(colecoes)).toHaveLength(0);
+  });
+
+  it('iniciar de PENDING grava SÓ PENDING -> IN_PROGRESS, sem confirmação intermediária', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.PENDING, 30);
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'start', {
+      expectedStartAt,
+    });
+
+    expect(view.status).toBe(AppointmentStatus.IN_PROGRESS);
+    expect(historico(colecoes)).toHaveLength(1);
+    expect(historico(colecoes)[0]).toMatchObject({
+      fromStatus: AppointmentStatus.PENDING,
+      toStatus: AppointmentStatus.IN_PROGRESS,
+    });
+  });
+
+  it('iniciar 31 min antes é 400; exatamente 30 min antes é aceito', async () => {
+    const cedo = reserva(AppointmentStatus.CONFIRMED, 31);
+    await expect(
+      cedo.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'start', {
+        expectedStartAt: cedo.expectedStartAt,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(historico(cedo.colecoes)).toHaveLength(0);
+
+    const naBorda = reserva(AppointmentStatus.CONFIRMED, 30);
+    const view = await naBorda.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'start', {
+      expectedStartAt: naBorda.expectedStartAt,
+    });
+    expect(view.status).toBe(AppointmentStatus.IN_PROGRESS);
+  });
+
+  it('concluir de IN_PROGRESS grava IN_PROGRESS -> COMPLETED', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.IN_PROGRESS, -20);
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'complete', {
+      expectedStartAt,
+    });
+
+    expect(view.status).toBe(AppointmentStatus.COMPLETED);
+    expect(historico(colecoes)[0]).toMatchObject({
+      fromStatus: AppointmentStatus.IN_PROGRESS,
+      toStatus: AppointmentStatus.COMPLETED,
+    });
+  });
+
+  it('concluir direto de CONFIRMED no início marcado grava SÓ CONFIRMED -> COMPLETED', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.CONFIRMED, 0);
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'complete', {
+      expectedStartAt,
+    });
+
+    expect(view.status).toBe(AppointmentStatus.COMPLETED);
+    // Nenhum início fictício: uma linha só.
+    expect(historico(colecoes)).toHaveLength(1);
+    expect(historico(colecoes)[0]).toMatchObject({
+      fromStatus: AppointmentStatus.CONFIRMED,
+      toStatus: AppointmentStatus.COMPLETED,
+    });
+  });
+
+  it('concluir direto de CONFIRMED 1 min antes do início é 400', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.CONFIRMED, 1);
+
+    await expect(
+      servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'complete', { expectedStartAt }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(linha(colecoes).status).toBe(AppointmentStatus.CONFIRMED);
+    expect(historico(colecoes)).toHaveLength(0);
+  });
+
+  it('falta no instante do início é 400; depois do início grava CONFIRMED -> NO_SHOW', async () => {
+    const noInicio = reserva(AppointmentStatus.CONFIRMED, 0);
+    await expect(
+      noInicio.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'no-show', {
+        expectedStartAt: noInicio.expectedStartAt,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    const depois = reserva(AppointmentStatus.CONFIRMED, -1);
+    const view = await depois.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'no-show', {
+      expectedStartAt: depois.expectedStartAt,
+    });
+    expect(view.status).toBe(AppointmentStatus.NO_SHOW);
+    expect(historico(depois.colecoes)[0]).toMatchObject({
+      fromStatus: AppointmentStatus.CONFIRMED,
+      toStatus: AppointmentStatus.NO_SHOW,
+    });
+  });
+
+  it.each([
+    ['confirm', AppointmentStatus.CONFIRMED],
+    ['start', AppointmentStatus.IN_PROGRESS],
+    ['complete', AppointmentStatus.COMPLETED],
+    ['no-show', AppointmentStatus.NO_SHOW],
+  ] as const)('repetir %s quando já está em %s não grava nada', async (acao, destino) => {
+    const { servico, colecoes, expectedStartAt } = reserva(destino, -10);
+    const antes = { ...linha(colecoes) };
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, acao, {
+      expectedStartAt,
+    });
+
+    expect(view.status).toBe(destino);
+    expect(linha(colecoes)).toEqual(antes);
+    expect(historico(colecoes)).toHaveLength(0);
+  });
+
+  it.each([AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW, AppointmentStatus.CANCELED])(
+    '%s é final: nenhuma outra ação sai dele',
+    async (status) => {
+      for (const acao of ['confirm', 'start', 'complete', 'no-show'] as const) {
+        if (DESTINO_DA_ACAO[acao] === status) continue;
+        const { servico, colecoes, expectedStartAt } = reserva(status, -10);
+        await expect(
+          servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, acao, { expectedStartAt }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(historico(colecoes)).toHaveLength(0);
+      }
+    },
+  );
+
+  it('horário mudou desde que a tela carregou: 409, sem alterar nada', async () => {
+    const { servico, colecoes, startAt } = reserva(AppointmentStatus.CONFIRMED, -10);
+    const mostrado = new Date(startAt.getTime() - 60 * MINUTO).toISOString();
+
+    await expect(
+      servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'no-show', {
+        expectedStartAt: mostrado,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(linha(colecoes).status).toBe(AppointmentStatus.CONFIRMED);
+    expect(historico(colecoes)).toHaveLength(0);
+  });
+
+  it('não altera horário, preço, duração nem snapshots', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.CONFIRMED, 0);
+    const antes = { ...linha(colecoes) };
+    const itemAntes = { ...(colecoes.get(AppointmentItem) ?? [])[0] };
+
+    await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'complete', { expectedStartAt });
+
+    expect(linha(colecoes)).toEqual({ ...antes, status: AppointmentStatus.COMPLETED });
+    expect((colecoes.get(AppointmentItem) ?? [])[0]).toEqual(itemAntes);
+  });
+
+  it('funciona com o serviço e o profissional desativados depois da reserva', async () => {
+    const { servico, expectedStartAt } = reserva(AppointmentStatus.CONFIRMED, -10, {
+      servicos: servicoAlterado({ active: false }),
+      professionais: [
+        { id: PROF_A, tenantId: TENANT_A, active: false, name: 'Ana', unitId: undefined },
+      ],
+    });
+
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'complete', {
+      expectedStartAt,
+    });
+    expect(view.status).toBe(AppointmentStatus.COMPLETED);
+  });
+
+  it.each([Permission.AGENDA_GERENCIAR, Permission.AGENDA_VISUALIZAR])(
+    'DENIED em %s é 403, sem gravar nada',
+    async (permission) => {
+      const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.PENDING, 60, {
+        overrides: negar(permission),
+      });
+      await expect(
+        servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', { expectedStartAt }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(linha(colecoes).status).toBe(AppointmentStatus.PENDING);
+      expect(historico(colecoes)).toHaveLength(0);
+    },
+  );
+
+  it('DENIED em SERVICOS_VISUALIZAR NÃO impede: a ação não escolhe serviço', async () => {
+    const { servico, expectedStartAt } = reserva(AppointmentStatus.PENDING, 60, {
+      overrides: negar(Permission.SERVICOS_VISUALIZAR),
+    });
+    const view = await servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', {
+      expectedStartAt,
+    });
+    expect(view.status).toBe(AppointmentStatus.CONFIRMED);
+  });
+
+  it.each([EstablishmentRole.GERENTE, EstablishmentRole.RECEPCIONISTA])(
+    'papel %s é 403',
+    async (role) => {
+      const { servico, expectedStartAt } = reserva(AppointmentStatus.PENDING, 60, { role });
+      await expect(
+        servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', { expectedStartAt }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    },
+  );
+
+  it('sem vínculo ou com estabelecimento suspenso é 404', async () => {
+    const semVinculo = reserva(AppointmentStatus.PENDING, 60, { semMembership: true });
+    await expect(
+      semVinculo.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', {
+        expectedStartAt: semVinculo.expectedStartAt,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    const suspenso = reserva(AppointmentStatus.PENDING, 60, {
+      statusTenant: TenantStatus.SUSPENDED,
+    });
+    await expect(
+      suspenso.servico.changeStatus(USUARIO_DONO, TENANT_A, RESERVA, 'confirm', {
+        expectedStartAt: suspenso.expectedStartAt,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('reserva de outro estabelecimento é 404, e nada muda', async () => {
+    const { servico, colecoes, expectedStartAt } = reserva(AppointmentStatus.PENDING, 60);
+
+    await expect(
+      servico.changeStatus(USUARIO_DONO, TENANT_B, RESERVA, 'confirm', { expectedStartAt }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(linha(colecoes).status).toBe(AppointmentStatus.PENDING);
   });
 });
 

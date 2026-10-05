@@ -26,6 +26,11 @@
 //   jornada do profissional e a elegibilidade do serviço para achar os
 //   horários. NÃO exige `CONSUMIDORES_VISUALIZAR`: o cliente da reserva é
 //   preservado, nunca reescolhido.
+// - confirmar, iniciar, concluir e registrar falta (Lote 6D.7):
+//   `AGENDA_VISUALIZAR` (achar a reserva) e `AGENDA_GERENCIAR` (operar a
+//   agenda). Não escolhem serviço, profissional nem cliente, então não exigem
+//   as permissões de visualizar esses cadastros — e precisam funcionar mesmo
+//   com o serviço ou o profissional desativados depois da reserva.
 //
 // Todos os valores já existem no enum real — nenhuma permissão nova
 // (`AGENDAMENTO_CANCELAR` e `AGENDAMENTO_EDITAR` já estão em
@@ -43,6 +48,9 @@ export const APPOINTMENT_CREATE_FORBIDDEN_MESSAGE =
 
 export const APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE =
   'Você não tem permissão para cancelar agendamentos neste estabelecimento.';
+
+export const APPOINTMENT_STATUS_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para alterar o andamento dos atendimentos neste estabelecimento.';
 
 export const APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE =
   'Você não tem permissão para remarcar agendamentos neste estabelecimento.';
@@ -71,6 +79,11 @@ const PERMISSOES_PARA_REMARCAR: readonly Permission[] = [
   Permission.AGENDAMENTO_EDITAR,
   Permission.PROFISSIONAIS_VISUALIZAR,
   Permission.SERVICOS_VISUALIZAR,
+];
+
+const PERMISSOES_PARA_ANDAMENTO: readonly Permission[] = [
+  Permission.AGENDA_VISUALIZAR,
+  Permission.AGENDA_GERENCIAR,
 ];
 
 function negado(
@@ -113,4 +126,13 @@ export function canRescheduleAppointments(
 ): boolean {
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_REMARCAR);
+}
+
+/** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7). */
+export function canManageAppointmentStatus(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !negado(overrides, PERMISSOES_PARA_ANDAMENTO);
 }

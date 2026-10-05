@@ -6,6 +6,7 @@ import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import {
   canCancelAppointments,
   canCreateAppointments,
+  canManageAppointmentStatus,
   canRescheduleAppointments,
   canViewAppointments,
 } from './appointment-access.js';
@@ -162,5 +163,41 @@ describe('canRescheduleAppointments', () => {
     const semCancelar = negado(Permission.AGENDAMENTO_CANCELAR);
     expect(canCancelAppointments(EstablishmentRole.DONO, semCancelar)).toBe(false);
     expect(canRescheduleAppointments(EstablishmentRole.DONO, semCancelar)).toBe(true);
+  });
+});
+
+describe('canManageAppointmentStatus (Lote 6D.7)', () => {
+  it('DONO sem override pode confirmar, iniciar, concluir e registrar falta', () => {
+    expect(canManageAppointmentStatus(EstablishmentRole.DONO)).toBe(true);
+  });
+
+  it.each(OUTROS_PAPEIS)('%s não pode — ampliar é decisão de um lote de papéis', (role) => {
+    expect(canManageAppointmentStatus(role)).toBe(false);
+  });
+
+  it.each([Permission.AGENDA_VISUALIZAR, Permission.AGENDA_GERENCIAR])(
+    'DENIED em %s impede',
+    (permission) => {
+      expect(canManageAppointmentStatus(EstablishmentRole.DONO, negado(permission))).toBe(false);
+    },
+  );
+
+  it.each([
+    Permission.SERVICOS_VISUALIZAR,
+    Permission.PROFISSIONAIS_VISUALIZAR,
+    Permission.CONSUMIDORES_VISUALIZAR,
+    Permission.AGENDAMENTO_CANCELAR,
+    Permission.AGENDAMENTO_EDITAR,
+  ])('DENIED em %s NÃO impede', (permission) => {
+    expect(canManageAppointmentStatus(EstablishmentRole.DONO, negado(permission))).toBe(true);
+  });
+
+  it('GRANTED nunca amplia: quem não é DONO continua sem acesso', () => {
+    expect(
+      canManageAppointmentStatus(
+        EstablishmentRole.RECEPCIONISTA,
+        concedido(Permission.AGENDA_GERENCIAR),
+      ),
+    ).toBe(false);
   });
 });
