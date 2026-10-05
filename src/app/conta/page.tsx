@@ -1,25 +1,52 @@
 "use client";
 
-// Painel honesto da conta REAL — nunca carrega agenda/equipe/comissões
-// demonstrativas (isso seria misturar dados demo com conta real, proibido
-// pelo lote). Funcionalidades de negócio ainda não têm API própria neste
-// lote: mostrar isso claramente em vez de simular sucesso é o requisito
-// central da seção 6 do AGENTS.md deste lote.
+// Minha conta — página inicial da área REAL. Nunca carrega agenda, equipe ou
+// comissões demonstrativas (isso misturaria dados demo com a conta real).
+//
+// A ação principal é abrir a agenda; os demais atalhos ficam na navegação
+// comum do layout (cabeçalho). O "Primeiros passos" é um roteiro INFORMATIVO:
+// não consulta nada nem marca etapa como concluída — mostrar "feito" sem
+// conferir o servidor seria afirmar algo que a tela não sabe.
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, LogOut, Store, UserRound, Users2, Wrench } from "lucide-react";
+import { CalendarDays, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
 import { formatarData } from "@/lib/format";
-import { Botao } from "@/components/ui/button";
+import { LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { useToast } from "@/components/ui/toast";
-import { NOME_PRODUTO } from "@/lib/config";
+
+const PRIMEIROS_PASSOS = [
+  {
+    titulo: "Cadastre um serviço",
+    descricao: "Nome, duração e preço do que você atende.",
+    href: "/conta/servicos",
+    rotuloLink: "Ir para Serviços",
+  },
+  {
+    titulo: "Cadastre um profissional e vincule os serviços dele",
+    descricao: "Pode ser você mesmo. Marque os serviços que essa pessoa atende.",
+    href: "/conta/profissionais",
+    rotuloLink: "Ir para Profissionais",
+  },
+  {
+    titulo: "Configure os horários desse profissional",
+    descricao: "Na lista de profissionais, use o botão “Horários” e informe os dias e turnos de trabalho.",
+    href: "/conta/profissionais",
+    rotuloLink: "Abrir a lista de profissionais",
+  },
+  {
+    titulo: "Crie o primeiro agendamento",
+    descricao: "Na agenda, escolha o dia, o profissional e o serviço, veja os horários livres e marque.",
+    href: "/conta/agendamentos",
+    rotuloLink: "Ir para a Agenda",
+  },
+] as const;
 
 export default function ContaPage() {
-  const { estado, logout } = useRealAuth();
-  const { notificar } = useToast();
+  const { estado } = useRealAuth();
   const router = useRouter();
 
   const sessao = estado.status === "autenticado" ? estado.sessao : null;
@@ -32,55 +59,31 @@ export default function ContaPage() {
 
   if (!sessao || precisaSelecionar) return null;
 
-  async function aoSair() {
-    const resultado = await logout();
-    notificar(
-      resultado.confirmadoPeloServidor
-        ? "Sessão encerrada."
-        : "Não foi possível confirmar o encerramento com o servidor. Você saiu apenas neste dispositivo.",
-      resultado.confirmadoPeloServidor ? "sucesso" : "info",
-    );
-    router.push("/login");
-  }
-
   const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-border bg-ink px-6 py-4 text-white">
-        <p className="font-bold tracking-tight">{NOME_PRODUTO}</p>
-        <Botao
-          type="button"
-          variante="fantasma"
-          className="text-white/80 hover:text-white"
-          onClick={() => void aoSair()}
-        >
-          <LogOut size={16} className="mr-1.5" />
-          Sair
-        </Botao>
-      </header>
+    <main className="mx-auto w-full max-w-2xl space-y-6 px-4 py-10">
+      <div>
+        <h1 className="text-xl font-bold text-ink">Olá, {sessao.user.name.split(" ")[0]}</h1>
+        <p className="text-sm text-ink-soft">{sessao.user.email}</p>
+      </div>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 space-y-6 px-4 py-10">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Olá, {sessao.user.name.split(" ")[0]}</h1>
-          <p className="text-sm text-ink-soft">{sessao.user.email}</p>
-        </div>
+      {!sessao.hasEstablishmentAccess && (
+        <Cartao>
+          <CartaoCorpo className="flex items-start gap-3">
+            <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
+            <div>
+              <p className="text-sm font-semibold text-ink">Sua conta ainda não está vinculada a um estabelecimento</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                O cadastro completo de estabelecimento para contas reais ainda não está disponível nesta fase.
+              </p>
+            </div>
+          </CartaoCorpo>
+        </Cartao>
+      )}
 
-        {!sessao.hasEstablishmentAccess && (
-          <Cartao>
-            <CartaoCorpo className="flex items-start gap-3">
-              <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
-              <div>
-                <p className="text-sm font-semibold text-ink">Sua conta ainda não está vinculada a um estabelecimento</p>
-                <p className="mt-1 text-sm text-ink-soft">
-                  O cadastro completo de estabelecimento para contas reais ainda não está disponível nesta fase.
-                </p>
-              </div>
-            </CartaoCorpo>
-          </Cartao>
-        )}
-
-        {contexto && (
+      {contexto && (
+        <>
           <Cartao>
             <CartaoCorpo className="space-y-4">
               <div className="flex items-start gap-3">
@@ -95,62 +98,54 @@ export default function ContaPage() {
               <p className="text-xs text-ink-soft">
                 Período de teste até {formatarData(contexto.trial.trialEndAt)}.
               </p>
-              <div className="flex flex-wrap gap-2">
-                {/* Serviços é a primeira funcionalidade de negócio real desta
-                    conta (Lote 6D.1) — nunca a tela demonstrativa de
-                    /painel/servicos. */}
-                <Botao
-                  type="button"
-                  variante="secundaria"
-                  tamanho="sm"
-                  onClick={() => router.push("/conta/servicos")}
-                >
-                  <Wrench size={14} className="mr-1.5" />
-                  Gerenciar serviços
-                </Botao>
-                {/* Profissionais é a segunda funcionalidade de negócio real
-                    desta conta (Lote 6D.2) — nunca a tela demonstrativa de
-                    /painel/profissionais. */}
-                <Botao
-                  type="button"
-                  variante="secundaria"
-                  tamanho="sm"
-                  onClick={() => router.push("/conta/profissionais")}
-                >
-                  <UserRound size={14} className="mr-1.5" />
-                  Gerenciar profissionais
-                </Botao>
-                {/* Agendamentos é a funcionalidade real do Lote 6D.5 —
-                    nunca a agenda demonstrativa de /painel/agenda. */}
-                <Botao
-                  type="button"
-                  variante="secundaria"
-                  tamanho="sm"
-                  onClick={() => router.push("/conta/agendamentos")}
-                >
-                  <CalendarDays size={14} className="mr-1.5" />
-                  Agendamentos
-                </Botao>
-                {sessao.contexts.length > 1 && (
-                  <Botao
-                    type="button"
-                    variante="secundaria"
-                    tamanho="sm"
-                    onClick={() => router.push("/conta/selecionar-estabelecimento")}
-                  >
-                    <Users2 size={14} className="mr-1.5" />
-                    Trocar de estabelecimento
-                  </Botao>
-                )}
-              </div>
-              <p className="border-t border-dashed border-border pt-3 text-xs text-ink-soft">
-                Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas nesta
-                fase — chegam em um próximo lote.
-              </p>
+              {/* Ação principal: a agenda real do Lote 6D.5 — nunca a agenda
+                  demonstrativa de /painel/agenda. */}
+              <LinkBotao href="/conta/agendamentos" tamanho="lg" className="w-full sm:w-auto" data-testid="abrir-agenda">
+                <CalendarDays size={18} aria-hidden="true" />
+                Abrir agenda
+              </LinkBotao>
             </CartaoCorpo>
           </Cartao>
-        )}
-      </main>
-    </div>
+
+          <Cartao>
+            <CartaoCorpo className="space-y-3">
+              <div>
+                <h2 className="text-base font-semibold text-ink">Primeiros passos</h2>
+                <p className="text-xs text-ink-soft">
+                  Um roteiro para deixar a agenda pronta. Ele não confere o que já foi feito — siga na ordem.
+                </p>
+              </div>
+              <ol className="space-y-3" data-testid="primeiros-passos">
+                {PRIMEIROS_PASSOS.map((passo, indice) => (
+                  <li key={passo.titulo} className="flex gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-[color:var(--color-accent-hover)]"
+                    >
+                      {indice + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink">{passo.titulo}</p>
+                      <p className="text-sm text-ink-soft">{passo.descricao}</p>
+                      <Link
+                        href={passo.href}
+                        className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+                      >
+                        {passo.rotuloLink}
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CartaoCorpo>
+          </Cartao>
+
+          <p className="text-xs text-ink-soft">
+            Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas nesta fase —
+            chegam em um próximo lote.
+          </p>
+        </>
+      )}
+    </main>
   );
 }

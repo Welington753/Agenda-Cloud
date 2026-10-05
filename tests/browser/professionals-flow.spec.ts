@@ -93,7 +93,10 @@ test.describe("gestão real de profissionais", () => {
     const tenantId = await tenantDe(page);
     const servico = await criarServico(page, tenantId, "Corte");
 
-    await page.getByRole("button", { name: "Gerenciar profissionais" }).click();
+    await page
+      .getByRole("navigation", { name: "Áreas da conta" })
+      .getByRole("link", { name: "Profissionais" })
+      .click();
     await expect(page).toHaveURL(/\/conta\/profissionais$/);
 
     await expect(page.getByText("Nenhum profissional cadastrado")).toBeVisible();
@@ -104,9 +107,16 @@ test.describe("gestão real de profissionais", () => {
     page.on("request", (req) => {
       if (req.method() === "POST" && /\/professionals$/.test(req.url())) criacoes += 1;
     });
+    // O POST fica retido por uma condição que o PRÓPRIO teste libera (nunca
+    // um tempo fixo), e a interceptação só sai depois da resposta: remover a
+    // rota com o handler pendente deixa o destino da requisição fora do
+    // controle do teste (ver professional-working-hours-flow.spec.ts).
+    const criacaoInterceptada = Promise.withResolvers<void>();
+    const liberarCriacao = Promise.withResolvers<void>();
     await page.route("**/tenants/*/professionals", async (rota) => {
       if (rota.request().method() === "POST") {
-        await new Promise((resolver) => setTimeout(resolver, 1_500));
+        criacaoInterceptada.resolve();
+        await liberarCriacao.promise;
       }
       await rota.continue();
     });
@@ -116,10 +126,23 @@ test.describe("gestão real de profissionais", () => {
     await page.getByLabel("Corte").check();
 
     const salvar = page.locator('form button[type="submit"]');
-    await salvar.click();
-    await expect(salvar).toBeDisabled();
-    await salvar.click({ force: true });
-    await page.unroute("**/tenants/*/professionals");
+    try {
+      const respostaDaCriacao = page.waitForResponse(
+        (resposta) =>
+          resposta.request().method() === "POST" && /\/professionals$/.test(resposta.url()),
+      );
+      try {
+        await salvar.click();
+        await criacaoInterceptada.promise;
+        await expect(salvar).toBeDisabled();
+        await salvar.click({ force: true });
+      } finally {
+        liberarCriacao.resolve();
+      }
+      expect((await respostaDaCriacao).ok()).toBe(true);
+    } finally {
+      await page.unroute("**/tenants/*/professionals");
+    }
 
     await expect(page.getByText("João Silva")).toBeVisible();
     await expect(page.getByText("Corte", { exact: true })).toBeVisible();
@@ -176,16 +199,32 @@ test.describe("gestão real de profissionais", () => {
     page.on("request", (req) => {
       if (req.method() === "POST" && /\/reactivate$/.test(req.url())) reativacoes += 1;
     });
+    const reativacaoInterceptada = Promise.withResolvers<void>();
+    const liberarReativacao = Promise.withResolvers<void>();
     await page.route("**/tenants/*/professionals/*/reactivate", async (rota) => {
-      await new Promise((resolver) => setTimeout(resolver, 1_500));
+      reativacaoInterceptada.resolve();
+      await liberarReativacao.promise;
       await rota.continue();
     });
 
     const reativar = page.getByRole("button", { name: "Reativar João S. Silva" });
-    await reativar.click();
-    await expect(reativar).toBeDisabled();
-    await reativar.click({ force: true });
-    await page.unroute("**/tenants/*/professionals/*/reactivate");
+    try {
+      const respostaDaReativacao = page.waitForResponse(
+        (resposta) =>
+          resposta.request().method() === "POST" && /\/reactivate$/.test(resposta.url()),
+      );
+      try {
+        await reativar.click();
+        await reativacaoInterceptada.promise;
+        await expect(reativar).toBeDisabled();
+        await reativar.click({ force: true });
+      } finally {
+        liberarReativacao.resolve();
+      }
+      expect((await respostaDaReativacao).ok()).toBe(true);
+    } finally {
+      await page.unroute("**/tenants/*/professionals/*/reactivate");
+    }
 
     await expect(page.getByText("Inativo")).toHaveCount(0);
     expect(reativacoes, "um envio só, mesmo com dois cliques").toBe(1);

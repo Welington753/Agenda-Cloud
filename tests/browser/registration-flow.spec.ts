@@ -115,7 +115,9 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
     await expect(page).toHaveURL(/\/conta$/);
     await expect(page.getByRole("heading", { name: "Olá, Maria" })).toBeVisible();
     await expect(page.getByText(dados.email)).toBeVisible();
-    await expect(page.getByText(dados.estabelecimento)).toBeVisible();
+    // O estabelecimento aparece no cabeçalho comum (ativo) e no conteúdo.
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(dados.estabelecimento);
+    await expect(page.getByRole("main").getByText(dados.estabelecimento)).toBeVisible();
     await expect(page.getByText("Dono(a)")).toBeVisible();
 
     expect(chamadasDeCadastro, "um envio só, mesmo com dois cliques").toBe(1);

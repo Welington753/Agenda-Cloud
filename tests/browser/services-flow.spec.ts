@@ -16,7 +16,8 @@
 // Orçamento de POST /auth/register: o rate limit real é de 5 por 15 min por IP
 // (backend/src/auth/register-rate-limit.ts, MemoryStore no processo do
 // backend) e todos os testes saem do mesmo IP. Este arquivo gasta 3 (o fluxo
-// principal + os dois estabelecimentos do teste de isolamento). As suítes de
+// principal + os dois estabelecimentos do teste de isolamento), e
+// pilot-navigation-flow.spec.ts, na mesma invocação, gasta 1 — 4 de 5. As suítes de
 // autenticação gastam outros 4, o que estouraria o limite numa execução única
 // — por isso o CI roda ESTA suíte numa invocação separada do Playwright, que
 // sobe um backend novo e portanto um rate limiter zerado (ver
@@ -72,7 +73,10 @@ test.describe("gestão real de serviços", () => {
     const conta = await criarConta(request, "fluxo");
     await entrar(page, conta);
 
-    await page.getByRole("button", { name: "Gerenciar serviços" }).click();
+    await page
+      .getByRole("navigation", { name: "Áreas da conta" })
+      .getByRole("link", { name: "Serviços" })
+      .click();
     await expect(page).toHaveURL(/\/conta\/servicos$/);
 
     // Estado vazio com ação de cadastro — nunca uma lista demo.
