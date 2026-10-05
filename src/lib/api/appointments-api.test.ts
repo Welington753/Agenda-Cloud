@@ -177,10 +177,12 @@ describe("buscarClientes", () => {
 describe("cancelarAgendamento", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("envia POST em .../cancel com corpo vazio", async () => {
+  const MOSTRADO = { expectedStartAt: "2026-09-20T12:00:00.000Z" };
+
+  it("envia POST em .../cancel só com o instante que a confirmação mostrava", async () => {
     mockFetch(200, { appointment: { ...AGENDAMENTO, status: "CANCELED" } });
 
-    const resultado = await cancelarAgendamento("tenant_1", "a1");
+    const resultado = await cancelarAgendamento("tenant_1", "a1", MOSTRADO);
 
     expect(resultado.ok).toBe(true);
     if (resultado.ok) expect(resultado.dados.status).toBe("CANCELED");
@@ -188,14 +190,30 @@ describe("cancelarAgendamento", () => {
     const [url, init] = ultimaChamada();
     expect(url).toContain("/tenants/tenant_1/appointments/a1/cancel");
     expect(init.method).toBe("POST");
-    // Corpo vazio: nenhum campo que o servidor decide viaja daqui.
-    expect(JSON.parse(init.body as string)).toEqual({});
+    // Só o instante mostrado: nenhum campo que o servidor decide viaja daqui.
+    expect(JSON.parse(init.body as string)).toEqual(MOSTRADO);
+  });
+
+  it("409 (reserva alterada desde a confirmação) vira horario_ocupado com a mensagem do servidor", async () => {
+    mockFetch(409, { message: "O horário desta reserva mudou desde que a confirmação foi aberta." });
+
+    const resultado = await cancelarAgendamento("tenant_1", "a1", MOSTRADO);
+
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) {
+      expect(resultado.falha.tipo).toBe("horario_ocupado");
+      if (resultado.falha.tipo === "horario_ocupado") {
+        expect(resultado.falha.mensagem).toContain("mudou");
+      }
+    }
+    // Uma chamada só: a recusa nunca é reenviada daqui.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
   it("escapa o id e o tenant na URL", async () => {
     mockFetch(200, { appointment: AGENDAMENTO });
 
-    await cancelarAgendamento("tenant/../x", "a/../b");
+    await cancelarAgendamento("tenant/../x", "a/../b", MOSTRADO);
 
     const [url] = ultimaChamada();
     expect(url).toContain("tenant%2F..%2Fx");
@@ -205,7 +223,7 @@ describe("cancelarAgendamento", () => {
   it("400 vira nao_agendavel com a mensagem do servidor", async () => {
     mockFetch(400, { message: "Só é possível cancelar uma reserva que ainda não começou." });
 
-    const resultado = await cancelarAgendamento("tenant_1", "a1");
+    const resultado = await cancelarAgendamento("tenant_1", "a1", MOSTRADO);
 
     expect(resultado.ok).toBe(false);
     if (!resultado.ok) {
@@ -219,7 +237,7 @@ describe("cancelarAgendamento", () => {
   it("falha de rede é falha_comunicacao, nunca 'não cancelou'", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
 
-    const resultado = await cancelarAgendamento("tenant_1", "a1");
+    const resultado = await cancelarAgendamento("tenant_1", "a1", MOSTRADO);
 
     expect(resultado.ok).toBe(false);
     if (!resultado.ok) expect(resultado.falha.tipo).toBe("falha_comunicacao");
@@ -228,7 +246,7 @@ describe("cancelarAgendamento", () => {
   it("corpo inesperado é indisponivel, nunca aceito como sucesso", async () => {
     mockFetch(200, { appointment: { id: "a1" } });
 
-    const resultado = await cancelarAgendamento("tenant_1", "a1");
+    const resultado = await cancelarAgendamento("tenant_1", "a1", MOSTRADO);
 
     expect(resultado.ok).toBe(false);
     if (!resultado.ok) expect(resultado.falha.tipo).toBe("indisponivel");

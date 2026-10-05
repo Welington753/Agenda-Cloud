@@ -133,8 +133,28 @@ describe('listAppointmentsSchema', () => {
 // --------------------------------------------------------------------------
 // Lote 6D.6 — contratos de cancelar e remarcar.
 describe('cancelAppointmentSchema', () => {
-  it('aceita corpo vazio', () => {
-    expect(cancelAppointmentSchema.safeParse({}).success).toBe(true);
+  const valido = { expectedStartAt: '2026-09-20T12:00:00.000Z' };
+
+  it('aceita o instante que a confirmação mostrava', () => {
+    expect(cancelAppointmentSchema.safeParse(valido).success).toBe(true);
+    expect(
+      cancelAppointmentSchema.safeParse({ expectedStartAt: '2026-09-20T09:00:00-03:00' }).success,
+    ).toBe(true);
+  });
+
+  it('exige expectedStartAt — corpo vazio não diz qual horário a pessoa viu', () => {
+    expect(cancelAppointmentSchema.safeParse({}).success).toBe(false);
+  });
+
+  it.each([
+    // Sem fuso: seria interpretado pelo relógio do servidor.
+    '2026-09-20T12:00:00',
+    // Data que não existe no calendário.
+    '2026-02-30T12:00:00.000Z',
+    '20/09/2026 09:00',
+    '',
+  ])('recusa instante inválido: %s', (expectedStartAt) => {
+    expect(cancelAppointmentSchema.safeParse({ expectedStartAt }).success).toBe(false);
   });
 
   it.each([
@@ -143,10 +163,10 @@ describe('cancelAppointmentSchema', () => {
     { tenantId: 'outro' },
     { appointmentId: 'outro' },
     { startAt: '2026-09-20T12:00:00.000Z' },
-  ])('recusa campo que o servidor decide: %o', (corpo) => {
+  ])('recusa campo que o servidor decide: %o', (extra) => {
     // `.strict()` é o que impede o navegador de tentar ditar status, preço,
     // tenant ou QUAL reserva — este último vem sempre do caminho da rota.
-    expect(cancelAppointmentSchema.safeParse(corpo).success).toBe(false);
+    expect(cancelAppointmentSchema.safeParse({ ...valido, ...extra }).success).toBe(false);
   });
 });
 

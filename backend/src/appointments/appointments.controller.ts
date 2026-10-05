@@ -18,6 +18,7 @@ import {
   listAppointmentsSchema,
   rescheduleAppointmentSchema,
   rescheduleOptionsSchema,
+  type CancelAppointmentDto,
   type CreateAppointmentDto,
   type ListAppointmentsDto,
   type RescheduleAppointmentDto,
@@ -94,21 +95,22 @@ export class AppointmentsController {
   /**
    * Ação explícita de cancelamento. `POST .../cancel` (e não `DELETE`) porque
    * NÃO existe exclusão física: a linha continua lá, com o estado `CANCELED` e
-   * a transição registrada. O corpo é validado mesmo sendo vazio — é assim que
-   * um `status` ou `priceCents` enviado pelo navegador é recusado em vez de
-   * ignorado em silêncio.
+   * a transição registrada. O corpo leva só o instante que a confirmação
+   * mostrava; um `status` ou `priceCents` enviado pelo navegador é recusado em
+   * vez de ignorado em silêncio.
    */
   @Post(':appointmentId/cancel')
   async cancel(
     @Param('tenantId') tenantId: string,
     @Param('appointmentId') appointmentId: string,
-    @Body(new ZodValidationPipe(cancelAppointmentSchema)) _dto: unknown,
+    @Body(new ZodValidationPipe(cancelAppointmentSchema)) dto: CancelAppointmentDto,
     @Req() req: Request,
   ) {
     const appointment = await this.appointmentsService.cancel(
       identityOf(req).userId,
       tenantId,
       appointmentId,
+      dto,
     );
     return { appointment };
   }

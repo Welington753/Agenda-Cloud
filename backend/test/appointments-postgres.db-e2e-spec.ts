@@ -608,7 +608,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     );
     expect(antes.slots.map((s) => s.localStart)).not.toContain('09:00');
 
-    const cancelada = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id);
+    const cancelada = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+      expectedStartAt: view.startAt,
+    });
     expect(cancelada.status).toBe(AppointmentStatus.CANCELED);
 
     // Depois do COMMIT: 09:00 volta a ser oferecido e uma nova reserva entra.
@@ -644,8 +646,12 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     const cenario = await criarCenario('cancela-2x');
     const view = await agendar(cenario);
 
-    await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id);
-    const segunda = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id);
+    await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+      expectedStartAt: view.startAt,
+    });
+    const segunda = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+      expectedStartAt: view.startAt,
+    });
 
     expect(segunda.status).toBe(AppointmentStatus.CANCELED);
     expect(
@@ -653,6 +659,151 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
         where: { appointmentId: view.id },
       }),
     ).toBe(1);
+    // A linha final continua cancelada, no horário original.
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.CANCELED);
+    expect(linha?.startAt.toISOString()).toBe(view.startAt);
+  });
+
+  // ------------------------------------------------------------------------
+  // Confirmação de cancelamento aberta numa tela desatualizada.
+  //
+  // A ordem entre as sessões é imposta pelo próprio Postgres, não por sleep:
+  // uma conexão externa trava a linha da reserva com `FOR UPDATE`, cada ação
+  // é disparada só depois de a anterior estar comprovadamente ENFILEIRADA
+  // atrás desse lock (`pg_blocking_pids`), e a fila de lock de linha atende
+  // na ordem de chegada quando a conexão externa confirma.
+
+  /** Quantas sessões deste banco estão bloqueadas esperando lock agora. */
+  async function sessoesBloqueadas(): Promise<number> {
+    const linhas: { total: number }[] = await dataSource.query(
+      `SELECT count(*)::int AS total
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND cardinality(pg_blocking_pids(pid)) > 0`,
+    );
+    return linhas[0].total;
+  }
+
+  /** Espera até `quantidade` sessões estarem bloqueadas. Consulta uma condição
+   * observável no banco (com prazo máximo), nunca uma pausa fixa torcendo
+   * pelo escalonamento. */
+  async function aguardarBloqueadas(quantidade: number): Promise<void> {
+    const prazo = Date.now() + 10_000;
+    while ((await sessoesBloqueadas()) < quantidade) {
+      if (Date.now() > prazo) {
+        throw new Error(`Esperava ${quantidade} sessão(ões) bloqueada(s) no lock da reserva.`);
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  /** Abre uma transação externa que segura `FOR UPDATE` na linha da reserva. */
+  async function segurarReserva(appointmentId: string) {
+    const runner = dataSource.createQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    await runner.query('SELECT id FROM appointments WHERE id = $1 FOR UPDATE', [appointmentId]);
+    return {
+      liberar: async () => {
+        await runner.commitTransaction();
+        await runner.release();
+      },
+    };
+  }
+
+  /** Promessa que nunca rejeita: devolve 'ok' ou o erro, para comparar depois. */
+  function resultadoDe(acao: Promise<unknown>): Promise<unknown> {
+    return acao.then(
+      () => 'ok',
+      (error: unknown) => error,
+    );
+  }
+
+  it('remarcação confirma primeiro: o cancelamento da tela antiga é recusado com 409', async () => {
+    const cenario = await criarCenario('cancela-tela-antiga');
+    // A tela abre a confirmação de cancelamento mostrando 09:00.
+    const view = await agendar(cenario);
+    const instanteMostrado = view.startAt;
+
+    const trava = await segurarReserva(view.id);
+    // Outra sessão remarca para 11:00 — entra primeiro na fila do lock.
+    const remarcacao = resultadoDe(
+      agendamentos.reschedule(cenario.ownerUserId, cenario.tenantId, view.id, {
+        startAt: ONZE_HORAS,
+        expectedStartAt: view.startAt,
+      }),
+    );
+    await aguardarBloqueadas(1);
+    // A confirmação antiga chega depois, ainda com 09:00.
+    const cancelamento = resultadoDe(
+      agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+        expectedStartAt: instanteMostrado,
+      }),
+    );
+    await aguardarBloqueadas(2);
+    await trava.liberar();
+
+    expect(await remarcacao).toBe('ok');
+    const falhaCancelamento = await cancelamento;
+    expect(falhaCancelamento).toBeInstanceOf(ConflictException);
+    expect((falhaCancelamento as ConflictException).message).toMatch(/mudou/);
+
+    // Nada cancelado e nenhum histórico: a reserva segue confirmada às 11:00.
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.CONFIRMED);
+    expect(linha?.startAt.toISOString()).toBe(ONZE_HORAS);
+    expect(
+      await dataSource.manager.count(AppointmentStatusChange, {
+        where: { appointmentId: view.id },
+      }),
+    ).toBe(0);
+
+    // Nova confirmação CONSCIENTE, com o horário atualizado, cancela.
+    const cancelada = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+      expectedStartAt: ONZE_HORAS,
+    });
+    expect(cancelada.status).toBe(AppointmentStatus.CANCELED);
+    expect(
+      await dataSource.manager.count(AppointmentStatusChange, {
+        where: { appointmentId: view.id },
+      }),
+    ).toBe(1);
+  });
+
+  it('cancelamento confirma primeiro: a remarcação não ressuscita a reserva cancelada', async () => {
+    const cenario = await criarCenario('remarca-depois-cancela');
+    const view = await agendar(cenario);
+
+    const trava = await segurarReserva(view.id);
+    const cancelamento = resultadoDe(
+      agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+        expectedStartAt: view.startAt,
+      }),
+    );
+    await aguardarBloqueadas(1);
+    const remarcacao = resultadoDe(
+      agendamentos.reschedule(cenario.ownerUserId, cenario.tenantId, view.id, {
+        startAt: ONZE_HORAS,
+        expectedStartAt: view.startAt,
+      }),
+    );
+    await aguardarBloqueadas(2);
+    await trava.liberar();
+
+    expect(await cancelamento).toBe('ok');
+    expect(await remarcacao).toBeInstanceOf(BadRequestException);
+
+    // Cancelada, no horário ORIGINAL, com uma transição só.
+    const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
+    expect(linha?.status).toBe(AppointmentStatus.CANCELED);
+    expect(linha?.startAt.toISOString()).toBe(view.startAt);
+    const transicoes = await dataSource.manager.find(AppointmentStatusChange, {
+      where: { appointmentId: view.id },
+    });
+    expect(transicoes).toHaveLength(1);
+    expect(transicoes[0].fromStatus).toBe(AppointmentStatus.CONFIRMED);
+    expect(transicoes[0].toStatus).toBe(AppointmentStatus.CANCELED);
   });
 
   it('remarcação válida persiste depois de reler do banco', async () => {
@@ -827,7 +978,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     const largada = Promise.withResolvers<void>();
     const cancelar = async () => {
       await largada.promise;
-      return agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id);
+      return agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+        expectedStartAt: view.startAt,
+      });
     };
     const remarcar = async () => {
       await largada.promise;
@@ -844,22 +997,28 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
 
     const linha = await dataSource.manager.findOne(Appointment, { where: { id: view.id } });
 
-    if (resCancel.status === 'fulfilled' && resRemarca.status === 'fulfilled') {
-      // Ordem possível: remarcou e DEPOIS cancelou. Os dois são legítimos em
-      // sequência — o resultado final é cancelada, no horário novo.
-      expect(linha?.status).toBe(AppointmentStatus.CANCELED);
+    // Exatamente uma das duas vence — as duas partiram do MESMO instante
+    // mostrado na tela, então a que chega depois encontra a reserva mudada.
+    expect([resCancel.status, resRemarca.status].sort()).toEqual(['fulfilled', 'rejected']);
+
+    if (resRemarca.status === 'fulfilled') {
+      // Remarcou primeiro: o cancelamento partiu do horário antigo e é
+      // recusado com 409 — nunca cancela a reserva no horário novo sem que a
+      // pessoa tenha visto esse horário.
+      expect((resCancel as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
+      expect(linha?.status).toBe(AppointmentStatus.CONFIRMED);
+      expect(linha?.startAt.toISOString()).toBe(DEZ_HORAS);
     } else {
-      // A outra ordem: cancelou primeiro, então remarcar foi recusado (400,
-      // "cancelada não pode ser remarcada") e a linha fica cancelada no
-      // horário ORIGINAL — nunca num estado meio-gravado.
-      expect(resCancel.status).toBe('fulfilled');
-      expect(resRemarca.status).toBe('rejected');
+      // Cancelou primeiro: remarcar é recusado (400, "cancelada não pode ser
+      // remarcada") e a linha fica cancelada no horário ORIGINAL — nunca num
+      // estado meio-gravado.
       expect((resRemarca as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
       expect(linha?.status).toBe(AppointmentStatus.CANCELED);
       expect(linha?.startAt.toISOString()).toBe(view.startAt);
     }
 
-    // Em qualquer das ordens: uma linha só, e no máximo uma transição.
+    // Em qualquer das ordens: uma linha só, e a transição só existe se o
+    // cancelamento venceu.
     expect(
       await dataSource.manager.count(Appointment, { where: { tenantId: cenario.tenantId } }),
     ).toBe(1);
@@ -867,7 +1026,7 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
       await dataSource.manager.count(AppointmentStatusChange, {
         where: { appointmentId: view.id },
       }),
-    ).toBe(1);
+    ).toBe(resCancel.status === 'fulfilled' ? 1 : 0);
   });
 
   it('cancelar funciona com o serviço e o profissional desativados depois da reserva', async () => {
@@ -879,7 +1038,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     await servicos.deactivate(cenario.ownerUserId, cenario.tenantId, cenario.serviceId);
     await profissionais.deactivate(cenario.ownerUserId, cenario.tenantId, cenario.professionalId);
 
-    const cancelada = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id);
+    const cancelada = await agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+      expectedStartAt: view.startAt,
+    });
     expect(cancelada.status).toBe(AppointmentStatus.CANCELED);
 
     // Remarcar, ao contrário, é recusado: horário NOVO exige elegibilidade atual.
@@ -902,7 +1063,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     // B usa o PRÓPRIO tenant e o id da reserva de A: indistinguível de
     // inexistente, nunca confirma que a reserva existe em outro lugar.
     await expect(
-      agendamentos.cancel(cenarioB.ownerUserId, cenarioB.tenantId, reservaDeA.id),
+      agendamentos.cancel(cenarioB.ownerUserId, cenarioB.tenantId, reservaDeA.id, {
+        expectedStartAt: reservaDeA.startAt,
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       agendamentos.reschedule(cenarioB.ownerUserId, cenarioB.tenantId, reservaDeA.id, {
@@ -918,7 +1081,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
 
     // B com o tenant de A (sem vínculo) também é 404.
     await expect(
-      agendamentos.cancel(cenarioB.ownerUserId, cenarioA.tenantId, reservaDeA.id),
+      agendamentos.cancel(cenarioB.ownerUserId, cenarioA.tenantId, reservaDeA.id, {
+        expectedStartAt: reservaDeA.startAt,
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
 
     // A reserva de A segue intacta.
@@ -944,7 +1109,9 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
     );
 
     await expect(
-      agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id),
+      agendamentos.cancel(cenario.ownerUserId, cenario.tenantId, view.id, {
+        expectedStartAt: view.startAt,
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     // Remarcar continua permitido: as permissões são independentes.
     await expect(

@@ -236,6 +236,7 @@ test.describe("agendamentos reais", () => {
     await page.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(page)).not.toContain("09:00");
     await expect.poll(() => horariosLivres(page)).toContain("10:00");
+    await expect.poll(() => horariosLivres(page)).toContain("11:00");
   });
 
   test("conflito 409 é explicado e a agenda é atualizada; isolamento atacado na API", async ({
@@ -480,16 +481,54 @@ test.describe("agendamentos reais", () => {
     await expect.poll(() => horariosLivres(page)).not.toContain("10:00");
 
     // --------------------------------------------------------------- cancelar
+    let envioDeCancelamento = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().endsWith("/cancel")) envioDeCancelamento += 1;
+    });
+
     await page.getByTestId("abrir-cancelamento").click();
     // A confirmação NOMEIA a reserva — não é um "tem certeza?" genérico.
     await expect(page.getByTestId("reserva-a-cancelar")).toContainText("10:00–11:00");
     await expect(page.getByTestId("reserva-a-cancelar")).toContainText("Cliente das Ações");
 
+    // Com a confirmação ABERTA mostrando 10:00, outra sessão remarca a mesma
+    // reserva para 11:00 direto na API (como outra aba ou outra pessoa).
+    const remarcadaPorFora = await page.evaluate(
+      async ({ tenantId, data, de, para }) => {
+        const base = `http://localhost:3001/tenants/${tenantId}/appointments`;
+        const lista = (await (
+          await fetch(`${base}?date=${data}`, { credentials: "include" })
+        ).json()) as { appointments: { id: string }[] };
+        const r = await fetch(`${base}/${lista.appointments[0].id}/reschedule`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ startAt: para, expectedStartAt: de }),
+        });
+        return r.status;
+      },
+      { tenantId, data: DATA, de: instanteLocalDe("10:00"), para: instanteLocalDe("11:00") },
+    );
+    expect(remarcadaPorFora).toBe(201);
+
+    // A confirmação antiga é enviada: o servidor recusa com 409, nada é
+    // cancelado, e a tela mostra que a reserva mudou, com os dados novos.
+    await page.getByTestId("confirmar-cancelamento-botao").click();
+    await expect(page.getByTestId("erro-acao-reserva")).toContainText("mudou");
+    await expect(page.getByTestId("reserva-alterada")).toContainText("antes: 10:00–11:00");
+    await expect(page.getByTestId("reserva-a-cancelar")).toContainText("11:00–12:00");
+    await expect(page.getByTestId("status-agendado")).toHaveText("Confirmado");
+    await expect(page.getByTestId("horario-agendado")).toHaveText("11:00–12:00");
+    // Nenhum reenvio automático: uma tentativa só até aqui.
+    expect(envioDeCancelamento).toBe(1);
+
+    // Nova confirmação CONSCIENTE, agora sobre o horário que a tela mostra.
     await page.getByTestId("confirmar-cancelamento-botao").click();
     // A reserva continua listada, agora como cancelada (nada é apagado), e as
     // ações desaparecem dela.
     await expect(page.getByTestId("status-agendado")).toHaveText("Cancelado");
     await expect(page.getByTestId("acoes-reserva")).toHaveCount(0);
+    expect(envioDeCancelamento).toBe(2);
 
     // Reload: o cancelamento persistiu.
     await page.reload();

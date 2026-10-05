@@ -740,10 +740,13 @@ function servicoAlterado(campos: Registro): Registro[] {
 }
 
 describe('AppointmentsService.cancel', () => {
+  /** O instante que a confirmação mostrava — o mesmo gravado na reserva. */
+  const MOSTRADO = { expectedStartAt: INICIO };
+
   it('grava CANCELED e a transição, na mesma operação', async () => {
     const { servico, colecoes } = comReserva();
 
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
 
     expect(view.status).toBe(AppointmentStatus.CANCELED);
     const transicoes = colecoes.get(AppointmentStatusChange) ?? [];
@@ -761,8 +764,8 @@ describe('AppointmentsService.cancel', () => {
   it('repetir NÃO duplica o histórico e devolve o estado atual', async () => {
     const { servico, colecoes } = comReserva();
 
-    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
-    const segunda = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
+    const segunda = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
 
     expect(segunda.status).toBe(AppointmentStatus.CANCELED);
     expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(1);
@@ -771,7 +774,7 @@ describe('AppointmentsService.cancel', () => {
   it('preserva o item da reserva — nada é apagado', async () => {
     const { servico, colecoes } = comReserva();
 
-    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
 
     const itens = colecoes.get(AppointmentItem) ?? [];
     expect(itens).toHaveLength(1);
@@ -788,7 +791,7 @@ describe('AppointmentsService.cancel', () => {
       ],
     });
 
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
     expect(view.status).toBe(AppointmentStatus.CANCELED);
   });
 
@@ -798,7 +801,7 @@ describe('AppointmentsService.cancel', () => {
     AppointmentStatus.NO_SHOW,
   ])('%s não pode ser cancelado', async (status) => {
     const { servico } = comReserva({}, { status });
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO)).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
@@ -812,15 +815,62 @@ describe('AppointmentsService.cancel', () => {
         endAt: new Date('2026-09-18T13:00:00.000Z'),
       },
     );
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
-      BadRequestException,
+    await expect(
+      servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+        expectedStartAt: '2026-09-18T12:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('horário mudou desde a confirmação: 409, sem cancelar e sem histórico', async () => {
+    // A tela mostrava 09:00 (INICIO); outra sessão já moveu a reserva.
+    const DEZ_HORAS = new Date('2026-09-20T13:00:00.000Z');
+    const { servico, colecoes } = comReserva(
+      {},
+      { startAt: DEZ_HORAS, endAt: new Date('2026-09-20T14:00:00.000Z') },
     );
+
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+
+    const reserva = (colecoes.get(Appointment) ?? [])[0];
+    expect(reserva.status).toBe(AppointmentStatus.CONFIRMED);
+    expect(reserva.startAt).toEqual(DEZ_HORAS);
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
+  });
+
+  it('o mesmo instante em outro deslocamento é o mesmo horário', async () => {
+    // 09:00-03:00 é 12:00Z: compara instantes, não o texto enviado.
+    const { servico } = comReserva();
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, {
+      expectedStartAt: '2026-09-20T09:00:00-03:00',
+    });
+    expect(view.status).toBe(AppointmentStatus.CANCELED);
+  });
+
+  it('já cancelada e o horário mudou desde a confirmação: 409, nada gravado', async () => {
+    // A tela antiga não pode receber "cancelada" como se tivesse cancelado a
+    // reserva que estava mostrando.
+    const { servico, colecoes } = comReserva(
+      {},
+      {
+        status: AppointmentStatus.CANCELED,
+        startAt: new Date('2026-09-20T13:00:00.000Z'),
+        endAt: new Date('2026-09-20T14:00:00.000Z'),
+      },
+    );
+
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(colecoes.get(AppointmentStatusChange) ?? []).toHaveLength(0);
   });
 
   it('cancelar pelo tenant alheio é 404 — e nada é alterado', async () => {
     const { servico, colecoes } = comReserva();
 
-    await expect(servico.cancel(USUARIO_DONO, TENANT_B, RESERVA)).rejects.toBeInstanceOf(
+    await expect(servico.cancel(USUARIO_DONO, TENANT_B, RESERVA, MOSTRADO)).rejects.toBeInstanceOf(
       NotFoundException,
     );
     expect((colecoes.get(Appointment) ?? [])[0].status).toBe(AppointmentStatus.CONFIRMED);
@@ -828,7 +878,7 @@ describe('AppointmentsService.cancel', () => {
 
   it('DENIED em AGENDAMENTO_CANCELAR é 403', async () => {
     const { servico } = comReserva({ overrides: negar(Permission.AGENDAMENTO_CANCELAR) });
-    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA)).rejects.toBeInstanceOf(
+    await expect(servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -837,7 +887,7 @@ describe('AppointmentsService.cancel', () => {
     // Cancelar não escolhe serviço — exigir essa permissão travaria o
     // cancelamento sem motivo.
     const { servico } = comReserva({ overrides: negar(Permission.SERVICOS_VISUALIZAR) });
-    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA);
+    const view = await servico.cancel(USUARIO_DONO, TENANT_A, RESERVA, MOSTRADO);
     expect(view.status).toBe(AppointmentStatus.CANCELED);
   });
 });
