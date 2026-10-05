@@ -82,8 +82,8 @@ export type FalhaAgendamentoReal =
    * vínculo ausente, dados recusados. A mensagem vem do servidor. */
   | { tipo: "nao_agendavel"; mensagem: string | null }
   /** 409: o horário foi ocupado por outra reserva entre a consulta e o envio,
-   * OU (na remarcação) a reserva mudou desde que a tela carregou. Os dois vêm
-   * com a mensagem do servidor, que distingue os casos. */
+   * OU (na remarcação e no cancelamento) a reserva mudou desde que a tela
+   * carregou. Os dois vêm com a mensagem do servidor, que distingue os casos. */
   | { tipo: "horario_ocupado"; mensagem: string | null }
   | { tipo: "falha_comunicacao" }
   | { tipo: "indisponivel" };
@@ -115,6 +115,10 @@ export interface DadosRemarcacaoReal {
    * reserva já tiver sido movida por outra pessoa ou outra aba. */
   expectedStartAt: string;
 }
+
+/** Cancelamento: só o instante que a CONFIRMAÇÃO mostrou, mesmo controle da
+ * remarcação (409 se a reserva foi movida depois; cobre só o início). */
+export type DadosCancelamentoReal = Pick<DadosRemarcacaoReal, "expectedStartAt">;
 
 export type ResultadoAgendamentoReal<T> =
   | { ok: true; dados: T }
@@ -249,17 +253,18 @@ export async function criarAgendamento(
 }
 
 /**
- * Cancela a reserva. `POST .../cancel` com corpo VAZIO: o backend recusa
- * qualquer campo no corpo, e QUAL reserva cancelar vai no caminho.
+ * Cancela a reserva. `POST .../cancel` só com o instante que a confirmação
+ * mostrava: o backend recusa qualquer outro campo; QUAL reserva vai no caminho.
  */
 export async function cancelarAgendamento(
   tenantId: string,
   appointmentId: string,
+  dados: DadosCancelamentoReal,
   signal?: AbortSignal,
 ): Promise<ResultadoAgendamentoReal<AgendamentoReal>> {
   const resultado = await apiRequest<unknown>(
     `${caminhoAgendamentos(tenantId)}/${encodeURIComponent(appointmentId)}/cancel`,
-    { method: "POST", body: {}, signal },
+    { method: "POST", body: dados, signal },
   );
 
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };

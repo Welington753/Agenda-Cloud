@@ -110,15 +110,20 @@ export const listAppointmentsSchema = z
 export type ListAppointmentsDto = z.infer<typeof listAppointmentsSchema>;
 
 /**
- * Cancelamento (Lote 6D.6): corpo VAZIO e `.strict()`.
+ * Cancelamento (Lote 6D.6): SÓ o instante que a confirmação estava mostrando.
  *
- * Não é um objeto sem uso: `.strict()` é o que recusa explicitamente um corpo
- * com `status`, `priceCents`, `tenantId` ou qualquer outro campo — a rota
- * nunca aceita do navegador nada que o servidor decide. QUAL reserva cancelar
- * vem do caminho (`:appointmentId`), sempre conferido junto do tenant, nunca
- * do corpo.
+ * `.strict()` recusa explicitamente um corpo com `status`, `priceCents`,
+ * `tenantId` ou qualquer outro campo — a rota nunca aceita do navegador nada
+ * que o servidor decide. QUAL reserva cancelar vem do caminho
+ * (`:appointmentId`), sempre conferido junto do tenant, nunca do corpo.
+ *
+ * `expectedStartAt` é o mesmo controle da remarcação: se outra sessão moveu a
+ * reserva depois de a confirmação abrir, o instante gravado não bate e o
+ * servidor recusa em vez de cancelar um horário que a pessoa não viu. Cobre
+ * SÓ o horário de início — não é uma versão da linha inteira, e mudanças em
+ * outros campos da reserva não são detectadas por ele.
  */
-export const cancelAppointmentSchema = z.object({}).strict();
+export const cancelAppointmentSchema = z.object({ expectedStartAt: instanteSchema }).strict();
 
 export type CancelAppointmentDto = z.infer<typeof cancelAppointmentSchema>;
 

@@ -95,6 +95,7 @@ import {
   canViewAppointments,
 } from './appointment-access.js';
 import type {
+  CancelAppointmentDto,
   CreateAppointmentDto,
   ListAppointmentsDto,
   RescheduleAppointmentDto,
@@ -123,6 +124,8 @@ const RESCHEDULE_NOT_ALLOWED_MESSAGE =
   'Só é possível remarcar uma reserva aguardando confirmação ou confirmada que ainda não começou.';
 const RESCHEDULE_CANCELED_MESSAGE =
   'Esta reserva foi cancelada e não pode ser remarcada. Crie uma nova reserva.';
+const CANCEL_STALE_MESSAGE =
+  'O horário desta reserva mudou desde que a confirmação foi aberta. Confira os dados atualizados antes de cancelar.';
 const RESCHEDULE_STALE_MESSAGE =
   'Esta reserva mudou desde que a tela carregou. Consulte a agenda novamente antes de remarcar.';
 
@@ -422,6 +425,12 @@ export class AppointmentsService {
    * depois da reserva, e `calcular` recusaria os dois casos com 400. Cancelar
    * não escolhe nada — só muda o estado de uma linha que já existe.
    *
+   * TELA DESATUALIZADA: `expectedStartAt` é o instante que a confirmação
+   * mostrava. Ele é comparado DEPOIS de travar e reler a linha, então uma
+   * remarcação confirmada por outra sessão antes deste lock é sempre vista:
+   * divergiu, 409 sem gravar nada. Cobre só o horário de início, não os
+   * demais campos da reserva.
+   *
    * IDEMPOTENTE: repetir o cancelamento de uma reserva já cancelada devolve o
    * estado dela e NÃO grava uma segunda transição. Sem isso, um duplo clique
    * ou um reenvio depois de falha de rede encheria o histórico de linhas
@@ -436,14 +445,24 @@ export class AppointmentsService {
     userId: string,
     tenantId: string,
     appointmentId: string,
+    dto: CancelAppointmentDto,
   ): Promise<AppointmentView> {
     const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
       permitido: canCancelAppointments,
       mensagemProibido: APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
     });
 
+    const esperado = new Date(dto.expectedStartAt);
+
     const salvo = await this.dataSource.transaction(async (tx) => {
       const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId);
+
+      // Mesmo controle otimista da remarcação, ANTES do retorno idempotente:
+      // uma reserva movida e depois cancelada também não pode ser confirmada
+      // como "cancelada" para a tela que mostrava o horário antigo.
+      if (appointment.startAt.getTime() !== esperado.getTime()) {
+        throw new ConflictException(CANCEL_STALE_MESSAGE);
+      }
 
       // Já cancelada: devolve o estado, sem gravar nada.
       if (appointment.status === AppointmentStatus.CANCELED) return appointment;

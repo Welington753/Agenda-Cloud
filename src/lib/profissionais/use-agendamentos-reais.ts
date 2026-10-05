@@ -17,6 +17,7 @@ import type {
   AgendaDoDiaReal,
   AgendamentoReal,
   DadosAgendamentoReal,
+  DadosCancelamentoReal,
   DadosRemarcacaoReal,
   FalhaAgendamentoReal,
   ResultadoAgendamentoReal,
@@ -35,7 +36,10 @@ export interface AgendamentosReaisControlados {
   gravando: boolean;
   recarregar: () => void;
   criar: (dados: DadosAgendamentoReal) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
-  cancelar: (appointmentId: string) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
+  cancelar: (
+    appointmentId: string,
+    dados: DadosCancelamentoReal,
+  ) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
   remarcar: (
     appointmentId: string,
     dados: DadosRemarcacaoReal,
@@ -138,8 +142,8 @@ export function useAgendamentosReais(
   );
 
   const cancelar = useCallback(
-    (appointmentId: string) =>
-      enviar(() => agendamentosApi.cancelarAgendamento(tenantId as string, appointmentId)),
+    (appointmentId: string, dados: DadosCancelamentoReal) =>
+      enviar(() => agendamentosApi.cancelarAgendamento(tenantId as string, appointmentId, dados)),
     [enviar, tenantId],
   );
 

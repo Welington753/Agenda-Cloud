@@ -134,15 +134,16 @@ export default function AgendamentosPage() {
    * - sucesso: avisa; a agenda já foi recarregada pelo hook;
    * - 409 (horário ocupado, ou reserva alterada por outra tela) e 400 (já
    *   começou, já cancelada): recarrega, para a pessoa ver o estado REAL que
-   *   causou a recusa em vez de continuar olhando o desatualizado;
+   *   causou a recusa em vez de continuar olhando o desatualizado. Nunca
+   *   reenvia: a nova tentativa é uma nova confirmação, com os dados novos;
    * - falha de comunicação: NÃO recarrega e NÃO reenvia. A mensagem diz que a
    *   operação PODE ter acontecido e manda consultar a reserva — afirmar que não
    *   aconteceu seria mentira, e reenviar às cegas poderia cancelar ou mover
    *   algo que já foi gravado.
    */
-  async function aoCancelar(appointmentId: string): Promise<boolean> {
+  async function aoCancelar(appointmentId: string, expectedStartAt: string): Promise<boolean> {
     setErroAcao(null);
-    const resultado = await cancelar(appointmentId);
+    const resultado = await cancelar(appointmentId, { expectedStartAt });
 
     if (resultado.ok) {
       notificar("Reserva cancelada. O horário voltou a ficar livre.", "sucesso");

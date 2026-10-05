@@ -34,7 +34,7 @@ interface AgendaDoDiaProps {
    * formulário de nova reserva. */
   erroAcao: string | null;
   recarregar: () => void;
-  aoCancelar: (appointmentId: string) => Promise<boolean>;
+  aoCancelar: (appointmentId: string, expectedStartAt: string) => Promise<boolean>;
   aoRemarcar: (
     appointmentId: string,
     dados: { startAt: string; expectedStartAt: string },

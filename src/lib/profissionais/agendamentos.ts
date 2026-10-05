@@ -131,6 +131,13 @@ export function mensagemFalhaCancelamento(falha: FalhaAgendamentoReal): string {
         falha.mensagem ??
         "Esta reserva não pode mais ser cancelada. Atualize a agenda para ver o estado atual."
       );
+    case "horario_ocupado":
+      // No cancelamento, o único 409 é a reserva ter mudado depois de a
+      // confirmação abrir. Nada foi cancelado; a pessoa confere e decide de novo.
+      return (
+        falha.mensagem ??
+        "Esta reserva foi alterada desde que a confirmação foi aberta. Nada foi cancelado: confira os dados atualizados."
+      );
     case "falha_comunicacao":
       // NUNCA afirma que o cancelamento não aconteceu: a requisição não teve
       // resposta, então é impossível saber. Também não reenvia sozinho.

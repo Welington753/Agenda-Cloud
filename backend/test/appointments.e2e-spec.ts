@@ -64,6 +64,7 @@ describe('rotas de agendamento (e2e)', () => {
   let createMock: ReturnType<typeof vi.fn>;
   let listMock: ReturnType<typeof vi.fn>;
   let getMock: ReturnType<typeof vi.fn>;
+  let cancelMock: ReturnType<typeof vi.fn>;
   let searchConsumersMock: ReturnType<typeof vi.fn>;
   let createConsumerMock: ReturnType<typeof vi.fn>;
   let guardMock: ReturnType<typeof vi.fn>;
@@ -76,6 +77,7 @@ describe('rotas de agendamento (e2e)', () => {
       appointments: [AGENDAMENTO],
     });
     getMock = vi.fn().mockResolvedValue(AGENDAMENTO);
+    cancelMock = vi.fn().mockResolvedValue({ ...AGENDAMENTO, status: 'CANCELED' });
     searchConsumersMock = vi.fn().mockResolvedValue([]);
     createConsumerMock = vi
       .fn()
@@ -93,7 +95,7 @@ describe('rotas de agendamento (e2e)', () => {
       .overrideProvider(DataSource)
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(AppointmentsService)
-      .useValue({ create: createMock, list: listMock, get: getMock })
+      .useValue({ create: createMock, list: listMock, get: getMock, cancel: cancelMock })
       .overrideProvider(ConsumersService)
       .useValue({ search: searchConsumersMock, create: createConsumerMock })
       .overrideGuard(SessionGuard)
@@ -196,6 +198,42 @@ describe('rotas de agendamento (e2e)', () => {
       .query(query as Record<string, string>)
       .expect(400);
     expect(listMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /cancel repassa o instante que a confirmação mostrava', async () => {
+    const corpo = { expectedStartAt: '2026-09-20T12:00:00.000Z' };
+    const resposta = await request(app.getHttpServer())
+      .post(`${CAMINHO}/appointment_1/cancel`)
+      .send(corpo)
+      .expect(201);
+
+    expect(resposta.body.appointment.status).toBe('CANCELED');
+    expect(cancelMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'appointment_1', corpo);
+  });
+
+  it.each([
+    {},
+    { expectedStartAt: '2026-09-20T12:00:00' },
+    { expectedStartAt: '2026-09-20T12:00:00.000Z', status: 'CANCELED' },
+  ])('POST /cancel recusa corpo inválido com 400: %o', async (corpo) => {
+    await request(app.getHttpServer())
+      .post(`${CAMINHO}/appointment_1/cancel`)
+      .send(corpo)
+      .expect(400);
+    expect(cancelMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /cancel: reserva alterada desde a confirmação vira 409 com a mensagem do servidor', async () => {
+    cancelMock.mockRejectedValueOnce(
+      new ConflictException('O horário desta reserva mudou desde que a confirmação foi aberta.'),
+    );
+
+    const resposta = await request(app.getHttpServer())
+      .post(`${CAMINHO}/appointment_1/cancel`)
+      .send({ expectedStartAt: '2026-09-20T12:00:00.000Z' })
+      .expect(409);
+
+    expect(resposta.body.message).toMatch(/mudou/);
   });
 
   it('não existe rota de cancelamento, remarcação ou mudança de status neste lote', async () => {
