@@ -120,7 +120,7 @@ export default function ContaPage() {
                   <li key={passo.titulo} className="flex gap-3">
                     <span
                       aria-hidden="true"
-                      className="flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-accent text-xs font-bold text-accent"
+                      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-[color:var(--color-accent-hover)]"
                     >
                       {indice + 1}
                     </span>

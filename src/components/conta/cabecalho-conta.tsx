@@ -100,10 +100,13 @@ export function CabecalhoConta() {
                     href={item.href}
                     aria-current={ativo ? "page" : undefined}
                     className={clsx(
-                      "flex min-h-11 items-center justify-center whitespace-nowrap border-b-2 px-2 text-sm font-medium sm:px-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
+                      "flex min-h-11 items-center justify-center whitespace-nowrap px-2 text-sm font-medium sm:px-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
+                      // Fundo + sombra interna, não borda: a regra global
+                      // `* { border-color }` de globals.css (fora de camada)
+                      // venceria qualquer cor de borda utilitária aqui.
                       ativo
-                        ? "border-accent text-white"
-                        : "border-transparent text-white/70 hover:text-white",
+                        ? "bg-white/10 font-semibold text-white shadow-[inset_0_-3px_0_var(--color-accent)]"
+                        : "text-white/70 hover:text-white",
                     )}
                   >
                     {item.rotulo}
