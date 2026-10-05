@@ -32,13 +32,19 @@ import {
 import { comoDataDeCalendario, rotuloDaData, rotuloDeDuracao } from "@/lib/profissionais/agendamentos";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { ConfirmarCancelamento } from "./confirmar-cancelamento";
+import { ConfirmarCancelamento, type ConfirmacaoCancelamento } from "./confirmar-cancelamento";
 
 interface AcoesReservaProps {
   tenantId: string;
   agendamento: AgendamentoReal;
   /** `true` enquanto QUALQUER gravação da agenda está em voo. */
   gravando: boolean;
+  /** Confirmação de cancelamento aberta para ESTA reserva, se houver. O estado
+   * vive em `AgendaDoDia`: o reload da agenda desmonta esta linha, e a
+   * confirmação (com o aviso de que a reserva mudou) precisa sobreviver a ele. */
+  confirmacao: ConfirmacaoCancelamento | null;
+  aoAbrirCancelamento: () => void;
+  aoFecharCancelamento: () => void;
   aoCancelar: (appointmentId: string, expectedStartAt: string) => Promise<boolean>;
   aoRemarcar: (
     appointmentId: string,
@@ -46,74 +52,51 @@ interface AcoesReservaProps {
   ) => Promise<boolean>;
 }
 
-type Modo = "fechado" | "cancelando" | "remarcando";
-
-/** O que a confirmação de cancelamento está mostrando, e o que mostrava antes
- * se a reserva mudou com ela aberta. */
-interface ConfirmacaoCancelamento {
-  exibida: AgendamentoReal;
-  anterior: AgendamentoReal | null;
-}
-
 export function AcoesReserva({
   tenantId,
   agendamento,
   gravando,
+  confirmacao,
+  aoAbrirCancelamento,
+  aoFecharCancelamento,
   aoCancelar,
   aoRemarcar,
 }: AcoesReservaProps) {
-  const [modo, setModo] = useState<Modo>("fechado");
-  const [confirmacao, setConfirmacao] = useState<ConfirmacaoCancelamento | null>(null);
+  const [remarcando, setRemarcando] = useState(false);
 
   // A reserva mudou de instante (remarcada com sucesso, ou a agenda foi
   // recarregada): o painel de remarcação passa a falar de um estado que não
   // existe mais, então fecha. A confirmação de cancelamento NÃO fecha em
-  // silêncio: ela passa a mostrar os dados novos com um aviso (efeito abaixo).
+  // silêncio: `AgendaDoDia` passa a mostrar os dados novos com um aviso.
   useEffect(() => {
-    setModo((atual) => (atual === "cancelando" ? atual : "fechado"));
+    setRemarcando(false);
   }, [agendamento.startAt, agendamento.status]);
 
-  useEffect(() => {
-    setConfirmacao((atual) => {
-      if (!atual) return atual;
-      const { exibida } = atual;
-      if (exibida.startAt === agendamento.startAt && exibida.status === agendamento.status) {
-        return atual;
-      }
-      return { exibida: agendamento, anterior: exibida };
-    });
-  }, [agendamento]);
-
-  function fecharConfirmacao() {
-    setConfirmacao(null);
-    setModo("fechado");
-  }
-
-  if (modo === "cancelando" && confirmacao) {
+  if (confirmacao) {
     const { exibida } = confirmacao;
     return (
       <ConfirmarCancelamento
         agendamento={exibida}
         anterior={confirmacao.anterior}
         gravando={gravando}
-        aoDesistir={fecharConfirmacao}
+        aoDesistir={aoFecharCancelamento}
         aoConfirmar={async () => {
           // O instante MOSTRADO nesta confirmação, nunca o mais recente da
           // agenda: se divergir do gravado, o servidor recusa com 409.
           const ok = await aoCancelar(exibida.id, exibida.startAt);
-          if (ok) fecharConfirmacao();
+          if (ok) aoFecharCancelamento();
         }}
       />
     );
   }
 
-  if (modo === "remarcando") {
+  if (remarcando) {
     return (
       <PainelRemarcacao
         tenantId={tenantId}
         agendamento={agendamento}
         gravando={gravando}
-        aoDesistir={() => setModo("fechado")}
+        aoDesistir={() => setRemarcando(false)}
         aoRemarcar={aoRemarcar}
       />
     );
@@ -126,7 +109,7 @@ export function AcoesReserva({
         variante="secundaria"
         data-testid="abrir-remarcacao"
         disabled={gravando}
-        onClick={() => setModo("remarcando")}
+        onClick={() => setRemarcando(true)}
       >
         <CalendarClock size={14} className="mr-1" />
         Remarcar
@@ -136,10 +119,7 @@ export function AcoesReserva({
         variante="secundaria"
         data-testid="abrir-cancelamento"
         disabled={gravando}
-        onClick={() => {
-          setConfirmacao({ exibida: agendamento, anterior: null });
-          setModo("cancelando");
-        }}
+        onClick={aoAbrirCancelamento}
       >
         <XCircle size={14} className="mr-1" />
         Cancelar

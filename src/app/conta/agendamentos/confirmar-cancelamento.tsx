@@ -8,6 +8,13 @@ import type { AgendamentoReal } from "@/lib/api/appointments-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 
+/** O que a confirmação de cancelamento está mostrando, e o que mostrava antes
+ * se a reserva mudou com ela aberta. */
+export interface ConfirmacaoCancelamento {
+  exibida: AgendamentoReal;
+  anterior: AgendamentoReal | null;
+}
+
 /** A confirmação NOMEIA a reserva: hora, serviço, profissional e cliente. */
 export function ConfirmarCancelamento({
   agendamento,

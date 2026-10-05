@@ -9,6 +9,7 @@
 // Fuso: exibe as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`), nunca converte nada com o relógio do
 // navegador.
+import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import type { AgendaDoDiaReal, AgendamentoReal } from "@/lib/api/appointments-api";
 import {
@@ -23,6 +24,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AcoesReserva } from "./acoes-reserva";
+import type { ConfirmacaoCancelamento } from "./confirmar-cancelamento";
 
 interface AgendaDoDiaProps {
   tenantId: string;
@@ -51,6 +53,29 @@ export function AgendaDoDia({
   aoCancelar,
   aoRemarcar,
 }: AgendaDoDiaProps) {
+  // A confirmação de cancelamento vive AQUI, não na linha da reserva: o reload
+  // da agenda (inclusive o que segue um 409) passa por "carregando" e desmonta
+  // a lista. Guardada aqui, ela sobrevive e pode avisar que a reserva mudou.
+  const [confirmacao, setConfirmacao] = useState<ConfirmacaoCancelamento | null>(null);
+
+  // Agenda nova chegou: se a reserva da confirmação mudou, a confirmação passa
+  // a mostrar os dados novos COM o que mostrava antes — nunca troca o horário
+  // em silêncio e nunca reenvia nada. Se ela saiu do dia ou não pode mais ser
+  // cancelada, a confirmação fecha (o erro da ação continua explicando).
+  useEffect(() => {
+    if (!agenda) return;
+    setConfirmacao((atual) => {
+      if (!atual) return atual;
+      const atualizada = agenda.appointments.find((a) => a.id === atual.exibida.id);
+      if (!atualizada || !podeAlterarAgendamento(atualizada, new Date())) return null;
+      const { exibida } = atual;
+      if (exibida.startAt === atualizada.startAt && exibida.status === atualizada.status) {
+        return atual;
+      }
+      return { exibida: atualizada, anterior: exibida };
+    });
+  }, [agenda]);
+
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold text-ink">Agenda do dia</p>
@@ -115,6 +140,9 @@ export function AgendaDoDia({
                   tenantId={tenantId}
                   agendamento={agendamento}
                   gravando={gravando}
+                  confirmacao={confirmacao?.exibida.id === agendamento.id ? confirmacao : null}
+                  aoAbrirCancelamento={() => setConfirmacao({ exibida: agendamento, anterior: null })}
+                  aoFecharCancelamento={() => setConfirmacao(null)}
                   aoCancelar={aoCancelar}
                   aoRemarcar={aoRemarcar}
                 />
