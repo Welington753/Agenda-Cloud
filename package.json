@@ -13,7 +13,7 @@
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:browser": "playwright test",
     "test:browser:auth": "playwright test tests/browser/auth-cookie-flow.spec.ts tests/browser/registration-flow.spec.ts",
-    "test:browser:services": "playwright test tests/browser/services-flow.spec.ts",
+    "test:browser:services": "playwright test tests/browser/services-flow.spec.ts tests/browser/pilot-navigation-flow.spec.ts",
     "test:browser:professionals": "playwright test tests/browser/professionals-flow.spec.ts",
     "test:browser:working-hours": "playwright test tests/browser/professional-working-hours-flow.spec.ts",
     "test:browser:availability": "playwright test tests/browser/availability-flow.spec.ts",

@@ -2,7 +2,8 @@ import { CalendarCheck, MessageSquareOff, Smartphone, TimerOff } from "lucide-re
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { LinkBotao } from "@/components/ui/button";
 import { SLOGAN_PRODUTO } from "@/lib/config";
-import { HREF_ENTRAR, HREF_TESTAR_GRATIS } from "@/lib/site/conteudo-comercial";
+import Link from "next/link";
+import { HREF_CRIAR_CONTA, HREF_DEMONSTRACAO, HREF_ENTRAR } from "@/lib/site/conteudo-comercial";
 
 const BENEFICIOS = [
   { icone: MessageSquareOff, titulo: "Menos mensagens", descricao: "O cliente marca sozinho, sem trocar mensagens para achar um horário livre." },
@@ -20,13 +21,20 @@ export function Hero() {
           Para salões, clínicas, estúdios, terapeutas, pet shops e qualquer negócio que atenda com hora marcada.
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkBotao href={HREF_TESTAR_GRATIS} tamanho="lg" className="w-full sm:w-auto">
-            Testar grátis
+          <LinkBotao href={HREF_CRIAR_CONTA} tamanho="lg" className="w-full sm:w-auto">
+            Criar conta
           </LinkBotao>
           <LinkBotao href={HREF_ENTRAR} tamanho="lg" variante="secundaria" className="w-full sm:w-auto">
             Entrar
           </LinkBotao>
         </div>
+        <p className="mt-4 text-sm text-ink-soft">
+          Quer só conhecer antes?{" "}
+          <Link href={HREF_DEMONSTRACAO} className="font-semibold text-accent hover:underline">
+            Ver demonstração
+          </Link>{" "}
+          — dados fictícios, guardados só neste navegador.
+        </p>
       </div>
 
       <div className="mx-auto mt-14 grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -18,8 +18,13 @@ export const NAV_SITE: ItemNavegacao[] = [
   { rotulo: "Planos", href: "#planos" },
 ];
 
+/** Login da conta REAL (backend NestJS). */
 export const HREF_ENTRAR = "/login";
-export const HREF_TESTAR_GRATIS = "/onboarding";
+/** Cadastro da conta REAL: cria usuário, estabelecimento e sessão. */
+export const HREF_CRIAR_CONTA = "/cadastro";
+/** Demonstração local (onboarding + painel com dados fictícios no navegador).
+ * Nunca chamar de "teste grátis" da conta real: são coisas diferentes. */
+export const HREF_DEMONSTRACAO = "/onboarding";
 
 export interface Segmento {
   id: string;
@@ -160,7 +165,7 @@ export const PLANOS_COMERCIAIS: PlanoComercial[] = [
     descricaoCurta: "Para quem trabalha sozinho ou com uma equipe pequena.",
     precoTexto: "Preço em definição para o piloto",
     destaques: ["Agenda", "Agendamento público", "Cadastro de profissionais"],
-    ctaHref: HREF_TESTAR_GRATIS,
+    ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "equipe",
@@ -168,7 +173,7 @@ export const PLANOS_COMERCIAIS: PlanoComercial[] = [
     descricaoCurta: "Para negócios que já acompanham clientes e relatórios básicos.",
     precoTexto: "Participe do piloto",
     destaques: ["Tudo do Essencial", "Cadastro de clientes", "Relatórios básicos", "Gestão de equipe"],
-    ctaHref: HREF_TESTAR_GRATIS,
+    ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "pro",
@@ -176,7 +181,7 @@ export const PLANOS_COMERCIAIS: PlanoComercial[] = [
     descricaoCurta: "Para negócios com mais de uma unidade.",
     precoTexto: "Participe do piloto",
     destaques: ["Tudo do Gestão", "Múltiplas unidades", "Personalização avançada"],
-    ctaHref: HREF_TESTAR_GRATIS,
+    ctaHref: HREF_DEMONSTRACAO,
   },
 ];
 

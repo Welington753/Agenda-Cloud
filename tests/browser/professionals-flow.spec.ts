@@ -93,7 +93,10 @@ test.describe("gestão real de profissionais", () => {
     const tenantId = await tenantDe(page);
     const servico = await criarServico(page, tenantId, "Corte");
 
-    await page.getByRole("button", { name: "Gerenciar profissionais" }).click();
+    await page
+      .getByRole("navigation", { name: "Áreas da conta" })
+      .getByRole("link", { name: "Profissionais" })
+      .click();
     await expect(page).toHaveURL(/\/conta\/profissionais$/);
 
     await expect(page.getByText("Nenhum profissional cadastrado")).toBeVisible();

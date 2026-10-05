@@ -111,7 +111,21 @@ export function AdminShell({ itens, subtitulo, children }: AdminShellProps) {
         </div>
       )}
 
-      <main className="flex-1 bg-paper px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+      <main className="flex-1 bg-paper px-4 py-6 sm:px-6 lg:px-8">
+        {/* Toda área sob este shell (painel, master, profissional) é a
+            DEMONSTRAÇÃO local — o aviso evita confundi-la com a conta real. */}
+        <p
+          role="note"
+          data-testid="aviso-demonstracao"
+          className="mb-4 rounded-[var(--radius-control)] border border-dashed border-border bg-paper-muted px-3 py-2 text-xs text-ink-soft"
+        >
+          Demonstração: os dados são fictícios e ficam só neste navegador.{" "}
+          <Link href="/cadastro" className="font-semibold text-accent hover:underline">
+            Criar uma conta real
+          </Link>
+        </p>
+        {children}
+      </main>
     </div>
   );
 }

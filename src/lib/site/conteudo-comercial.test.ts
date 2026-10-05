@@ -3,7 +3,9 @@ import {
   FLUXO_DEMONSTRACAO,
   FUNCIONALIDADES_DISPONIVEIS,
   FUNCIONALIDADES_EM_DESENVOLVIMENTO,
-  HREF_TESTAR_GRATIS,
+  HREF_CRIAR_CONTA,
+  HREF_DEMONSTRACAO,
+  HREF_ENTRAR,
   NAV_SITE,
   PERGUNTAS_FREQUENTES,
   PLANOS_COMERCIAIS,
@@ -73,7 +75,7 @@ describe("planos comerciais", () => {
 
   it("todos os CTAs levam ao onboarding demonstrável", () => {
     for (const plano of PLANOS_COMERCIAIS) {
-      expect(plano.ctaHref).toBe(HREF_TESTAR_GRATIS);
+      expect(plano.ctaHref).toBe(HREF_DEMONSTRACAO);
     }
   });
 
@@ -93,7 +95,10 @@ describe("navegação", () => {
     expect(NAV_SITE.every((i) => i.href.startsWith("#"))).toBe(true);
   });
 
-  it("os CTAs 'Entrar' e 'Testar grátis' levam a rotas distintas e reais", () => {
-    expect(HREF_TESTAR_GRATIS).toBe("/onboarding");
+  it("Entrar, Criar conta e Ver demonstração levam a três destinos distintos", () => {
+    // Entrar e Criar conta são a conta REAL; a demonstração é local.
+    expect(HREF_ENTRAR).toBe("/login");
+    expect(HREF_CRIAR_CONTA).toBe("/cadastro");
+    expect(HREF_DEMONSTRACAO).toBe("/onboarding");
   });
 });

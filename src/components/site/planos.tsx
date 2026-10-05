@@ -26,7 +26,7 @@ export function Planos() {
                 ))}
               </ul>
               <LinkBotao href={plano.ctaHref} className="mt-6 w-full" variante={plano.codigo === "equipe" ? "primaria" : "secundaria"}>
-                Testar grátis
+                Ver demonstração
               </LinkBotao>
             </CartaoCorpo>
           </Cartao>

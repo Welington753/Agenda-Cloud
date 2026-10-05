@@ -10,8 +10,7 @@
 // aqui.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, PlusCircle, Store, UserRound } from "lucide-react";
+import { PlusCircle, Store, UserRound } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
@@ -272,11 +271,7 @@ function Pagina({
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
       <div>
-        <Link href="/conta" className="text-xs font-medium text-accent hover:underline">
-          <ArrowLeft size={12} className="mr-1 inline" />
-          Voltar para a conta
-        </Link>
-        <h1 className="mt-2 text-xl font-bold text-ink">{titulo}</h1>
+        <h1 className="text-xl font-bold text-ink">{titulo}</h1>
         {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
       </div>
       {children}

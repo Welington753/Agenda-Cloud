@@ -14,7 +14,6 @@ import { Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { NOME_PRODUTO } from "@/lib/config";
 
 export default function SelecionarEstabelecimentoPage() {
   const { estado, selecionarTenantAtivo } = useRealAuth();
@@ -35,11 +34,10 @@ export default function SelecionarEstabelecimentoPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-paper px-4 py-10">
+    <div className="flex flex-col items-center px-4 py-10">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <p className="text-sm font-semibold text-accent">{NOME_PRODUTO}</p>
-          <h1 className="mt-1 text-xl font-bold text-ink">Escolha um estabelecimento</h1>
+          <h1 className="text-xl font-bold text-ink">Escolha um estabelecimento</h1>
           <p className="mt-1 text-sm text-ink-soft">Sua conta tem acesso a mais de um estabelecimento.</p>
         </div>
 

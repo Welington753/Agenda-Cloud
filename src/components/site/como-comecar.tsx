@@ -1,5 +1,5 @@
 import { LinkBotao } from "@/components/ui/button";
-import { COMO_COMECAR, HREF_TESTAR_GRATIS } from "@/lib/site/conteudo-comercial";
+import { COMO_COMECAR, HREF_DEMONSTRACAO } from "@/lib/site/conteudo-comercial";
 
 export function ComoComecar() {
   return (
@@ -17,8 +17,8 @@ export function ComoComecar() {
             </div>
           ))}
         </div>
-        <LinkBotao href={HREF_TESTAR_GRATIS} tamanho="lg" className="mt-10">
-          Testar grátis agora
+        <LinkBotao href={HREF_DEMONSTRACAO} tamanho="lg" className="mt-10">
+          Ver demonstração
         </LinkBotao>
       </div>
     </section>
