@@ -13,6 +13,11 @@
 // depois de conferir a agenda.
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as agendamentosApi from "@/lib/api/appointments-api";
+import {
+  alterarStatusAgendamento,
+  type AcaoDeStatusReal,
+  type DadosAcaoDeStatusReal,
+} from "@/lib/api/appointment-status-api";
 import type {
   AgendaDoDiaReal,
   AgendamentoReal,
@@ -39,6 +44,12 @@ export interface AgendamentosReaisControlados {
   cancelar: (
     appointmentId: string,
     dados: DadosCancelamentoReal,
+  ) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
+  /** Confirmar, iniciar, concluir ou registrar falta (Lote 6D.7). */
+  alterarStatus: (
+    appointmentId: string,
+    acao: AcaoDeStatusReal,
+    dados: DadosAcaoDeStatusReal,
   ) => Promise<ResultadoAgendamentoReal<AgendamentoReal>>;
   remarcar: (
     appointmentId: string,
@@ -94,7 +105,8 @@ export function useAgendamentosReais(
   const recarregar = useCallback(() => setRecarga((n) => n + 1), []);
 
   /**
-   * Disciplina única das três gravações (criar, cancelar, remarcar):
+   * Disciplina única das gravações (criar, cancelar, remarcar e as ações de
+   * andamento do Lote 6D.7):
    *
    * - `gravandoRef` barra um segundo envio que já foi despachado antes do
    *   re-render desabilitar o botão — o `disabled` sozinho não cobre isso;
@@ -147,6 +159,12 @@ export function useAgendamentosReais(
     [enviar, tenantId],
   );
 
+  const alterarStatus = useCallback(
+    (appointmentId: string, acao: AcaoDeStatusReal, dados: DadosAcaoDeStatusReal) =>
+      enviar(() => alterarStatusAgendamento(tenantId as string, appointmentId, acao, dados)),
+    [enviar, tenantId],
+  );
+
   const remarcar = useCallback(
     (appointmentId: string, dados: DadosRemarcacaoReal) =>
       enviar(() =>
@@ -155,5 +173,5 @@ export function useAgendamentosReais(
     [enviar, tenantId],
   );
 
-  return { estado, gravando, recarregar, criar, cancelar, remarcar };
+  return { estado, gravando, recarregar, criar, cancelar, alterarStatus, remarcar };
 }

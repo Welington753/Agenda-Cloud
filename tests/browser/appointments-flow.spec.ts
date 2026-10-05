@@ -8,7 +8,8 @@
 // na API: botão escondido não é controle de acesso.
 //
 // Orçamento de POST /auth/register: o rate limit real é 5 por 15 min por IP e
-// este arquivo gasta 3 — fluxo, isolamento e, no Lote 6D.6, remarcar/cancelar.
+// este arquivo gasta 4 — fluxo, isolamento, remarcar/cancelar (Lote 6D.6) e
+// o andamento do atendimento (Lote 6D.7).
 // Roda em invocação SEPARADA do Playwright, com backend novo e limiter zerado
 // (ver .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado
 // para o teste passar; se o orçamento apertar, o caminho é outra invocação
@@ -70,9 +71,10 @@ async function criarServico(
   tenantId: string,
   nome: string,
   durationMinutes: number,
+  requiresManualConfirmation = false,
 ): Promise<string> {
   return pagina.evaluate(
-    async ({ tenantId, nome, durationMinutes }) => {
+    async ({ tenantId, nome, durationMinutes, requiresManualConfirmation }) => {
       const r = await fetch(`http://localhost:3001/tenants/${tenantId}/services`, {
         method: "POST",
         credentials: "include",
@@ -86,13 +88,13 @@ async function criarServico(
           bufferAfterMinutes: 0,
           modality: "IN_PERSON",
           activeInPublicBooking: true,
-          requiresManualConfirmation: false,
+          requiresManualConfirmation,
         }),
       });
       const corpo = (await r.json()) as { service: { id: string } };
       return corpo.service.id;
     },
-    { tenantId, nome, durationMinutes },
+    { tenantId, nome, durationMinutes, requiresManualConfirmation },
   );
 }
 
@@ -544,4 +546,141 @@ test.describe("agendamentos reais", () => {
     await expect.poll(() => horariosLivres(page)).toContain("10:00");
   });
 
+  test("andamento: os quatro botões, as confirmações e a recusa do servidor (Lote 6D.7)", async ({
+    page,
+    request,
+  }) => {
+    const conta = await criarConta(request, "andamento");
+    await entrar(page, conta);
+    const tenantId = await tenantDe(page);
+
+    // Serviço de 30 min com confirmação manual: as reservas nascem PENDING.
+    const servicoId = await criarServico(page, tenantId, "Corte", 30, true);
+    const profissionalId = await criarProfissional(page, tenantId, "Ana Souza", [servicoId]);
+    await definirJornada(page, tenantId, profissionalId);
+
+    // Duas reservas pela API (a tela de criação já é provada acima): 09:00 e 09:45.
+    for (const [hora, cliente, telefone] of [
+      ["09:00", "Cliente das Nove", "(11) 94444-1111"],
+      ["09:45", "Cliente das Nove e Quarenta", "(11) 94444-2222"],
+    ]) {
+      const status = await page.evaluate(
+        async ({ tenantId, corpo }) => {
+          const r = await fetch(`http://localhost:3001/tenants/${tenantId}/appointments`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(corpo),
+          });
+          return r.status;
+        },
+        {
+          tenantId,
+          corpo: {
+            professionalId: profissionalId,
+            serviceId: servicoId,
+            startAt: instanteLocalDe(hora),
+            consumer: { mode: "new", data: { name: cliente, whatsapp: telefone } },
+          },
+        },
+      );
+      expect(status).toBe(201);
+    }
+
+    const envios: string[] = [];
+    page.on("request", (req) => {
+      const acao = /\/appointments\/[^/]+\/(confirm|start|complete|no-show)$/.exec(req.url());
+      if (req.method() === "POST" && acao) envios.push(acao[1]);
+    });
+    const linha = (hora: string) =>
+      page.getByTestId("agenda-do-dia").locator("li").filter({ hasText: `${hora}–` });
+    async function abrirAgenda() {
+      await page.goto("/conta/agendamentos");
+      await page.getByLabel("Dia").fill(DATA);
+      await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
+    }
+
+    // --------------------------------------------- relógio real: dias antes
+    await abrirAgenda();
+    const nove = linha("09:00");
+    await expect(nove.getByTestId("status-agendado")).toHaveText("Aguardando confirmação");
+    await expect(nove.getByTestId("confirmar-reserva")).toBeVisible();
+    await expect(nove.getByTestId("abrir-remarcacao")).toBeVisible();
+    await expect(nove.getByTestId("abrir-cancelamento")).toBeVisible();
+    for (const ausente of ["iniciar-atendimento", "abrir-conclusao", "abrir-falta"]) {
+      await expect(nove.getByTestId(ausente)).toHaveCount(0);
+    }
+
+    // Confirmar é um clique só e o servidor aceita (antes do início).
+    await nove.getByTestId("confirmar-reserva").click();
+    await expect(nove.getByTestId("status-agendado")).toHaveText("Confirmado");
+    await expect(nove.getByTestId("confirmar-reserva")).toHaveCount(0);
+    expect(envios).toEqual(["confirm"]);
+
+    // ------------------------------- relógio do NAVEGADOR em 09:20 de DATA
+    // Só a tela muda de opinião sobre o que oferecer; o servidor segue com o
+    // relógio real (dias antes de DATA) e recusa — é isso que prova que cada
+    // botão chama a SUA rota, sem reenvio, e que nada muda no banco. O
+    // sucesso dessas ações é provado contra o PostgreSQL, com relógio injetado.
+    await page.clock.setFixedTime(new Date(instanteLocalDe("09:20")));
+    await abrirAgenda();
+
+    // 09:00 confirmada e já começou: iniciar, concluir e falta — sem remarcar
+    // nem cancelar.
+    for (const presente of ["iniciar-atendimento", "abrir-conclusao", "abrir-falta"]) {
+      await expect(nove.getByTestId(presente)).toBeVisible();
+    }
+    await expect(nove.getByTestId("abrir-remarcacao")).toHaveCount(0);
+    await expect(nove.getByTestId("abrir-cancelamento")).toHaveCount(0);
+
+    // 09:45 pendente, faltando 25 min: "Iniciar" SE SOMA a confirmar,
+    // remarcar e cancelar.
+    const noveEQuarenta = linha("09:45");
+    for (const presente of [
+      "confirmar-reserva",
+      "iniciar-atendimento",
+      "abrir-remarcacao",
+      "abrir-cancelamento",
+    ]) {
+      await expect(noveEQuarenta.getByTestId(presente)).toBeVisible();
+    }
+    await expect(noveEQuarenta.getByTestId("abrir-falta")).toHaveCount(0);
+
+    // Registrar falta: confirmação que NOMEIA a reserva; recusa do servidor.
+    await nove.getByTestId("abrir-falta").click();
+    await expect(page.getByTestId("reserva-com-falta")).toContainText(
+      "09:00–09:30 · Corte · com Ana Souza · para Cliente das Nove",
+    );
+    await page.getByTestId("confirmar-falta-botao").click();
+    await expect(page.getByTestId("erro-acao-reserva")).toContainText("registrar falta");
+    expect(envios).toEqual(["confirm", "no-show"]);
+    // A confirmação sobrevive ao reload da agenda e não reenvia nada.
+    await expect(page.getByTestId("confirmar-falta")).toBeVisible();
+    await page.getByTestId("confirmar-falta").getByRole("button", { name: "Voltar" }).click();
+    await expect(page.getByTestId("confirmar-falta")).toHaveCount(0);
+
+    // Concluir: desistir não envia nada; confirmar envia uma vez.
+    await nove.getByTestId("abrir-conclusao").click();
+    await expect(page.getByTestId("reserva-a-concluir")).toContainText("Cliente das Nove");
+    await page.getByTestId("confirmar-conclusao").getByRole("button", { name: "Voltar" }).click();
+    expect(envios).toEqual(["confirm", "no-show"]);
+    await nove.getByTestId("abrir-conclusao").click();
+    await page.getByTestId("confirmar-conclusao-botao").click();
+    await expect(page.getByTestId("erro-acao-reserva")).toContainText("concluir");
+    expect(envios).toEqual(["confirm", "no-show", "complete"]);
+    await page.getByTestId("confirmar-conclusao").getByRole("button", { name: "Voltar" }).click();
+
+    // Iniciar: um clique, sem confirmação; o servidor recusa pela antecedência.
+    await noveEQuarenta.getByTestId("iniciar-atendimento").click();
+    await expect(page.getByTestId("erro-acao-reserva")).toContainText("iniciar");
+    expect(envios).toEqual(["confirm", "no-show", "complete", "start"]);
+
+    // Nada mudou no banco: o reload relê pela API.
+    await abrirAgenda();
+    await expect(nove.getByTestId("status-agendado")).toHaveText("Confirmado");
+    await expect(noveEQuarenta.getByTestId("status-agendado")).toHaveText(
+      "Aguardando confirmação",
+    );
+    expect(envios).toEqual(["confirm", "no-show", "complete", "start"]);
+  });
 });

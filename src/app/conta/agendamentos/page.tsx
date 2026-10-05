@@ -4,10 +4,12 @@
 // REAL: nada de repositório, seed ou dado da demonstração entra aqui
 // (auditado por lib/servicos/sem-dados-demo.test.ts).
 //
-// ESCOPO: criar, consultar, CANCELAR e REMARCAR (Lote 6D.6). Remarcar move só
-// o horário da mesma reserva; não há mudança manual de status nem exclusão —
-// o backend também não tem rota para isso. A lista do dia e as ações por
-// reserva vivem em agenda-do-dia.tsx / acoes-reserva.tsx.
+// ESCOPO: criar, consultar, CANCELAR e REMARCAR (Lote 6D.6); CONFIRMAR,
+// INICIAR, CONCLUIR e REGISTRAR FALTA (Lote 6D.7). Remarcar move só
+// o horário da mesma reserva. Não há escolha livre de status nem exclusão:
+// cada mudança de status é uma ação explícita, com destino fixo pela rota do
+// backend. A lista do dia e as ações por reserva vivem em agenda-do-dia.tsx /
+// acoes-reserva.tsx.
 //
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
@@ -30,6 +32,8 @@ import {
   rotuloDaData,
 } from "@/lib/profissionais/agendamentos";
 import type { AgendamentoReal, SelecaoDeCliente } from "@/lib/api/appointments-api";
+import type { AcaoDeStatusReal } from "@/lib/api/appointment-status-api";
+import { mensagemFalhaStatus, mensagemSucessoStatus } from "@/lib/profissionais/andamento";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
@@ -56,10 +60,8 @@ export default function AgendamentosPage() {
    * formulário de criação. */
   const [erroAcao, setErroAcao] = useState<string | null>(null);
 
-  const { estado, gravando, recarregar, criar, cancelar, remarcar } = useAgendamentosReais(
-    tenantIdAtivo,
-    date,
-  );
+  const { estado, gravando, recarregar, criar, cancelar, alterarStatus, remarcar } =
+    useAgendamentosReais(tenantIdAtivo, date);
   const { estado: estadoProfissionais } = useProfissionaisReais(tenantIdAtivo);
 
   useEffect(() => {
@@ -157,6 +159,29 @@ export default function AgendamentosPage() {
     return false;
   }
 
+  /** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7): mesmo
+   * tratamento do cancelamento — 409/400 recarregam, falha de rede nunca
+   * reenvia nem afirma que nada aconteceu. */
+  async function aoAlterarStatus(
+    appointmentId: string,
+    acao: AcaoDeStatusReal,
+    expectedStartAt: string,
+  ): Promise<boolean> {
+    setErroAcao(null);
+    const resultado = await alterarStatus(appointmentId, acao, { expectedStartAt });
+
+    if (resultado.ok) {
+      notificar(mensagemSucessoStatus(acao, resultado.dados), "sucesso");
+      return true;
+    }
+
+    setErroAcao(mensagemFalhaStatus(acao, resultado.falha));
+    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
+      recarregar();
+    }
+    return false;
+  }
+
   async function aoRemarcar(
     appointmentId: string,
     dados: { startAt: string; expectedStartAt: string },
@@ -238,6 +263,7 @@ export default function AgendamentosPage() {
         erroAcao={erroAcao}
         recarregar={recarregar}
         aoCancelar={aoCancelar}
+        aoAlterarStatus={aoAlterarStatus}
         aoRemarcar={aoRemarcar}
       />
     </Pagina>
