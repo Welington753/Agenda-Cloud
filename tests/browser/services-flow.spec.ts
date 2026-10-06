@@ -115,10 +115,17 @@ test.describe("gestão real de serviços", () => {
     // Segura a resposta da criação para o segundo clique acontecer com a
     // requisição comprovadamente em voo — sem isso ele poderia cair depois de
     // a gravação terminar e não provaria nada. A requisição continua indo ao
-    // backend real; nada é simulado.
+    // backend real; nada é simulado. O POST fica retido por uma condição que
+    // o PRÓPRIO teste libera (nunca um tempo fixo), e a interceptação só sai
+    // depois da resposta: remover a rota com o handler pendente deixa o
+    // destino da requisição fora do controle do teste (ver
+    // professional-working-hours-flow.spec.ts).
+    const criacaoInterceptada = Promise.withResolvers<void>();
+    const liberarCriacao = Promise.withResolvers<void>();
     await page.route("**/tenants/*/services", async (rota) => {
       if (rota.request().method() === "POST") {
-        await new Promise((resolver) => setTimeout(resolver, 1_500));
+        criacaoInterceptada.resolve();
+        await liberarCriacao.promise;
       }
       await rota.continue();
     });
@@ -126,10 +133,22 @@ test.describe("gestão real de serviços", () => {
     // Localizador pelo `type`, nunca pelo texto: durante a gravação o rótulo
     // do botão vira "Salvando...", e um locator por nome deixaria de casar.
     const salvar = page.locator('form button[type="submit"]');
-    await salvar.click();
-    await expect(salvar).toBeDisabled();
-    await salvar.click({ force: true });
-    await page.unroute("**/tenants/*/services");
+    try {
+      const respostaDaCriacao = page.waitForResponse(
+        (resposta) => resposta.request().method() === "POST" && /\/services$/.test(resposta.url()),
+      );
+      try {
+        await salvar.click();
+        await criacaoInterceptada.promise;
+        await expect(salvar).toBeDisabled();
+        await salvar.click({ force: true });
+      } finally {
+        liberarCriacao.resolve();
+      }
+      expect((await respostaDaCriacao).ok()).toBe(true);
+    } finally {
+      await page.unroute("**/tenants/*/services");
+    }
 
     await expect(page.getByText("Atendimento padrão")).toBeVisible();
     // R$ 85,50 formatado pelo Intl usa espaço não separável.
@@ -168,16 +187,31 @@ test.describe("gestão real de serviços", () => {
     page.on("request", (req) => {
       if (req.method() === "POST" && /\/reactivate$/.test(req.url())) reativacoes += 1;
     });
+    const reativacaoInterceptada = Promise.withResolvers<void>();
+    const liberarReativacao = Promise.withResolvers<void>();
     await page.route("**/tenants/*/services/*/reactivate", async (rota) => {
-      await new Promise((resolver) => setTimeout(resolver, 1_500));
+      reativacaoInterceptada.resolve();
+      await liberarReativacao.promise;
       await rota.continue();
     });
 
     const reativar = page.getByRole("button", { name: "Reativar Atendimento estendido" });
-    await reativar.click();
-    await expect(reativar).toBeDisabled();
-    await reativar.click({ force: true });
-    await page.unroute("**/tenants/*/services/*/reactivate");
+    try {
+      const respostaDaReativacao = page.waitForResponse(
+        (resposta) => resposta.request().method() === "POST" && /\/reactivate$/.test(resposta.url()),
+      );
+      try {
+        await reativar.click();
+        await reativacaoInterceptada.promise;
+        await expect(reativar).toBeDisabled();
+        await reativar.click({ force: true });
+      } finally {
+        liberarReativacao.resolve();
+      }
+      expect((await respostaDaReativacao).ok()).toBe(true);
+    } finally {
+      await page.unroute("**/tenants/*/services/*/reactivate");
+    }
 
     // Reativado some da marcação de inativo e volta a mostrar "Desativar".
     await expect(page.getByText("Inativo")).toHaveCount(0);
