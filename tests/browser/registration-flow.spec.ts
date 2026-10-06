@@ -91,9 +91,16 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
     // Segura a resposta do cadastro por tempo suficiente para clicar de novo
     // com a requisição comprovadamente em voo — sem isso o segundo clique
     // poderia cair depois da navegação e não provar nada. A requisição em si
-    // continua indo para o backend real; nada é simulado aqui.
+    // continua indo para o backend real; nada é simulado aqui. O POST fica
+    // retido por uma condição que o PRÓPRIO teste libera (nunca um tempo
+    // fixo), e a interceptação só sai depois da resposta: remover a rota com
+    // o handler pendente deixa o destino da requisição fora do controle do
+    // teste (ver professional-working-hours-flow.spec.ts).
+    const cadastroInterceptado = Promise.withResolvers<void>();
+    const liberarCadastro = Promise.withResolvers<void>();
     await page.route("**/auth/register", async (rota) => {
-      await new Promise((resolver) => setTimeout(resolver, 1_500));
+      cadastroInterceptado.resolve();
+      await liberarCadastro.promise;
       await rota.continue();
     });
 
@@ -103,12 +110,25 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
     // Localizador pelo `type`, não pelo texto: durante o envio o rótulo muda
     // para "Criando conta...".
     const botao = page.locator('form button[type="submit"]');
-    await botao.click();
-    await expect(botao).toBeDisabled();
-    // Segundo clique com a primeira requisição ainda em voo: `force` ignora a
-    // checagem de "elemento acionável", então isto testa de fato que um
-    // botão desabilitado não reenvia o cadastro.
-    await botao.click({ force: true });
+    try {
+      const respostaDoCadastro = page.waitForResponse(
+        (resposta) => resposta.request().method() === "POST" && resposta.url().endsWith("/auth/register"),
+      );
+      try {
+        await botao.click();
+        await cadastroInterceptado.promise;
+        await expect(botao).toBeDisabled();
+        // Segundo clique com a primeira requisição ainda retida: `force`
+        // ignora a checagem de "elemento acionável", então isto testa de fato
+        // que um botão desabilitado não reenvia o cadastro.
+        await botao.click({ force: true });
+      } finally {
+        liberarCadastro.resolve();
+      }
+      expect((await respostaDoCadastro).ok()).toBe(true);
+    } finally {
+      await page.unroute("**/auth/register");
+    }
 
     // A conta criada aparece em /conta com os dados REAIS do cadastro
     // (nome do dono e do estabelecimento digitados agora), nunca dado demo.

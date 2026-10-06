@@ -205,19 +205,38 @@ test.describe("agendamentos reais", () => {
     page.on("request", (req) => {
       if (req.method() === "POST" && /\/appointments$/.test(req.url())) criacoes += 1;
     });
+    // O POST fica retido por uma condição que o PRÓPRIO teste libera (nunca
+    // um tempo fixo), e a interceptação só sai depois da resposta: remover a
+    // rota com o handler pendente deixa o destino da requisição fora do
+    // controle do teste (ver professional-working-hours-flow.spec.ts).
     const ehCriacao = (url: URL) => url.pathname.endsWith("/appointments");
+    const criacaoInterceptada = Promise.withResolvers<void>();
+    const liberarCriacao = Promise.withResolvers<void>();
     await page.route(ehCriacao, async (rota) => {
       if (rota.request().method() === "POST") {
-        await new Promise((resolver) => setTimeout(resolver, 1_500));
+        criacaoInterceptada.resolve();
+        await liberarCriacao.promise;
       }
       await rota.continue();
     });
 
     const confirmar = page.locator('form button[type="submit"]');
-    await confirmar.click();
-    await expect(confirmar).toBeDisabled();
-    await confirmar.click({ force: true });
-    await page.unroute(ehCriacao);
+    try {
+      const respostaDaCriacao = page.waitForResponse(
+        (resposta) => resposta.request().method() === "POST" && ehCriacao(new URL(resposta.url())),
+      );
+      try {
+        await confirmar.click();
+        await criacaoInterceptada.promise;
+        await expect(confirmar).toBeDisabled();
+        await confirmar.click({ force: true });
+      } finally {
+        liberarCriacao.resolve();
+      }
+      expect((await respostaDaCriacao).ok()).toBe(true);
+    } finally {
+      await page.unroute(ehCriacao);
+    }
 
     await expect(page.getByTestId("confirmacao")).toBeVisible();
     expect(criacoes, "um envio só, mesmo com dois cliques").toBe(1);
