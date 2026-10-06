@@ -19,6 +19,7 @@ import {
 import { comoDataDeCalendario, rotuloDaData, rotuloDeDuracao } from "@/lib/profissionais/agendamentos";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { BotaoHorario } from "./botao-horario";
 
 type EstadoOpcoes =
   | { status: "carregando" }
@@ -143,18 +144,15 @@ export function PainelRemarcacao({
               const selecionado = slot.startAt === escolhido;
               return (
                 <li key={slot.startAt}>
-                  <button
-                    type="button"
+                  <BotaoHorario
+                    selecionado={selecionado}
                     data-testid="horario-remarcacao"
                     data-inicio={slot.startAt}
                     disabled={gravando}
                     onClick={() => setEscolhido(slot.startAt)}
-                    className={`rounded-[var(--radius-control)] border px-3 py-1.5 text-sm ${
-                      selecionado ? "border-accent bg-paper-muted font-semibold" : "border-border"
-                    }`}
                   >
                     {slot.localStart}
-                  </button>
+                  </BotaoHorario>
                 </li>
               );
             })}

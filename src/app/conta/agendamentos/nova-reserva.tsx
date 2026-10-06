@@ -24,6 +24,7 @@ import { mensagemFalhaDisponibilidade, mensagemSemHorario } from "@/lib/profissi
 import { rotuloDeDuracao } from "@/lib/profissionais/agendamentos";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { BotaoHorario } from "./botao-horario";
 import { SeletorCliente } from "./seletor-cliente";
 
 interface NovaReservaProps {
@@ -238,18 +239,15 @@ export function NovaReserva({
                 const escolhido = slot.startAt === startAt;
                 return (
                   <li key={slot.startAt}>
-                    <button
-                      type="button"
+                    <BotaoHorario
+                      selecionado={escolhido}
                       data-testid="horario-livre"
                       data-inicio={slot.startAt}
                       disabled={gravando}
                       onClick={() => setStartAt(slot.startAt)}
-                      className={`rounded-[var(--radius-control)] border px-3 py-1.5 text-sm ${
-                        escolhido ? "border-accent bg-paper-muted font-semibold" : "border-border"
-                      }`}
                     >
                       {slot.localStart}
-                    </button>
+                    </BotaoHorario>
                   </li>
                 );
               })}

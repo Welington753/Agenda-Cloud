@@ -264,6 +264,19 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
         run: npm run test:browser:appointments
 
+      # Evidência visual do destaque do horário escolhido (criação e
+      # remarcação, computador e celular): as imagens que o próprio teste
+      # gravou depois de conferir o estilo computado. Só os PNG `destaque-*`,
+      # nunca outro arquivo de `test-results/`.
+      - name: Upload selected-slot highlight screenshots
+        if: always() && steps.browser_appointments.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: destaque-horario-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/appointments/**/destaque-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Integração do backend contra o MESMO Postgres descartável: prova o
       # comportamento real das consultas com escopo de tenant e das
       # constraints (nenhum fake em memória cobre isso). `DB_E2E_DIRECT_URL` é

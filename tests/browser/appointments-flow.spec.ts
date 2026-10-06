@@ -14,12 +14,12 @@
 // (ver .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado
 // para o teste passar; se o orçamento apertar, o caminho é outra invocação
 // separada, nunca mexer no limiter.
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 // Domingo no futuro, DERIVADO do relógio a cada execução, e os instantes UTC
 // calculados a partir dele no fuso do estabelecimento (09:00 local segue sendo
 // 12:00Z, como antes). Uma data fixa aqui envelhece e o horário deixa de ser
 // oferecido — ver o porquê em data-de-teste.ts.
-import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
+import { DATA, DATA_SEGUINTE, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
 
 const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-agendamentos-e2e-123";
@@ -152,6 +152,48 @@ async function horariosLivres(pagina: Page): Promise<string[]> {
  * reschedule-options, calculados com a ocupação congelada da reserva. */
 async function horariosDeRemarcacao(pagina: Page): Promise<string[]> {
   return pagina.locator('[data-testid="horario-remarcacao"]').allTextContents();
+}
+
+// Cores de globals.css como o navegador as computa: --color-accent e
+// --color-border.
+const COR_DESTAQUE = "rgb(181, 101, 29)";
+const COR_BORDA_PADRAO = "rgb(230, 221, 206)";
+const VIEWPORT_CELULAR = { width: 390, height: 844 };
+const VIEWPORT_COMPUTADOR = { width: 1280, height: 720 };
+
+/** Confere o destaque RENDERIZADO de um horário, não a classe CSS: cor da
+ * borda e anel pelo estilo computado, ícone visível e `aria-pressed`. Uma
+ * regra de borda sem camada já anulou `border-accent` antes, com a classe
+ * presente e nada visível. */
+async function conferirDestaque(botao: Locator, selecionado: boolean): Promise<void> {
+  await expect(botao).toHaveAttribute("aria-pressed", String(selecionado));
+  const estilo = await botao.evaluate((el) => {
+    const c = getComputedStyle(el);
+    return { borda: c.borderTopColor, sombra: c.boxShadow };
+  });
+  if (selecionado) {
+    expect(estilo.borda).toBe(COR_DESTAQUE);
+    expect(estilo.sombra).toContain(`${COR_DESTAQUE} 0px 0px 0px 1px`);
+    await expect(botao.locator("svg")).toBeVisible();
+  } else {
+    expect(estilo.borda).toBe(COR_BORDA_PADRAO);
+    expect(estilo.sombra).not.toContain(COR_DESTAQUE);
+    await expect(botao.locator("svg")).toHaveCount(0);
+  }
+}
+
+/** Exatamente um horário marcado na lista (ou nenhum, com `null`). */
+async function conferirSelecaoUnica(pagina: Page, testId: string, inicio: string | null): Promise<void> {
+  await expect(pagina.locator(`[data-testid="${testId}"][aria-pressed="true"]`)).toHaveCount(inicio ? 1 : 0);
+  for (const botao of await pagina.locator(`[data-testid="${testId}"]`).all()) {
+    await conferirDestaque(botao, (await botao.getAttribute("data-inicio")) === inicio);
+  }
+}
+
+async function registrarDestaque(pagina: Page, lista: string, nome: string): Promise<void> {
+  // Imagem do destaque como o navegador desenhou, publicada pelo CI como
+  // artefato (ver test-frontend-auth.yml).
+  await pagina.getByTestId(lista).screenshot({ path: test.info().outputPath(`destaque-${nome}.png`) });
 }
 
 test.describe("agendamentos reais", () => {
@@ -461,7 +503,36 @@ test.describe("agendamentos reais", () => {
     await page.getByLabel("WhatsApp").fill("(11) 95555-4444");
     await page.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(page)).toContain("09:00");
-    await page.locator('[data-testid="horario-livre"]').first().click();
+
+    // Destaque do horário escolhido na criação, no computador: antes de
+    // escolher nenhum está marcado; escolher, trocar (pelo teclado, com o foco
+    // visível) e limpar ao mudar o dia.
+    const livre = (hora: string) =>
+      page.locator(`[data-testid="horario-livre"][data-inicio="${instanteLocalDe(hora)}"]`);
+    await page.setViewportSize(VIEWPORT_COMPUTADOR);
+    await conferirSelecaoUnica(page, "horario-livre", null);
+    await livre("09:00").click();
+    await conferirSelecaoUnica(page, "horario-livre", instanteLocalDe("09:00"));
+    await registrarDestaque(page, "horarios-livres", "criacao-computador");
+    await page.keyboard.press("Tab");
+    await expect(livre("09:15")).toBeFocused();
+    await page.keyboard.press("Space");
+    await conferirSelecaoUnica(page, "horario-livre", instanteLocalDe("09:15"));
+    // O anel de seleção não substitui o foco de teclado: os dois aparecem.
+    expect(await livre("09:15").evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("solid");
+    await page.getByLabel("Dia").fill(DATA_SEGUINTE);
+    await page.getByLabel("Dia").fill(DATA);
+    await page.getByRole("button", { name: "Ver horários livres" }).click();
+    await expect.poll(() => horariosLivres(page)).toContain("09:00");
+    await conferirSelecaoUnica(page, "horario-livre", null);
+
+    // No celular, o mesmo destaque.
+    await page.setViewportSize(VIEWPORT_CELULAR);
+    await livre("09:00").click();
+    await conferirSelecaoUnica(page, "horario-livre", instanteLocalDe("09:00"));
+    await registrarDestaque(page, "horarios-livres", "criacao-celular");
+    await page.setViewportSize(VIEWPORT_COMPUTADOR);
+
     await page.locator('form button[type="submit"]').click();
     await expect(page.getByTestId("confirmacao")).toBeVisible();
     await expect(page.getByTestId("horario-agendado")).toHaveText("09:00–10:00");
@@ -475,9 +546,28 @@ test.describe("agendamentos reais", () => {
     // na tela — e o horário da própria reserva aparece, porque ela não bloqueia
     // a si mesma.
     await expect.poll(() => horariosDeRemarcacao(page)).toContain("09:00");
-    await page
-      .locator(`[data-testid="horario-remarcacao"][data-inicio="${instanteLocalDe("10:00")}"]`)
-      .click();
+
+    // Destaque do horário escolhido na remarcação: nenhum antes, escolher,
+    // trocar, limpar ao mudar o dia; depois, no celular, a escolha final.
+    const opcao = (hora: string) =>
+      page.locator(`[data-testid="horario-remarcacao"][data-inicio="${instanteLocalDe(hora)}"]`);
+    const novoDia = page.getByLabel("Novo dia");
+    await conferirSelecaoUnica(page, "horario-remarcacao", null);
+    await opcao("10:15").click();
+    await conferirSelecaoUnica(page, "horario-remarcacao", instanteLocalDe("10:15"));
+    await registrarDestaque(page, "horarios-remarcacao", "remarcacao-computador");
+    await opcao("10:30").click();
+    await conferirSelecaoUnica(page, "horario-remarcacao", instanteLocalDe("10:30"));
+    await novoDia.fill(DATA_SEGUINTE);
+    await novoDia.fill(DATA);
+    await expect.poll(() => horariosDeRemarcacao(page)).toContain("10:00");
+    await conferirSelecaoUnica(page, "horario-remarcacao", null);
+
+    await page.setViewportSize(VIEWPORT_CELULAR);
+    await opcao("10:00").click();
+    await conferirSelecaoUnica(page, "horario-remarcacao", instanteLocalDe("10:00"));
+    await registrarDestaque(page, "horarios-remarcacao", "remarcacao-celular");
+    await page.setViewportSize(VIEWPORT_COMPUTADOR);
 
     // O resumo mostra DE → PARA antes de confirmar, com cliente e serviço
     // preservados.
