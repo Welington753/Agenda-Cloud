@@ -45,8 +45,13 @@
   --font-sans: var(--font-jakarta);
 }
 
-* {
-  border-color: var(--color-border);
+/* Cor padrão de borda na camada `base`, nunca solta: uma regra sem camada
+   vence qualquer utilitário do Tailwind (que mora em `@layer utilities`), e
+   `border-accent`, `focus:border-accent` ou a borda de erro nunca apareciam. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 html {
