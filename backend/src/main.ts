@@ -21,9 +21,11 @@ async function bootstrap() {
   // `trust proxy` continua DESLIGADO, também na hospedagem: no Render a borda
   // acrescenta ao `X-Forwarded-For` enviado pelo cliente e o número de saltos
   // até a aplicação não é documentado, então nem `true` nem uma contagem de
-  // saltos são seguros. O IP usado no rate limit vem de uma fonte explícita,
-  // `CLIENT_IP_SOURCE` (ver config/client-ip.ts e
-  // docs/runbooks/publicacao-piloto-render.md). Nenhum código depende de
+  // saltos são seguros. O IP usado no rate limit vem de uma fonte explícita:
+  // `CLIENT_IP_SOURCE` e, para o tráfego do proxy do frontend
+  // (`/agenda_api`), `X-Agenda-Client-IP` aceito só com `API_PROXY_SECRET`
+  // (ver config/client-ip.ts e docs/runbooks/publicacao-piloto-render.md).
+  // Nenhum código depende de
   // `req.protocol`/`req.secure`: o cookie `Secure` vem de NODE_ENV (ver
   // config/session-cookie.config.ts).
 

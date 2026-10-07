@@ -14,6 +14,7 @@ on:
       - "src/**"
       - "tests/browser/**"
       - "playwright.config.ts"
+      - "playwright.proxy.config.ts"
       - "package.json"
       - "package-lock.json"
       - "backend/src/**"
@@ -268,6 +269,32 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
         run: npm run test:browser:appointments
 
+      # Modo do PILOTO (mesma origem): o frontend é recompilado com
+      # `NEXT_PUBLIC_API_URL=/agenda_api`, e o navegador passa a falar só com
+      # ele. Fica DEPOIS das suítes acima porque substitui o build anterior
+      # (chamada direta à porta 3001), que elas usam.
+      - name: Build frontend (same-origin proxy mode)
+        env:
+          NEXT_PUBLIC_API_URL: "/agenda_api"
+        run: npm run build
+
+      # HTTPS isolado (ver playwright.proxy.config.ts): borda TLS local com
+      # certificado autoassinado gerado na hora, Next.js com o proxy
+      # `/agenda_api` e a API em `NODE_ENV=production` (cookie `Secure`).
+      # `API_PROXY_SECRET` é um valor fixo e descartável, só deste job;
+      # nunca um secret do GitHub. Backend novo (limiter zerado), mesmo
+      # Postgres descartável.
+      - name: Run real browser flows (same-origin proxy over isolated HTTPS, production cookie, forged IP headers)
+        id: browser_proxy
+        env:
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          API_PROXY_SECRET: "segredo-descartavel-do-ci-somente-para-teste-0123456789"
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/proxy
+        run: npm run test:browser:proxy
+
       # Evidência visual do destaque do horário escolhido (criação e
       # remarcação, computador e celular): as imagens que o próprio teste
       # gravou depois de conferir o estilo computado. Só os PNG `destaque-*`,
@@ -315,7 +342,8 @@ jobs:
             steps.browser_professionals.outcome == 'failure' ||
             steps.browser_working_hours.outcome == 'failure' ||
             steps.browser_availability.outcome == 'failure' ||
-            steps.browser_appointments.outcome == 'failure'
+            steps.browser_appointments.outcome == 'failure' ||
+            steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

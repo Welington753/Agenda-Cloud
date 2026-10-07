@@ -10,7 +10,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { parseClientIpSource } from '../config/client-ip.js';
+import { parseClientIpSource, parseProxySecret } from '../config/client-ip.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createLoginRateLimiter } from './login-rate-limit.js';
@@ -36,13 +36,14 @@ export class AuthModule implements NestModule {
 
   configure(consumer: MiddlewareConsumer): void {
     // Fonte do IP explícita (ver config/client-ip.ts): ausente cai em
-    // `socket`, o comportamento anterior.
+    // `socket` sem proxy confiável, o comportamento anterior.
     const clientIpSource = parseClientIpSource(this.configService.get('CLIENT_IP_SOURCE'));
+    const proxySecret = parseProxySecret(this.configService.get('API_PROXY_SECRET'));
     consumer
-      .apply(createRegisterRateLimiter(clientIpSource))
+      .apply(createRegisterRateLimiter(clientIpSource, proxySecret))
       .forRoutes({ path: 'auth/register', method: RequestMethod.POST });
     consumer
-      .apply(createLoginRateLimiter(clientIpSource))
+      .apply(createLoginRateLimiter(clientIpSource, proxySecret))
       .forRoutes({ path: 'auth/login', method: RequestMethod.POST });
   }
 }

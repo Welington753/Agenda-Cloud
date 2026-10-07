@@ -53,6 +53,26 @@ describe("apiRequest", () => {
     expect(resultado).toEqual({ kind: "http-error", status: 429, data: null });
   });
 
+  it("API indisponível atrás do proxy (502/504 marcado pelo proxy) vira network-error", async () => {
+    for (const status of [502, 504]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ message: "API indisponível." }), {
+            status,
+            headers: { "x-agenda-proxy-error": "upstream-unavailable" },
+          }),
+        ),
+      );
+      expect(await apiRequest("/auth/me")).toEqual({ kind: "network-error" });
+    }
+  });
+
+  it("502 da própria API (sem o marcador do proxy) continua http-error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 502 })));
+    expect(await apiRequest("/auth/me")).toEqual({ kind: "http-error", status: 502, data: {} });
+  });
+
   it("fetch rejeitando (rede/offline) vira kind: network-error, nunca é confundido com http-error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 

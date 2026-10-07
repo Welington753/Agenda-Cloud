@@ -105,6 +105,29 @@ describe('validateEnv — hospedagem', () => {
     }
   });
 
+  it('API_PROXY_SECRET é opcional e, quando presente, tem tamanho mínimo', () => {
+    expect(validateEnv(CONFIG_VALIDA).API_PROXY_SECRET).toBeUndefined();
+    const valido = 'x'.repeat(32);
+    expect(
+      validateEnv({ ...CONFIG_VALIDA, API_PROXY_SECRET: valido })
+        .API_PROXY_SECRET,
+    ).toBe(valido);
+    for (const valor of ['', 'curto', 'x'.repeat(31)]) {
+      expect(() =>
+        validateEnv({ ...CONFIG_VALIDA, API_PROXY_SECRET: valor }),
+      ).toThrow(/API_PROXY_SECRET/);
+    }
+  });
+
+  it('a mensagem de erro nunca ecoa o segredo do proxy', () => {
+    const curto = 'segredo-curto-123';
+    expect(() =>
+      validateEnv({ ...CONFIG_VALIDA, API_PROXY_SECRET: curto }),
+    ).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining(curto) }),
+    );
+  });
+
   it('em production, FRONTEND_URL precisa ser origem HTTPS exata', () => {
     expect(validateEnv(PRODUCAO).FRONTEND_URL).toBe('https://app.exemplo.test');
     for (const url of ['http://app.exemplo.test', 'https://app.exemplo.test/', 'https://app.exemplo.test/conta']) {

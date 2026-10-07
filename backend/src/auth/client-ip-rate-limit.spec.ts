@@ -69,3 +69,56 @@ describe.each(LIMITERS)('rate limit de $nome', ({ rota, criar, max }) => {
     expect(outro.status).toBe(200);
   });
 });
+
+// Proxy do frontend (rota `/agenda_api` do Next.js): todo o tráfego chega do
+// mesmo endereço, e o IP do cliente vem em `X-Agenda-Client-IP`, aceito só
+// com o segredo compartilhado.
+describe.each(LIMITERS)(
+  'rate limit de $nome atrás do proxy confiável',
+  ({ rota, criar, max }) => {
+    const SEGREDO = 'segredo-de-teste-com-tamanho-suficiente-0123456789';
+    const app = () => buildApp(rota, criar('socket', SEGREDO));
+
+    it('clientes distintos, informados pelo proxy, têm limites distintos', async () => {
+      const instancia = app();
+      const primeiro = await esgotar(instancia, rota, max, () => ({
+        'X-Agenda-Proxy-Secret': SEGREDO,
+        'X-Agenda-Client-IP': '198.51.100.20',
+      }));
+      expect(primeiro.at(-1)).toBe(429);
+      const outro = await request(instancia)
+        .post(rota)
+        .set({
+          'X-Agenda-Proxy-Secret': SEGREDO,
+          'X-Agenda-Client-IP': '198.51.100.21',
+        })
+        .send({});
+      expect(outro.status).toBe(200);
+    });
+
+    it('chamada direta com X-Agenda-Client-IP forjado e sem segredo não escapa do limite', async () => {
+      const status = await esgotar(app(), rota, max, (i) => ({
+        'X-Agenda-Client-IP': `203.0.113.${i + 1}`,
+      }));
+      expect(status.at(-1)).toBe(429);
+    });
+
+    it('segredo errado com IP trocado a cada tentativa não escapa do limite', async () => {
+      const status = await esgotar(app(), rota, max, (i) => ({
+        'X-Agenda-Proxy-Secret': `${SEGREDO.slice(0, -1)}x`,
+        'X-Agenda-Client-IP': `203.0.113.${i + 1}`,
+      }));
+      expect(status.at(-1)).toBe(429);
+    });
+
+    it('com o segredo certo, trocar X-Forwarded-For ou CF-Connecting-IP não escapa do limite', async () => {
+      const status = await esgotar(app(), rota, max, (i) => ({
+        'X-Agenda-Proxy-Secret': SEGREDO,
+        'X-Agenda-Client-IP': '198.51.100.30',
+        'X-Forwarded-For': `203.0.113.${i + 1}`,
+        'CF-Connecting-IP': `203.0.113.${i + 101}`,
+      }));
+      expect(status.at(-1)).toBe(429);
+    });
+  },
+);

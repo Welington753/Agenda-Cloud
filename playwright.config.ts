@@ -9,6 +9,10 @@ import { defineConfig, devices } from "@playwright/test";
 // documentado em docs/setup-local.md).
 export default defineConfig({
   testDir: "./tests/browser",
+  // Fluxo da mesma origem em HTTPS: precisa de outro build do frontend e de
+  // outro ambiente da API, então só roda pela própria configuração
+  // (playwright.proxy.config.ts, `npm run test:browser:proxy`).
+  testIgnore: "same-origin-proxy-flow.spec.ts",
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

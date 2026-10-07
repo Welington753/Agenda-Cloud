@@ -284,3 +284,74 @@ describe('AuthModule com CLIENT_IP_SOURCE=cf-connecting-ip', () => {
       .expect(200);
   });
 });
+
+describe('AuthModule atrás do proxy do frontend (API_PROXY_SECRET)', () => {
+  const SEGREDO = 'segredo-de-teste-com-tamanho-suficiente-0123456789';
+  let app: INestApplication<App>;
+  let loginMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    loginMock = vi.fn().mockImplementation(async () => ({
+      token: 'token-login-fake',
+      ...FAKE_SESSION_CONTEXT_RESULT,
+    }));
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [GlobalDataSourceStubModule, AuthModule],
+    })
+      .overrideProvider(AuthService)
+      .useValue({ login: loginMock })
+      .overrideProvider(ConfigService)
+      .useValue({
+        getOrThrow: () => 'development',
+        get: (chave: string) =>
+          chave === 'API_PROXY_SECRET' ? SEGREDO : undefined,
+      })
+      .compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('o limite e a auditoria da sessão usam o IP informado pelo proxy; cabeçalhos forjados não escapam', async () => {
+    const viaProxy = (ip: string, i: number) => ({
+      'X-Agenda-Proxy-Secret': SEGREDO,
+      'X-Agenda-Client-IP': ip,
+      'X-Forwarded-For': `203.0.113.${i + 1}`,
+      'CF-Connecting-IP': `203.0.113.${i + 101}`,
+    });
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .set(viaProxy('198.51.100.20', i))
+        .send(VALID_LOGIN_BODY)
+        .expect(200);
+    }
+    expect(loginMock.mock.calls[0][1]).toMatchObject({
+      ipAddress: '198.51.100.20',
+    });
+
+    const sexta = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set(viaProxy('198.51.100.20', 9))
+      .send(VALID_LOGIN_BODY);
+    expect(sexta.status).toBe(429);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .set(viaProxy('198.51.100.21', 0))
+      .send(VALID_LOGIN_BODY)
+      .expect(200);
+  });
+
+  it('sem o segredo, X-Agenda-Client-IP é ignorado na auditoria da sessão', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .set({ 'X-Agenda-Client-IP': '203.0.113.50' })
+      .send(VALID_LOGIN_BODY)
+      .expect(200);
+    expect(loginMock.mock.calls[0][1].ipAddress).not.toBe('203.0.113.50');
+  });
+});
