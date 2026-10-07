@@ -4,6 +4,9 @@
   "description": "",
   "author": "",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
@@ -28,7 +31,8 @@
     "migration:show:compiled": "typeorm migration:show -d dist-migrations/database/migrations-data-source.js",
     "migration:run:compiled": "typeorm migration:run -d dist-migrations/database/migrations-data-source.js",
     "build:guarded-migration-scripts": "tsc -p tsconfig.scripts.json",
-    "migrate:production:guarded": "npm run build:migrations-runtime && npm run build:guarded-migration-scripts && node dist-scripts/run-apply-lote6b2-production.js"
+    "migrate:production:guarded": "npm run build:migrations-runtime && npm run build:guarded-migration-scripts && node dist-scripts/run-apply-lote6b2-production.js",
+    "pilot:check-database": "npm run build:guarded-migration-scripts && node dist-scripts/run-check-pilot-database.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

@@ -18,6 +18,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import { parseClientIpSource, resolveClientIp, type ClientIpSource } from '../config/client-ip.js';
 import {
   SESSION_COOKIE_NAME,
   buildClearSessionCookieOptions,
@@ -39,6 +40,12 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
+  /** Mesma fonte de IP do rate limit (ver config/client-ip.ts), para a
+   * auditoria da sessão registrar o mesmo endereço que foi limitado. */
+  private clientIpSource(): ClientIpSource {
+    return parseClientIpSource(this.configService.get('CLIENT_IP_SOURCE'));
+  }
+
   @Post('register')
   @HttpCode(201)
   async register(
@@ -51,7 +58,7 @@ export class AuthController {
       result = await this.authService.register(dto, {
         now: new Date(),
         userAgent: req.get('user-agent'),
-        ipAddress: req.ip,
+        ipAddress: resolveClientIp(req, this.clientIpSource()),
       });
     } catch (error) {
       if (error instanceof EmailAlreadyInUseError) {
@@ -88,7 +95,7 @@ export class AuthController {
       result = await this.authService.login(dto, {
         now: new Date(),
         userAgent: req.get('user-agent'),
-        ipAddress: req.ip,
+        ipAddress: resolveClientIp(req, this.clientIpSource()),
       });
     } catch (error) {
       if (error instanceof InvalidCredentialsError) {

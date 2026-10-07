@@ -43,6 +43,11 @@ export type SanitizedErrorCode =
   | 'ERR_MIGRATION_SHOW_FAILED'
   | 'ERR_MIGRATION_SHOW_INCONSISTENT'
   | 'ERR_AMBIGUOUS_RESULT'
+  // Conferência do banco do piloto (ver pilot-database-check.ts).
+  | 'ERR_PILOT_AS_PRODUCTION'
+  | 'ERR_TLS_VERIFICATION_DISABLED'
+  | 'ERR_INVALID_EXPECTATION'
+  | 'ERR_TARGET_NOT_EMPTY'
   | 'ERR_UNEXPECTED';
 
 /** Erro de domínio dos scripts de migration guardada — mensagem SEMPRE uma
