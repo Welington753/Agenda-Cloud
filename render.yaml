@@ -5,6 +5,15 @@
 # o Blueprint no painel do Render, e os dois campos marcados PENDENTE abaixo
 # fazem a validação do Blueprint falhar até serem decididos de propósito.
 #
+# Os nomes `agenda-cloud-piloto-*` são exclusivos deste sistema. A mesma
+# conta do Render já hospeda outro sistema (com Blueprint, serviços, banco e
+# variáveis próprios): este Blueprint nunca declara, referencia nem reutiliza
+# nada dele, e nenhum grupo de variáveis (envVarGroups) é usado.
+#
+# Fluxo na mesma origem (endereços gratuitos `*.onrender.com`): o navegador
+# só fala com o serviço web; o Next.js encaminha `/agenda_api/*` à API pela
+# internet pública (um serviço gratuito não recebe tráfego da rede privada).
+#
 # Nunca coloque aqui credencial, URL de banco ou domínio real: tudo que é
 # segredo ou ainda não existe fica com `sync: false` e é digitado no painel.
 # Roteiro completo, variáveis e verificações:
@@ -12,7 +21,7 @@
 
 services:
   # API NestJS (backend/). Banco: Neon EXCLUSIVO do piloto, nunca o production
-  # existente.
+  # existente nem o banco de outro sistema da conta.
   - type: web
     name: agenda-cloud-piloto-api
     runtime: node
@@ -38,21 +47,28 @@ services:
     numInstances: 1
     autoDeployTrigger: "off"
     # Migrations NUNCA rodam no deploy: o banco do piloto é inicializado à mão,
-    # com conferência do destino antes (ver runbook, seção 4).
+    # com conferência do destino antes (ver runbook, seção 6).
     envVars:
       - key: NODE_ENV
         value: production
       - key: HOST
         value: 0.0.0.0
-      # PENDENTE: fica `socket` até a hospedagem confirmar o cabeçalho do IP do
-      # cliente (ver runbook, seção "IP do cliente"). Nunca trocar por
-      # suposição.
+      # Só para chamadas que NÃO vêm do proxy do frontend. Fica `socket` até
+      # a hospedagem confirmar o cabeçalho do IP do cliente (runbook, seção
+      # 5). Nunca trocar por suposição.
       - key: CLIENT_IP_SOURCE
         value: socket
+      # Segredo compartilhado com o proxy do frontend: só com ele a API aceita
+      # o IP do cliente informado pelo proxy. Gerado pelo próprio Render na
+      # criação do Blueprint; ninguém digita nem vê o valor.
+      - key: API_PROXY_SECRET
+        generateValue: true
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
         sync: false
+      # Origem pública do serviço web (`https://<web>.onrender.com`), exigida
+      # em HTTPS pela validação de ambiente da API.
       - key: FRONTEND_URL
         sync: false
 
@@ -73,8 +89,23 @@ services:
     numInstances: 1
     autoDeployTrigger: "off"
     envVars:
-      # Embutido no JavaScript durante o BUILD (nunca lido em runtime). Trocar
-      # depois exige novo build. O build recusa valor ausente, não-HTTPS ou em
-      # *.onrender.com (ver src/lib/publicacao/api-url.ts).
+      # Embutido no JavaScript durante o BUILD (nunca lido em runtime). Modo
+      # mesma origem: o navegador chama `/agenda_api/*` no próprio frontend
+      # (ver src/lib/publicacao/api-url.ts e src/lib/api/proxy.ts).
       - key: NEXT_PUBLIC_API_URL
+        value: /agenda_api
+      # Destino FIXO do proxy: a origem HTTPS pública da API
+      # (`https://<api>.onrender.com`). Lido só no servidor; o build também
+      # recusa valor ausente ou não-HTTPS.
+      - key: API_PROXY_TARGET
         sync: false
+      - key: API_PROXY_SECRET
+        fromService:
+          type: web
+          name: agenda-cloud-piloto-api
+          envVarKey: API_PROXY_SECRET
+      # De onde o proxy tira o IP do cliente para repassar à API. Mesma
+      # pendência da API: fica `socket` (nenhum IP repassado) até a
+      # confirmação da seção 5 do runbook.
+      - key: CLIENT_IP_SOURCE
+        value: socket
