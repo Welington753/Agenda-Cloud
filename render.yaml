@@ -1,0 +1,79 @@
+# Blueprint do PILOTO no Render: frontend Next.js e backend NestJS como dois
+# web services, publicados só manualmente, a partir de um commit validado.
+#
+# Este arquivo NÃO cria nada sozinho. Nada aqui é aplicado até alguém criar
+# o Blueprint no painel do Render, e os dois campos marcados PENDENTE abaixo
+# fazem a validação do Blueprint falhar até serem decididos de propósito.
+#
+# Nunca coloque aqui credencial, URL de banco ou domínio real: tudo que é
+# segredo ou ainda não existe fica com `sync: false` e é digitado no painel.
+# Roteiro completo, variáveis e verificações:
+# docs/runbooks/publicacao-piloto-render.md
+
+services:
+  # API NestJS (backend/). Banco: Neon EXCLUSIVO do piloto, nunca o production
+  # existente.
+  - type: web
+    name: agenda-cloud-piloto-api
+    runtime: node
+    # Sem isto o Render usa a branch padrão do repositório (main), que não
+    # recebe este código. O deploy manual escolhe um commit DESTA branch.
+    branch: integration/nestjs-typeorm-frontend
+    # PENDENTE: região e plano são decisões de custo/latência, não do código.
+    # O Render não muda a região de um serviço depois de criado. Trocar os
+    # dois valores abaixo antes de criar o Blueprint (ver runbook, seção 1).
+    region: PENDENTE_REGIAO
+    plan: PENDENTE_PLANO
+    rootDir: backend
+    # `--include=dev`: o build usa @nestjs/cli e TypeScript (devDependencies).
+    # NODE_ENV=production vale também no build quando definido abaixo, e sem
+    # isto o `npm ci` pularia essas dependências.
+    buildCommand: npm ci --include=dev && npm run build
+    # Mesmo comando do CI (playwright.config.ts). Escuta em HOST:PORT; o PORT
+    # vem do Render (padrão 10000).
+    startCommand: node dist/main.js
+    healthCheckPath: /
+    # Rate limit em memória (express-rate-limit MemoryStore): só vale com UMA
+    # instância. Nunca escalar sem trocar o store.
+    numInstances: 1
+    autoDeployTrigger: "off"
+    # Migrations NUNCA rodam no deploy: o banco do piloto é inicializado à mão,
+    # com conferência do destino antes (ver runbook, seção 4).
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # PENDENTE: fica `socket` até a hospedagem confirmar o cabeçalho do IP do
+      # cliente (ver runbook, seção "IP do cliente"). Nunca trocar por
+      # suposição.
+      - key: CLIENT_IP_SOURCE
+        value: socket
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  # Frontend Next.js (raiz do repositório).
+  - type: web
+    name: agenda-cloud-piloto-web
+    runtime: node
+    # Sem isto o Render usa a branch padrão do repositório (main), que não
+    # recebe este código. O deploy manual escolhe um commit DESTA branch.
+    branch: integration/nestjs-typeorm-frontend
+    region: PENDENTE_REGIAO
+    plan: PENDENTE_PLANO
+    buildCommand: npm ci --include=dev && npm run build
+    # `next start` usa PORT do ambiente e escuta em 0.0.0.0 por padrão.
+    startCommand: npm run start
+    healthCheckPath: /login
+    numInstances: 1
+    autoDeployTrigger: "off"
+    envVars:
+      # Embutido no JavaScript durante o BUILD (nunca lido em runtime). Trocar
+      # depois exige novo build. O build recusa valor ausente, não-HTTPS ou em
+      # *.onrender.com (ver src/lib/publicacao/api-url.ts).
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
