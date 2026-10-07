@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 
-import { CLIENT_IP_SOURCES, DEFAULT_CLIENT_IP_SOURCE } from './client-ip.js';
+import { CLIENT_IP_SOURCES, DEFAULT_CLIENT_IP_SOURCE, MIN_PROXY_SECRET_LENGTH } from './client-ip.js';
 
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\/.+/;
 
@@ -76,6 +76,11 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url(),
   // De onde vem o IP do cliente no rate limit (ver config/client-ip.ts).
   CLIENT_IP_SOURCE: z.enum(CLIENT_IP_SOURCES).default(DEFAULT_CLIENT_IP_SOURCE),
+  // Segredo compartilhado com o proxy do frontend (ver config/client-ip.ts).
+  // Opcional: ausente, `X-Agenda-Client-IP` nunca é lido. Presente, precisa
+  // ter o tamanho mínimo; um valor curto derruba a inicialização em vez de
+  // ser ignorado em silêncio.
+  API_PROXY_SECRET: z.string().min(MIN_PROXY_SECRET_LENGTH).optional(),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && !isHttpsOrigin(env.FRONTEND_URL)) {
     ctx.addIssue({ code: 'custom', path: ['FRONTEND_URL'], message: 'origem HTTPS exata' });

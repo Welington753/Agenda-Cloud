@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { MAX_SLUG_COLLISION_ATTEMPTS, resolveSlug, slugify } from './slug.js';
 
 describe('slugify', () => {
+  // O prefixo do proxy do frontend (`/agenda_api`, ver
+  // src/lib/api/proxy-config.ts na raiz) depende disto para nunca colidir
+  // com a página pública `/[slug]` de um estabelecimento.
+  it('nunca gera sublinhado, então nunca colide com o prefixo /agenda_api', () => {
+    expect(slugify('agenda_api')).toBe('agenda-api');
+    expect(slugify('_Agenda__API_')).toBe('agenda-api');
+  });
+
   it('converte para minúsculo, troca espaços por hífen', () => {
     expect(slugify('Dom Navalha Barbearia')).toBe('dom-navalha-barbearia');
   });
