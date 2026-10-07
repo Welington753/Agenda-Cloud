@@ -71,7 +71,7 @@ describe("render.yaml (piloto)", () => {
     expect(semComentarios).toContain("rootDir: backend");
     expect(semComentarios.match(/buildCommand: npm ci --include=dev && npm run build/g)).toHaveLength(2);
     expect(semComentarios).toContain("startCommand: node dist/main.js");
-    expect(semComentarios).toContain("startCommand: npm run start");
+    expect(semComentarios).toContain("startCommand: npm run start -- -H 0.0.0.0");
     expect(scripts("package.json")).toMatchObject({ build: "next build", start: "next start" });
     expect(scripts("backend/package.json")).toMatchObject({ build: "nest build" });
   });

@@ -66,8 +66,9 @@ services:
     region: PENDENTE_REGIAO
     plan: PENDENTE_PLANO
     buildCommand: npm ci --include=dev && npm run build
-    # `next start` usa PORT do ambiente e escuta em 0.0.0.0 por padrão.
-    startCommand: npm run start
+    # `next start` usa o PORT do ambiente. `-H 0.0.0.0` explícito: medido
+    # localmente, o padrão escutou em `::`, e o Render exige 0.0.0.0.
+    startCommand: npm run start -- -H 0.0.0.0
     healthCheckPath: /login
     numInstances: 1
     autoDeployTrigger: "off"

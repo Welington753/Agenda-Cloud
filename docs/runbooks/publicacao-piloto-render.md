@@ -45,7 +45,7 @@ Comandos de cada serviço:
 | Serviço | Diretório | Build | Start | Health check |
 |---|---|---|---|---|
 | api | `backend/` | `npm ci --include=dev && npm run build` | `node dist/main.js` | `GET /` (responde 200 sem tocar no banco) |
-| web | raiz | `npm ci --include=dev && npm run build` | `npm run start` (`next start`) | `GET /login` |
+| web | raiz | `npm ci --include=dev && npm run build` | `npm run start -- -H 0.0.0.0` (`next start`, que lê `PORT` do ambiente) | `GET /login` |
 
 `--include=dev` é necessário porque o build usa ferramentas que estão em `devDependencies` (`@nestjs/cli`, TypeScript, Tailwind). Uma variável `NODE_ENV=production` definida no serviço também vale durante o build, e sem esse parâmetro o `npm ci` deixaria essas ferramentas de fora.
 
