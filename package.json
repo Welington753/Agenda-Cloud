@@ -20,7 +20,8 @@
     "test:browser:professionals": "playwright test tests/browser/professionals-flow.spec.ts",
     "test:browser:working-hours": "playwright test tests/browser/professional-working-hours-flow.spec.ts",
     "test:browser:availability": "playwright test tests/browser/availability-flow.spec.ts",
-    "test:browser:appointments": "playwright test tests/browser/appointments-flow.spec.ts"
+    "test:browser:appointments": "playwright test tests/browser/appointments-flow.spec.ts",
+    "test:browser:proxy": "playwright test --config playwright.proxy.config.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

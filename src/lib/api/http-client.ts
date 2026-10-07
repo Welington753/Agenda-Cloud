@@ -10,6 +10,13 @@
 // (`http-error`: o servidor respondeu, só que com 4xx/5xx). Um 401 nunca deve
 // ser tratado como "backend indisponível" e vice-versa — são estados
 // diferentes para quem decide a UI (ver real-session-state.ts).
+//
+// No modo mesma origem (`NEXT_PUBLIC_API_URL=/agenda_api`, ver
+// lib/api/proxy.ts), quem responde é o proxy do Next.js. Quando a API não
+// responde, o proxy devolve 502/504 marcado com `X-Agenda-Proxy-Error`, e
+// isso continua sendo `network-error`: para a UI, a API está fora do ar do
+// mesmo jeito que numa chamada direta.
+import { CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "@/lib/api/proxy-marcadores";
 import { API_BASE_URL } from "@/lib/config";
 
 export type ApiResult<T> =
@@ -35,6 +42,9 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
   } catch {
+    return { kind: "network-error" };
+  }
+  if (response.headers.get(CABECALHO_ERRO_PROXY) === ERRO_API_INDISPONIVEL) {
     return { kind: "network-error" };
   }
 
