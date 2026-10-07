@@ -100,7 +100,7 @@ describe('AuthModule', () => {
         getSessionContext: getSessionContextMock,
       })
       .overrideProvider(ConfigService)
-      .useValue({ getOrThrow: () => 'development' })
+      .useValue({ getOrThrow: () => 'development', get: () => undefined })
       .overrideGuard(SessionGuard)
       .useValue({ canActivate: guardCanActivateMock })
       .compile();
@@ -230,5 +230,57 @@ describe('AuthModule', () => {
     for (let i = 0; i < 10; i++) {
       await request(app.getHttpServer()).post('/auth/logout').expect(204);
     }
+  });
+});
+
+describe('AuthModule com CLIENT_IP_SOURCE=cf-connecting-ip', () => {
+  let app: INestApplication<App>;
+  let loginMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    loginMock = vi.fn().mockImplementation(async () => ({
+      token: 'token-login-fake',
+      ...FAKE_SESSION_CONTEXT_RESULT,
+    }));
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [GlobalDataSourceStubModule, AuthModule],
+    })
+      .overrideProvider(AuthService)
+      .useValue({ login: loginMock })
+      .overrideProvider(ConfigService)
+      .useValue({
+        getOrThrow: () => 'development',
+        get: (chave: string) => (chave === 'CLIENT_IP_SOURCE' ? 'cf-connecting-ip' : undefined),
+      })
+      .compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('o limite e a auditoria da sessão usam o mesmo CF-Connecting-IP; X-Forwarded-For não escapa', async () => {
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .set({ 'CF-Connecting-IP': '198.51.100.20', 'X-Forwarded-For': `203.0.113.${i + 1}` })
+        .send(VALID_LOGIN_BODY)
+        .expect(200);
+    }
+    expect(loginMock.mock.calls[0][1]).toMatchObject({ ipAddress: '198.51.100.20' });
+
+    const sexta = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set({ 'CF-Connecting-IP': '198.51.100.20', 'X-Forwarded-For': '203.0.113.99' })
+      .send(VALID_LOGIN_BODY);
+    expect(sexta.status).toBe(429);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .set({ 'CF-Connecting-IP': '198.51.100.21' })
+      .send(VALID_LOGIN_BODY)
+      .expect(200);
   });
 });

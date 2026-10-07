@@ -9,7 +9,8 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { parseClientIpSource } from '../config/client-ip.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createLoginRateLimiter } from './login-rate-limit.js';
@@ -31,12 +32,17 @@ import { SessionGuard } from './session.guard.js';
   exports: [SessionGuard],
 })
 export class AuthModule implements NestModule {
+  constructor(private readonly configService: ConfigService) {}
+
   configure(consumer: MiddlewareConsumer): void {
+    // Fonte do IP explícita (ver config/client-ip.ts): ausente cai em
+    // `socket`, o comportamento anterior.
+    const clientIpSource = parseClientIpSource(this.configService.get('CLIENT_IP_SOURCE'));
     consumer
-      .apply(createRegisterRateLimiter())
+      .apply(createRegisterRateLimiter(clientIpSource))
       .forRoutes({ path: 'auth/register', method: RequestMethod.POST });
     consumer
-      .apply(createLoginRateLimiter())
+      .apply(createLoginRateLimiter(clientIpSource))
       .forRoutes({ path: 'auth/login', method: RequestMethod.POST });
   }
 }

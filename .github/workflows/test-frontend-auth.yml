@@ -162,6 +162,10 @@ jobs:
       - name: Run real browser flows (registration via the UI + login/session/logout)
         id: browser_auth
         env:
+          # Mesmo endereço de escuta da hospedagem (render.yaml): esta
+          # invocação prova login/sessão/logout com o backend em 0.0.0.0. As
+          # demais seguem no padrão (todas as interfaces).
+          HOST: "0.0.0.0"
           NODE_ENV: development
           DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
           DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"

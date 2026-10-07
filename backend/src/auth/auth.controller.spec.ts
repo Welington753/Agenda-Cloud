@@ -39,7 +39,7 @@ const SUCCESS_RESULT: RegisterResult = {
 };
 
 function buildReqStub() {
-  return { get: () => 'vitest-agent', ip: '127.0.0.1' } as unknown as Parameters<
+  return { get: () => 'vitest-agent', ip: '127.0.0.1', headers: {} } as unknown as Parameters<
     AuthController['register']
   >[1];
 }
@@ -49,7 +49,7 @@ function buildResStub() {
 }
 
 function buildConfigServiceStub(nodeEnv: string): ConfigService {
-  return { getOrThrow: () => nodeEnv } as unknown as ConfigService;
+  return { getOrThrow: () => nodeEnv, get: () => undefined } as unknown as ConfigService;
 }
 
 describe('AuthController.register', () => {
@@ -254,7 +254,7 @@ const LOGIN_SUCCESS_RESULT: LoginResult = {
 };
 
 function buildLoginReqStub() {
-  return { get: () => 'vitest-agent', ip: '127.0.0.1' } as unknown as Parameters<
+  return { get: () => 'vitest-agent', ip: '127.0.0.1', headers: {} } as unknown as Parameters<
     AuthController['login']
   >[1];
 }
