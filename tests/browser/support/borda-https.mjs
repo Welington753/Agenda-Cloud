@@ -7,7 +7,8 @@
 // - SOBRESCREVE `CF-Connecting-IP` com o endereço da conexão e ACRESCENTA
 //   esse endereço ao `X-Forwarded-For` que o cliente mandou, o
 //   comportamento descrito pelo Render (runbook, seção 5);
-// - encaminha em HTTP ao `next start` local.
+// - encaminha em HTTP ao serviço local da porta `BORDA_DESTINO_PORTA`: o
+//   `next start` (padrão) ou a API, para as chamadas diretas.
 //
 // Só escuta em 127.0.0.1. Nunca usar fora de teste.
 import { execFileSync } from "node:child_process";

@@ -67,7 +67,7 @@ export function montarUrlDestino(destino: URL, segmentos: string[], busca: strin
  *   `X-Forwarded-For` que o Next.js preenche só quando AUSENTE pode vir
  *   pronto do navegador.
  * - `cf-connecting-ip`: o cabeçalho escrito pela borda do Render, se for UM
- *   IP válido. Mesma condição de confirmação da API (runbook, seção 5). */
+ *   IP válido. Valor do piloto em render.yaml (runbook, seção 5). */
 export function ipDoClienteParaRepassar(
   headers: Headers,
   configuracao: Pick<ConfiguracaoProxy, "segredo" | "fonteIpCliente">,

@@ -2,13 +2,15 @@
 # web services, publicados só manualmente, a partir de um commit validado.
 #
 # Este arquivo NÃO cria nada sozinho. Nada aqui é aplicado até alguém criar
-# o Blueprint no painel do Render, e os dois campos marcados PENDENTE abaixo
-# fazem a validação do Blueprint falhar até serem decididos de propósito.
+# o Blueprint no painel do Render.
 #
-# Os nomes `agenda-cloud-piloto-*` são exclusivos deste sistema. A mesma
-# conta do Render já hospeda outro sistema (com Blueprint, serviços, banco e
-# variáveis próprios): este Blueprint nunca declara, referencia nem reutiliza
-# nada dele, e nenhum grupo de variáveis (envVarGroups) é usado.
+# Plano gratuito (`plan: free`) e região `virginia` nos dois serviços. O
+# Render não muda a região de um serviço depois de criado. O banco Neon do
+# piloto fica na região AWS correspondente, us-east-1 (runbook, seção 6).
+#
+# Os nomes `agenda-cloud-piloto-*` são exclusivos deste sistema. Este
+# Blueprint nunca declara, referencia nem reutiliza recurso de outro sistema
+# da conta, e nenhum grupo de variáveis (envVarGroups) é usado.
 #
 # Fluxo na mesma origem (endereços gratuitos `*.onrender.com`): o navegador
 # só fala com o serviço web; o Next.js encaminha `/agenda_api/*` à API pela
@@ -28,11 +30,11 @@ services:
     # Sem isto o Render usa a branch padrão do repositório (main), que não
     # recebe este código. O deploy manual escolhe um commit DESTA branch.
     branch: integration/nestjs-typeorm-frontend
-    # PENDENTE: região e plano são decisões de custo/latência, não do código.
-    # O Render não muda a região de um serviço depois de criado. Trocar os
-    # dois valores abaixo antes de criar o Blueprint (ver runbook, seção 1).
-    region: PENDENTE_REGIAO
-    plan: PENDENTE_PLANO
+    # Mesma região nos dois serviços, perto do banco (runbook, seção 1).
+    region: virginia
+    # Gratuito: hiberna sem tráfego e não recebe tráfego da rede privada. Por
+    # isso o proxy do frontend chama esta API pelo endereço público HTTPS.
+    plan: free
     rootDir: backend
     # `--include=dev`: o build usa @nestjs/cli e TypeScript (devDependencies).
     # NODE_ENV=production vale também no build quando definido abaixo, e sem
@@ -53,11 +55,17 @@ services:
         value: production
       - key: HOST
         value: 0.0.0.0
-      # Só para chamadas que NÃO vêm do proxy do frontend. Fica `socket` até
-      # a hospedagem confirmar o cabeçalho do IP do cliente (runbook, seção
-      # 5). Nunca trocar por suposição.
+      # Só para chamadas sem o segredo do proxy (o tráfego legítimo chega pelo
+      # proxy, com o IP do cliente num cabeçalho autenticado pelo segredo
+      # abaixo). `CF-Connecting-IP` é escrito pela borda do Render em toda
+      # requisição a um web service, SOBRESCREVENDO o valor do cliente
+      # (render.com/articles/host-pocketbase-on-render, julho de 2026): uma
+      # chamada direta fica com o limite do próprio IP, igual ao que teria
+      # pelo proxy. Valor ausente ou malformado cai no endereço da conexão.
+      # A borda real é conferida depois da publicação (runbook, seção 7,
+      # passo 8). Se o teste falhar, voltar para `socket`.
       - key: CLIENT_IP_SOURCE
-        value: socket
+        value: cf-connecting-ip
       # Segredo compartilhado com o proxy do frontend: só com ele a API aceita
       # o IP do cliente informado pelo proxy. Gerado pelo próprio Render na
       # criação do Blueprint; ninguém digita nem vê o valor.
@@ -79,8 +87,8 @@ services:
     # Sem isto o Render usa a branch padrão do repositório (main), que não
     # recebe este código. O deploy manual escolhe um commit DESTA branch.
     branch: integration/nestjs-typeorm-frontend
-    region: PENDENTE_REGIAO
-    plan: PENDENTE_PLANO
+    region: virginia
+    plan: free
     buildCommand: npm ci --include=dev && npm run build
     # `next start` usa o PORT do ambiente. `-H 0.0.0.0` explícito: medido
     # localmente, o padrão escutou em `::`, e o Render exige 0.0.0.0.
@@ -104,8 +112,12 @@ services:
           type: web
           name: agenda-cloud-piloto-api
           envVarKey: API_PROXY_SECRET
-      # De onde o proxy tira o IP do cliente para repassar à API. Mesma
-      # pendência da API: fica `socket` (nenhum IP repassado) até a
-      # confirmação da seção 5 do runbook.
+      # De onde o proxy tira o IP do cliente para repassar à API: o
+      # `CF-Connecting-IP` que a borda do Render (Cloudflare) escreve em toda
+      # requisição a um web service, SOBRESCREVENDO o valor do cliente
+      # (render.com/articles/host-pocketbase-on-render, julho de 2026). Valor
+      # ausente ou malformado: nenhum IP repassado, limite compartilhado.
+      # A borda real é conferida depois da publicação (runbook, seção 7,
+      # passo 8). Se o teste falhar, voltar para `socket`.
       - key: CLIENT_IP_SOURCE
-        value: socket
+        value: cf-connecting-ip
