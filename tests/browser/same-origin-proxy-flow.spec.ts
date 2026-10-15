@@ -10,7 +10,9 @@
 //   gravado na origem do frontend, e removido no logout;
 // - escrita com `Origin` de outro site recusada pelo proxy;
 // - cabeçalhos de IP forjados não escapam do rate limit, e clientes
-//   diferentes não dividem o mesmo limite.
+//   diferentes não dividem o mesmo limite, tanto pelo proxy quanto numa
+//   chamada direta à API pela borda dela (`CLIENT_IP_SOURCE=cf-connecting-ip`
+//   nos dois serviços, como em render.yaml).
 //
 // O que só a hospedagem real prova (borda do Render, certificado público,
 // hibernação do plano gratuito) fica no runbook, seção 9.
@@ -28,27 +30,32 @@ interface RespostaCrua {
   setCookie: string[];
 }
 
+/** Porta da borda local na frente da API (chamadas diretas). */
+const PORTA_BORDA_API = 3444;
+
 /** Requisição HTTPS crua, saindo de um endereço de loopback escolhido
  * (`127.0.0.x`): é assim que o teste simula clientes diferentes para a borda
- * local. Aceita só o certificado autoassinado desta execução, só aqui. */
+ * local. `porta` escolhe a borda: 3443 (frontend, padrão) ou 3444 (API).
+ * Aceita só o certificado autoassinado desta execução, só aqui. */
 function requisicaoCrua(
   metodo: string,
   caminho: string,
-  opcoes: { origemLocal: string; headers?: Record<string, string>; corpo?: unknown },
+  opcoes: { origemLocal: string; porta?: number; headers?: Record<string, string>; corpo?: unknown },
 ): Promise<RespostaCrua> {
   const corpo = opcoes.corpo === undefined ? undefined : JSON.stringify(opcoes.corpo);
+  const porta = opcoes.porta ?? 3443;
   return new Promise((resolve, reject) => {
     // Conecta por IPv4 explícito: `localhost` pode resolver para `::1`, que
-    // não aceita um endereço local IPv4. O `Host` continua o do frontend.
+    // não aceita um endereço local IPv4. O `Host` continua `localhost`.
     const req = https.request(
-      `https://127.0.0.1:3443${caminho}`,
+      `https://127.0.0.1:${porta}${caminho}`,
       {
         method: metodo,
         localAddress: opcoes.origemLocal,
         rejectUnauthorized: false,
         servername: "localhost",
         headers: {
-          host: "localhost:3443",
+          host: `localhost:${porta}`,
           ...(corpo ? { "content-type": "application/json" } : {}),
           ...opcoes.headers,
         },
@@ -236,5 +243,29 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
       status.push(resposta.status());
     }
     expect(status[5]).toBe(429);
+  });
+
+  test("chamada direta à API pela borda: cabeçalhos forjados não escapam do limite; outro cliente segue livre", async () => {
+    const tentativa = (origemLocal: string, i: number) =>
+      requisicaoCrua("POST", "/auth/login", {
+        origemLocal,
+        porta: PORTA_BORDA_API,
+        headers: {
+          "cf-connecting-ip": `203.0.113.${i + 1}`,
+          "x-forwarded-for": `198.51.100.${i + 1}`,
+          "x-real-ip": `192.0.2.${i + 1}`,
+          "x-agenda-client-ip": `203.0.113.${i + 101}`,
+          "x-agenda-proxy-secret": "segredo-forjado-pelo-cliente-0123456789",
+        },
+        corpo: { email: `direto-borda-${sufixo()}@example.test`, password: "senha-errada-123" },
+      });
+
+    const status: number[] = [];
+    for (let i = 0; i < 6; i++) status.push((await tentativa("127.0.0.5", i)).status);
+    expect(status.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+    expect(status[5]).toBe(429);
+
+    // Outro cliente (outro endereço para a borda da API) tem o próprio limite.
+    expect((await tentativa("127.0.0.6", 0)).status).toBe(401);
   });
 });

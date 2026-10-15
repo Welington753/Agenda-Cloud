@@ -12,9 +12,9 @@
 //
 // 1. `CF-Connecting-IP`, um cabeçalho único escrito pela borda, que
 //    SOBRESCREVE o que o cliente mandou. Só é lido com
-//    `CLIENT_IP_SOURCE=cf-connecting-ip`, depois de a hospedagem confirmar
-//    essa garantia (ver docs/runbooks/publicacao-piloto-render.md, seção "IP
-//    do cliente").
+//    `CLIENT_IP_SOURCE=cf-connecting-ip`, o valor do piloto em render.yaml,
+//    com base no que o Render documenta e conferido no ambiente publicado
+//    (ver docs/runbooks/publicacao-piloto-render.md, seção 5).
 //
 // 2. O proxy do frontend (Next.js, rota `/agenda_api`). No piloto, o
 //    navegador fala só com o frontend, e o frontend chama esta API pela

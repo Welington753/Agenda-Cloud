@@ -11,7 +11,11 @@ import { defineConfig, devices } from "@playwright/test";
 // - o frontend precisa ter sido compilado com `NEXT_PUBLIC_API_URL=/agenda_api`
 //   (modo mesma origem); o navegador nunca fala com a porta da API;
 // - a borda (tests/browser/support/borda-https.mjs) termina o TLS e escreve
-//   `CF-Connecting-IP` como a borda do Render.
+//   `CF-Connecting-IP` como a borda do Render. Há uma borda na frente de cada
+//   serviço, como na hospedagem: 3443 → Next.js e 3444 → API (chamadas
+//   diretas). Os dois serviços rodam com `CLIENT_IP_SOURCE=cf-connecting-ip`,
+//   o valor de render.yaml. O salto do proxy até a API é direto (HTTP local):
+//   nele, o IP do cliente vai no cabeçalho autenticado pelo segredo.
 //
 // `API_PROXY_SECRET` vem do ambiente (valor descartável do job de CI); os dois
 // processos recebem o mesmo valor.
@@ -41,7 +45,7 @@ export default defineConfig({
         PORT: "3001",
         NODE_ENV: "production",
         FRONTEND_URL: ORIGEM_PUBLICA,
-        CLIENT_IP_SOURCE: "socket",
+        CLIENT_IP_SOURCE: "cf-connecting-ip",
       },
       url: "http://localhost:3001/",
       reuseExistingServer: false,
@@ -62,6 +66,14 @@ export default defineConfig({
     {
       command: "node tests/browser/support/borda-https.mjs",
       url: `${ORIGEM_PUBLICA}/login`,
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
+      command: "node tests/browser/support/borda-https.mjs",
+      env: { BORDA_PORTA: "3444", BORDA_DESTINO_PORTA: "3001" },
+      url: "https://localhost:3444/",
       ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 30_000,

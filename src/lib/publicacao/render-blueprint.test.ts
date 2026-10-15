@@ -108,9 +108,19 @@ describe("render.yaml (piloto)", () => {
   it("valores fixos de runtime", () => {
     expect(configuracaoDa("NODE_ENV")).toBe("value: production");
     expect(configuracaoDa("HOST")).toBe("value: 0.0.0.0");
-    expect(configuracaoDa("CLIENT_IP_SOURCE")).toBe("value: socket");
-    // Pendente até a confirmação do runbook, seção 5: o proxy não repassa IP.
-    expect(configuracaoDa("CLIENT_IP_SOURCE", WEB)).toBe("value: socket");
+    // Nos dois serviços, o IP que a borda do Render escreve (runbook, seção 5):
+    // no web, o que o proxy repassa; na API, o das chamadas sem o segredo.
+    expect(configuracaoDa("CLIENT_IP_SOURCE")).toBe("value: cf-connecting-ip");
+    expect(configuracaoDa("CLIENT_IP_SOURCE", WEB)).toBe("value: cf-connecting-ip");
+  });
+
+  it("plano gratuito na mesma região nos dois serviços, sem valor pendente", () => {
+    for (const servico of [API, WEB]) {
+      const bloco = linhasDoServico(servico).filter((linha) => !linha.trim().startsWith("#"));
+      expect(bloco.filter((linha) => /^ {4}region: /.test(linha))).toEqual(["    region: virginia"]);
+      expect(bloco.filter((linha) => /^ {4}plan: /.test(linha))).toEqual(["    plan: free"]);
+    }
+    expect(blueprint).not.toMatch(/PENDENTE/);
   });
 
   it("comandos usam os scripts reais do projeto", () => {
