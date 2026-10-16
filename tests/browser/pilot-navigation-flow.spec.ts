@@ -6,7 +6,9 @@
 //    demonstração acessível, identificada como demonstração;
 //  - sem sessão, a área real não mostra navegação nenhuma e vai para o login;
 //  - com sessão, a navegação comum mostra o estabelecimento ativo, marca a
-//    página atual e continua utilizável na largura de um celular.
+//    página atual e continua utilizável na largura de um celular;
+//  - o login sem destino vai para a Visão geral (o `next` seguro é provado em
+//    visao-geral-flow.spec.ts, que tem o próprio orçamento de login).
 //
 // Orçamento de POST /auth/register: este arquivo gasta 1 e roda na mesma
 // invocação de services-flow.spec.ts (3) — total 4 de 5 (ver
@@ -90,17 +92,43 @@ test.describe("entrada e navegação do piloto", () => {
     await page.getByLabel("E-mail").fill(email);
     await page.getByLabel("Senha").fill(SENHA);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page).toHaveURL(/\/conta$/);
+    // Sem `next`, quem entra vai para a Visão geral.
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
 
-    // Cabeçalho comum: estabelecimento ativo e página atual marcada.
+    // Estrutura comum: estabelecimento ativo, usuário e página atual marcada.
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(estabelecimento);
+    await expect(page.getByTestId("usuario-conectado")).toContainText("Dona Navegação");
     const nav = navegacaoDaConta(page);
-    await expect(nav.getByRole("link", { name: "Minha conta" })).toHaveAttribute("aria-current", "page");
-    await expect(nav.getByRole("link", { name: "Agenda" })).not.toHaveAttribute("aria-current", "page");
+    expect(await nav.getByRole("link").allTextContents()).toEqual([
+      "Visão geral",
+      "Agenda",
+      "Serviços",
+      "Profissionais",
+      "Minha conta",
+    ]);
+    await expect(nav.getByRole("link", { name: "Visão geral" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(nav.getByRole("link", { name: "Minha conta" })).not.toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // Nenhum link da área real aponta para a demonstração.
+    const hrefs = await nav
+      .getByRole("link")
+      .evaluateAll((links) => links.map((l) => l.getAttribute("href")));
+    expect(hrefs.every((h) => h?.startsWith("/conta"))).toBe(true);
     // Uma conta com um vínculo só não tem o que trocar.
     await expect(page.getByRole("link", { name: "Trocar de estabelecimento" })).toHaveCount(0);
 
-    // Guia informativo: quatro passos, cada um com o link da área real.
+    // Minha conta: o guia informativo continua lá, com os links da área real.
+    await nav.getByRole("link", { name: "Minha conta" }).click();
+    await expect(page).toHaveURL(/\/conta$/);
+    await expect(nav.getByRole("link", { name: "Minha conta" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     const passos = page.getByTestId("primeiros-passos").getByRole("listitem");
     await expect(passos).toHaveCount(4);
     const destinos = await page
@@ -114,7 +142,7 @@ test.describe("entrada e navegação do piloto", () => {
       "/conta/agendamentos",
     ]);
 
-    // Ação principal: abrir a agenda.
+    // Ação principal de Minha conta: abrir a agenda.
     await page.getByTestId("abrir-agenda").click();
     await expect(page).toHaveURL(/\/conta\/agendamentos$/);
     await expect(nav.getByRole("link", { name: "Agenda" })).toHaveAttribute("aria-current", "page");
@@ -122,22 +150,36 @@ test.describe("entrada e navegação do piloto", () => {
     for (const [rotulo, caminho] of [
       ["Serviços", /\/conta\/servicos$/],
       ["Profissionais", /\/conta\/profissionais$/],
+      ["Visão geral", /\/conta\/visao-geral$/],
       ["Minha conta", /\/conta$/],
     ] as const) {
       await nav.getByRole("link", { name: rotulo }).click();
       await expect(page).toHaveURL(caminho);
       await expect(nav.getByRole("link", { name: rotulo })).toHaveAttribute("aria-current", "page");
+      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     }
 
-    // Celular: os quatro itens e o "Sair" aparecem na tela, sem rolar a
-    // página para o lado.
+    // Celular: as cinco áreas (na barra inferior) e o "Sair" aparecem na tela,
+    // com área de toque de pelo menos 44 px, sem rolar a página para o lado.
     await page.setViewportSize(CELULAR);
-    await page.goto("/conta/agendamentos");
-    for (const rotulo of ["Agenda", "Serviços", "Profissionais", "Minha conta"]) {
-      await expect(nav.getByRole("link", { name: rotulo })).toBeInViewport();
+    for (const caminho of [
+      "/conta/visao-geral",
+      "/conta/agendamentos",
+      "/conta/servicos",
+      "/conta/profissionais",
+      "/conta",
+    ]) {
+      await page.goto(caminho);
+      for (const rotulo of ["Visão geral", "Agenda", "Serviços", "Profissionais", "Minha conta"]) {
+        const link = nav.getByRole("link", { name: rotulo });
+        await expect(link).toBeInViewport();
+        const caixa = await link.boundingBox();
+        expect(caixa!.height).toBeGreaterThanOrEqual(44);
+      }
+      await expect(page.getByRole("button", { name: "Sair" })).toBeInViewport();
+      await semRolagemHorizontal(page);
     }
-    await expect(page.getByRole("button", { name: "Sair" })).toBeInViewport();
-    await semRolagemHorizontal(page);
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);

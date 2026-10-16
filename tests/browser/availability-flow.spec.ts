@@ -49,7 +49,8 @@ async function entrar(page: Page, conta: ContaCriada): Promise<void> {
   await page.getByLabel("E-mail").fill(conta.email);
   await page.getByLabel("Senha").fill(conta.senha);
   await page.getByRole("button", { name: "Entrar" }).click();
-  await expect(page).toHaveURL(/\/conta$/);
+  // Sem `next`, quem entra vai para a Visão geral.
+  await expect(page).toHaveURL(/\/conta\/visao-geral$/);
 }
 
 async function tenantDe(pagina: Page): Promise<string> {

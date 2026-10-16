@@ -57,6 +57,7 @@ describe("listarAgendamentos", () => {
       timezone: "America/Sao_Paulo",
       date: "2026-09-20",
       appointments: [AGENDAMENTO],
+      complete: true,
     });
 
     const resultado = await listarAgendamentos("tenant_1", "2026-09-20");
@@ -65,7 +66,14 @@ describe("listarAgendamentos", () => {
     if (resultado.ok) {
       expect(resultado.dados.timezone).toBe("America/Sao_Paulo");
       expect(resultado.dados.appointments).toHaveLength(1);
+      expect(resultado.dados.completa).toBe(true);
     }
+  });
+
+  it.each([false, undefined, "true"])("complete=%s nunca é lido como lista completa", async (valor) => {
+    mockFetch(200, { timezone: "America/Sao_Paulo", date: "2026-09-20", appointments: [], complete: valor });
+    const resultado = await listarAgendamentos("tenant_1", "2026-09-20");
+    expect(resultado.ok && resultado.dados.completa).toBe(false);
   });
 
   it("chama a rota com escopo de tenant, cookie e sem cache", async () => {

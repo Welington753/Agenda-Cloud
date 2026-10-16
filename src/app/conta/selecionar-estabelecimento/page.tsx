@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
+import { ROTA_PADRAO_POS_LOGIN } from "@/lib/auth/safe-redirect";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 
 export default function SelecionarEstabelecimentoPage() {
@@ -24,13 +25,13 @@ export default function SelecionarEstabelecimentoPage() {
   useEffect(() => {
     if (!sessao) return;
     // Nada para escolher (0 ou 1 contexto) — esta tela não se aplica.
-    if (sessao.contexts.length <= 1) router.replace("/conta");
+    if (sessao.contexts.length <= 1) router.replace(ROTA_PADRAO_POS_LOGIN);
   }, [sessao, router]);
 
   if (!sessao || sessao.contexts.length <= 1) return null;
 
   function escolher(tenantId: string) {
-    if (selecionarTenantAtivo(tenantId)) router.push("/conta");
+    if (selecionarTenantAtivo(tenantId)) router.push(ROTA_PADRAO_POS_LOGIN);
   }
 
   return (

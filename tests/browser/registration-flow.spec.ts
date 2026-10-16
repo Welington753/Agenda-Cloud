@@ -171,8 +171,9 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
     await page.getByLabel("E-mail").fill(dados.email);
     await page.getByLabel("Senha").fill(dados.senha);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText(dados.email)).toBeVisible();
+    // Login sem `next` vai para a Visão geral (o cadastro, acima, abre Minha conta).
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(dados.estabelecimento);
 
     // E-mail duplicado é recusado pelo backend e mostrado como tal — nunca
     // como "falha de comunicação" e nunca criando uma segunda conta.

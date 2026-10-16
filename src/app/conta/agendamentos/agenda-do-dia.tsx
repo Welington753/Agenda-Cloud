@@ -31,7 +31,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AcoesReserva } from "./acoes-reserva";
-import { CartaoAtendimento } from "./cartao-atendimento";
+import { CartaoAtendimento } from "@/components/conta/cartao-atendimento";
 import type { AcaoConfirmada, ConfirmacaoPendente } from "./confirmar-acao";
 
 interface AgendaDoDiaProps {

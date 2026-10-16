@@ -10,8 +10,7 @@
 // recorrente do estabelecimento.
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Clock, Store } from "lucide-react";
+import { Clock, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
@@ -26,6 +25,7 @@ import {
 import type { IntervaloReal } from "@/lib/api/working-hours-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { EditorSemana } from "./editor-semana";
@@ -74,7 +74,10 @@ export default function HorariosDoProfissionalPage() {
 
   if (!contexto) {
     return (
-      <Pagina titulo="Horários de trabalho">
+      <PaginaConta
+        titulo="Horários de trabalho"
+        voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+      >
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -83,7 +86,7 @@ export default function HorariosDoProfissionalPage() {
             </p>
           </CartaoCorpo>
         </Cartao>
-      </Pagina>
+      </PaginaConta>
     );
   }
 
@@ -121,9 +124,10 @@ export default function HorariosDoProfissionalPage() {
   }
 
   return (
-    <Pagina
+    <PaginaConta
       titulo="Horários de trabalho"
-      subtitulo={profissional ? `${profissional.name} · ${contexto.tenantName}` : contexto.tenantName}
+      descricao={profissional?.name}
+      voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
     >
       {estado.status === "carregando" && (
         <div className="space-y-3" aria-busy="true">
@@ -199,30 +203,6 @@ export default function HorariosDoProfissionalPage() {
           </form>
         </>
       )}
-    </Pagina>
-  );
-}
-
-function Pagina({
-  titulo,
-  subtitulo,
-  children,
-}: {
-  titulo: string;
-  subtitulo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
-      <div>
-        <Link href="/conta/profissionais" className="text-xs font-medium text-accent hover:underline">
-          <ArrowLeft size={12} className="mr-1 inline" />
-          Voltar para profissionais
-        </Link>
-        <h1 className="mt-2 text-xl font-bold text-ink">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
-      </div>
-      {children}
-    </div>
+    </PaginaConta>
   );
 }

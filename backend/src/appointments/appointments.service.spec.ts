@@ -37,7 +37,11 @@ import { Tenant } from '../entities/tenant.entity.js';
 import { TimeBlock } from '../entities/time-block.entity.js';
 import { Unit } from '../entities/unit.entity.js';
 import { DESTINO_DA_ACAO } from './appointment-status-transitions.js';
-import { AppointmentsService, OVERLAP_CONSTRAINT } from './appointments.service.js';
+import {
+  AppointmentsService,
+  LIMITE_DO_DIA,
+  OVERLAP_CONSTRAINT,
+} from './appointments.service.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -99,8 +103,9 @@ class FakeManager {
     return Promise.resolve(this.colecaoDe(entity).find((l) => this.casa(l, options.where)) ?? null);
   }
 
-  find(entity: unknown, options: { where: Registro }): Promise<Registro[]> {
-    return Promise.resolve(this.colecaoDe(entity).filter((l) => this.casa(l, options.where)));
+  find(entity: unknown, options: { where: Registro; take?: number }): Promise<Registro[]> {
+    const linhas = this.colecaoDe(entity).filter((l) => this.casa(l, options.where));
+    return Promise.resolve(options.take === undefined ? linhas : linhas.slice(0, options.take));
   }
 
   create(_entity: unknown, dados: Registro): Registro {
@@ -641,6 +646,28 @@ describe('AppointmentsService.list', () => {
     expect(resposta.appointments.map((a) => a.id)).toEqual(['de_hoje']);
     expect(resposta.timezone).toBe('America/Sao_Paulo');
     expect(resposta.appointments[0].localStart).toBe('09:00');
+    expect(resposta.complete).toBe(true);
+  });
+
+  it('avisa quando a consulta bateu no teto e a lista pode estar incompleta', async () => {
+    const agendamentos = Array.from({ length: LIMITE_DO_DIA }, (_, i) => ({
+      id: `reserva_${String(i).padStart(3, '0')}`,
+      tenantId: TENANT_A,
+      professionalId: PROF_A,
+      consumerId: CLIENTE_A,
+      consumerNameSnapshot: 'Maria Souza',
+      consumerWhatsappSnapshot: '(11) 90000-0000',
+      unitId: UNIDADE_A,
+      status: AppointmentStatus.CONFIRMED,
+      startAt: new Date(INICIO),
+      endAt: new Date('2026-09-20T13:00:00.000Z'),
+      createdAt: new Date(),
+    }));
+    const { servico } = montar({ agendamentos });
+
+    const resposta = await servico.list(USUARIO_DONO, TENANT_A, { date: DATA });
+
+    expect(resposta.complete).toBe(false);
   });
 
   it('exige permissão de ver a agenda', async () => {

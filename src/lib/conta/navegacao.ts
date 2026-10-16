@@ -9,8 +9,10 @@ export interface ItemNavegacaoConta {
   rotulo: string;
 }
 
-/** Ordem pensada para o dia a dia: a agenda é o que se abre mais vezes. */
+/** Ordem pensada para o dia a dia: o resumo do dia, depois a agenda, que é o
+ * que se abre mais vezes. "Minha conta" fica por último. */
 export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
+  { href: "/conta/visao-geral", rotulo: "Visão geral" },
   { href: "/conta/agendamentos", rotulo: "Agenda" },
   { href: "/conta/servicos", rotulo: "Serviços" },
   { href: "/conta/profissionais", rotulo: "Profissionais" },

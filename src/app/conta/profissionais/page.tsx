@@ -19,16 +19,18 @@ import { useServicosReais } from "@/lib/servicos/use-servicos-reais";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { FormularioProfissional, type DadosFormularioProfissional } from "./formulario-profissional";
+import {
+  FormularioProfissional,
+  type DadosFormularioProfissional,
+} from "./formulario-profissional";
 import { ListaProfissionais } from "./lista-profissionais";
 
 type Edicao =
-  | { modo: "fechado" }
-  | { modo: "novo" }
-  | { modo: "editar"; profissional: ProfissionalReal };
+  { modo: "fechado" } | { modo: "novo" } | { modo: "editar"; profissional: ProfissionalReal };
 
 export default function ProfissionaisPage() {
   const { estado: estadoSessao } = useRealAuth();
@@ -71,7 +73,7 @@ export default function ProfissionaisPage() {
 
   if (!contexto) {
     return (
-      <Pagina titulo="Profissionais">
+      <PaginaConta titulo="Profissionais">
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -80,13 +82,13 @@ export default function ProfissionaisPage() {
                 Sua conta ainda não está vinculada a um estabelecimento
               </p>
               <p className="mt-1 text-sm text-ink-soft">
-                Profissionais pertencem a um estabelecimento — quando sua conta tiver um vínculo ativo,
-                eles aparecem aqui.
+                Profissionais pertencem a um estabelecimento — quando sua conta tiver um vínculo
+                ativo, eles aparecem aqui.
               </p>
             </div>
           </CartaoCorpo>
         </Cartao>
-      </Pagina>
+      </PaginaConta>
     );
   }
 
@@ -167,11 +169,24 @@ export default function ProfissionaisPage() {
   const servicosDoTenant = estadoServicos.status === "carregada" ? estadoServicos.servicos : [];
 
   return (
-    <Pagina titulo="Profissionais" subtitulo={contexto.tenantName}>
+    <PaginaConta
+      titulo="Profissionais"
+      descricao="Quem atende, os serviços de cada um e os horários de trabalho."
+      acoes={
+        estado.status === "carregada" &&
+        edicao.modo === "fechado" &&
+        estado.profissionais.length > 0 ? (
+          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+            <PlusCircle size={16} aria-hidden="true" />
+            Novo profissional
+          </Botao>
+        ) : undefined
+      }
+    >
       {estado.status === "carregando" && (
         <div className="space-y-3" aria-busy="true">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
       )}
 
@@ -192,15 +207,6 @@ export default function ProfissionaisPage() {
 
       {estado.status === "carregada" && (
         <>
-          {edicao.modo === "fechado" && estado.profissionais.length > 0 && (
-            <div className="flex justify-end">
-              <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
-                <PlusCircle size={16} className="mr-1.5" />
-                Novo profissional
-              </Botao>
-            </div>
-          )}
-
           {edicao.modo !== "fechado" && (
             <Cartao>
               <CartaoCorpo>
@@ -255,26 +261,6 @@ export default function ProfissionaisPage() {
           )}
         </>
       )}
-    </Pagina>
-  );
-}
-
-function Pagina({
-  titulo,
-  subtitulo,
-  children,
-}: {
-  titulo: string;
-  subtitulo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
-      </div>
-      {children}
-    </div>
+    </PaginaConta>
   );
 }

@@ -19,15 +19,20 @@
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
 // navegador. "Hoje" é calculado no fuso do ESTABELECIMENTO, que vem com a
-// agenda; até a primeira resposta, o ponto de partida é o dia do navegador.
-import { useEffect, useMemo, useRef, useState } from "react";
+// agenda (regra em lib/profissionais/use-dia-do-estabelecimento.ts, a mesma da
+// Visão geral).
+//
+// `?novo=1` (atalho da Visão geral) abre o painel de nova reserva ao chegar —
+// o formulário é sempre este, nunca uma cópia em outra tela.
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Store } from "lucide-react";
+import { AlertTriangle, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
 import { useAgendamentosReais } from "@/lib/profissionais/use-agendamentos-reais";
-import { comoDataDeCalendario, mensagemFalhaAgendamento } from "@/lib/profissionais/agendamentos";
+import { mensagemFalhaAgendamento } from "@/lib/profissionais/agendamentos";
+import { useDiaDoEstabelecimento } from "@/lib/profissionais/use-dia-do-estabelecimento";
 import {
   deslocarData,
   filtrarPorProfissional,
@@ -39,6 +44,7 @@ import {
 } from "@/lib/profissionais/agenda-visual";
 import type { AgendamentoReal, SelecaoDeCliente } from "@/lib/api/appointments-api";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useToast } from "@/components/ui/toast";
 import { AgendaDoDia } from "./agenda-do-dia";
 import { BarraAgenda } from "./barra-agenda";
@@ -55,10 +61,8 @@ export default function AgendamentosPage() {
   const tenantIdAtivo = estadoSessao.status === "autenticado" ? estadoSessao.tenantIdAtivo : null;
   const precisaSelecionar = !!sessao && sessao.requiresTenantSelection && !tenantIdAtivo;
 
-  // `useState` com inicializador: o "hoje" do navegador é lido UMA vez, como
-  // ponto de partida editável. Quem interpreta a data no fuso do
-  // estabelecimento é sempre o servidor.
-  const [date, setDate] = useState(() => comoDataDeCalendario(new Date()));
+  const dia = useDiaDoEstabelecimento(tenantIdAtivo);
+  const { date, timezone, mudarData, irParaHoje, sincronizar } = dia;
   const [filtroProfissionalId, setFiltroProfissionalId] = useState(TODOS_OS_PROFISSIONAIS);
   const [painelAberto, setPainelAberto] = useState(false);
   const [erroReserva, setErroReserva] = useState<string | null>(null);
@@ -66,12 +70,6 @@ export default function AgendamentosPage() {
     reserva: AgendamentoReal;
     date: string;
   } | null>(null);
-  /** Fuso do estabelecimento, conhecido depois da primeira agenda. */
-  const [timezone, setTimezone] = useState<string | null>(null);
-  /** A pessoa já escolheu um dia (ou o ajuste inicial já rodou): o ajuste
-   * automático para o "hoje" do estabelecimento nunca passa por cima disso. */
-  const diaEscolhidoRef = useRef(false);
-
   const agendamentos = useAgendamentosReais(tenantIdAtivo, date);
   const { estado, gravando, recarregar, criar } = agendamentos;
   const { erroAcao, setErroAcao, aoCancelar, aoAlterarStatus, aoRemarcar } = useAcoesDaAgenda(
@@ -86,16 +84,24 @@ export default function AgendamentosPage() {
   }, [precisaSelecionar, router]);
 
   // Trocar de estabelecimento invalida o que está na tela: a última reserva,
-  // os erros, o filtro (profissionais de outro contexto), o painel e o fuso.
+  // os erros, o filtro (profissionais de outro contexto) e o painel. O fuso e
+  // o ajuste de "hoje" são zerados pelo próprio useDiaDoEstabelecimento.
   useEffect(() => {
     setUltimaReserva(null);
     setErroReserva(null);
     setErroAcao(null);
     setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS);
     setPainelAberto(false);
-    setTimezone(null);
-    diaEscolhidoRef.current = false;
   }, [tenantIdAtivo, setErroAcao]);
+
+  // Atalho "Novo agendamento" da Visão geral: abre o painel uma vez e limpa o
+  // parâmetro, para recarregar a página não reabrir o formulário. Lido do
+  // `window` (e não de useSearchParams) porque só importa na chegada.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("novo") !== "1") return;
+    setPainelAberto(true);
+    router.replace("/conta/agendamentos");
+  }, [router]);
 
   // Trocar de dia também invalida o erro de uma ação: ele falava de uma reserva
   // que não está mais na tela.
@@ -105,17 +111,10 @@ export default function AgendamentosPage() {
 
   const agenda = estado.status === "carregada" ? estado.agenda : null;
 
-  // Primeira agenda do estabelecimento: guarda o fuso e, se a pessoa ainda não
-  // escolheu um dia, troca o dia do navegador pelo "hoje" do estabelecimento
-  // (os dois diferem perto da meia-noite ou com o navegador em outro fuso).
+  // Cada agenda recebida informa o fuso; a primeira também ajusta "hoje".
   useEffect(() => {
-    if (!agenda) return;
-    setTimezone(agenda.timezone);
-    if (diaEscolhidoRef.current) return;
-    diaEscolhidoRef.current = true;
-    const hoje = hojeNoFuso(agenda.timezone, new Date());
-    if (hoje && hoje !== agenda.date) setDate(hoje);
-  }, [agenda]);
+    if (agenda) sincronizar(agenda);
+  }, [agenda, sincronizar]);
 
   const visiveis = useMemo(
     () => (agenda ? filtrarPorProfissional(agenda.appointments, filtroProfissionalId) : []),
@@ -136,7 +135,7 @@ export default function AgendamentosPage() {
 
   if (!contexto || !tenantIdAtivo) {
     return (
-      <Pagina titulo="Agendamentos">
+      <PaginaConta titulo="Agenda">
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -145,18 +144,8 @@ export default function AgendamentosPage() {
             </p>
           </CartaoCorpo>
         </Cartao>
-      </Pagina>
+      </PaginaConta>
     );
-  }
-
-  function mudarData(nova: string) {
-    diaEscolhidoRef.current = true;
-    setDate(nova);
-  }
-
-  function irParaHoje() {
-    const hoje = timezone ? hojeNoFuso(timezone, new Date()) : null;
-    mudarData(hoje ?? comoDataDeCalendario(new Date()));
   }
 
   function abrirPainel() {
@@ -205,12 +194,12 @@ export default function AgendamentosPage() {
   }
 
   return (
-    <Pagina titulo="Agenda" subtitulo={contexto.tenantName}>
+    <PaginaConta titulo="Agenda" descricao="Quem será atendido, quando, por quem e qual serviço.">
       <BarraAgenda
         date={date}
         timezone={timezone}
         ehHoje={!!timezone && hojeNoFuso(timezone, new Date()) === date}
-        resumo={agenda ? rotuloDoResumo(resumoDoDia(visiveis)) : null}
+        resumo={agenda?.completa ? rotuloDoResumo(resumoDoDia(visiveis)) : null}
         carregando={estado.status === "carregando"}
         profissionais={opcoesFiltro}
         filtroProfissionalId={filtroProfissionalId}
@@ -229,6 +218,18 @@ export default function AgendamentosPage() {
           date={ultimaReserva.date}
           aoDispensar={() => setUltimaReserva(null)}
         />
+      )}
+
+      {agenda && !agenda.completa && (
+        <p
+          role="note"
+          data-testid="agenda-incompleta"
+          className="flex items-start gap-2 rounded-[var(--radius-control)] bg-warning-soft px-3 py-2 text-sm text-ink"
+        >
+          <AlertTriangle size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+          Este dia tem mais reservas do que a agenda consegue trazer de uma vez: a lista abaixo pode
+          estar incompleta.
+        </p>
       )}
 
       <AgendaDoDia
@@ -261,26 +262,6 @@ export default function AgendamentosPage() {
         erro={erroReserva}
         aoConfirmar={aoConfirmar}
       />
-    </Pagina>
-  );
-}
-
-function Pagina({
-  titulo,
-  subtitulo,
-  children,
-}: {
-  titulo: string;
-  subtitulo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6 sm:py-8">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
-      </div>
-      {children}
-    </div>
+    </PaginaConta>
   );
 }
