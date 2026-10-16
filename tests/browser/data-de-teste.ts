@@ -184,3 +184,60 @@ export function instanteLocalDe(horaLocal: string): string {
   }
   return instante.toISOString();
 }
+
+/** "Hoje" (`YYYY-MM-DD`) no fuso do estabelecimento — é o dia que a agenda
+ * real abre e o que o botão "Hoje" escolhe. */
+export function hojeNoFusoDoTenant(agora: Date): string {
+  return comoDataIso(partesLocais(agora));
+}
+
+/** Dia da semana (0 = domingo) de uma data `YYYY-MM-DD`. */
+export function weekdayDe(data: string): number {
+  return diaDaSemanaDe(partesDeDataIso(data));
+}
+
+export interface InicioDeHoje {
+  /** Hora de parede `"HH:MM"` no fuso do estabelecimento. */
+  horaLocal: string;
+  /** O mesmo instante em UTC (ISO 8601), para falar com a API. */
+  startAt: string;
+}
+
+const QUINZE_MINUTOS = 15;
+
+/**
+ * Próximo início da grade de 15 min, HOJE no fuso do estabelecimento, a pelo
+ * menos `folgaMinutos` de `agora`. Serve para provar o atendimento EM
+ * ANDAMENTO com o relógio real do servidor (que só deixa iniciar a partir de
+ * 30 min antes do horário). Devolve `null` quando o início cairia depois de
+ * `ultimoInicio` ou no dia seguinte — perto da meia-noite o teste não tem
+ * como montar o caso e deve dizer isso, em vez de mirar outro dia.
+ */
+export function proximoInicioDeHoje(
+  agora: Date,
+  folgaMinutos: number,
+  ultimoInicio = "23:00",
+): InicioDeHoje | null {
+  const hoje = partesLocais(agora);
+  const alvo = partesLocais(new Date(agora.getTime() + folgaMinutos * 60_000));
+  if (comoDataIso(alvo) !== comoDataIso(hoje)) return null;
+
+  const minutosAlvo = alvo.hour * 60 + alvo.minute + (alvo.second > 0 ? 1 : 0);
+  const minutos = Math.ceil(minutosAlvo / QUINZE_MINUTOS) * QUINZE_MINUTOS;
+  const [horaLimite, minutoLimite] = ultimoInicio.split(":").map(Number);
+  if (minutos > horaLimite * 60 + minutoLimite) return null;
+
+  const doisDigitos = (valor: number) => String(valor).padStart(2, "0");
+  const horaLocal = `${doisDigitos(Math.floor(minutos / 60))}:${doisDigitos(minutos % 60)}`;
+  const comoSeFosseUtc = Date.UTC(hoje.year, hoje.month - 1, hoje.day, Math.floor(minutos / 60), minutos % 60);
+  const instante = new Date(comoSeFosseUtc - deslocamentoEmMinutos(new Date(comoSeFosseUtc)) * 60_000);
+
+  const conferido = partesLocais(instante);
+  if (
+    comoDataIso(conferido) !== comoDataIso(hoje) ||
+    conferido.hour * 60 + conferido.minute !== minutos
+  ) {
+    return null;
+  }
+  return { horaLocal, startAt: instante.toISOString() };
+}

@@ -269,6 +269,23 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
         run: npm run test:browser:appointments
 
+      # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
+      # (orçamento de POST /auth/register por IP): a visualização da agenda
+      # real — ordem, filtro, navegação de dias, estados de carregamento, erro
+      # e vazio, painel "Novo agendamento" e atendimento em andamento.
+      - name: Run real browser flows (agenda day view, filter, states, new-appointment panel)
+        id: browser_agenda_view
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-view
+        run: npm run test:browser:agenda-view
+
       # Modo do PILOTO (mesma origem): o frontend é recompilado com
       # `NEXT_PUBLIC_API_URL=/agenda_api`, e o navegador passa a falar só com
       # ele. Fica DEPOIS das suítes acima porque substitui o build anterior
@@ -308,6 +325,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas da agenda real em cada estado (vários atendimentos, vazio,
+      # carregando, erro, painel aberto, reserva criada e em andamento), no
+      # computador e no celular. Só os PNG `agenda-*`.
+      - name: Upload agenda view screenshots
+        if: always() && steps.browser_agenda_view.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agenda-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/agenda-view/**/agenda-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Integração do backend contra o MESMO Postgres descartável: prova o
       # comportamento real das consultas com escopo de tenant e das
       # constraints (nenhum fake em memória cobre isso). `DB_E2E_DIRECT_URL` é
@@ -343,6 +372,7 @@ jobs:
             steps.browser_working_hours.outcome == 'failure' ||
             steps.browser_availability.outcome == 'failure' ||
             steps.browser_appointments.outcome == 'failure' ||
+            steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -10,7 +10,15 @@
 // Playwright: se a data voltar a envelhecer, a falha aparece em segundos e
 // aponta para a causa, em vez de aparecer como lista vazia num teste de tela.
 import { describe, expect, it } from "vitest";
-import { DATA, DATA_SEGUINTE, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
+import {
+  DATA,
+  DATA_SEGUINTE,
+  WEEKDAY_DA_DATA,
+  hojeNoFusoDoTenant,
+  instanteLocalDe,
+  proximoInicioDeHoje,
+  weekdayDe,
+} from "./data-de-teste";
 
 const TIMEZONE_DO_TENANT = "America/Sao_Paulo";
 
@@ -80,5 +88,27 @@ describe("data de teste dos fluxos de agenda", () => {
 
   it("recusa uma hora local que não existe na data, em vez de mirar outra", () => {
     expect(() => instanteLocalDe("99:00")).toThrow();
+  });
+});
+
+describe("próximo início de hoje (atendimento em andamento)", () => {
+  it("cai na grade de 15 min, hoje, com a folga pedida", () => {
+    // 13:07:30Z = 10:07:30 em São Paulo; com 2 min de folga, o próximo é 10:15.
+    const agora = new Date("2026-10-15T13:07:30.000Z");
+    expect(hojeNoFusoDoTenant(agora)).toBe("2026-10-15");
+    expect(proximoInicioDeHoje(agora, 2)).toEqual({
+      horaLocal: "10:15",
+      startAt: "2026-10-15T13:15:00.000Z",
+    });
+  });
+
+  it("perto da meia-noite não inventa outro dia", () => {
+    // 02:50Z = 23:50 em São Paulo.
+    expect(proximoInicioDeHoje(new Date("2026-10-16T02:50:00.000Z"), 2)).toBeNull();
+  });
+
+  it("dia da semana de uma data de calendário", () => {
+    expect(weekdayDe("2026-10-18")).toBe(0);
+    expect(weekdayDe("2026-10-15")).toBe(4);
   });
 });

@@ -10,7 +10,10 @@
 // Envio duplicado é barrado em dois lugares: o `disabled` do botão e uma
 // segunda checagem no handler, para um clique já despachado antes do
 // re-render nunca virar um segundo POST.
-import { useEffect, useMemo, useState } from "react";
+//
+// Vive dentro do painel "Novo agendamento" (painel-nova-reserva.tsx), que o
+// monta limpo a cada abertura e o fecha depois do sucesso.
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CalendarPlus, Info } from "lucide-react";
 import type {
   AgendamentoReal,
@@ -20,7 +23,10 @@ import type {
 } from "@/lib/api/appointments-api";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { useDisponibilidadeReal } from "@/lib/profissionais/use-disponibilidade-real";
-import { mensagemFalhaDisponibilidade, mensagemSemHorario } from "@/lib/profissionais/disponibilidade";
+import {
+  mensagemFalhaDisponibilidade,
+  mensagemSemHorario,
+} from "@/lib/profissionais/disponibilidade";
 import { rotuloDeDuracao } from "@/lib/profissionais/agendamentos";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -31,6 +37,10 @@ interface NovaReservaProps {
   tenantId: string;
   date: string;
   profissionais: ProfissionalReal[];
+  /** Pré-seleção inicial (o profissional do filtro da agenda), se ativo. */
+  profissionalInicialId?: string | null;
+  /** O que mostrar quando não há profissional ativo. */
+  semProfissional?: ReactNode;
   gravando: boolean;
   erro: string | null;
   aoConfirmar: (dados: {
@@ -45,6 +55,8 @@ export function NovaReserva({
   tenantId,
   date,
   profissionais,
+  profissionalInicialId = null,
+  semProfissional,
   gravando,
   erro,
   aoConfirmar,
@@ -68,10 +80,13 @@ export function NovaReserva({
     [profissional],
   );
 
-  // Pré-seleciona o primeiro profissional ativo, sem sobrescrever escolha.
+  // Pré-seleciona o profissional do filtro da agenda (se ativo) ou o primeiro
+  // ativo, sem sobrescrever escolha.
   useEffect(() => {
-    if (!professionalId && ativos.length > 0) setProfessionalId(ativos[0].id);
-  }, [professionalId, ativos]);
+    if (professionalId || ativos.length === 0) return;
+    const inicial = ativos.find((p) => p.id === profissionalInicialId);
+    setProfessionalId((inicial ?? ativos[0]).id);
+  }, [professionalId, ativos, profissionalInicialId]);
 
   // Trocar de profissional invalida o serviço escolhido: os vínculos são
   // outros. Nunca manter um serviço que aquele profissional não realiza.
@@ -130,9 +145,9 @@ export function NovaReserva({
     return (
       <Cartao>
         <CartaoCorpo>
-          <p className="text-sm text-ink">
-            Cadastre um profissional ativo antes de agendar.
-          </p>
+          {semProfissional ?? (
+            <p className="text-sm text-ink">Cadastre um profissional ativo antes de agendar.</p>
+          )}
         </CartaoCorpo>
       </Cartao>
     );
@@ -142,11 +157,14 @@ export function NovaReserva({
     <form onSubmit={(e) => void confirmar(e)} className="space-y-4" noValidate>
       <Cartao>
         <CartaoCorpo className="space-y-4">
-          <p className="text-sm font-semibold text-ink">Nova reserva</p>
+          <p className="text-sm font-semibold text-ink">Profissional, serviço e cliente</p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="profissional" className="mb-1 block text-xs font-medium text-ink-soft">
+              <label
+                htmlFor="profissional"
+                className="mb-1 block text-xs font-medium text-ink-soft"
+              >
                 Profissional
               </label>
               <select
@@ -175,7 +193,9 @@ export function NovaReserva({
                 onChange={(e) => setServiceId(e.target.value)}
                 className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
               >
-                {servicosElegiveis.length === 0 && <option value="">Nenhum serviço vinculado</option>}
+                {servicosElegiveis.length === 0 && (
+                  <option value="">Nenhum serviço vinculado</option>
+                )}
                 {servicosElegiveis.map((v) => (
                   <option key={v.serviceId} value={v.serviceId}>
                     {v.serviceName}

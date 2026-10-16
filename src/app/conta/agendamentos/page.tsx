@@ -9,35 +9,42 @@
 // o horário da mesma reserva. Não há escolha livre de status nem exclusão:
 // cada mudança de status é uma ação explícita, com destino fixo pela rota do
 // backend. A lista do dia e as ações por reserva vivem em agenda-do-dia.tsx /
-// acoes-reserva.tsx.
+// acoes-reserva.tsx; o tratamento do resultado das ações, em
+// use-acoes-da-agenda.ts.
+//
+// LAYOUT: a agenda do dia é o conteúdo principal, com a barra de data, filtro
+// e Atualizar no topo (barra-agenda.tsx). A nova reserva abre sob demanda num
+// painel (painel-nova-reserva.tsx) com o formulário de sempre.
 //
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
-// navegador.
-import { useEffect, useState } from "react";
+// navegador. "Hoje" é calculado no fuso do ESTABELECIMENTO, que vem com a
+// agenda; até a primeira resposta, o ponto de partida é o dia do navegador.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Store } from "lucide-react";
+import { Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
 import { useAgendamentosReais } from "@/lib/profissionais/use-agendamentos-reais";
+import { comoDataDeCalendario, mensagemFalhaAgendamento } from "@/lib/profissionais/agendamentos";
 import {
-  comoDataDeCalendario,
-  mensagemFalhaAgendamento,
-  mensagemFalhaCancelamento,
-  mensagemFalhaRemarcacao,
-  resumoDoAgendamento,
-  ROTULO_STATUS,
-  rotuloDaData,
-} from "@/lib/profissionais/agendamentos";
+  deslocarData,
+  filtrarPorProfissional,
+  hojeNoFuso,
+  opcoesDeProfissional,
+  resumoDoDia,
+  rotuloDoResumo,
+  TODOS_OS_PROFISSIONAIS,
+} from "@/lib/profissionais/agenda-visual";
 import type { AgendamentoReal, SelecaoDeCliente } from "@/lib/api/appointments-api";
-import type { AcaoDeStatusReal } from "@/lib/api/appointment-status-api";
-import { mensagemFalhaStatus, mensagemSucessoStatus } from "@/lib/profissionais/andamento";
-import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { AgendaDoDia } from "./agenda-do-dia";
-import { NovaReserva } from "./nova-reserva";
+import { BarraAgenda } from "./barra-agenda";
+import { PainelNovaReserva } from "./painel-nova-reserva";
+import { ReservaCriada } from "./reserva-criada";
+import { useAcoesDaAgenda } from "./use-acoes-da-agenda";
 
 export default function AgendamentosPage() {
   const { estado: estadoSessao } = useRealAuth();
@@ -52,34 +59,76 @@ export default function AgendamentosPage() {
   // ponto de partida editável. Quem interpreta a data no fuso do
   // estabelecimento é sempre o servidor.
   const [date, setDate] = useState(() => comoDataDeCalendario(new Date()));
+  const [filtroProfissionalId, setFiltroProfissionalId] = useState(TODOS_OS_PROFISSIONAIS);
+  const [painelAberto, setPainelAberto] = useState(false);
   const [erroReserva, setErroReserva] = useState<string | null>(null);
-  const [ultimaReserva, setUltimaReserva] = useState<AgendamentoReal | null>(null);
-  /** Erro das ações sobre uma reserva JÁ existente, separado do erro da nova
-   * reserva: misturar os dois mostraria a falha do cancelamento dentro do
-   * formulário de criação. */
-  const [erroAcao, setErroAcao] = useState<string | null>(null);
+  const [ultimaReserva, setUltimaReserva] = useState<{
+    reserva: AgendamentoReal;
+    date: string;
+  } | null>(null);
+  /** Fuso do estabelecimento, conhecido depois da primeira agenda. */
+  const [timezone, setTimezone] = useState<string | null>(null);
+  /** A pessoa já escolheu um dia (ou o ajuste inicial já rodou): o ajuste
+   * automático para o "hoje" do estabelecimento nunca passa por cima disso. */
+  const diaEscolhidoRef = useRef(false);
 
-  const { estado, gravando, recarregar, criar, cancelar, alterarStatus, remarcar } =
-    useAgendamentosReais(tenantIdAtivo, date);
-  const { estado: estadoProfissionais } = useProfissionaisReais(tenantIdAtivo);
+  const agendamentos = useAgendamentosReais(tenantIdAtivo, date);
+  const { estado, gravando, recarregar, criar } = agendamentos;
+  const { erroAcao, setErroAcao, aoCancelar, aoAlterarStatus, aoRemarcar } = useAcoesDaAgenda(
+    agendamentos,
+    notificar,
+  );
+  const { estado: estadoProfissionais, recarregar: recarregarProfissionais } =
+    useProfissionaisReais(tenantIdAtivo);
 
   useEffect(() => {
     if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
   }, [precisaSelecionar, router]);
 
-  // Trocar de estabelecimento invalida o que está na tela: a última reserva e
-  // o erro são de outro contexto.
+  // Trocar de estabelecimento invalida o que está na tela: a última reserva,
+  // os erros, o filtro (profissionais de outro contexto), o painel e o fuso.
   useEffect(() => {
     setUltimaReserva(null);
     setErroReserva(null);
     setErroAcao(null);
-  }, [tenantIdAtivo]);
+    setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS);
+    setPainelAberto(false);
+    setTimezone(null);
+    diaEscolhidoRef.current = false;
+  }, [tenantIdAtivo, setErroAcao]);
 
   // Trocar de dia também invalida o erro de uma ação: ele falava de uma reserva
   // que não está mais na tela.
   useEffect(() => {
     setErroAcao(null);
-  }, [date]);
+  }, [date, setErroAcao]);
+
+  const agenda = estado.status === "carregada" ? estado.agenda : null;
+
+  // Primeira agenda do estabelecimento: guarda o fuso e, se a pessoa ainda não
+  // escolheu um dia, troca o dia do navegador pelo "hoje" do estabelecimento
+  // (os dois diferem perto da meia-noite ou com o navegador em outro fuso).
+  useEffect(() => {
+    if (!agenda) return;
+    setTimezone(agenda.timezone);
+    if (diaEscolhidoRef.current) return;
+    diaEscolhidoRef.current = true;
+    const hoje = hojeNoFuso(agenda.timezone, new Date());
+    if (hoje && hoje !== agenda.date) setDate(hoje);
+  }, [agenda]);
+
+  const visiveis = useMemo(
+    () => (agenda ? filtrarPorProfissional(agenda.appointments, filtroProfissionalId) : []),
+    [agenda, filtroProfissionalId],
+  );
+  const opcoesFiltro = useMemo(
+    () =>
+      opcoesDeProfissional(
+        estadoProfissionais.status === "carregada" ? estadoProfissionais.profissionais : [],
+        agenda?.appointments ?? [],
+      ),
+    [estadoProfissionais, agenda],
+  );
 
   if (!sessao || precisaSelecionar) return null;
 
@@ -100,6 +149,21 @@ export default function AgendamentosPage() {
     );
   }
 
+  function mudarData(nova: string) {
+    diaEscolhidoRef.current = true;
+    setDate(nova);
+  }
+
+  function irParaHoje() {
+    const hoje = timezone ? hojeNoFuso(timezone, new Date()) : null;
+    mudarData(hoje ?? comoDataDeCalendario(new Date()));
+  }
+
+  function abrirPainel() {
+    setErroReserva(null);
+    setPainelAberto(true);
+  }
+
   async function aoConfirmar(dados: {
     professionalId: string;
     serviceId: string;
@@ -110,9 +174,20 @@ export default function AgendamentosPage() {
     const resultado = await criar(dados);
 
     if (resultado.ok) {
-      setUltimaReserva(resultado.dados);
+      // O painel fecha e o formulário é descartado: o que fica na tela é a
+      // agenda (já recarregada pelo hook) com a reserva marcada e o aviso no
+      // topo — nunca um formulário preenchido parecendo pendente.
+      const criada = resultado.dados;
+      setUltimaReserva({ reserva: criada, date });
+      setPainelAberto(false);
+      // Se o filtro esconderia a reserva criada, ele volta para todos.
+      setFiltroProfissionalId((atual) =>
+        atual === TODOS_OS_PROFISSIONAIS || atual === criada.professional.id
+          ? atual
+          : TODOS_OS_PROFISSIONAIS,
+      );
       notificar("Agendamento confirmado.", "sucesso");
-      return resultado.dados;
+      return criada;
     }
 
     setErroReserva(mensagemFalhaAgendamento(resultado.falha));
@@ -124,135 +199,37 @@ export default function AgendamentosPage() {
       recarregar();
     }
     // Falha de comunicação NÃO recarrega automaticamente nem reenvia: a
-    // mensagem orienta a conferir a agenda, e o botão abaixo faz isso quando
-    // a pessoa decidir.
+    // mensagem orienta a conferir a agenda, e "Atualizar" faz isso quando a
+    // pessoa decidir.
     return null;
   }
 
-  /**
-   * Cancelamento e remarcação compartilham o tratamento do resultado:
-   *
-   * - sucesso: avisa; a agenda já foi recarregada pelo hook;
-   * - 409 (horário ocupado, ou reserva alterada por outra tela) e 400 (já
-   *   começou, já cancelada): recarrega, para a pessoa ver o estado REAL que
-   *   causou a recusa em vez de continuar olhando o desatualizado. Nunca
-   *   reenvia: a nova tentativa é uma nova confirmação, com os dados novos;
-   * - falha de comunicação: NÃO recarrega e NÃO reenvia. A mensagem diz que a
-   *   operação PODE ter acontecido e manda consultar a reserva — afirmar que não
-   *   aconteceu seria mentira, e reenviar às cegas poderia cancelar ou mover
-   *   algo que já foi gravado.
-   */
-  async function aoCancelar(appointmentId: string, expectedStartAt: string): Promise<boolean> {
-    setErroAcao(null);
-    const resultado = await cancelar(appointmentId, { expectedStartAt });
-
-    if (resultado.ok) {
-      notificar("Reserva cancelada. O horário voltou a ficar livre.", "sucesso");
-      return true;
-    }
-
-    setErroAcao(mensagemFalhaCancelamento(resultado.falha));
-    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
-      recarregar();
-    }
-    return false;
-  }
-
-  /** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7): mesmo
-   * tratamento do cancelamento — 409/400 recarregam, falha de rede nunca
-   * reenvia nem afirma que nada aconteceu. */
-  async function aoAlterarStatus(
-    appointmentId: string,
-    acao: AcaoDeStatusReal,
-    expectedStartAt: string,
-  ): Promise<boolean> {
-    setErroAcao(null);
-    const resultado = await alterarStatus(appointmentId, acao, { expectedStartAt });
-
-    if (resultado.ok) {
-      notificar(mensagemSucessoStatus(acao, resultado.dados), "sucesso");
-      return true;
-    }
-
-    setErroAcao(mensagemFalhaStatus(acao, resultado.falha));
-    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
-      recarregar();
-    }
-    return false;
-  }
-
-  async function aoRemarcar(
-    appointmentId: string,
-    dados: { startAt: string; expectedStartAt: string },
-  ): Promise<boolean> {
-    setErroAcao(null);
-    const resultado = await remarcar(appointmentId, dados);
-
-    if (resultado.ok) {
-      notificar(`Reserva remarcada para ${resultado.dados.localStart}.`, "sucesso");
-      return true;
-    }
-
-    setErroAcao(mensagemFalhaRemarcacao(resultado.falha));
-    if (resultado.falha.tipo === "horario_ocupado" || resultado.falha.tipo === "nao_agendavel") {
-      recarregar();
-    }
-    return false;
-  }
-
-  const agenda = estado.status === "carregada" ? estado.agenda : null;
-
   return (
-    <Pagina titulo="Agendamentos" subtitulo={contexto.tenantName}>
-      <Cartao>
-        <CartaoCorpo className="flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="data" className="mb-1 block text-xs font-medium text-ink-soft">
-              Dia
-            </label>
-            <input
-              id="data"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
-            />
-          </div>
-          <Botao type="button" variante="secundaria" onClick={recarregar}>
-            <RefreshCw size={14} className="mr-1" />
-            Atualizar agenda
-          </Botao>
-          {agenda && (
-            <span className="text-xs text-ink-soft">
-              {rotuloDaData(agenda.date)} · fuso {agenda.timezone}
-            </span>
-          )}
-        </CartaoCorpo>
-      </Cartao>
+    <Pagina titulo="Agenda" subtitulo={contexto.tenantName}>
+      <BarraAgenda
+        date={date}
+        timezone={timezone}
+        ehHoje={!!timezone && hojeNoFuso(timezone, new Date()) === date}
+        resumo={agenda ? rotuloDoResumo(resumoDoDia(visiveis)) : null}
+        carregando={estado.status === "carregando"}
+        profissionais={opcoesFiltro}
+        filtroProfissionalId={filtroProfissionalId}
+        aoMudarData={mudarData}
+        aoAnterior={() => mudarData(deslocarData(date, -1))}
+        aoProximo={() => mudarData(deslocarData(date, 1))}
+        aoHoje={irParaHoje}
+        aoFiltrar={setFiltroProfissionalId}
+        aoAtualizar={recarregar}
+        aoNovoAgendamento={abrirPainel}
+      />
 
       {ultimaReserva && (
-        <Cartao>
-          <CartaoCorpo className="space-y-1" data-testid="confirmacao">
-            <p className="text-sm font-semibold text-ink">Agendamento confirmado</p>
-            <p className="text-sm text-ink">{resumoDoAgendamento(ultimaReserva)}</p>
-            <p className="text-xs text-ink-soft">
-              Identificação: <span data-testid="id-reserva">{ultimaReserva.id}</span> ·{" "}
-              {ROTULO_STATUS[ultimaReserva.status]}
-            </p>
-          </CartaoCorpo>
-        </Cartao>
+        <ReservaCriada
+          reserva={ultimaReserva.reserva}
+          date={ultimaReserva.date}
+          aoDispensar={() => setUltimaReserva(null)}
+        />
       )}
-
-      <NovaReserva
-        tenantId={tenantIdAtivo}
-        date={date}
-        profissionais={
-          estadoProfissionais.status === "carregada" ? estadoProfissionais.profissionais : []
-        }
-        gravando={gravando}
-        erro={erroReserva}
-        aoConfirmar={aoConfirmar}
-      />
 
       <AgendaDoDia
         tenantId={tenantIdAtivo}
@@ -260,10 +237,29 @@ export default function AgendamentosPage() {
         agenda={agenda}
         gravando={gravando}
         erroAcao={erroAcao}
+        filtroProfissionalId={filtroProfissionalId}
+        recemCriadaId={ultimaReserva?.reserva.id ?? null}
+        aoLimparFiltro={() => setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS)}
         recarregar={recarregar}
         aoCancelar={aoCancelar}
         aoAlterarStatus={aoAlterarStatus}
         aoRemarcar={aoRemarcar}
+      />
+
+      <PainelNovaReserva
+        aberto={painelAberto}
+        aoFechar={() => setPainelAberto(false)}
+        tenantId={tenantIdAtivo}
+        date={date}
+        aoMudarData={mudarData}
+        estadoProfissionais={estadoProfissionais}
+        recarregarProfissionais={recarregarProfissionais}
+        profissionalInicialId={
+          filtroProfissionalId === TODOS_OS_PROFISSIONAIS ? null : filtroProfissionalId
+        }
+        gravando={gravando}
+        erro={erroReserva}
+        aoConfirmar={aoConfirmar}
       />
     </Pagina>
   );
@@ -279,7 +275,7 @@ function Pagina({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
+    <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6 sm:py-8">
       <div>
         <h1 className="text-xl font-bold text-ink">{titulo}</h1>
         {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
