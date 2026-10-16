@@ -18,6 +18,7 @@ import { mensagemFalhaServicos } from "@/lib/servicos/mensagens";
 import type { DadosServicoReal, ServicoReal } from "@/lib/api/services-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -65,7 +66,7 @@ export default function ServicosPage() {
 
   if (!contexto) {
     return (
-      <Pagina titulo="Serviços">
+      <PaginaConta titulo="Serviços">
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -80,16 +81,14 @@ export default function ServicosPage() {
             </div>
           </CartaoCorpo>
         </Cartao>
-      </Pagina>
+      </PaginaConta>
     );
   }
 
   async function aoSalvar(dados: DadosServicoReal) {
     setErroFormulario(null);
     const resultado =
-      edicao.modo === "editar"
-        ? await editar(edicao.servico.id, dados)
-        : await criar(dados);
+      edicao.modo === "editar" ? await editar(edicao.servico.id, dados) : await criar(dados);
 
     if (!resultado.ok) {
       // Nunca reenvia sozinho: a mensagem fica, o formulário continua
@@ -98,10 +97,7 @@ export default function ServicosPage() {
       return;
     }
 
-    notificar(
-      edicao.modo === "editar" ? "Serviço atualizado." : "Serviço cadastrado.",
-      "sucesso",
-    );
+    notificar(edicao.modo === "editar" ? "Serviço atualizado." : "Serviço cadastrado.", "sucesso");
     setEdicao({ modo: "fechado" });
   }
 
@@ -134,11 +130,22 @@ export default function ServicosPage() {
   }
 
   return (
-    <Pagina titulo="Serviços" subtitulo={contexto.tenantName}>
+    <PaginaConta
+      titulo="Serviços"
+      descricao="Preço, duração e modalidade do que o estabelecimento oferece."
+      acoes={
+        estado.status === "carregada" && edicao.modo === "fechado" && estado.servicos.length > 0 ? (
+          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+            <PlusCircle size={16} aria-hidden="true" />
+            Novo serviço
+          </Botao>
+        ) : undefined
+      }
+    >
       {estado.status === "carregando" && (
         <div className="space-y-3" aria-busy="true">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
       )}
 
@@ -159,15 +166,6 @@ export default function ServicosPage() {
 
       {estado.status === "carregada" && (
         <>
-          {edicao.modo === "fechado" && estado.servicos.length > 0 && (
-            <div className="flex justify-end">
-              <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
-                <PlusCircle size={16} className="mr-1.5" />
-                Novo serviço
-              </Botao>
-            </div>
-          )}
-
           {edicao.modo !== "fechado" && (
             <Cartao>
               <CartaoCorpo>
@@ -221,26 +219,6 @@ export default function ServicosPage() {
           )}
         </>
       )}
-    </Pagina>
-  );
-}
-
-function Pagina({
-  titulo,
-  subtitulo,
-  children,
-}: {
-  titulo: string;
-  subtitulo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
-      </div>
-      {children}
-    </div>
+    </PaginaConta>
   );
 }

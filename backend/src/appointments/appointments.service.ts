@@ -391,7 +391,12 @@ export class AppointmentsService {
     userId: string,
     tenantId: string,
     query: ListAppointmentsDto,
-  ): Promise<{ timezone: string; date: string; appointments: AppointmentView[] }> {
+  ): Promise<{
+    timezone: string;
+    date: string;
+    appointments: AppointmentView[];
+    complete: boolean;
+  }> {
     const manager = this.dataSource.manager;
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewAppointments,
@@ -425,6 +430,12 @@ export class AppointmentsService {
       timezone,
       date: query.date,
       appointments: await this.toViews(manager, authorized.tenantId, doDia),
+      // A consulta bateu no teto: a janela é um superconjunto do dia e vem
+      // ordenada por início, então o que ficou de fora são justamente as
+      // ÚLTIMAS reservas do dia. `false` avisa o cliente de que a lista pode
+      // estar incompleta — quem soma (a Visão geral) não deve produzir totais
+      // com ela. Teto exato também conta como incompleto: não há como saber.
+      complete: encontrados.length < LIMITE_DO_DIA,
     };
   }
 

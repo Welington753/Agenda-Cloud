@@ -103,3 +103,15 @@ body {
 .animar-skeleton {
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
+
+/* Área real (/conta): no celular a navegação fica numa barra inferior fixa, e
+   as notificações sobem para não cobri-la (ver components/conta/shell-conta.tsx). */
+html.shell-conta-ativo {
+  --deslocamento-toast: calc(5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 48rem) {
+  html.shell-conta-ativo {
+    --deslocamento-toast: 1rem;
+  }
+}

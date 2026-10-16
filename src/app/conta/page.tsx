@@ -1,10 +1,12 @@
 "use client";
 
-// Minha conta — página inicial da área REAL. Nunca carrega agenda, equipe ou
-// comissões demonstrativas (isso misturaria dados demo com a conta real).
+// Minha conta — dados da pessoa e do estabelecimento ativo, e o roteiro de
+// primeiros passos. É o destino logo depois do cadastro; quem ENTRA sem um
+// destino específico vai para a Visão geral (ver lib/auth/safe-redirect.ts).
+// Nunca carrega agenda, equipe ou comissões demonstrativas.
 //
 // A ação principal é abrir a agenda; os demais atalhos ficam na navegação
-// comum do layout (cabeçalho). O "Primeiros passos" é um roteiro INFORMATIVO:
+// comum (components/conta/shell-conta.tsx). O "Primeiros passos" é um roteiro INFORMATIVO:
 // não consulta nada nem marca etapa como concluída — mostrar "feito" sem
 // conferir o servidor seria afirmar algo que a tela não sabe.
 import { useEffect } from "react";
@@ -17,6 +19,7 @@ import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
 import { formatarData } from "@/lib/format";
 import { LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 
 const PRIMEIROS_PASSOS = [
   {
@@ -33,13 +36,15 @@ const PRIMEIROS_PASSOS = [
   },
   {
     titulo: "Configure os horários desse profissional",
-    descricao: "Na lista de profissionais, use o botão “Horários” e informe os dias e turnos de trabalho.",
+    descricao:
+      "Na lista de profissionais, use o botão “Horários” e informe os dias e turnos de trabalho.",
     href: "/conta/profissionais",
     rotuloLink: "Abrir a lista de profissionais",
   },
   {
     titulo: "Crie o primeiro agendamento",
-    descricao: "Na agenda, escolha o dia, o profissional e o serviço, veja os horários livres e marque.",
+    descricao:
+      "Na agenda, escolha o dia, o profissional e o serviço, veja os horários livres e marque.",
     href: "/conta/agendamentos",
     rotuloLink: "Ir para a Agenda",
   },
@@ -62,20 +67,18 @@ export default function ContaPage() {
   const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
 
   return (
-    <main className="mx-auto w-full max-w-2xl space-y-6 px-4 py-10">
-      <div>
-        <h1 className="text-xl font-bold text-ink">Olá, {sessao.user.name.split(" ")[0]}</h1>
-        <p className="text-sm text-ink-soft">{sessao.user.email}</p>
-      </div>
-
+    <PaginaConta titulo={`Olá, ${sessao.user.name.split(" ")[0]}`} descricao={sessao.user.email}>
       {!sessao.hasEstablishmentAccess && (
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
             <div>
-              <p className="text-sm font-semibold text-ink">Sua conta ainda não está vinculada a um estabelecimento</p>
+              <p className="text-sm font-semibold text-ink">
+                Sua conta ainda não está vinculada a um estabelecimento
+              </p>
               <p className="mt-1 text-sm text-ink-soft">
-                O cadastro completo de estabelecimento para contas reais ainda não está disponível nesta fase.
+                O cadastro completo de estabelecimento para contas reais ainda não está disponível
+                nesta fase.
               </p>
             </div>
           </CartaoCorpo>
@@ -100,7 +103,12 @@ export default function ContaPage() {
               </p>
               {/* Ação principal: a agenda real do Lote 6D.5 — nunca a agenda
                   demonstrativa de /painel/agenda. */}
-              <LinkBotao href="/conta/agendamentos" tamanho="lg" className="w-full sm:w-auto" data-testid="abrir-agenda">
+              <LinkBotao
+                href="/conta/agendamentos"
+                tamanho="lg"
+                className="w-full sm:w-auto"
+                data-testid="abrir-agenda"
+              >
                 <CalendarDays size={18} aria-hidden="true" />
                 Abrir agenda
               </LinkBotao>
@@ -112,7 +120,8 @@ export default function ContaPage() {
               <div>
                 <h2 className="text-base font-semibold text-ink">Primeiros passos</h2>
                 <p className="text-xs text-ink-soft">
-                  Um roteiro para deixar a agenda pronta. Ele não confere o que já foi feito — siga na ordem.
+                  Um roteiro para deixar a agenda pronta. Ele não confere o que já foi feito — siga
+                  na ordem.
                 </p>
               </div>
               <ol className="space-y-3" data-testid="primeiros-passos">
@@ -141,11 +150,11 @@ export default function ContaPage() {
           </Cartao>
 
           <p className="text-xs text-ink-soft">
-            Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas nesta fase —
-            chegam em um próximo lote.
+            Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas
+            nesta fase — chegam em um próximo lote.
           </p>
         </>
       )}
-    </main>
+    </PaginaConta>
   );
 }

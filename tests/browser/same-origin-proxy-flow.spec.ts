@@ -124,7 +124,8 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     await page.getByLabel("E-mail").fill(email);
     await page.getByLabel("Senha").fill(SENHA);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await page.goto("/conta");
     await expect(page.getByText("Dono(a)")).toBeVisible();
 
     // Cookie de produção, na origem do frontend, e em nenhum outro lugar.

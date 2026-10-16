@@ -26,7 +26,7 @@ import {
   type ErrosCadastro,
   type FormularioCadastro,
 } from "@/lib/auth/cadastro-validacao";
-import { ROTA_PADRAO_POS_LOGIN } from "@/lib/auth/safe-redirect";
+import { ROTA_POS_CADASTRO } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { NOME_PRODUTO } from "@/lib/config";
@@ -91,7 +91,7 @@ export default function CadastroPage() {
 
     setFormulario(FORMULARIO_VAZIO);
     notificar(`Conta criada. Bem-vindo(a), ${resultado.sessao.user.name.split(" ")[0]}.`, "sucesso");
-    router.push(ROTA_PADRAO_POS_LOGIN);
+    router.push(ROTA_POS_CADASTRO);
   }
 
   async function aoRecuperarSessao() {
@@ -102,7 +102,7 @@ export default function CadastroPage() {
 
     if (resultado.etapa === "concluido") {
       notificar(`Sessão restaurada. Bem-vindo(a), ${resultado.sessao.user.name.split(" ")[0]}.`, "sucesso");
-      router.push(ROTA_PADRAO_POS_LOGIN);
+      router.push(ROTA_POS_CADASTRO);
       return;
     }
     setErroEnvio("Ainda não foi possível carregar sua sessão. Sua conta continua criada — tente de novo ou entre.");

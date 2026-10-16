@@ -13,8 +13,7 @@
 // converte nada — ele pode estar em outro fuso.
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, CalendarSearch, Clock, Info, Store } from "lucide-react";
+import { CalendarSearch, Clock, Info, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
@@ -30,6 +29,7 @@ import {
 import type { DisponibilidadeReal } from "@/lib/api/availability-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { PaginaConta } from "@/components/conta/pagina-conta";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DisponibilidadeDoProfissionalPage() {
@@ -78,7 +78,10 @@ export default function DisponibilidadeDoProfissionalPage() {
 
   if (!contexto) {
     return (
-      <Pagina titulo="Consultar disponibilidade">
+      <PaginaConta
+        titulo="Consultar disponibilidade"
+        voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+      >
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -87,7 +90,7 @@ export default function DisponibilidadeDoProfissionalPage() {
             </p>
           </CartaoCorpo>
         </Cartao>
-      </Pagina>
+      </PaginaConta>
     );
   }
 
@@ -108,11 +111,10 @@ export default function DisponibilidadeDoProfissionalPage() {
   }
 
   return (
-    <Pagina
+    <PaginaConta
       titulo="Consultar disponibilidade"
-      subtitulo={
-        profissional ? `${profissional.name} · ${contexto.tenantName}` : contexto.tenantName
-      }
+      descricao={profissional?.name}
+      voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
     >
       <Cartao>
         <CartaoCorpo className="flex items-start gap-3">
@@ -237,7 +239,7 @@ export default function DisponibilidadeDoProfissionalPage() {
       )}
 
       {estado.status === "carregada" && <Resultado disponibilidade={estado.disponibilidade} />}
-    </Pagina>
+    </PaginaConta>
   );
 }
 
@@ -301,33 +303,6 @@ function Resultado({ disponibilidade }: { disponibilidade: DisponibilidadeReal }
           </CartaoCorpo>
         </Cartao>
       )}
-    </div>
-  );
-}
-
-function Pagina({
-  titulo,
-  subtitulo,
-  children,
-}: {
-  titulo: string;
-  subtitulo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
-      <div>
-        <Link
-          href="/conta/profissionais"
-          className="text-xs font-medium text-accent hover:underline"
-        >
-          <ArrowLeft size={12} className="mr-1 inline" />
-          Voltar para profissionais
-        </Link>
-        <h1 className="mt-2 text-xl font-bold text-ink">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-ink-soft">{subtitulo}</p>}
-      </div>
-      {children}
     </div>
   );
 }

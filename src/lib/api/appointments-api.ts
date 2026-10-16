@@ -44,6 +44,8 @@ export interface AgendaDoDiaReal {
   timezone: string;
   date: string;
   appointments: AgendamentoReal[];
+  /** Servidor confirmou o dia inteiro (`complete`); ausente vira `false`. */
+  completa: boolean;
 }
 
 export interface ClienteReal {
@@ -216,7 +218,7 @@ export async function listarAgendamentos(
     return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
   }
 
-  const corpo = resultado.data as { timezone?: unknown; date?: unknown; appointments?: unknown };
+  const corpo = resultado.data as Partial<Record<"timezone" | "date" | "appointments" | "complete", unknown>>;
   if (
     typeof corpo?.timezone !== "string" ||
     typeof corpo?.date !== "string" ||
@@ -227,7 +229,7 @@ export async function listarAgendamentos(
   }
   return {
     ok: true,
-    dados: { timezone: corpo.timezone, date: corpo.date, appointments: corpo.appointments },
+    dados: { timezone: corpo.timezone, date: corpo.date, appointments: corpo.appointments, completa: corpo.complete === true },
   };
 }
 

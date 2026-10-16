@@ -63,6 +63,13 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await page.getByLabel("Senha").fill(conta.senha);
     await page.getByRole("button", { name: "Entrar" }).click();
 
+    // Sem `next`, quem entra vai para a Visão geral; "Minha conta" fica no menu.
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await expect(page.getByRole("heading", { name: "Visão geral" })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Áreas da conta" })
+      .getByRole("link", { name: "Minha conta" })
+      .click();
     await expect(page).toHaveURL(/\/conta$/);
     await expect(page.getByText("Dono(a)")).toBeVisible();
     await expect(page.getByText("Plano Gestão")).toBeVisible();

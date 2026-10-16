@@ -286,6 +286,25 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-view
         run: npm run test:browser:agenda-view
 
+      # Invocação SEPARADA (2 cadastros e 3 logins, limites reais de 5 por IP):
+      # Visão geral (indicadores e listas da agenda real de hoje, estados de
+      # carregamento, falha, lista incompleta e sem permissão), estrutura comum
+      # da área real, troca de estabelecimento e `next` seguro. O segundo
+      # vínculo e a permissão negada são gravados no PostgreSQL descartável
+      # (`DATABASE_URL` abaixo); o teste recusa qualquer host fora do loopback.
+      - name: Run real browser flows (overview, shared account layout, tenant switch, safe next)
+        id: browser_visao_geral
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/visao-geral
+        run: npm run test:browser:visao-geral
+
       # Modo do PILOTO (mesma origem): o frontend é recompilado com
       # `NEXT_PUBLIC_API_URL=/agenda_api`, e o navegador passa a falar só com
       # ele. Fica DEPOIS das suítes acima porque substitui o build anterior
@@ -337,6 +356,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas da área real reorganizada (Visão geral, Agenda, Serviços e
+      # Profissionais), no computador e no celular. Só os PNG `conta-*`.
+      - name: Upload account area screenshots
+        if: always() && steps.browser_visao_geral.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: conta-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/visao-geral/**/conta-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Integração do backend contra o MESMO Postgres descartável: prova o
       # comportamento real das consultas com escopo de tenant e das
       # constraints (nenhum fake em memória cobre isso). `DB_E2E_DIRECT_URL` é
@@ -373,6 +403,7 @@ jobs:
             steps.browser_availability.outcome == 'failure' ||
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
+            steps.browser_visao_geral.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

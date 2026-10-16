@@ -120,7 +120,7 @@ test.describe("visualização da agenda real", () => {
     await page.getByLabel("E-mail").fill(email);
     await page.getByLabel("Senha").fill(SENHA_TESTE);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
 
     const me = await api<{ activeContext: { tenantId: string } }>(page, "/auth/me");
     const tenantId = me.corpo.activeContext.tenantId;
