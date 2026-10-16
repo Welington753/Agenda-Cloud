@@ -144,6 +144,19 @@ async function definirJornada(
   expect(status).toBe(200);
 }
 
+/** "Novo agendamento" abre o formulário de sempre num painel por cima da
+ * agenda — ele não fica mais montado na página o tempo todo. */
+async function abrirNovoAgendamento(pagina: Page): Promise<void> {
+  await pagina.getByTestId("novo-agendamento").click();
+  await expect(pagina.getByTestId("painel-novo-agendamento")).toBeVisible();
+}
+
+/** Fecha o painel sem enviar nada (Escape), para voltar às ações da agenda. */
+async function fecharNovoAgendamento(pagina: Page): Promise<void> {
+  await pagina.keyboard.press("Escape");
+  await expect(pagina.getByTestId("painel-novo-agendamento")).toHaveCount(0);
+}
+
 async function horariosLivres(pagina: Page): Promise<string[]> {
   return pagina.locator('[data-testid="horario-livre"]').allTextContents();
 }
@@ -210,12 +223,13 @@ test.describe("agendamentos reais", () => {
     await definirJornada(page, tenantId, profissionalId);
 
     await page.goto("/conta/agendamentos");
-    await page.getByLabel("Dia").fill(DATA);
+    await page.getByLabel("Dia", { exact: true }).fill(DATA);
 
     // Dia ainda vazio.
     await expect(page.getByTestId("agenda-vazia")).toBeVisible();
 
-    // Cliente novo, cadastrado junto com a reserva.
+    // Cliente novo, cadastrado junto com a reserva, pelo painel.
+    await abrirNovoAgendamento(page);
     await page.getByRole("button", { name: "Cadastrar novo" }).click();
     await page.getByLabel("Nome do cliente").fill("Maria Cliente");
     await page.getByLabel("WhatsApp").fill("(11) 90000-0000");
@@ -283,6 +297,12 @@ test.describe("agendamentos reais", () => {
     await expect(page.getByTestId("confirmacao")).toBeVisible();
     expect(criacoes, "um envio só, mesmo com dois cliques").toBe(1);
 
+    // Depois do sucesso o painel fecha e o formulário preenchido some: o que
+    // fica é a agenda com a reserva nova marcada.
+    await expect(page.getByTestId("painel-novo-agendamento")).toHaveCount(0);
+    await expect(page.getByLabel("Nome do cliente")).toHaveCount(0);
+    await expect(page.locator("[data-recem-criada]")).toContainText("Maria Cliente");
+
     // A confirmação identifica a reserva.
     const idReserva = await page.getByTestId("id-reserva").textContent();
     expect(idReserva).toBeTruthy();
@@ -290,12 +310,13 @@ test.describe("agendamentos reais", () => {
 
     // Persistência real: o reload relê do banco pela API.
     await page.reload();
-    await page.getByLabel("Dia").fill(DATA);
+    await page.getByLabel("Dia", { exact: true }).fill(DATA);
     await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
     await expect(page.getByTestId("horario-agendado")).toHaveText("09:00–10:00");
     await expect(page.getByTestId("agenda-do-dia")).toContainText("Maria Cliente");
 
     // A ocupação é real: 09:00 sai da lista de horários livres, 10:00 fica.
+    await abrirNovoAgendamento(page);
     await page.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(page)).not.toContain("09:00");
     await expect.poll(() => horariosLivres(page)).toContain("10:00");
@@ -374,7 +395,8 @@ test.describe("agendamentos reais", () => {
     // Na tela: escolher um horário livre, deixar outra reserva ocupá-lo por
     // fora e confirmar — o 409 precisa ser explicado e a agenda atualizada.
     await paginaA.goto("/conta/agendamentos");
-    await paginaA.getByLabel("Dia").fill(DATA);
+    await paginaA.getByLabel("Dia", { exact: true }).fill(DATA);
+    await abrirNovoAgendamento(paginaA);
     await paginaA.getByRole("button", { name: "Cadastrar novo" }).click();
     await paginaA.getByLabel("Nome do cliente").fill("Cliente do Conflito");
     await paginaA.getByLabel("WhatsApp").fill("(11) 94444-3333");
@@ -392,7 +414,9 @@ test.describe("agendamentos reais", () => {
     // de um alerta possível (disponibilidade e listagem), e um seletor
     // ambíguo falharia por strict mode em vez de provar o comportamento.
     await expect(paginaA.getByTestId("erro-reserva")).toContainText(/ocupado/i);
-    // ...e a agenda do dia é recarregada, mostrando as duas reservas.
+    // ...e a agenda do dia é recarregada, mostrando as duas reservas — o
+    // painel continua aberto, com o erro, para a pessoa escolher de novo.
+    await expect(paginaA.getByTestId("painel-novo-agendamento")).toBeVisible();
     await expect(paginaA.getByTestId("agenda-do-dia")).toBeVisible();
     await expect(paginaA.locator('[data-testid="horario-agendado"]')).toHaveCount(2);
 
@@ -461,7 +485,7 @@ test.describe("agendamentos reais", () => {
 
     // Nada disso mexeu na agenda de A.
     await paginaA.reload();
-    await paginaA.getByLabel("Dia").fill(DATA);
+    await paginaA.getByLabel("Dia", { exact: true }).fill(DATA);
     await expect(paginaA.locator('[data-testid="horario-agendado"]')).toHaveCount(2);
 
     // Sem sessão nenhuma, a API recusa antes de qualquer consulta.
@@ -495,9 +519,10 @@ test.describe("agendamentos reais", () => {
     await definirJornada(page, tenantId, profissionalId);
 
     await page.goto("/conta/agendamentos");
-    await page.getByLabel("Dia").fill(DATA);
+    await page.getByLabel("Dia", { exact: true }).fill(DATA);
 
     // Uma reserva às 09:00, criada pela tela.
+    await abrirNovoAgendamento(page);
     await page.getByRole("button", { name: "Cadastrar novo" }).click();
     await page.getByLabel("Nome do cliente").fill("Cliente das Ações");
     await page.getByLabel("WhatsApp").fill("(11) 95555-4444");
@@ -520,8 +545,9 @@ test.describe("agendamentos reais", () => {
     await conferirSelecaoUnica(page, "horario-livre", instanteLocalDe("09:15"));
     // O anel de seleção não substitui o foco de teclado: os dois aparecem.
     expect(await livre("09:15").evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("solid");
-    await page.getByLabel("Dia").fill(DATA_SEGUINTE);
-    await page.getByLabel("Dia").fill(DATA);
+    // A data do painel é a mesma da agenda: trocar e voltar limpa a escolha.
+    await page.getByLabel("Data do agendamento").fill(DATA_SEGUINTE);
+    await page.getByLabel("Data do agendamento").fill(DATA);
     await page.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(page)).toContain("09:00");
     await conferirSelecaoUnica(page, "horario-livre", null);
@@ -579,7 +605,7 @@ test.describe("agendamentos reais", () => {
 
     // Persistência real: o reload relê do banco pela API.
     await page.reload();
-    await page.getByLabel("Dia").fill(DATA);
+    await page.getByLabel("Dia", { exact: true }).fill(DATA);
     await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
     await expect(page.getByTestId("horario-agendado")).toHaveText("10:00–11:00");
     await expect(page.getByTestId("agenda-do-dia")).toContainText("Cliente das Ações");
@@ -587,9 +613,11 @@ test.describe("agendamentos reais", () => {
     await expect(page.getByTestId("status-agendado")).toHaveText("Confirmado");
 
     // 09:00 voltou a ficar livre (a ocupação andou junto com a reserva).
+    await abrirNovoAgendamento(page);
     await page.getByRole("button", { name: "Ver horários livres" }).click();
     await expect.poll(() => horariosLivres(page)).toContain("09:00");
     await expect.poll(() => horariosLivres(page)).not.toContain("10:00");
+    await fecharNovoAgendamento(page);
 
     // --------------------------------------------------------------- cancelar
     let envioDeCancelamento = 0;
@@ -643,11 +671,12 @@ test.describe("agendamentos reais", () => {
 
     // Reload: o cancelamento persistiu.
     await page.reload();
-    await page.getByLabel("Dia").fill(DATA);
+    await page.getByLabel("Dia", { exact: true }).fill(DATA);
     await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
     await expect(page.getByTestId("status-agendado")).toHaveText("Cancelado");
 
     // E o horário 10:00 voltou a ser oferecido para uma nova reserva.
+    await abrirNovoAgendamento(page);
     await page.getByRole("button", { name: "Cadastrar novo" }).click();
     await page.getByLabel("Nome do cliente").fill("Outro Cliente");
     await page.getByLabel("WhatsApp").fill("(11) 96666-5555");
@@ -705,7 +734,7 @@ test.describe("agendamentos reais", () => {
       page.getByTestId("agenda-do-dia").locator("li").filter({ hasText: `${hora}–` });
     async function abrirAgenda() {
       await page.goto("/conta/agendamentos");
-      await page.getByLabel("Dia").fill(DATA);
+      await page.getByLabel("Dia", { exact: true }).fill(DATA);
       await expect(page.getByTestId("agenda-do-dia")).toBeVisible();
     }
 

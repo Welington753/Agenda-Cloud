@@ -6,29 +6,32 @@
 // as decisões continuam em lib/profissionais/agendamentos.ts (puras) e no
 // servidor.
 //
+// Visualização (agenda como conteúdo principal): ordem cronológica, filtro por
+// profissional feito AQUI sobre a agenda já carregada (a rota do dia não tem
+// filtro e não ganhou um), atendimento em andamento destacado e a reserva
+// recém-criada marcada e trazida para a vista.
+//
 // Fuso: exibe as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`), nunca converte nada com o relógio do
 // navegador.
-import { useEffect, useState } from "react";
-import { CalendarDays } from "lucide-react";
-import type { AgendaDoDiaReal, AgendamentoReal } from "@/lib/api/appointments-api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, UserSearch } from "lucide-react";
+import type { AgendaDoDiaReal } from "@/lib/api/appointments-api";
 import type { AcaoDeStatusReal } from "@/lib/api/appointment-status-api";
 import {
-  mensagemFalhaAgendamento,
-  ROTULO_STATUS,
-  rotuloDeDuracao,
-  rotuloDePreco,
-} from "@/lib/profissionais/agendamentos";
-import {
-  acoesDaReserva,
-  temAlgumaAcao,
-  type AcoesDaReserva,
-} from "@/lib/profissionais/andamento";
+  estaNoHorario,
+  filtrarPorProfissional,
+  mensagemFalhaAgenda,
+  ordenarPorHorario,
+} from "@/lib/profissionais/agenda-visual";
+import { acoesDaReserva, temAlgumaAcao, type AcoesDaReserva } from "@/lib/profissionais/andamento";
 import type { EstadoAgenda } from "@/lib/profissionais/use-agendamentos-reais";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AcoesReserva } from "./acoes-reserva";
+import { CartaoAtendimento } from "./cartao-atendimento";
 import type { AcaoConfirmada, ConfirmacaoPendente } from "./confirmar-acao";
 
 interface AgendaDoDiaProps {
@@ -40,6 +43,11 @@ interface AgendaDoDiaProps {
   /** Erro das ações sobre uma reserva existente — separado do erro do
    * formulário de nova reserva. */
   erroAcao: string | null;
+  /** Profissional do filtro, ou `TODOS_OS_PROFISSIONAIS`. */
+  filtroProfissionalId: string;
+  /** Id da reserva criada por esta tela, para marcar e rolar até ela. */
+  recemCriadaId: string | null;
+  aoLimparFiltro: () => void;
   recarregar: () => void;
   aoCancelar: (appointmentId: string, expectedStartAt: string) => Promise<boolean>;
   aoAlterarStatus: (
@@ -59,6 +67,9 @@ export function AgendaDoDia({
   agenda,
   gravando,
   erroAcao,
+  filtroProfissionalId,
+  recemCriadaId,
+  aoLimparFiltro,
   recarregar,
   aoCancelar,
   aoAlterarStatus,
@@ -100,22 +111,45 @@ export function AgendaDoDia({
     });
   }, [agenda]);
 
-  return (
-    <div className="space-y-3">
-      <p className="text-sm font-semibold text-ink">Agenda do dia</p>
+  // Trocar o filtro fecha uma confirmação aberta: a reserva dela pode sumir da
+  // lista, e uma confirmação invisível que reaparece depois confundiria.
+  useEffect(() => {
+    setConfirmacao(null);
+  }, [filtroProfissionalId]);
 
+  const visiveis = useMemo(
+    () =>
+      agenda
+        ? filtrarPorProfissional(ordenarPorHorario(agenda.appointments), filtroProfissionalId)
+        : [],
+    [agenda, filtroProfissionalId],
+  );
+
+  // A reserva recém-criada entra na vista quando a agenda que a contém chega.
+  const listaRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!recemCriadaId || !listaRef.current) return;
+    const alvo = listaRef.current.querySelector<HTMLElement>(
+      `[data-reserva-id="${CSS.escape(recemCriadaId)}"]`,
+    );
+    alvo?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [recemCriadaId, visiveis]);
+
+  return (
+    <section aria-label="Atendimentos do dia" className="space-y-3">
       {estado.status === "carregando" && (
         <div className="space-y-2" aria-busy="true">
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       )}
 
       {estado.status === "falha" && (
         <Cartao>
           <CartaoCorpo className="space-y-3">
-            <p role="alert" className="text-sm text-ink">
-              {mensagemFalhaAgendamento(estado.falha)}
+            <p role="alert" data-testid="erro-agenda" className="text-sm text-ink">
+              {mensagemFalhaAgenda(estado.falha)}
             </p>
             {estado.falha.tipo !== "sem_permissao" && estado.falha.tipo !== "sem_acesso" && (
               <Botao type="button" onClick={recarregar}>
@@ -127,14 +161,27 @@ export function AgendaDoDia({
       )}
 
       {agenda && agenda.appointments.length === 0 && (
-        <Cartao>
-          <CartaoCorpo className="flex items-start gap-3">
-            <CalendarDays size={18} className="mt-0.5 shrink-0 text-ink-soft" />
-            <p data-testid="agenda-vazia" className="text-sm text-ink-soft">
-              Nenhum agendamento neste dia.
-            </p>
-          </CartaoCorpo>
-        </Cartao>
+        <div data-testid="agenda-vazia">
+          <EstadoVazio
+            icone={CalendarDays}
+            titulo="Nenhum agendamento neste dia."
+            descricao="Use “Novo agendamento” para marcar um horário."
+          />
+        </div>
+      )}
+
+      {agenda && agenda.appointments.length > 0 && visiveis.length === 0 && (
+        <div data-testid="agenda-vazia-filtro">
+          <EstadoVazio
+            icone={UserSearch}
+            titulo="Nenhum agendamento deste profissional neste dia."
+            acao={
+              <Botao type="button" variante="secundaria" tamanho="sm" onClick={aoLimparFiltro}>
+                Ver todos os profissionais
+              </Botao>
+            }
+          />
+        </div>
       )}
 
       {erroAcao && (
@@ -147,75 +194,51 @@ export function AgendaDoDia({
         </p>
       )}
 
-      {agenda && agenda.appointments.length > 0 && (
-        <ul data-testid="agenda-do-dia" className="space-y-2">
-          {agenda.appointments.map((agendamento) => {
+      {visiveis.length > 0 && (
+        <ul ref={listaRef} data-testid="agenda-do-dia" className="space-y-3">
+          {visiveis.map((agendamento) => {
             const acoes = acoesDaReserva(agendamento, agora);
             const daLinha = confirmacao?.exibida.id === agendamento.id ? confirmacao : null;
             return (
-              <li key={agendamento.id} className="space-y-2">
-                <LinhaDaReserva agendamento={agendamento} />
-
-                {/* As ações só aparecem no que o servidor aceitaria alterar.
+              <li key={agendamento.id} data-reserva-id={agendamento.id} className="scroll-mt-24">
+                <CartaoAtendimento
+                  agendamento={agendamento}
+                  noHorario={estaNoHorario(agendamento, agora)}
+                  recemCriada={agendamento.id === recemCriadaId}
+                >
+                  {/* As ações só aparecem no que o servidor aceitaria alterar.
                     Esconder o botão NÃO é controle de acesso — é para não
                     oferecer uma ação cuja recusa já é conhecida. A decisão é
                     revalidada no servidor, dentro da transação. O relógio aqui é
                     o do navegador (pode estar errado), então isto nunca
                     substitui a checagem de lá. */}
-                {(temAlgumaAcao(acoes) || daLinha) && (
-                  <AcoesReserva
-                    tenantId={tenantId}
-                    agendamento={agendamento}
-                    acoes={acoes}
-                    gravando={gravando}
-                    confirmacao={daLinha}
-                    aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
-                      setConfirmacao({ acao, exibida: agendamento, anterior: null })
-                    }
-                    aoFecharConfirmacao={() => setConfirmacao(null)}
-                    aoCancelar={aoCancelar}
-                    aoAlterarStatus={aoAlterarStatus}
-                    aoRemarcar={aoRemarcar}
-                  />
-                )}
+                  {(temAlgumaAcao(acoes) || daLinha) && (
+                    <AcoesReserva
+                      tenantId={tenantId}
+                      agendamento={agendamento}
+                      acoes={acoes}
+                      gravando={gravando}
+                      confirmacao={daLinha}
+                      aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
+                        setConfirmacao({
+                          acao,
+                          exibida: agendamento,
+                          anterior: null,
+                        })
+                      }
+                      aoFecharConfirmacao={() => setConfirmacao(null)}
+                      aoCancelar={aoCancelar}
+                      aoAlterarStatus={aoAlterarStatus}
+                      aoRemarcar={aoRemarcar}
+                    />
+                  )}
+                </CartaoAtendimento>
               </li>
             );
           })}
         </ul>
       )}
-    </div>
-  );
-}
-
-function LinhaDaReserva({ agendamento }: { agendamento: AgendamentoReal }) {
-  return (
-    <Cartao>
-      <CartaoCorpo className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-semibold text-ink" data-testid="horario-agendado">
-            {agendamento.localStart}–{agendamento.localServiceEnd}
-          </p>
-          <p className="text-sm text-ink">
-            {agendamento.service.name} · com {agendamento.professional.name}
-          </p>
-          <p className="text-xs text-ink-soft">
-            {agendamento.consumer.name} · {agendamento.consumer.whatsapp}
-          </p>
-        </div>
-        <div className="text-right">
-          <span
-            data-testid="status-agendado"
-            className="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"
-          >
-            {ROTULO_STATUS[agendamento.status]}
-          </span>
-          <p className="mt-1 text-xs text-ink-soft">
-            {rotuloDeDuracao(agendamento.durationMinutes)} ·{" "}
-            {rotuloDePreco(agendamento.priceCents)}
-          </p>
-        </div>
-      </CartaoCorpo>
-    </Cartao>
+    </section>
   );
 }
 
