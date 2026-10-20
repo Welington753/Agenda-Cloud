@@ -14,6 +14,11 @@
 // DESCARTÁVEL deste teste, e a conexão se recusa a abrir fora do loopback —
 // nunca Neon, nunca banco existente.
 //
+// RELÓGIO DE TESTE: o spec só roda por playwright.visao-geral.config.ts, que
+// sobe o backend com o relógio deslocado para as 10:00 de hoje (fuso do
+// estabelecimento); o navegador começa no mesmo instante. Assim o caso não
+// depende da hora real — nem pulo, nem espera pela virada do dia.
+//
 // Orçamento: 2 cadastros e 3 logins (limites reais: 5 de cada por 15 min por
 // IP), em invocação SEPARADA do Playwright (ver test-frontend-auth.yml).
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
@@ -61,12 +66,17 @@ async function cadastrar(api: APIRequestContext, rotulo: string) {
   };
   const r = await api.post(`${BACKEND_URL}/auth/register`, { data: dados });
   expect(r.status(), await r.text()).toBe(201);
-  const me = await chamar<{ user: { id: string }; activeContext: { tenantId: string } }>(
-    api,
-    "GET",
-    "/auth/me",
-  );
-  return { ...dados, userId: me.corpo.user.id, tenantId: me.corpo.activeContext.tenantId };
+  const me = await chamar<{
+    user: { id: string };
+    activeContext: { tenantId: string; trial: { trialStartAt: string } };
+  }>(api, "GET", "/auth/me");
+  return {
+    ...dados,
+    userId: me.corpo.user.id,
+    tenantId: me.corpo.activeContext.tenantId,
+    // Instante do cadastro pelo relógio do BACKEND (`new Date()` do controller).
+    cadastradoEm: Date.parse(me.corpo.activeContext.trial.trialStartAt),
+  };
 }
 
 async function entrar(page: Page, email: string, destino = "/login") {
@@ -120,17 +130,31 @@ test.describe("visão geral e estrutura comum da área real", () => {
     test.setTimeout(150_000);
     await page.setViewportSize(COMPUTADOR);
 
-    // O caso precisa de 2 h livres hoje (fuso do estabelecimento) para os
-    // horários futuros; perto da meia-noite ele não tem como ser montado.
-    const agora = new Date();
-    const inicio = proximoInicioDeHoje(agora, 3, "21:30");
-    test.skip(!inicio, "perto da meia-noite: sem horários suficientes hoje para montar o caso");
+    // Relógio de TESTE (playwright.visao-geral.config.ts): o backend já sobe
+    // deslocado para as 10:00 de hoje no fuso do estabelecimento, e o
+    // navegador começa no mesmo instante. O caso precisa de um atendimento
+    // que já pode ser iniciado e de 2 h de horários futuros depois dele, no
+    // mesmo dia — com o relógio real isso não cabe perto da meia-noite.
+    const deslocamento = Number(process.env.E2E_RELOGIO_DESLOCAMENTO_MS);
+    expect(
+      Number.isInteger(deslocamento),
+      "rode pela playwright.visao-geral.config.ts (npm run test:browser:visao-geral)",
+    ).toBe(true);
+    const agora = new Date(Date.now() + deslocamento);
+    await page.clock.install({ time: agora });
+
+    // A última reserva começa 120 min depois e dura 30: precisa caber na
+    // jornada, que termina às 23:45.
+    const inicio = proximoInicioDeHoje(agora, 3, "21:15");
+    expect(inicio, `sem horário hoje para montar o caso às ${agora.toISOString()}`).not.toBeNull();
     const hoje = hojeNoFusoDoTenant(agora);
     const instante = (minutosDepois: number) =>
       new Date(Date.parse(inicio!.startAt) + minutosDepois * MINUTO).toISOString();
 
     // ------------------------------------------------ estabelecimento A (fixture)
     const a = await cadastrar(request, "A");
+    // O backend vê o mesmo "agora" do spec e do navegador.
+    expect(Math.abs(a.cadastradoEm - (Date.now() + deslocamento))).toBeLessThan(MINUTO);
     const base = `/tenants/${a.tenantId}`;
     const servico = async (name: string, extra: Record<string, unknown> = {}) => {
       const r = await chamar<{ service: { id: string } }>(request, "POST", `${base}/services`, {
@@ -248,6 +272,8 @@ test.describe("visão geral e estrutura comum da área real", () => {
     // ------------------------------------------------ login de A: escolhe o A
     await entrar(page, a.email);
     await expect(page).toHaveURL(/\/conta\/selecionar-estabelecimento$/);
+    const relogioDoNavegador = await page.evaluate(() => Date.now());
+    expect(Math.abs(relogioDoNavegador - (Date.now() + deslocamento))).toBeLessThan(MINUTO);
     await page.getByRole("button", { name: new RegExp(a.businessName) }).click();
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);

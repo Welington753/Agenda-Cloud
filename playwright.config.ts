@@ -11,8 +11,11 @@ export default defineConfig({
   testDir: "./tests/browser",
   // Fluxo da mesma origem em HTTPS: precisa de outro build do frontend e de
   // outro ambiente da API, então só roda pela própria configuração
-  // (playwright.proxy.config.ts, `npm run test:browser:proxy`).
-  testIgnore: "same-origin-proxy-flow.spec.ts",
+  // (playwright.proxy.config.ts, `npm run test:browser:proxy`). A Visão geral
+  // precisa do relógio de teste no backend: também só roda pela própria
+  // configuração (playwright.visao-geral.config.ts,
+  // `npm run test:browser:visao-geral`).
+  testIgnore: ["same-origin-proxy-flow.spec.ts", "visao-geral-flow.spec.ts"],
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,
