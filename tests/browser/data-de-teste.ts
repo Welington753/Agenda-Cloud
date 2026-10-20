@@ -242,13 +242,13 @@ export function proximoInicioDeHoje(
   return { horaLocal, startAt: instante.toISOString() };
 }
 
-/** Hora de parede em que o relógio de teste da Visão geral começa. */
+/** Hora de parede em que o relógio de teste começa. */
 const HORA_DO_RELOGIO_DE_TESTE = { hora: 10, minuto: 0 };
 
 /**
- * Instante em que o relógio de TESTE da Visão geral começa: 10:00 do "hoje"
+ * Instante em que o relógio de TESTE começa: 10:00 do "hoje"
  * do estabelecimento em que `agoraReal` cai. Serve a
- * playwright.visao-geral.config.ts, que desloca o relógio do backend e do
+ * playwright.relogio-de-teste.config.ts, que desloca o relógio do backend e do
  * navegador para este instante.
  *
  * POR QUE ISTO EXISTE: o caso da Visão geral precisa, no MESMO dia do
@@ -258,6 +258,8 @@ const HORA_DO_RELOGIO_DE_TESTE = { hora: 10, minuto: 0 };
  * o spec era pulado, e entre 21:13 e 21:27 a última reserva (início + 120
  * min, 30 min de duração) passava do fim da jornada (23:45) e o backend a
  * recusava. Às 10:00 o caso cabe com folga, qualquer que seja a hora real.
+ * A visualização da agenda usa o mesmo relógio para o atendimento em
+ * andamento de hoje, que antes era omitido a partir das 22:58 locais.
  *
  * O dia continua sendo o de hoje (só a hora muda), para o relógio deslocado
  * ficar a menos de um dia do real: sessão, cookie e limites de login seguem

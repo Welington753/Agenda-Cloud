@@ -15,6 +15,7 @@ on:
       - "tests/browser/**"
       - "playwright.config.ts"
       - "playwright.proxy.config.ts"
+      - "playwright.relogio-de-teste.config.ts"
       - "package.json"
       - "package-lock.json"
       - "backend/src/**"
@@ -272,7 +273,9 @@ jobs:
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
-      # e vazio, painel "Novo agendamento" e atendimento em andamento.
+      # e vazio, painel "Novo agendamento", atendimento em andamento e "No
+      # horário agora". Roda pela playwright.relogio-de-teste.config.ts, como
+      # a Visão geral abaixo.
       - name: Run real browser flows (agenda day view, filter, states, new-appointment panel)
         id: browser_agenda_view
         env:
@@ -292,7 +295,7 @@ jobs:
       # da área real, troca de estabelecimento e `next` seguro. O segundo
       # vínculo e a permissão negada são gravados no PostgreSQL descartável
       # (`DATABASE_URL` abaixo); o teste recusa qualquer host fora do loopback.
-      # Roda pela playwright.visao-geral.config.ts: backend e navegador com o
+      # Roda pela playwright.relogio-de-teste.config.ts: backend e navegador com o
       # relógio de teste (10:00 de hoje no fuso do estabelecimento), para o
       # caso não depender da hora real em que o job roda.
       - name: Run real browser flows (overview, shared account layout, tenant switch, safe next)

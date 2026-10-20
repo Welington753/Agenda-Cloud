@@ -114,7 +114,7 @@ describe("próximo início de hoje (atendimento em andamento)", () => {
   });
 });
 
-describe("relógio de teste da Visão geral", () => {
+describe("relógio de teste (Visão geral e agenda)", () => {
   // Bordas da hora REAL: antes, a partir das 21:28 locais o spec era pulado
   // e entre 21:13 e 21:27 a última reserva passava do fim da jornada. 21:00
   // local é 00:00 UTC (o dia do runner do CI vira ali, o do estabelecimento não).
@@ -124,6 +124,7 @@ describe("relógio de teste da Visão geral", () => {
     ["2026-10-21T00:13:00.000Z", "2026-10-20"], // 21:13
     ["2026-10-21T00:30:00.000Z", "2026-10-20"], // 21:30
     ["2026-10-21T00:31:00.000Z", "2026-10-20"], // 21:31
+    ["2026-10-21T01:58:00.000Z", "2026-10-20"], // 22:58 (agenda omitia o caso daqui em diante)
     ["2026-10-21T02:50:00.000Z", "2026-10-20"], // 23:50
     ["2026-10-21T02:59:59.999Z", "2026-10-20"], // 23:59:59.999
     ["2026-10-21T03:00:00.000Z", "2026-10-21"], // 00:00
@@ -138,6 +139,14 @@ describe("relógio de teste da Visão geral", () => {
     // depois (30 min de duração) terminando antes do fim da jornada (23:45).
     const caso = proximoInicioDeHoje(inicio, 3, "21:15");
     expect(caso).toEqual({ horaLocal: "10:15", startAt: `${dia}T13:15:00.000Z` });
+  });
+
+  it.each(casos)("hora real %s: o atendimento em andamento da agenda cabe hoje", (real, dia) => {
+    // Mesma conta do agenda-view-flow.spec.ts (folga de 3 min, último início 23:00).
+    expect(proximoInicioDeHoje(inicioDoRelogioDeTeste(new Date(real)), 3)).toEqual({
+      horaLocal: "10:15",
+      startAt: `${dia}T13:15:00.000Z`,
+    });
   });
 
   it("nunca fica a um dia ou mais do relógio real (sessão e cookie seguem valendo)", () => {

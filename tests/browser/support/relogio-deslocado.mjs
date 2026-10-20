@@ -1,5 +1,6 @@
-// Relógio DESLOCADO do backend, só para o teste de navegador da Visão geral
-// (carregado por `node --import`, ver playwright.visao-geral.config.ts).
+// Relógio DESLOCADO do backend, só para os testes de navegador que dependem
+// da hora do dia (carregado por `node --import`, ver
+// playwright.relogio-de-teste.config.ts).
 // Nunca faz parte do build nem da hospedagem: o backend de produção sobe com
 // `node dist/main.js`, sem este arquivo.
 //

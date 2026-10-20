@@ -2,10 +2,12 @@ import { defineConfig } from "@playwright/test";
 import base from "./playwright.config";
 import { inicioDoRelogioDeTeste } from "./tests/browser/data-de-teste";
 
-// Visão geral com RELÓGIO DE TESTE: backend e navegador começam às 10:00 do
-// "hoje" do estabelecimento, qualquer que seja a hora real (ver
+// RELÓGIO DE TESTE para os specs que dependem da hora do dia (Visão geral e
+// visualização da agenda): backend e navegador começam às 10:00 do "hoje" do
+// estabelecimento, qualquer que seja a hora real (ver
 // `inicioDoRelogioDeTeste`). Fora isso, é a configuração padrão: mesmo banco
-// descartável, mesmo backend compilado, mesma API real.
+// descartável, mesmo backend compilado, mesma API real. Cada spec roda em
+// invocação própria (orçamento de cadastro e login), com backend novo.
 //
 // O deslocamento é calculado UMA vez, no processo principal, e herdado pelo
 // worker e pelo backend pelo ambiente: perto da meia-noite, recalcular em
@@ -25,7 +27,7 @@ const [backend, frontend] = Array.isArray(base.webServer) ? base.webServer : [];
 export default defineConfig({
   ...base,
   testIgnore: undefined,
-  testMatch: "visao-geral-flow.spec.ts",
+  testMatch: ["visao-geral-flow.spec.ts", "agenda-view-flow.spec.ts"],
   webServer: [
     {
       ...backend,
