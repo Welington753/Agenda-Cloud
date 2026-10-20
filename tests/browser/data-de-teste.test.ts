@@ -15,6 +15,7 @@ import {
   DATA_SEGUINTE,
   WEEKDAY_DA_DATA,
   hojeNoFusoDoTenant,
+  inicioDoRelogioDeTeste,
   instanteLocalDe,
   proximoInicioDeHoje,
   weekdayDe,
@@ -110,5 +111,39 @@ describe("próximo início de hoje (atendimento em andamento)", () => {
   it("dia da semana de uma data de calendário", () => {
     expect(weekdayDe("2026-10-18")).toBe(0);
     expect(weekdayDe("2026-10-15")).toBe(4);
+  });
+});
+
+describe("relógio de teste da Visão geral", () => {
+  // Bordas da hora REAL: antes, a partir das 21:28 locais o spec era pulado
+  // e entre 21:13 e 21:27 a última reserva passava do fim da jornada. 21:00
+  // local é 00:00 UTC (o dia do runner do CI vira ali, o do estabelecimento não).
+  const casos: [string, string][] = [
+    ["2026-10-20T12:00:00.000Z", "2026-10-20"], // 09:00
+    ["2026-10-21T00:00:00.000Z", "2026-10-20"], // 21:00, virada do dia em UTC
+    ["2026-10-21T00:13:00.000Z", "2026-10-20"], // 21:13
+    ["2026-10-21T00:30:00.000Z", "2026-10-20"], // 21:30
+    ["2026-10-21T00:31:00.000Z", "2026-10-20"], // 21:31
+    ["2026-10-21T02:50:00.000Z", "2026-10-20"], // 23:50
+    ["2026-10-21T02:59:59.999Z", "2026-10-20"], // 23:59:59.999
+    ["2026-10-21T03:00:00.000Z", "2026-10-21"], // 00:00
+    ["2026-10-21T03:01:00.000Z", "2026-10-21"], // 00:01
+  ];
+
+  it.each(casos)("hora real %s: começa às 10:00 de %s, com o caso inteiro no mesmo dia", (real, dia) => {
+    const inicio = inicioDoRelogioDeTeste(new Date(real));
+    expect(diaLocalDe(inicio.toISOString())).toBe(dia);
+    expect(horaLocalDe(inicio.toISOString())).toBe("10:00");
+    // Mesma conta do spec: início com 3 min de folga, última reserva 120 min
+    // depois (30 min de duração) terminando antes do fim da jornada (23:45).
+    const caso = proximoInicioDeHoje(inicio, 3, "21:15");
+    expect(caso).toEqual({ horaLocal: "10:15", startAt: `${dia}T13:15:00.000Z` });
+  });
+
+  it("nunca fica a um dia ou mais do relógio real (sessão e cookie seguem valendo)", () => {
+    for (const [real] of casos) {
+      const distancia = Math.abs(inicioDoRelogioDeTeste(new Date(real)).getTime() - Date.parse(real));
+      expect(distancia).toBeLessThan(86_400_000);
+    }
   });
 });

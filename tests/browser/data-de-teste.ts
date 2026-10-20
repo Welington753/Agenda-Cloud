@@ -241,3 +241,42 @@ export function proximoInicioDeHoje(
   }
   return { horaLocal, startAt: instante.toISOString() };
 }
+
+/** Hora de parede em que o relógio de teste da Visão geral começa. */
+const HORA_DO_RELOGIO_DE_TESTE = { hora: 10, minuto: 0 };
+
+/**
+ * Instante em que o relógio de TESTE da Visão geral começa: 10:00 do "hoje"
+ * do estabelecimento em que `agoraReal` cai. Serve a
+ * playwright.visao-geral.config.ts, que desloca o relógio do backend e do
+ * navegador para este instante.
+ *
+ * POR QUE ISTO EXISTE: o caso da Visão geral precisa, no MESMO dia do
+ * estabelecimento, de um atendimento que já pode ser iniciado (o backend só
+ * deixa a partir de 30 min antes) e de três horários futuros depois dele.
+ * Com o relógio real isso não cabe no fim do dia: a partir das 21:28 locais
+ * o spec era pulado, e entre 21:13 e 21:27 a última reserva (início + 120
+ * min, 30 min de duração) passava do fim da jornada (23:45) e o backend a
+ * recusava. Às 10:00 o caso cabe com folga, qualquer que seja a hora real.
+ *
+ * O dia continua sendo o de hoje (só a hora muda), para o relógio deslocado
+ * ficar a menos de um dia do real: sessão, cookie e limites de login seguem
+ * valendo como sempre.
+ */
+export function inicioDoRelogioDeTeste(agoraReal: Date): Date {
+  const hoje = partesLocais(agoraReal);
+  const { hora, minuto } = HORA_DO_RELOGIO_DE_TESTE;
+  const comoSeFosseUtc = Date.UTC(hoje.year, hoje.month - 1, hoje.day, hora, minuto);
+  let instante = new Date(comoSeFosseUtc - deslocamentoEmMinutos(new Date(comoSeFosseUtc)) * 60_000);
+  instante = new Date(comoSeFosseUtc - deslocamentoEmMinutos(instante) * 60_000);
+
+  const conferido = partesLocais(instante);
+  if (
+    comoDataIso(conferido) !== comoDataIso(hoje) ||
+    conferido.hour !== hora ||
+    conferido.minute !== minuto
+  ) {
+    throw new Error(`10:00 de ${comoDataIso(hoje)} não existe em ${TIMEZONE_DO_TENANT}`);
+  }
+  return instante;
+}

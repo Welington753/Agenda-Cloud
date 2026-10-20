@@ -292,6 +292,9 @@ jobs:
       # da área real, troca de estabelecimento e `next` seguro. O segundo
       # vínculo e a permissão negada são gravados no PostgreSQL descartável
       # (`DATABASE_URL` abaixo); o teste recusa qualquer host fora do loopback.
+      # Roda pela playwright.visao-geral.config.ts: backend e navegador com o
+      # relógio de teste (10:00 de hoje no fuso do estabelecimento), para o
+      # caso não depender da hora real em que o job roda.
       - name: Run real browser flows (overview, shared account layout, tenant switch, safe next)
         id: browser_visao_geral
         env:
