@@ -12,10 +12,15 @@ export default defineConfig({
   // Fluxo da mesma origem em HTTPS: precisa de outro build do frontend e de
   // outro ambiente da API, então só roda pela própria configuração
   // (playwright.proxy.config.ts, `npm run test:browser:proxy`). A Visão geral
-  // precisa do relógio de teste no backend: também só roda pela própria
-  // configuração (playwright.visao-geral.config.ts,
-  // `npm run test:browser:visao-geral`).
-  testIgnore: ["same-origin-proxy-flow.spec.ts", "visao-geral-flow.spec.ts"],
+  // e a visualização da agenda precisam do relógio de teste no backend:
+  // também só rodam pela própria configuração
+  // (playwright.relogio-de-teste.config.ts, `npm run test:browser:visao-geral`
+  // e `npm run test:browser:agenda-view`).
+  testIgnore: [
+    "same-origin-proxy-flow.spec.ts",
+    "visao-geral-flow.spec.ts",
+    "agenda-view-flow.spec.ts",
+  ],
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

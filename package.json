@@ -21,8 +21,8 @@
     "test:browser:working-hours": "playwright test tests/browser/professional-working-hours-flow.spec.ts",
     "test:browser:availability": "playwright test tests/browser/availability-flow.spec.ts",
     "test:browser:appointments": "playwright test tests/browser/appointments-flow.spec.ts",
-    "test:browser:agenda-view": "playwright test tests/browser/agenda-view-flow.spec.ts",
-    "test:browser:visao-geral": "playwright test --config playwright.visao-geral.config.ts",
+    "test:browser:agenda-view": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/agenda-view-flow.spec.ts",
+    "test:browser:visao-geral": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/visao-geral-flow.spec.ts",
     "test:browser:proxy": "playwright test --config playwright.proxy.config.ts"
   },
   "dependencies": {

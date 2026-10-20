@@ -14,7 +14,7 @@
 // DESCARTÁVEL deste teste, e a conexão se recusa a abrir fora do loopback —
 // nunca Neon, nunca banco existente.
 //
-// RELÓGIO DE TESTE: o spec só roda por playwright.visao-geral.config.ts, que
+// RELÓGIO DE TESTE: o spec só roda por playwright.relogio-de-teste.config.ts, que
 // sobe o backend com o relógio deslocado para as 10:00 de hoje (fuso do
 // estabelecimento); o navegador começa no mesmo instante. Assim o caso não
 // depende da hora real — nem pulo, nem espera pela virada do dia.
@@ -24,6 +24,11 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { hojeNoFusoDoTenant, proximoInicioDeHoje, weekdayDe } from "./data-de-teste";
+import {
+  conferirRelogioDoBackend,
+  conferirRelogioDoNavegador,
+  instalarRelogioDeTeste,
+} from "./support/relogio-de-teste";
 
 const BACKEND_URL = "http://localhost:3001";
 const SENHA = "senha-da-visao-geral-e2e-123";
@@ -75,7 +80,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string) {
     userId: me.corpo.user.id,
     tenantId: me.corpo.activeContext.tenantId,
     // Instante do cadastro pelo relógio do BACKEND (`new Date()` do controller).
-    cadastradoEm: Date.parse(me.corpo.activeContext.trial.trialStartAt),
+    cadastradoEm: me.corpo.activeContext.trial.trialStartAt,
   };
 }
 
@@ -130,18 +135,12 @@ test.describe("visão geral e estrutura comum da área real", () => {
     test.setTimeout(150_000);
     await page.setViewportSize(COMPUTADOR);
 
-    // Relógio de TESTE (playwright.visao-geral.config.ts): o backend já sobe
-    // deslocado para as 10:00 de hoje no fuso do estabelecimento, e o
+    // Relógio de TESTE (playwright.relogio-de-teste.config.ts): o backend já
+    // sobe deslocado para as 10:00 de hoje no fuso do estabelecimento, e o
     // navegador começa no mesmo instante. O caso precisa de um atendimento
     // que já pode ser iniciado e de 2 h de horários futuros depois dele, no
     // mesmo dia — com o relógio real isso não cabe perto da meia-noite.
-    const deslocamento = Number(process.env.E2E_RELOGIO_DESLOCAMENTO_MS);
-    expect(
-      Number.isInteger(deslocamento),
-      "rode pela playwright.visao-geral.config.ts (npm run test:browser:visao-geral)",
-    ).toBe(true);
-    const agora = new Date(Date.now() + deslocamento);
-    await page.clock.install({ time: agora });
+    const agora = await instalarRelogioDeTeste(page);
 
     // A última reserva começa 120 min depois e dura 30: precisa caber na
     // jornada, que termina às 23:45.
@@ -154,7 +153,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     // ------------------------------------------------ estabelecimento A (fixture)
     const a = await cadastrar(request, "A");
     // O backend vê o mesmo "agora" do spec e do navegador.
-    expect(Math.abs(a.cadastradoEm - (Date.now() + deslocamento))).toBeLessThan(MINUTO);
+    conferirRelogioDoBackend(a.cadastradoEm);
     const base = `/tenants/${a.tenantId}`;
     const servico = async (name: string, extra: Record<string, unknown> = {}) => {
       const r = await chamar<{ service: { id: string } }>(request, "POST", `${base}/services`, {
@@ -272,8 +271,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     // ------------------------------------------------ login de A: escolhe o A
     await entrar(page, a.email);
     await expect(page).toHaveURL(/\/conta\/selecionar-estabelecimento$/);
-    const relogioDoNavegador = await page.evaluate(() => Date.now());
-    expect(Math.abs(relogioDoNavegador - (Date.now() + deslocamento))).toBeLessThan(MINUTO);
+    await conferirRelogioDoNavegador(page);
     await page.getByRole("button", { name: new RegExp(a.businessName) }).click();
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);

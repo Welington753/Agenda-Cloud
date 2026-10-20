@@ -14,6 +14,11 @@
 // novo (ver .github/workflows/test-frontend-auth.yml). O limite nunca é
 // afrouxado para o teste passar.
 //
+// RELÓGIO DE TESTE: o spec só roda por playwright.relogio-de-teste.config.ts,
+// que sobe o backend com o relógio deslocado para as 10:00 de hoje (fuso do
+// estabelecimento); o navegador começa no mesmo instante. Assim o atendimento
+// em andamento de HOJE é sempre montado, qualquer que seja a hora real.
+//
 // Imagens: cada estado é fotografado no computador e no celular, publicadas
 // pelo CI como artefato (`agenda-*.png`).
 import { expect, test, type Page } from "@playwright/test";
@@ -26,6 +31,12 @@ import {
   proximoInicioDeHoje,
   weekdayDe,
 } from "./data-de-teste";
+import {
+  agoraDoTeste,
+  conferirRelogioDoBackend,
+  conferirRelogioDoNavegador,
+  instalarRelogioDeTeste,
+} from "./support/relogio-de-teste";
 
 const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-da-visao-da-agenda-e2e-123";
@@ -101,6 +112,7 @@ test.describe("visualização da agenda real", () => {
   }) => {
     test.setTimeout(90_000);
     await page.setViewportSize(VIEWPORT_COMPUTADOR);
+    const agora = await instalarRelogioDeTeste(page);
 
     // ------------------------------------------------------------- fixture
     const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -122,8 +134,14 @@ test.describe("visualização da agenda real", () => {
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
 
-    const me = await api<{ activeContext: { tenantId: string } }>(page, "/auth/me");
+    const me = await api<{
+      activeContext: { tenantId: string; trial: { trialStartAt: string } };
+    }>(page, "/auth/me");
     const tenantId = me.corpo.activeContext.tenantId;
+    // Spec, navegador e backend (`trialStartAt` = `new Date()` do cadastro)
+    // veem o mesmo "agora".
+    conferirRelogioDoBackend(me.corpo.activeContext.trial.trialStartAt);
+    await conferirRelogioDoNavegador(page);
     const base = `/tenants/${tenantId}`;
 
     const criarServico = async (name: string, durationMinutes: number) => {
@@ -157,8 +175,8 @@ test.describe("visualização da agenda real", () => {
     await criarProfissional("Caio Reis", [corte]);
 
     // Jornada: 09:00–12:00 em DATA para os dois; Ana também o dia todo HOJE,
-    // para o atendimento em andamento com o relógio real do servidor.
-    const hoje = hojeNoFusoDoTenant(new Date());
+    // para o atendimento em andamento (pelo relógio de teste).
+    const hoje = hojeNoFusoDoTenant(agora);
     const weekdayHoje = weekdayDe(hoje);
     const jornada = async (
       professionalId: string,
@@ -328,25 +346,23 @@ test.describe("visualização da agenda real", () => {
       .toEqual(["Diego Cliente", "Carla Cliente", "Elisa Cliente", "Fábio Cliente"]);
 
     // ----------------------------------------- atendimento em andamento (hoje)
-    // Relógio REAL do servidor: só é possível iniciar a partir de 30 min antes.
-    // Perto da meia-noite não há horário hoje para montar o caso.
-    const inicio = proximoInicioDeHoje(new Date(), 3);
-    if (inicio) {
-      await reservar(ana, barba, inicio.startAt, "Gabi Em Atendimento", "(11) 95555-5555");
-      await page.getByRole("button", { name: "Hoje", exact: true }).click();
-      await expect(campoDia(page)).toHaveValue(hoje);
-      const gabi = cartao(page, "Gabi Em Atendimento");
-      await gabi.getByTestId("iniciar-atendimento").click();
-      await expect(gabi.getByTestId("status-agendado")).toHaveText("Em atendimento");
-      await expect(page.locator("[data-em-atendimento]")).toContainText("Gabi Em Atendimento");
-      await expect(resumo(page)).toContainText("1 em atendimento");
-      await fotografar(page, "em-atendimento");
-    } else {
-      test.info().annotations.push({
-        type: "sem-horario-hoje",
-        description: "perto da meia-noite: o caso de atendimento em andamento não foi montado",
-      });
-    }
+    // O servidor só deixa iniciar a partir de 30 min antes do horário. Pelo
+    // relógio de teste (10:00 de hoje) sempre há horário hoje: se não houver,
+    // o caso falha em vez de ser omitido.
+    const inicio = proximoInicioDeHoje(agoraDoTeste(), 3);
+    expect(
+      inicio,
+      `sem horário hoje para o atendimento em andamento às ${agoraDoTeste().toISOString()}`,
+    ).not.toBeNull();
+    await reservar(ana, barba, inicio!.startAt, "Gabi Em Atendimento", "(11) 95555-5555");
+    await page.getByRole("button", { name: "Hoje", exact: true }).click();
+    await expect(campoDia(page)).toHaveValue(hoje);
+    const gabi = cartao(page, "Gabi Em Atendimento");
+    await gabi.getByTestId("iniciar-atendimento").click();
+    await expect(gabi.getByTestId("status-agendado")).toHaveText("Em atendimento");
+    await expect(page.locator("[data-em-atendimento]")).toContainText("Gabi Em Atendimento");
+    await expect(resumo(page)).toContainText("1 em atendimento");
+    await fotografar(page, "em-atendimento");
 
     // --------------------------- "no horário agora" (relógio do NAVEGADOR)
     // Só destaque visual: o relógio do navegador decide o que é destacado,
