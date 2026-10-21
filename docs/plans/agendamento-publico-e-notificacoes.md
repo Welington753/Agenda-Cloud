@@ -1,9 +1,10 @@
 # Agendamento público, confirmação, avisos e WhatsApp — plano dos próximos lotes
 
-**Ponto de partida:** `integration/nestjs-typeorm-frontend` em `a6c2902` mais o lote
-que criou este documento (contato manual pelo WhatsApp). Este plano descreve o que
-já existe, o que falta e as decisões que cada lote precisa tomar. Nada aqui foi
-implementado além do que a seção "Já existe" diz; nenhuma migration foi aplicada.
+**Ponto de partida:** criado com o contato manual pelo WhatsApp (PR #52) e
+atualizado com a base de confirmação e lembretes automáticos (Lote E, parte 1).
+Descreve o que já existe, o que falta e as decisões de cada lote. Nada aqui
+está implementado além do que a seção "Já existe" diz. A única migration nova
+é `1792540800000-NotificationJobs` (seção 5), aplicada só em banco descartável.
 
 ## 1. Para quais negócios o modelo atual serve
 
@@ -53,10 +54,14 @@ ficam como estão.
 | `public_settings.is_published` | `entities/public-settings.entity.ts` | Sem uso na API real. |
 | Contato manual pelo WhatsApp (links `wa.me`) | `src/lib/contato/whatsapp.ts`, `src/components/conta/contato-whatsapp.tsx` | **Não é notificação**: o responsável abre e envia. |
 | Página pública `/[slug]` e `/[slug]/agendar` | `src/app/[slug]/` | **Demonstração**: lê repositórios locais do navegador, não a API. |
+| Tarefas de confirmação e lembretes gravadas na transação da reserva | `backend/src/notifications/`, migration `1792540800000-NotificationJobs` | Base do Lote E. **Nada é enviado**: sem provedor real nem executor agendado. |
+| Autorização de contato por cliente | `consumers.whatsapp_opt_in_at` / `_source` / `whatsapp_opt_out_at` | Colunas existem, todas NULAS; não há tela nem rota para registrar. |
 
 **Não existe:** nenhuma rota pública (sem sessão) no backend; nenhuma tabela de
-notificação, evento ou fila; nenhum provedor de mensagem; nenhuma permissão de
-agenda para papéis além de DONO; nenhum processo em segundo plano.
+eventos/avisos para o painel; nenhum provedor real de mensagem nem executor
+agendado; nenhuma permissão de agenda para papéis além de DONO. **A existência
+de `notification_jobs` não entrega agendamento público nem aviso ao dono** —
+esses continuam nos Lotes A e C.
 
 ## 3. Sequência de lotes
 
@@ -126,88 +131,181 @@ agenda para papéis além de DONO; nenhum processo em segundo plano.
 - Fora deste lote: bloqueio recorrente, feriados do estabelecimento inteiro
   (exigem modelo próprio — hoje `time_blocks` é por profissional).
 
-### Lote E — Notificações automáticas pelo WhatsApp (oficial)
+### Lote E — Notificações automáticas pelo WhatsApp
+
+**Estado:** a BASE está implementada e testada (ver seção 4); o envio real
+**não**. Falta: provedor real, número remetente verificado, templates
+aprovados, tela/rota para registrar a autorização de contato, retorno de
+entrega (webhook) e um executor agendado em produção.
+
+**Regras de confirmação e lembretes (implementadas):**
+
+1. **Confirmação:** ao confirmar uma reserva grava-se a intenção de enviar a
+   confirmação ao cliente. A reserva criada que já nasce `CONFIRMED` (serviço
+   sem confirmação manual) segue a mesma política, sem exigir clique. Repetir
+   a confirmação não gera outra mensagem: o serviço sai antes quando o estado
+   já é o destino, e a chave `<reserva>:CONFIRMATION` é UNIQUE.
+2. **Lembrete da véspera:** às 09:00 do dia anterior, no fuso do
+   estabelecimento. "Véspera" é a data de calendário local menos um dia, não
+   "início − 24 h" (no horário de verão as contas divergem; um atendimento às
+   00:30 tem véspera no dia anterior). Não é programado quando a reserva ficou
+   confirmada na própria véspera ou no dia do atendimento.
+3. **Lembrete próximo:** 2 h antes. Se esse instante já passou ao criar ou
+   confirmar, não é programado — nada de lembrete atrasado colado na
+   confirmação.
+4. Só reserva `CONFIRMED` gera lembretes. Cancelar, iniciar, concluir e
+   registrar falta invalidam tudo o que está pendente (`CANCELED`, com motivo).
+5. **Remarcação:** invalida os lembretes do horário antigo e recalcula os do
+   novo a partir do momento da remarcação. A confirmação **não** é repetida:
+   o horário novo acabou de ser combinado com o cliente (normalmente pelo
+   próprio WhatsApp, com o "Combinar outro horário"); uma confirmação ainda
+   não enviada passa a citar o horário novo. **Mudança feita na véspera:**
+   pela regra 2 não há "lembrete de amanhã", e pela regra 3 o lembrete de 2 h
+   só existe se ainda for futuro — nenhuma mensagem sai na hora só porque a
+   reserva mudou. Voltar ao horário anterior reaproveita a linha cancelada
+   (mesma chave) em vez de criar outra.
+6. **Antes de enviar**, o executor confere com a reserva travada: estado
+   `CONFIRMED`, início vigente igual ao programado, atendimento ainda futuro,
+   prazo da tarefa (`not_after`), estabelecimento ativo, autorização de
+   contato e telefone utilizável. O destinatário é o telefone ATUAL do
+   cadastro do cliente (não o snapshot da reserva). As mensagens levam só
+   primeiro nome, estabelecimento, data e hora locais — nunca serviço, preço,
+   profissional ou observações.
 
 **Quem envia e quem recebe:**
 
-| Mensagem | De | Para | Gatilho |
-|---|---|---|---|
-| Pedido recebido / pendente | número do Agenda Cloud | cliente | `booking_request.created` |
-| Novo pedido para confirmar | número do Agenda Cloud | DONO (telefone do usuário) | `booking_request.created` |
-| Confirmado / recusado / remarcado / cancelado | número do Agenda Cloud | cliente | evento correspondente |
-| Lembrete (ex.: 24 h antes) | número do Agenda Cloud | cliente | agendado |
+| Mensagem | De | Para | Gatilho | Estado |
+|---|---|---|---|---|
+| Confirmação | número do Agenda Cloud | cliente | reserva passa a `CONFIRMED` | base pronta |
+| Lembrete da véspera (09:00) | número do Agenda Cloud | cliente | programado | base pronta |
+| Lembrete 2 h antes | número do Agenda Cloud | cliente | programado | base pronta |
+| Pedido recebido / pendente | número do Agenda Cloud | cliente | pedido público (Lote A) | falta |
+| Novo pedido para confirmar | número do Agenda Cloud | DONO | pedido público (Lotes A/C) | falta |
 
 - **Número remetente:** no piloto, **um número do Agenda Cloud** na WhatsApp
-  Cloud API (Meta, oficial), com o nome do estabelecimento no texto. Número
-  próprio por estabelecimento (cada um com conta WhatsApp Business verificada)
-  fica para depois — exige onboarding de cada negócio na Meta.
-- **Provedor:** WhatsApp Cloud API direta (sem intermediário) como padrão;
-  intermediário (Twilio, Zenvia, Gupshup) só se o processo de verificação da
-  Meta travar o piloto. Nunca bibliotecas não oficiais (WhatsApp Web
-  automatizado) — risco de banimento do número.
-- **Templates:** mensagens iniciadas pela empresa fora da janela de 24 h exigem
-  template aprovado pela Meta (categoria *utility*). Textos neutros, sem nome
-  do serviço quando puder ser sensível.
-- **Autorização de contato (opt-in):** o formulário público pede aceite
-  explícito ("Quero receber avisos deste agendamento pelo WhatsApp"),
-  gravado com data e origem; o DONO aceita no próprio cadastro/configuração.
-  Sem aceite, nada é enviado (o aviso no painel continua). Opt-out por
-  resposta "SAIR" registrada pelo webhook.
-- **Custos:** cobrança da Meta por conversa/mensagem de template, por país e
-  categoria — confirmar a tabela vigente antes de ligar. Decidir quem paga
-  (embutido no plano ou franquia por estabelecimento) e impor limite mensal por
-  tenant para nenhum abuso gerar conta.
+  Business Platform (Cloud API, Meta), com o nome do estabelecimento no
+  texto. Número próprio por estabelecimento fica para depois — exige
+  onboarding de cada negócio na Meta.
+- **Provedor:** Cloud API direta como padrão; intermediário (Twilio, Zenvia,
+  Gupshup) só se a verificação da Meta travar o piloto. Nunca automação não
+  oficial do WhatsApp Web (risco de banimento). A interface `ProvedorWhatsapp`
+  declara se o provedor é **idempotente** pela chave da tarefa; só nesse caso
+  um resultado incerto é reenviado.
+- **Templates:** mensagem iniciada pela empresa fora da janela de 24 h exige
+  template aprovado (categoria *utility*). Os três textos já existem em
+  `notification-messages.ts`, com os parâmetros na ordem (nome,
+  estabelecimento, data, hora).
+- **Autorização de contato:** colunas `consumers.whatsapp_opt_in_at`,
+  `whatsapp_opt_in_source` e `whatsapp_opt_out_at`. **Todo cliente existente
+  fica sem autorização** (NULL) — nenhuma é inventada. Sem autorização, a
+  tarefa termina `SKIPPED (SEM_AUTORIZACAO)`. Falta a tela/rota que registra o
+  aceite (no agendamento público: caixa explícita; no balcão: o responsável
+  registra que o cliente aceitou) e o opt-out ("SAIR" pelo webhook).
+- **Custos (conferir antes de ligar):** a Meta cobra por mensagem de template
+  conforme categoria e país; a tabela vigente vale desde 01/04/2026 e a
+  cobrança em BRL está disponível no Brasil desde 01/07/2026. Há indicação de
+  que, a partir de 01/10/2026, template *utility* dentro da janela de 24 h
+  também passa a ser cobrado. Os valores em BRL **não** foram confirmados
+  aqui — usar a tabela oficial ao decidir. Três mensagens por reserva
+  confirmada é o teto deste desenho; decidir quem paga e impor limite mensal
+  por estabelecimento.
 
-**Gravação e envio (consistência):**
+**Gravação e envio (implementado):**
 
-1. A mudança da reserva grava, **na mesma transação**, o `appointment_event` e
-   as linhas de `notification_outbox` (uma por destinatário/canal), com
-   `dedupe_key` única (ex.: `evento_id + destinatário + canal`).
-2. O envio **só acontece depois do COMMIT**: um processo lê a outbox; nada é
-   enviado de dentro da transação (rollback nunca deixa mensagem enviada de
-   reserva inexistente).
-3. **Falha e retentativa:** `status` (`PENDING → SENDING → SENT | FAILED |
-   SKIPPED`), `attempts`, `next_attempt_at` com backoff exponencial (ex.: 1, 5,
-   30 min, 2 h; máximo 5). Erro permanente do provedor (número inválido,
-   opt-out) vira `FAILED`/`SKIPPED` sem retentar.
-4. **Duplicidade:** `dedupe_key` única + `SELECT ... FOR UPDATE SKIP LOCKED` ao
-   pegar o lote; o `message_id` do provedor é gravado e o webhook de status
-   atualiza `delivered_at`/`read_at`. Retentar depois de timeout pode
-   duplicar no provedor — aceitar e registrar, ou usar idempotência do
-   provedor quando existir.
-5. Mensagem que perdeu o sentido (reserva cancelada antes do envio do
-   lembrete) é marcada `SKIPPED` na hora de enviar.
+1. A mudança da reserva grava as tarefas em `notification_jobs` **na mesma
+   transação** (`AgendadorDeNotificacoes`, chamado por `AppointmentsService`).
+   Rollback desfaz as duas coisas — nenhuma tarefa órfã.
+2. Nenhuma chamada externa acontece nessa transação. O
+   `ExecutorDeNotificacoes` lê a tabela depois do COMMIT.
+3. **Reserva por executor:** um `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE
+   SKIP LOCKED)` marca `PROCESSING` com concessão por tempo. Dois executores
+   nunca pegam a mesma linha; linha travada é pulada, não esperada.
+4. **Decisão antes do envio:** conferência e passagem para `SENDING` numa
+   transação curta com a reserva `FOR SHARE`; o cancelamento trava a mesma
+   reserva `FOR UPDATE` e invalida o que está `SCHEDULED`/`PROCESSING`.
+   **Janela residual aceita:** se o cancelamento chega depois do COMMIT do
+   `SENDING` e antes da chamada ao provedor (milissegundos), a mensagem sai.
+5. **Estados:** `SCHEDULED` (programada) → `PROCESSING` (reservada) →
+   `SENDING` (decidida) → `SENT` (aceita pelo provedor — **não** é entrega) →
+   `DELIVERED` (entrega confirmada pelo retorno do provedor). Desvios:
+   `SKIPPED` (conferência falhou), `CANCELED` (reserva mudou), `FAILED`
+   (recusa definitiva ou tentativas esgotadas), `UNCERTAIN` (sem resposta
+   conclusiva).
+6. **Falhas e retomada:** recusa temporária volta para a fila com espera de
+   1, 5, 30 e 120 min (máximo 5 tentativas, sempre dentro do prazo).
+   `PROCESSING` com concessão vencida (executor morreu antes de chamar o
+   provedor) é retomado normalmente. `SENDING` vencido (morreu depois de
+   decidir) vira `UNCERTAIN` — ou volta à fila se o provedor for idempotente.
+7. **Duplicidade:** `dedupe_key` UNIQUE impede a mesma intenção duas vezes;
+   `provider_message_id` UNIQUE (parcial) amarra o retorno de entrega.
+   **Entrega exatamente uma vez não é prometida:** entre o provedor aceitar e
+   o resultado ser gravado o processo pode morrer; a linha fica `UNCERTAIN`
+   para revisão em vez de arriscar mensagem duplicada ao cliente.
+8. Envio **desligado por padrão**: sem `envioHabilitado` e um provedor
+   explícito, `processarLote` não toca em nenhuma linha. Não há provedor real
+   nem executor agendado neste lote.
 
 **Painel aberto × aplicativo fechado:** aviso no painel (Lote C) só aparece
 para quem abrir a tela; **com o aplicativo fechado**, só o WhatsApp (ou, no
 futuro, Web Push com service worker e permissão do navegador) chega ao
-responsável. Os dois leem do mesmo `appointment_events`.
+responsável.
 
-**Execução confiável no Render gratuito:** o web service gratuito **hiberna
-sem tráfego** e não há worker nem cron no plano gratuito — um laço em memória
-ou `setInterval` no backend perderia mensagens e não rodaria com o serviço
-dormindo. Decisão: o envio **não depende do processo web estar acordado**.
-Opções, em ordem de preferência:
+**Execução apesar da hibernação do Render gratuito:**
 
-1. Plano pago com **Background Worker** (ou **Cron Job** do Render a cada
-   1–5 min) processando a outbox — o mais simples e confiável.
-2. Sem plano pago: um agendador externo (GitHub Actions `schedule`, cron
-   externo) chamando uma rota interna protegida por segredo que processa um
-   lote da outbox. Atrasos de minutos e acordar o serviço a cada chamada são
-   aceitáveis para piloto; a outbox garante que nada se perde enquanto dorme.
-3. Processar também logo após o COMMIT, no próprio request (melhor esforço),
-   sem substituir 1 ou 2.
+- Fatos (documentação do Render): o web service gratuito hiberna depois de
+  15 min sem tráfego e leva cerca de 1 min para acordar; o workspace tem 750 h
+  gratuitas por mês; manter o serviço gratuito acordado artificialmente com
+  pings é tratado pelo Render como abuso. Cron Job do Render é cobrado por
+  minuto de execução, com mínimo de US$ 1/mês por cron job (conferir o valor
+  vigente); o primeiro plano pago de web service fica sempre ligado.
+- **Estratégia escolhida:** um **Render Cron Job** (pago, a cada 5 min) que
+  roda um comando do backend: inicializa o DataSource, chama
+  `ExecutorDeNotificacoes.processarLote()` até esvaziar o que venceu e
+  termina. Não depende do web service acordado e não precisa de rota HTTP
+  exposta. Requisitos: mesma URL do banco com TLS, variável de habilitação
+  explícita, credenciais do provedor como segredo e um identificador de
+  executor (`locked_by`) por execução.
+- **Alternativa sem custo do Render:** GitHub Actions `schedule` rodando o
+  mesmo comando com acesso ao banco. Limitações conhecidas: intervalo mínimo
+  de 5 min, atrasos de vários minutos em horário de pico e desativação
+  automática de agendamentos em repositório público sem atividade por 60
+  dias. Os prazos das tarefas (`not_after`) evitam lembrete fora de hora
+  quando o atraso acontece. Não se promete operação gratuita sem antes medir
+  esses atrasos.
+- Nunca: `setInterval`/timer no processo web como mecanismo de agenda.
 
-Lembretes com hora marcada exigem 1 ou 2 — nunca só o item 3.
+## 4. O que já foi entregue do Lote E (base) e o que não é
 
-## 4. O que o contato manual (este lote) é e não é
+- **Contato manual (PR #52):** "WhatsApp" e "Combinar outro horário" abrem
+  `https://wa.me/<telefone>` no WhatsApp do próprio responsável. Não gravam
+  nada e **não são** notificação automática.
+- **Base automática:** `notification-policy.ts` (quando),
+  `notification-scheduler.ts` (grava na transação da reserva),
+  `notification-jobs.repository.ts` (SQL), `notification-dispatcher.ts`
+  (executor), `notification-messages.ts` (textos) e `whatsapp-provider.ts`
+  (contrato + provedor SIMULADO para testes), em `backend/src/notifications/`.
+  Provado em `notification-policy.spec.ts` e
+  `backend/test/notifications-postgres.db-e2e-spec.ts`.
+- **Ainda exige configuração externa para mensagem real:** conta WhatsApp
+  Business verificada, número remetente, templates aprovados, credenciais,
+  implementação de `ProvedorWhatsapp` para a Cloud API, webhook de entrega e
+  opt-out, registro do aceite do cliente e o Cron Job (ou agendador externo).
 
-O botão "WhatsApp" e "Combinar outro horário" abrem `https://wa.me/<telefone>`
-com texto pronto, no WhatsApp do próprio responsável. Não gravam evento, não
-marcam envio, não mudam a reserva e **não substituem** o Lote E. A remarcação
-continua pelo fluxo da agenda, depois do acordo.
+## 5. Schema
 
-## 5. Mudanças de schema necessárias (propostas, não aplicadas)
+**Aplicada neste lote (só em banco descartável):** `1792540800000-NotificationJobs`
+— colunas de autorização em `consumers` e a tabela `notification_jobs` (FK
+composta para `appointments`, `dedupe_key` UNIQUE, CHECK de tipo, estado e
+prazo, índices de fila e de reserva). Sem entidade TypeORM: acesso por SQL
+explícito (as specs estruturais comparam cada entidade com a migration inicial).
+
+**Publicação futura:** o workflow guardado do Lote 6B.2 só aplica as
+migrations dele e passa a **recusar** um banco com esta migration
+(`unexpected_names`) — de propósito. Aplicar em produção exige roteiro
+próprio, com backup antes (ver `docs/runbooks/publicacao-piloto-render.md`,
+sobre publicações que trazem migration).
+
+**Ainda propostas (não aplicadas):**
 
 ```sql
 -- Lote A: pedido público e expiração do pendente
@@ -220,12 +318,6 @@ ALTER TABLE appointments
 -- disponibilidade/constraint considerarem o horário — preferível, mantém a
 -- constraint como está —, ou a constraint passa a depender de tempo (inviável
 -- em EXCLUDE, que exige expressão imutável).
-
--- Lote A: opt-in de contato (por cliente, por tenant)
-ALTER TABLE consumers
-  ADD COLUMN whatsapp_opt_in_at timestamptz(3) NULL,
-  ADD COLUMN whatsapp_opt_in_source varchar(30) NULL,
-  ADD COLUMN whatsapp_opt_out_at timestamptz(3) NULL;
 
 -- Lote C: eventos da reserva (gravados na mesma transação da mudança)
 CREATE TABLE appointment_events (
@@ -246,39 +338,20 @@ CREATE TABLE appointment_event_reads (
   PRIMARY KEY (event_id, user_id)
 );
 
--- Lote E: outbox de notificações (envio só depois do COMMIT)
-CREATE TABLE notification_outbox (
-  id varchar(30) PRIMARY KEY,
-  tenant_id varchar(30) NOT NULL REFERENCES tenants(id),
-  event_id varchar(30) NOT NULL REFERENCES appointment_events(id),
-  channel varchar(20) NOT NULL,       -- WHATSAPP
-  recipient_kind varchar(20) NOT NULL,-- CONSUMER | USER
-  recipient_ref varchar(30) NOT NULL, -- consumer_id ou user_id
-  template varchar(60) NOT NULL,
-  dedupe_key varchar(120) NOT NULL UNIQUE,
-  status varchar(20) NOT NULL DEFAULT 'PENDING',
-  attempts int NOT NULL DEFAULT 0,
-  next_attempt_at timestamptz(3) NOT NULL DEFAULT now(),
-  provider_message_id varchar(120) NULL,
-  last_error varchar(500) NULL,
-  sent_at timestamptz(3) NULL,
-  delivered_at timestamptz(3) NULL,
-  created_at timestamptz(3) NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_notification_outbox_due ON notification_outbox (status, next_attempt_at);
+-- appointment_events/appointment_event_reads continuam PROPOSTAS (Lote C).
 ```
 
 `time_blocks` (Lote D) não precisa de coluna nova para o primeiro corte; só de
-rotas e tela. Cada tabela nova segue as regras já usadas no projeto: entidade
-TypeORM, migration versionada com `down()`, isolamento por `tenant_id` em toda
-consulta e testes contra o PostgreSQL descartável.
+rotas e tela. Cada tabela nova segue as regras já usadas no projeto: migration
+versionada com `down()`, isolamento por `tenant_id` em toda consulta e testes
+contra o PostgreSQL descartável.
 
-## 6. Próximo lote para o cliente agendar sozinho e o dono ser avisado
+## 6. Próximos lotes
 
 **Lote A + Lote C juntos, sem WhatsApp automático:** rotas públicas por slug,
 pedido sempre `PENDING` com expiração e rate limit, página pública real, e
 aviso persistente no painel para o DONO confirmar ou recusar. Isso entrega o
 fluxo completo sem custo de mensagem e sem depender de processo em segundo
-plano. O Lote E (WhatsApp automático) vem depois, quando houver número
-verificado na Meta, templates aprovados, decisão de custo e um executor que
-não dependa do serviço gratuito acordado.
+plano. O restante do Lote E (envio real) vem depois, quando houver número
+verificado na Meta, templates aprovados, decisão de custo, registro do aceite
+do cliente e o Cron Job do executor.

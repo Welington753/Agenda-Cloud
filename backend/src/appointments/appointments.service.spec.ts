@@ -74,6 +74,16 @@ class FakeManager {
     private readonly falharAoSalvar?: { entidade: unknown; erro: Error },
   ) {}
 
+  /** SQL explícito (notificações, ver src/notifications/) só é registrado:
+   * o comportamento real dessas consultas é provado contra PostgreSQL em
+   * test/notifications-postgres.db-e2e-spec.ts. */
+  readonly consultas: { sql: string; parametros: unknown[] }[] = [];
+
+  async query(sql: string, parametros: unknown[] = []): Promise<unknown[]> {
+    this.consultas.push({ sql, parametros });
+    return [];
+  }
+
   colecaoDe(entity: unknown): Registro[] {
     const colecao = this.colecoes.get(entity);
     if (!colecao) throw new Error('Entidade inesperada no teste');

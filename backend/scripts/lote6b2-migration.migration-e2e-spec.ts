@@ -29,6 +29,21 @@ import { EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME } from './lib/baseline-checks.js
 
 const DIRECT_URL = process.env.MIGRATION_E2E_DIRECT_URL;
 
+// Migrations criadas DEPOIS do Lote 6B.2. Elas existem no mesmo
+// `dist-migrations/`, então o guarda do 6B.2 (`validateMigrationShowStatus`,
+// usado por apply-lote6b2-production.ts) passa a RECUSAR a lista — de
+// propósito: aquele workflow só aplica as migrations dele, e uma migration
+// posterior precisa de roteiro próprio. Este teste prova as duas coisas: o
+// caminho compilado real continua aplicando tudo, e o guarda continua
+// fechado para o que não é do lote dele.
+const MIGRATIONS_POSTERIORES_AO_6B2 = ['NotificationJobs1792540800000'] as const;
+const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
+const PENDENTES_APOS_O_BASELINE = [
+  'AllowUndefinedPlanPrice1788782450000',
+  'InitialPlanCatalog1788782460000',
+  ...MIGRATIONS_POSTERIORES_AO_6B2,
+];
+
 describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL descartável', () => {
   const directUrl = DIRECT_URL as string;
   const processRunner = createChildProcessRunner();
@@ -76,7 +91,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
     await setupDataSource.destroy();
   });
 
-  it('DataSource de migrations compilado expõe exatamente uma instância e as três migrations deste lote', async () => {
+  it('DataSource de migrations compilado expõe exatamente uma instância e todas as migrations versionadas', async () => {
     const mod = (await import(pathToFileURL(distMigrationsDataSource).href)) as Record<string, unknown>;
     const dataSourceExports = Object.values(mod).filter((value) => value instanceof DataSource);
     expect(dataSourceExports).toHaveLength(1);
@@ -88,19 +103,20 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       fakeLogger as never,
       options.migrations,
     )) as Array<{ name: string }>;
-    expect(new Set(migrationClasses.map((c) => c.name))).toEqual(new Set(EXPECTED_LOTE_6B2_MIGRATION_NAMES));
+    expect(new Set(migrationClasses.map((c) => c.name))).toEqual(new Set(TODAS_AS_MIGRATIONS));
   });
 
-  it('migration:show:compiled via process-runner real: reconhece 1 aplicada + 2 pendentes', async () => {
+  it('migration:show:compiled via process-runner real: reconhece 1 aplicada + as pendentes, e o guarda do 6B.2 recusa a posterior', async () => {
     const result = await processRunner.run('npm', ['run', 'migration:show:compiled'], { env: guardedEnv });
 
     expect(result.code).toBe(0);
     const status = parseMigrationShowOutput(result.stdout);
-    expect(validateMigrationShowStatus(status)).toBeNull();
+    expect(validateMigrationShowStatus(status)).toEqual({
+      category: 'unexpected_names',
+      names: [...MIGRATIONS_POSTERIORES_AO_6B2],
+    });
     expect(status.appliedNames).toEqual([EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME]);
-    expect(status.pendingNames.sort()).toEqual(
-      ['AllowUndefinedPlanPrice1788782450000', 'InitialPlanCatalog1788782460000'].sort(),
-    );
+    expect(status.pendingNames.sort()).toEqual([...PENDENTES_APOS_O_BASELINE].sort());
   });
 
   // Prova real (não simulada) da causa raiz da execução #6: sob `CI=true`
@@ -115,11 +131,11 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
 
     expect(result.code).toBe(0);
     const status = parseMigrationShowOutput(result.stdout);
-    expect(validateMigrationShowStatus(status)).toBeNull();
-    expect(status.pendingNames).toHaveLength(2);
+    expect(validateMigrationShowStatus(status)?.category).toBe('unexpected_names');
+    expect(status.pendingNames).toHaveLength(PENDENTES_APOS_O_BASELINE.length);
   });
 
-  it('migration:run:compiled -- -t all via process-runner real: aplica as duas pendentes', async () => {
+  it('migration:run:compiled -- -t all via process-runner real: aplica todas as pendentes', async () => {
     const result = await processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'all'], {
       env: guardedEnv,
     });
@@ -147,8 +163,9 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       const tenants = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM tenants');
       const users = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM users');
 
-      expect(Number(tables.rows[0]?.n)).toBe(31);
-      expect(migrations.rows.map((r) => r.name).sort()).toEqual([...EXPECTED_LOTE_6B2_MIGRATION_NAMES].sort());
+      // 31 do 6B.2 + notification_jobs.
+      expect(Number(tables.rows[0]?.n)).toBe(32);
+      expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
       expect(plans.rows).toHaveLength(3);
@@ -162,14 +179,15 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
     }
   });
 
-  it('segunda execução de migration:show:compiled: as três aparecem aplicadas', async () => {
+  it('segunda execução de migration:show:compiled: todas aparecem aplicadas', async () => {
     const result = await processRunner.run('npm', ['run', 'migration:show:compiled'], { env: guardedEnv });
 
     expect(result.code).toBe(0);
     const status = parseMigrationShowOutput(result.stdout);
     expect(status.pendingNames).toHaveLength(0);
-    expect(status.appliedNames.sort()).toEqual([...EXPECTED_LOTE_6B2_MIGRATION_NAMES].sort());
-    expect(validateMigrationShowStatus(status)).toBeNull();
+    expect(status.appliedNames.sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
+    // O guarda do 6B.2 continua fechado para a migration que não é dele.
+    expect(validateMigrationShowStatus(status)?.category).toBe('unexpected_names');
   });
 
   it('idempotência: repetir migration:run:compiled não duplica dados nem migrations', async () => {
@@ -186,7 +204,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       const features = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM features');
       const planFeatures = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM plan_features');
 
-      expect(Number(migrations.rows[0]?.n)).toBe(3);
+      expect(Number(migrations.rows[0]?.n)).toBe(TODAS_AS_MIGRATIONS.length);
       expect(Number(plans.rows[0]?.n)).toBe(3);
       expect(Number(features.rows[0]?.n)).toBe(13);
       expect(Number(planFeatures.rows[0]?.n)).toBe(22);
