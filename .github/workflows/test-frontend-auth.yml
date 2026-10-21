@@ -305,6 +305,25 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/whatsapp
         run: npm run test:browser:whatsapp
 
+      # Invocação SEPARADA (1 cadastro, 1 login, 8 pedidos públicos — limite de
+      # 10 por hora por IP): agendamento público real por slug, ativação pelo
+      # dono, pedido sempre PENDING, contador e aviso persistentes no painel,
+      # confirmar/recusar com tela desatualizada, disputa de horário, resposta
+      # perdida com "Verificar envio" e falha de comunicação, no celular e no
+      # computador. wa.me interceptado: nenhuma mensagem real.
+      - name: Run real browser flows (public booking by slug, pending requests in the owner panel)
+        id: browser_agendamento_publico
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/agendamento-publico
+        run: npm run test:browser:agendamento-publico
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -403,6 +422,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas do agendamento público e da tela de Solicitações (celular e
+      # computador). Só os PNG `publico-*` e `solicitacoes-*`.
+      - name: Upload public booking screenshots
+        if: always() && steps.browser_agendamento_publico.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agendamento-publico-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/agendamento-publico/**/publico-*.png
+            test-results/agendamento-publico/**/solicitacoes-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -486,6 +518,7 @@ jobs:
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
+            steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||
