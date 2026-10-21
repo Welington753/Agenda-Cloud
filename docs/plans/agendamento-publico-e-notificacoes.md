@@ -1,10 +1,12 @@
 # Agendamento público, confirmação, avisos e WhatsApp — plano dos próximos lotes
 
 **Ponto de partida:** criado com o contato manual pelo WhatsApp (PR #52) e
-atualizado com a base de confirmação e lembretes automáticos (Lote E, parte 1).
-Descreve o que já existe, o que falta e as decisões de cada lote. Nada aqui
-está implementado além do que a seção "Já existe" diz. A única migration nova
-é `1792540800000-NotificationJobs` (seção 5), aplicada só em banco descartável.
+atualizado com a base de confirmação e lembretes automáticos (Lote E, parte 1)
+e com o agendamento público real e as solicitações no painel (Lote A + aviso
+persistente, seção 7). Descreve o que já existe, o que falta e as decisões de
+cada lote. Nada aqui está implementado além do que as seções "Já existe" e 7
+dizem. Migrations novas: `1792540800000-NotificationJobs` e
+`1792627200000-PublicBooking` (seção 5), aplicadas só em banco descartável.
 
 ## 1. Para quais negócios o modelo atual serve
 
@@ -55,10 +57,13 @@ ficam como estão.
 | Contato manual pelo WhatsApp (links `wa.me`) | `src/lib/contato/whatsapp.ts`, `src/components/conta/contato-whatsapp.tsx` | **Não é notificação**: o responsável abre e envia. |
 | Página pública `/[slug]` e `/[slug]/agendar` | `src/app/[slug]/` | **Demonstração**: lê repositórios locais do navegador, não a API. |
 | Tarefas de confirmação e lembretes gravadas na transação da reserva | `backend/src/notifications/`, migration `1792540800000-NotificationJobs` | Base do Lote E. **Nada é enviado**: sem provedor real nem executor agendado. |
+| Agendamento público real por slug | `backend/src/public-booking/`, `src/app/agendar/[slug]/`, migration `1792627200000-PublicBooking` | Só para quem o DONO ativou. Pedido sempre `PENDING`. Ver seção 7. |
+| Solicitações pendentes no painel | `src/app/conta/solicitacoes/`, `GET /tenants/:id/booking-requests` | Contador no menu e aviso na Visão geral; confirmar/recusar com as ações existentes. |
 | Autorização de contato por cliente | `consumers.whatsapp_opt_in_at` / `_source` / `whatsapp_opt_out_at` | Colunas existem, todas NULAS; não há tela nem rota para registrar. |
 
-**Não existe:** nenhuma rota pública (sem sessão) no backend; nenhuma tabela de
-eventos/avisos para o painel; nenhum provedor real de mensagem nem executor
+**Não existe:** rota pública além de `/public/:slug` (seção 7); tabela de
+eventos/avisos lidos por usuário (o aviso do painel é a própria lista de
+pendentes); nenhum provedor real de mensagem nem executor
 agendado; nenhuma permissão de agenda para papéis além de DONO. **A existência
 de `notification_jobs` não entrega agendamento público nem aviso ao dono** —
 esses continuam nos Lotes A e C.
@@ -305,10 +310,20 @@ migrations dele e passa a **recusar** um banco com esta migration
 próprio, com backup antes (ver `docs/runbooks/publicacao-piloto-render.md`,
 sobre publicações que trazem migration).
 
+**Aplicada no Lote A (só em banco descartável):** `1792627200000-PublicBooking`
+— `public_booking_settings` (uma linha por tenant, criada só quando o DONO
+liga ou desliga; ausência = desligado) e `public_booking_requests` (uma linha
+por pedido público, FK composta para `appointments`, `UNIQUE (tenant_id,
+idempotency_key)`, `UNIQUE (appointment_id)` e índice por telefone e data).
+Sem entidade TypeORM, mesmo motivo de `notification_jobs`. Não mexe na
+constraint anti-sobreposição nem em `appointments`.
+`public_settings.is_published` não foi reaproveitada: nasce `DEFAULT true` e
+exporia quem nunca pediu.
+
 **Ainda propostas (não aplicadas):**
 
 ```sql
--- Lote A: pedido público e expiração do pendente
+-- Expiração do pendente (NÃO aplicada; ver seção 7, "Expiração")
 ALTER TABLE appointments
   ADD COLUMN source varchar(20) NOT NULL DEFAULT 'INTERNAL', -- INTERNAL | PUBLIC
   ADD COLUMN pending_expires_at timestamptz(3) NULL;
@@ -355,3 +370,72 @@ fluxo completo sem custo de mensagem e sem depender de processo em segundo
 plano. O restante do Lote E (envio real) vem depois, quando houver número
 verificado na Meta, templates aprovados, decisão de custo, registro do aceite
 do cliente e o Cron Job do executor.
+
+## 7. Lote A + aviso persistente — entregue
+
+**Rotas públicas (sem sessão, limite próprio por IP):** `GET /public/:slug`,
+`GET /public/:slug/availability` e `POST /public/:slug/booking-requests`.
+Estabelecimento inexistente, inativo ou com o online desligado recebe o mesmo
+404. O perfil expõe só nome (unidade primária), fuso, serviços ativos no
+online (preço só se visível) e profissionais ativos no online com vínculo; a
+disponibilidade expõe só instante, hora local e deslocamento.
+
+**Rotas privadas (SessionGuard + Membership):** `GET/PUT
+/tenants/:id/public-booking` (só DONO; DENIED de `CONFIGURACOES_GERENCIAR` ou
+`AGENDA_GERENCIAR` restringe) e `GET /tenants/:id/booking-requests` (mesma
+política da agenda). Confirmar e recusar são `/appointments/:id/confirm` e
+`/cancel`, com `expectedStartAt`.
+
+**Pedido:** uma transação com a configuração `FOR SHARE`, advisory lock por
+telefone + estabelecimento, chave de envio, limites por telefone, cliente pelo
+telefone (sem alterar cadastro existente nem autorização de contato), reserva
+`PENDING` revalidada por `AvailabilityService.calcular({ travar: true })` e a
+linha em `public_booking_requests`. A constraint de sobreposição segue como
+proteção final (409). Reservas internas não mudaram
+(`requires_manual_confirmation` continua decidindo `PENDING`/`CONFIRMED`).
+Confirmar um pedido programa as tarefas do PR #53; nada é enviado.
+
+**Limites explícitos (testados):** 10 envios por hora e 120 leituras por 10 min
+por IP (limiters próprios — login e cadastro continuam 5 por 15 min); por
+telefone e estabelecimento, 3 pedidos em 24 h e 2 pendentes futuros, contados
+no banco.
+
+**Envio duplicado e resposta perdida:** a página gera uma chave por pedido;
+repetir com a mesma chave devolve o MESMO pedido (HTTP 200, `replayed`), e a
+mesma chave com outros dados é 409. Sem resposta, a página não afirma nada
+sobre o resultado, trava o formulário e oferece "Verificar envio" (mesma
+chave). Nunca reenvia sozinha.
+
+**Expiração do pendente — NÃO implementada (decisão pendente).** O valor do
+item 3 do Lote A (2 h ou até 1 h antes do início) é proposta, não decisão.
+Hoje um pedido pendente ocupa o horário até o dono confirmar ou recusar,
+exatamente como a constraint enxerga — cálculo e banco nunca divergem.
+
+Recomendação: expirar o pedido público pendente **24 h depois do pedido ou
+2 h antes do início, o que vier primeiro**, executado pelo **mesmo Cron Job do
+executor de notificações** (seção 3, Lote E). O job marca o `PENDING` vencido
+como `CANCELED` (motivo `EXPIRADO`, registrado em `appointment_status_changes`),
+e só depois disso o horário volta a ser oferecido — a disponibilidade não
+ganha regra de tempo nenhuma e a constraint fica como está. Impacto: depende
+do Cron Job pago no Render (ou do GitHub Actions `schedule`, com os atrasos já
+descritos) e de uma coluna `pending_expires_at` (ou do cálculo a partir de
+`public_booking_requests.created_at`); sem o job ligado, nada expira (o
+comportamento de hoje). Até a decisão, a proteção contra horário preso é:
+online desligado por padrão, limites por IP e por telefone, e o dono recusando
+pelo painel.
+
+**Aviso no painel:** é a lista persistida de pendentes — contador no menu
+(inclusive o ponto no "Mais" do celular) e cartão na Visão geral. Relido ao
+navegar, ao voltar o foco para a janela e depois de cada ação. Não há push nem
+aviso com o aplicativo fechado; abrir a lista não aprova nada.
+
+**Publicação futura (nada foi publicado):**
+
+1. Backup do banco.
+2. Migrations, nesta ordem: `1792540800000-NotificationJobs` e
+   `1792627200000-PublicBooking`. O workflow guardado do 6B.2 recusa as duas
+   de propósito (`unexpected_names`); é preciso roteiro próprio.
+3. Backend (Nest) com o `PublicBookingModule`. Conferir `CLIENT_IP_SOURCE` e
+   `API_PROXY_SECRET`: os limites por IP dependem deles, como os do login.
+4. Frontend com `/agendar/[slug]` e `/conta/solicitacoes`.
+5. Nenhum estabelecimento fica público até o DONO ativar.

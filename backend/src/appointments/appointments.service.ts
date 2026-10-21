@@ -120,6 +120,15 @@ export const OVERLAP_CONSTRAINT = 'appointments_no_overlap_excl';
  * da agenda — um dia real de um estabelecimento não chega perto disto. */
 export const LIMITE_DO_DIA = 200;
 
+/** Teto da lista de solicitações pendentes. Mesma razão de `LIMITE_DO_DIA`. */
+export const LIMITE_DE_PENDENTES = 100;
+
+/** Recusa de elegibilidade no agendamento público: uma só mensagem para
+ * serviço/profissional inexistente, desativado, fora do online ou sem
+ * vínculo. */
+export const PUBLIC_UNAVAILABLE_MESSAGE =
+  'Este serviço ou profissional não está disponível para agendamento online. Escolha outra opção.';
+
 const CONSUMER_NOT_FOUND_MESSAGE = 'Cliente não encontrado.';
 const APPOINTMENT_NOT_FOUND_MESSAGE = 'Agendamento não encontrado.';
 const SLOT_TAKEN_MESSAGE =
@@ -330,6 +339,136 @@ export class AppointmentsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Grava a reserva de um PEDIDO PÚBLICO (agendamento online), dentro da
+   * transação de quem chama (PublicBookingService), que já resolveu o
+   * estabelecimento pelo slug, travou o telefone, conferiu os limites e
+   * resolveu o cliente.
+   *
+   * Mesma disciplina de `create`: revalida com `calcular({ travar: true })`
+   * dentro da transação, e a constraint de sobreposição continua sendo a
+   * última palavra (o 23P01 sobe e quem chama o traduz em 409).
+   *
+   * O que muda em relação à agenda interna:
+   * - o estado é SEMPRE `PENDING`, mesmo para serviço sem confirmação
+   *   manual: o telefone não é verificado, então o estabelecimento decide;
+   * - o serviço precisa estar `active_in_public_booking` e o profissional
+   *   `online_booking_active` — conferidos nas linhas TRAVADAS pelo cálculo,
+   *   então uma desativação concorrente não passa entre a conferência e o
+   *   INSERT;
+   * - qualquer recusa de elegibilidade (serviço/profissional inexistente,
+   *   desativado, fora do online ou sem vínculo) vira a MESMA mensagem
+   *   genérica: o público não precisa saber qual cadastro mudou;
+   * - nenhuma notificação é programada: só reserva confirmada programa
+   *   (ver `changeStatus`, ação `confirm`).
+   */
+  async criarPedidoPublico(
+    tx: EntityManager,
+    dados: {
+      tenantId: string;
+      professionalId: string;
+      serviceId: string;
+      startAt: Date;
+      consumerId: string;
+      nomeInformado: string;
+      whatsappInformado: string;
+    },
+  ): Promise<{ appointment: Appointment; timezone: string; serviceName: string; professionalName: string }> {
+    const timezone = await this.timezoneDoTenant(tx, dados.tenantId);
+    const date = dataLocalDe(dados.startAt, timezone);
+
+    let calculo: Awaited<ReturnType<AvailabilityService['calcular']>>;
+    try {
+      calculo = await this.availability.calcular(
+        tx,
+        dados.tenantId,
+        dados.professionalId,
+        dados.serviceId,
+        date,
+        { travar: true },
+      );
+    } catch (erro) {
+      if (erro instanceof NotFoundException || erro instanceof BadRequestException) {
+        throw new BadRequestException(PUBLIC_UNAVAILABLE_MESSAGE);
+      }
+      throw erro;
+    }
+    if (!calculo.service.activeInPublicBooking || !calculo.professional.onlineBookingActive) {
+      throw new BadRequestException(PUBLIC_UNAVAILABLE_MESSAGE);
+    }
+
+    const slot = calculo.resultado.slots.find(
+      (candidato) => candidato.startAt.getTime() === dados.startAt.getTime(),
+    );
+    if (!slot) throw this.recusaDeHorario(dados.startAt, calculo);
+
+    const unitId = await this.resolverUnidade(tx, dados.tenantId, calculo.professional);
+    const duracao = calculo.service.durationMinutes;
+    const buffer = calculo.service.bufferAfterMinutes;
+
+    const appointment = await tx.save(
+      tx.create(Appointment, {
+        tenantId: dados.tenantId,
+        unitId,
+        consumerId: dados.consumerId,
+        // Snapshot do que a PESSOA informou neste pedido — o cadastro do
+        // cliente existente não é tocado (ver public-booking.repository.ts).
+        consumerNameSnapshot: dados.nomeInformado,
+        consumerWhatsappSnapshot: dados.whatsappInformado,
+        professionalId: calculo.professional.id,
+        startAt: dados.startAt,
+        endAt: new Date(dados.startAt.getTime() + (duracao + buffer) * 60_000),
+        status: AppointmentStatus.PENDING,
+      }),
+    );
+
+    await tx.save(
+      tx.create(AppointmentItem, {
+        tenantId: dados.tenantId,
+        appointmentId: appointment.id,
+        serviceId: calculo.service.id,
+        priceCentsSnapshot: calculo.service.priceCents ?? undefined,
+        durationMinutesSnapshot: duracao,
+        position: 0,
+      }),
+    );
+
+    return {
+      appointment,
+      timezone,
+      serviceName: calculo.service.name,
+      professionalName: calculo.professional.name,
+    };
+  }
+
+  /** Reservas `PENDING` com início no futuro, para o painel de solicitações.
+   * Mesma autorização da agenda (`canViewAppointments`). */
+  async listPending(
+    userId: string,
+    tenantId: string,
+  ): Promise<{ appointments: AppointmentView[]; complete: boolean }> {
+    const manager = this.dataSource.manager;
+    const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
+      permitido: canViewAppointments,
+      mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+    });
+
+    const encontrados = await manager.find(Appointment, {
+      where: {
+        tenantId: authorized.tenantId,
+        status: AppointmentStatus.PENDING,
+        startAt: MoreThan(this.agora()),
+      },
+      order: { startAt: 'ASC', id: 'ASC' },
+      take: LIMITE_DE_PENDENTES,
+    });
+
+    return {
+      appointments: await this.toViews(manager, authorized.tenantId, encontrados),
+      complete: encontrados.length < LIMITE_DE_PENDENTES,
+    };
   }
 
   /**

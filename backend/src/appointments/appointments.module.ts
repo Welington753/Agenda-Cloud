@@ -15,5 +15,8 @@ import { AppointmentsService } from './appointments.service.js';
   imports: [AuthModule, AvailabilityModule, ConsumersModule],
   controllers: [AppointmentsController],
   providers: [AppointmentsService],
+  // Exportado para o PublicBookingModule gravar o pedido público com a MESMA
+  // revalidação e as mesmas regras de ocupação — nunca uma segunda cópia.
+  exports: [AppointmentsService],
 })
 export class AppointmentsModule {}

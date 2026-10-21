@@ -6,6 +6,7 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
     expect(ITENS_NAVEGACAO_CONTA.map((i) => i.href)).toEqual([
       "/conta/visao-geral",
       "/conta/agendamentos",
+      "/conta/solicitacoes",
       "/conta/clientes",
       "/conta/servicos",
       "/conta/profissionais",
@@ -14,6 +15,7 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
     expect(ITENS_NAVEGACAO_CONTA.map((i) => i.rotulo)).toEqual([
       "Visão geral",
       "Agenda",
+      "Solicitações",
       "Clientes",
       "Serviços",
       "Profissionais",
@@ -29,7 +31,7 @@ describe("celular", () => {
   it("a barra inferior tem quatro áreas e o resto fica em Mais", () => {
     const naBarra = ITENS_NAVEGACAO_CONTA.filter((i) => i.noCelular === "barra");
     expect(naBarra.map((i) => i.rotulo)).toEqual(["Visão geral", "Agenda", "Clientes", "Serviços"]);
-    expect(ITENS_MENU_MAIS.map((i) => i.rotulo)).toEqual(["Profissionais", "Minha conta"]);
+    expect(ITENS_MENU_MAIS.map((i) => i.rotulo)).toEqual(["Solicitações", "Profissionais", "Minha conta"]);
   });
 });
 

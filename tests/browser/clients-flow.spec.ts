@@ -380,6 +380,7 @@ test.describe("clientes do estabelecimento", () => {
     expect(await nav(page).getByRole("link").allTextContents()).toEqual([
       "Visão geral",
       "Agenda",
+      "Solicitações",
       "Clientes",
       "Serviços",
       "Profissionais",

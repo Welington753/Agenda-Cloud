@@ -102,6 +102,7 @@ test.describe("entrada e navegação do piloto", () => {
     expect(await nav.getByRole("link").allTextContents()).toEqual([
       "Visão geral",
       "Agenda",
+      "Solicitações",
       "Clientes",
       "Serviços",
       "Profissionais",
