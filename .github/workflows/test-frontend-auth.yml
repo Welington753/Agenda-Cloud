@@ -288,6 +288,23 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/clients
         run: npm run test:browser:clients
 
+      # Invocação SEPARADA (1 cadastro, 1 login): atalhos de WhatsApp na
+      # agenda e em Clientes — link wa.me, texto codificado no fuso do
+      # estabelecimento e nenhuma escrita na API ao abrir. O wa.me é
+      # interceptado no navegador do teste: nenhuma mensagem real.
+      - name: Run real browser flows (WhatsApp contact links, no side effects)
+        id: browser_whatsapp
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/whatsapp
+        run: npm run test:browser:whatsapp
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -468,6 +485,7 @@ jobs:
             steps.browser_availability.outcome == 'failure' ||
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
+            steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||

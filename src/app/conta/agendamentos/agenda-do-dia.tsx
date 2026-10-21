@@ -42,10 +42,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AcoesReserva } from "./acoes-reserva";
 import { AgendaPorProfissional } from "./agenda-por-profissional";
 import { CartaoAtendimento } from "@/components/conta/cartao-atendimento";
+import { ContatoDaReserva } from "@/components/conta/contato-whatsapp";
 import type { AcaoConfirmada, ConfirmacaoPendente } from "./confirmar-acao";
 
 interface AgendaDoDiaProps {
   tenantId: string;
+  /** Nome do estabelecimento ativo, para a mensagem de "Combinar outro horário". */
+  estabelecimento: string;
   estado: EstadoAgenda;
   agenda: AgendaDoDiaReal | null;
   /** `true` enquanto qualquer gravação da agenda está em voo. */
@@ -77,6 +80,7 @@ interface AgendaDoDiaProps {
 
 export function AgendaDoDia({
   tenantId,
+  estabelecimento,
   estado,
   agenda,
   gravando,
@@ -175,31 +179,36 @@ export function AgendaDoDia({
         noHorario={estaNoHorario(agendamento, agora)}
         recemCriada={agendamento.id === recemCriadaId}
       >
-        {/* As ações só aparecem no que o servidor aceitaria alterar.
-          Esconder o botão NÃO é controle de acesso — é para não oferecer uma
-          ação cuja recusa já é conhecida. A decisão é revalidada no servidor,
-          dentro da transação. O relógio aqui é o do navegador (pode estar
-          errado), então isto nunca substitui a checagem de lá. */}
-        {(temAlgumaAcao(acoes) || daLinha) && (
-          <AcoesReserva
-            tenantId={tenantId}
-            agendamento={agendamento}
-            acoes={acoes}
-            gravando={gravando}
-            confirmacao={daLinha}
-            aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
-              setConfirmacao({
-                acao,
-                exibida: agendamento,
-                anterior: null,
-              })
-            }
-            aoFecharConfirmacao={() => setConfirmacao(null)}
-            aoCancelar={aoCancelar}
-            aoAlterarStatus={aoAlterarStatus}
-            aoRemarcar={aoRemarcar}
-          />
-        )}
+        <div className="space-y-3">
+          {/* Contato pelo WhatsApp: links para o wa.me, sem efeito nenhum na
+            reserva. Ficam separados das ações, que falam com o servidor. */}
+          <ContatoDaReserva agendamento={agendamento} estabelecimento={estabelecimento} />
+          {/* As ações só aparecem no que o servidor aceitaria alterar.
+            Esconder o botão NÃO é controle de acesso — é para não oferecer uma
+            ação cuja recusa já é conhecida. A decisão é revalidada no servidor,
+            dentro da transação. O relógio aqui é o do navegador (pode estar
+            errado), então isto nunca substitui a checagem de lá. */}
+          {(temAlgumaAcao(acoes) || daLinha) && (
+            <AcoesReserva
+              tenantId={tenantId}
+              agendamento={agendamento}
+              acoes={acoes}
+              gravando={gravando}
+              confirmacao={daLinha}
+              aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
+                setConfirmacao({
+                  acao,
+                  exibida: agendamento,
+                  anterior: null,
+                })
+              }
+              aoFecharConfirmacao={() => setConfirmacao(null)}
+              aoCancelar={aoCancelar}
+              aoAlterarStatus={aoAlterarStatus}
+              aoRemarcar={aoRemarcar}
+            />
+          )}
+        </div>
       </CartaoAtendimento>
     );
   }
