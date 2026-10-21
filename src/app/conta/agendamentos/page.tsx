@@ -241,6 +241,7 @@ export default function AgendamentosPage() {
 
       <AgendaDoDia
         tenantId={tenantIdAtivo}
+        estabelecimento={contexto.tenantName}
         estado={estado}
         agenda={agenda}
         gravando={gravando}
