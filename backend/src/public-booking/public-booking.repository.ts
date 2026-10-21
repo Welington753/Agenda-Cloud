@@ -65,6 +65,24 @@ export async function travarTelefone(
   ]);
 }
 
+/**
+ * Serializa os pedidos públicos para o MESMO profissional. Dois pedidos
+ * simultâneos para o mesmo horário chegavam juntos ao INSERT e, no CI, o
+ * PostgreSQL resolvia a espera mútua (constraint de exclusão + locks de
+ * linha) com `deadlock detected` em vez do 23P01. Com este lock, o segundo
+ * espera o primeiro commitar e então vê o horário ocupado (409 limpo).
+ * Tomado DEPOIS do lock de telefone, sempre nesta ordem.
+ */
+export async function travarProfissional(
+  manager: EntityManager,
+  tenantId: string,
+  professionalId: string,
+): Promise<void> {
+  await manager.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `public-booking-professional:${tenantId}:${professionalId}`,
+  ]);
+}
+
 export async function pedidoPelaChave(
   manager: EntityManager,
   tenantId: string,

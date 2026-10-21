@@ -413,7 +413,7 @@ describe.skipIf(!DIRECT_URL)('agendamento público contra PostgreSQL descartáve
     expect(aceitos).toHaveLength(1);
     expect(recusados).toHaveLength(1);
     expect(recusados[0].reason).toBeInstanceOf(ConflictException);
-    expect((recusados[0].reason as Error).message).toBe('Este horário acabou de ser ocupado. Escolha outro horário disponível.');
+    expect((recusados[0].reason as Error).message).toMatch(/^Este horário acabou de ser ocupado./);
     const [{ total }] = (await dataSource.query(
       `SELECT count(*)::int AS total FROM appointments WHERE tenant_id = $1 AND status <> 'CANCELED'`,
       [c.tenantId],

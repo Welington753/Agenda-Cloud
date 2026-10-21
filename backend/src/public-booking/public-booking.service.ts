@@ -80,6 +80,7 @@ import {
   pedidosRecentes,
   pendentesFuturos,
   registrarPedido,
+  travarProfissional,
   travarTelefone,
 } from './public-booking.repository.js';
 
@@ -259,6 +260,8 @@ export class PublicBookingService {
             HttpStatus.TOO_MANY_REQUESTS,
           );
         }
+
+        await travarProfissional(tx, tenant.id, dto.professionalId);
 
         const consumerId = await clienteDoTelefone(tx, tenant.id, {
           nome: dto.name,
