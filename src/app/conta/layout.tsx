@@ -10,14 +10,21 @@
 // components/conta/shell-conta.tsx) só aparece DEPOIS de `RequireRealSession`
 // confirmar a sessão: sem sessão, a pessoa vai para o login sem ver menu
 // nenhum.
+//
+// `SolicitacoesProvider` fica entre os dois: é a ÚNICA leitura periódica das
+// solicitações pendentes (contador do menu, avisos de novas solicitações,
+// Visão geral e tela de Solicitações usam a mesma lista).
 import type { ReactNode } from "react";
 import { RequireRealSession } from "@/components/auth/require-real-session";
 import { ShellConta } from "@/components/conta/shell-conta";
+import { SolicitacoesProvider } from "@/lib/agendamento-publico/use-solicitacoes";
 
 export default function ContaLayout({ children }: { children: ReactNode }) {
   return (
     <RequireRealSession>
-      <ShellConta>{children}</ShellConta>
+      <SolicitacoesProvider>
+        <ShellConta>{children}</ShellConta>
+      </SolicitacoesProvider>
     </RequireRealSession>
   );
 }

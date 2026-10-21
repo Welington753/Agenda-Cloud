@@ -425,9 +425,24 @@ online desligado por padrão, limites por IP e por telefone, e o dono recusando
 pelo painel.
 
 **Aviso no painel:** é a lista persistida de pendentes — contador no menu
-(inclusive o ponto no "Mais" do celular) e cartão na Visão geral. Relido ao
-navegar, ao voltar o foco para a janela e depois de cada ação. Não há push nem
-aviso com o aplicativo fechado; abrir a lista não aprova nada.
+(inclusive o ponto no "Mais" do celular) e cartão na Visão geral. Não há push
+nem aviso com o aplicativo fechado; abrir a lista não aprova nada.
+
+**Avisos de novas solicitações (sistema aberto):** `SolicitacoesProvider`
+(`src/lib/agendamento-publico/use-solicitacoes.tsx`, no layout de `/conta`) é
+a única leitura de `GET /tenants/:id/booking-requests` da área real. Consulta
+a cada 30 s, uma por vez, só com a página visível e com conexão; oculta ou
+offline, nada é agendado, e ao voltar consulta na hora. Também relê ao navegar
+e depois de confirmar/recusar. A primeira leitura de cada estabelecimento é só
+referência (o que já estava pendente não avisa); depois, cada pedido `PUBLIC`
+novo vira um aviso flutuante em qualquer página de `/conta`, uma vez por
+sessão, com "Ver solicitação" (só navega e destaca o cartão). Som opcional,
+desligado por padrão, guardado só no navegador. Trocar de estabelecimento ou
+sair cancela a leitura em voo e descarta lista, avisos e memória. Sem schema
+novo: "novo" é comparação com o que a aba já viu. Limitação conhecida: com
+mais de 100 pendentes (limite da rota, ordenada por horário), um pedido novo
+para depois da centésima não aparece na lista nem avisa até as anteriores
+serem respondidas.
 
 **Publicação futura (nada foi publicado):**
 

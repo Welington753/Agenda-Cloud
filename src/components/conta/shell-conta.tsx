@@ -53,6 +53,7 @@ import {
   contagemVisivel,
   useSolicitacoesPendentes,
 } from "@/lib/agendamento-publico/use-solicitacoes";
+import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicitacoes";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/visao-geral": LayoutDashboard,
@@ -162,12 +163,10 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
   const maisAtivo = ITENS_MENU_MAIS.some((item) => itemAtivo(pathname, item.href));
 
-  const tenantAtual = estado.status === "autenticado" ? estado.tenantIdAtivo : null;
-  const { estado: estadoSolicitacoes, recarregar: recarregarSolicitacoes } =
-    useSolicitacoesPendentes(tenantAtual);
+  // Lista do SolicitacoesProvider (layout de /conta), que já relê a cada
+  // navegação e periodicamente com a página visível.
+  const { estado: estadoSolicitacoes } = useSolicitacoesPendentes();
   const pendentes = contagemVisivel(estadoSolicitacoes);
-  // Cada navegação relê a contagem: o aviso acompanha o que está no banco.
-  useEffect(() => recarregarSolicitacoes(), [pathname, recarregarSolicitacoes]);
 
   if (estado.status !== "autenticado") return <>{children}</>;
 
@@ -321,6 +320,8 @@ export function ShellConta({ children }: { children: ReactNode }) {
       >
         {children}
       </main>
+
+      {contexto && <AvisosNovasSolicitacoes />}
     </div>
   );
 }

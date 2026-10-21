@@ -4,14 +4,27 @@
 // lista persistida da tela de Solicitações; ver o aviso não muda nada.
 // Só aparece com número positivo — carregando ou com falha, a Visão geral
 // segue sem ele (a tela de Solicitações mostra o erro).
+//
+// Logo abaixo, o atalho do link público (AtalhoLinkPublico): copiar ou abrir
+// a página de agendamento sem precisar ir até Solicitações.
 import { Inbox } from "lucide-react";
 import { contagemVisivel, useSolicitacoesPendentes } from "@/lib/agendamento-publico/use-solicitacoes";
 import { textoPendentes } from "@/lib/agendamento-publico/solicitacoes";
 import { LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { AtalhoLinkPublico } from "@/components/conta/link-publico";
 
 export function AvisoSolicitacoes({ tenantId }: { tenantId: string }) {
-  const { estado } = useSolicitacoesPendentes(tenantId);
+  return (
+    <>
+      <PendentesDaVisaoGeral />
+      <AtalhoLinkPublico tenantId={tenantId} />
+    </>
+  );
+}
+
+function PendentesDaVisaoGeral() {
+  const { estado } = useSolicitacoesPendentes();
   const total = contagemVisivel(estado);
   if (!total) return null;
   return (

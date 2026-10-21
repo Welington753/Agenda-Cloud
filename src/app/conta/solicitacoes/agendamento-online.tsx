@@ -1,11 +1,12 @@
 "use client";
 
 // Cartão "Agendamento online" da tela de Solicitações: ligar/desligar a
-// página pública (só DONO, conferido no servidor) e copiar o link. Ninguém
+// página pública (só DONO, conferido no servidor), copiar e abrir o link
+// (BotoesDoLinkPublico, o mesmo do atalho da Visão geral). Ninguém
 // fica exposto sem este clique: sem a configuração gravada, a página não
 // existe para o público.
 import { useCallback, useEffect, useState } from "react";
-import { Copy, ExternalLink, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import {
   obterConfiguracaoOnline,
   salvarConfiguracaoOnline,
@@ -17,6 +18,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { BotoesDoLinkPublico } from "@/components/conta/link-publico";
 
 export function mensagemFalhaPrivada(falha: FalhaPrivada): string {
   switch (falha.tipo) {
@@ -72,15 +74,6 @@ export function AgendamentoOnline({ tenantId }: { tenantId: string }) {
     );
   }
 
-  async function copiar(link: string) {
-    try {
-      await navigator.clipboard.writeText(link);
-      notificar("Link copiado.", "sucesso");
-    } catch {
-      setErro("Não foi possível copiar automaticamente. Selecione o link e copie.");
-    }
-  }
-
   return (
     <Cartao data-testid="agendamento-online">
       <CartaoCorpo className="space-y-3">
@@ -116,19 +109,7 @@ export function AgendamentoOnline({ tenantId }: { tenantId: string }) {
                   onFocus={(e) => e.currentTarget.select()}
                   className="min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 text-sm text-ink"
                 />
-                <div className="flex flex-wrap gap-2">
-                  <Botao variante="secundaria" onClick={() => void copiar(linkPublico(origem, estado.config.slug))} data-testid="copiar-link">
-                    <Copy size={16} aria-hidden="true" /> Copiar link
-                  </Botao>
-                  <a
-                    href={linkPublico(origem, estado.config.slug)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-control)] border border-border bg-card px-3 text-sm font-medium text-ink hover:bg-paper-muted"
-                  >
-                    <ExternalLink size={16} aria-hidden="true" /> Abrir página
-                  </a>
-                </div>
+                <BotoesDoLinkPublico link={linkPublico(origem, estado.config.slug)} aoFalharCopia={setErro} />
               </div>
             )}
             <Botao

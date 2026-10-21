@@ -14,9 +14,14 @@
 // aconteceu.
 //
 // "Combinar outro horário" é só um link para o WhatsApp (contato-whatsapp):
-// não remarca nem confirma.
+// não remarca nem confirma. É contato MANUAL: nenhum envio automático.
+//
+// A lista se atualiza sozinha (SolicitacoesProvider, no layout de /conta),
+// e uma solicitação aberta por "Ver solicitação" num aviso chega aqui com o
+// cartão em destaque — só destacado, nunca confirmado.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
 import { AlertTriangle, Check, Inbox, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
@@ -28,7 +33,7 @@ import { mensagemFalhaCancelamento } from "@/lib/profissionais/agendamentos";
 import { dataLocalDoInstante } from "@/lib/agendamento-publico/solicitacoes";
 import { dataBr } from "@/lib/agendamento-publico/agendamento-publico";
 import {
-  avisarSolicitacoesAlteradas,
+  useAvisosDeSolicitacoes,
   useSolicitacoesPendentes,
 } from "@/lib/agendamento-publico/use-solicitacoes";
 import { PaginaConta } from "@/components/conta/pagina-conta";
@@ -38,6 +43,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { AgendamentoOnline, mensagemFalhaPrivada } from "./agendamento-online";
+import { PreferenciasDeAviso } from "./preferencias-de-aviso";
 
 export default function SolicitacoesPage() {
   const { estado: estadoSessao } = useRealAuth();
@@ -50,7 +56,20 @@ export default function SolicitacoesPage() {
     if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
   }, [precisaSelecionar, router]);
 
-  const { estado, recarregar } = useSolicitacoesPendentes(tenantId);
+  const { estado, recarregar } = useSolicitacoesPendentes();
+  const { destaque, limparDestaque } = useAvisosDeSolicitacoes();
+  const carregada = estado.status === "carregada";
+
+  // "Ver solicitação" (aviso de nova solicitação): leva o foco ao cartão.
+  // Só rola e destaca; nenhuma ação é feita.
+  useEffect(() => {
+    if (!destaque || !carregada) return;
+    const cartao = document.getElementById(`solicitacao-${destaque}`);
+    if (!cartao) return;
+    cartao.scrollIntoView({ block: "center" });
+    cartao.focus({ preventScroll: true });
+  }, [destaque, carregada]);
+  useEffect(() => limparDestaque, [limparDestaque]);
 
   if (!sessao || !tenantId) return null;
   const contexto = encontrarContextoPorTenantId(sessao, tenantId);
@@ -66,6 +85,7 @@ export default function SolicitacoesPage() {
       }
     >
       <AgendamentoOnline tenantId={tenantId} />
+      <PreferenciasDeAviso />
 
       <section className="space-y-3" aria-labelledby="titulo-pendentes">
         <h2 id="titulo-pendentes" className="text-lg font-semibold text-ink">
@@ -90,6 +110,12 @@ export default function SolicitacoesPage() {
             </CartaoCorpo>
           </Cartao>
         )}
+        {estado.status === "carregada" && estado.desatualizada && (
+          <p role="status" className="text-sm text-ink-soft" data-testid="solicitacoes-desatualizadas">
+            Não foi possível atualizar agora. Mostrando a última lista recebida; uma nova tentativa é
+            feita automaticamente.
+          </p>
+        )}
         {estado.status === "carregada" && estado.lista.solicitacoes.length > 0 && (
           <ul className="space-y-3" data-testid="lista-solicitacoes">
             {estado.lista.solicitacoes.map((s) => (
@@ -98,10 +124,8 @@ export default function SolicitacoesPage() {
                   tenantId={tenantId}
                   solicitacao={s}
                   estabelecimento={contexto?.tenantName ?? ""}
-                  aoMudar={() => {
-                    recarregar();
-                    avisarSolicitacoesAlteradas();
-                  }}
+                  destacada={destaque === s.id}
+                  aoMudar={recarregar}
                 />
               </li>
             ))}
@@ -121,11 +145,13 @@ function CartaoSolicitacao({
   tenantId,
   solicitacao: s,
   estabelecimento,
+  destacada,
   aoMudar,
 }: {
   tenantId: string;
   solicitacao: SolicitacaoPendente;
   estabelecimento: string;
+  destacada: boolean;
   aoMudar: () => void;
 }) {
   const { notificar } = useToast();
@@ -167,7 +193,14 @@ function CartaoSolicitacao({
   const data = dataLocalDoInstante(s.startAt, s.timezone);
 
   return (
-    <Cartao data-testid="solicitacao" data-appointment-id={s.id}>
+    <Cartao
+      id={`solicitacao-${s.id}`}
+      tabIndex={-1}
+      data-testid="solicitacao"
+      data-appointment-id={s.id}
+      data-destacada={destacada ? "true" : undefined}
+      className={clsx("scroll-mt-24 focus:outline-none", destacada && "ring-2 ring-[var(--color-accent)]")}
+    >
       <CartaoCorpo className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
@@ -228,7 +261,13 @@ function CartaoSolicitacao({
           </div>
         )}
 
-        <ContatoDaReserva agendamento={s} estabelecimento={estabelecimento} />
+        <div className="space-y-2">
+          <p className="text-xs text-ink-soft" data-testid="contato-manual">
+            Contato manual pelo WhatsApp: abre a conversa para você escrever. Nenhuma mensagem é
+            enviada automaticamente.
+          </p>
+          <ContatoDaReserva agendamento={s} estabelecimento={estabelecimento} />
+        </div>
       </CartaoCorpo>
     </Cartao>
   );
