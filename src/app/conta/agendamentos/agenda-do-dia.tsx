@@ -11,6 +11,10 @@
 // filtro e não ganhou um), atendimento em andamento destacado e a reserva
 // recém-criada marcada e trazida para a vista.
 //
+// Duas apresentações das MESMAS reservas (mesma consulta, mesmo filtro, mesmo
+// cartão e mesmas ações): "Lista" e "Por profissional"
+// (agenda-por-profissional.tsx). Trocar de uma para outra não recarrega nada.
+//
 // Fuso: exibe as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`), nunca converte nada com o relógio do
 // navegador.
@@ -19,11 +23,16 @@ import { CalendarDays, UserSearch } from "lucide-react";
 import type { AgendaDoDiaReal } from "@/lib/api/appointments-api";
 import type { AcaoDeStatusReal } from "@/lib/api/appointment-status-api";
 import {
+  agruparPorProfissional,
   estaNoHorario,
   filtrarPorProfissional,
   mensagemFalhaAgenda,
   ordenarPorHorario,
+  TODOS_OS_PROFISSIONAIS,
+  type VisualizacaoAgenda,
 } from "@/lib/profissionais/agenda-visual";
+import type { AgendamentoReal } from "@/lib/api/appointments-api";
+import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { acoesDaReserva, temAlgumaAcao, type AcoesDaReserva } from "@/lib/profissionais/andamento";
 import type { EstadoAgenda } from "@/lib/profissionais/use-agendamentos-reais";
 import { Botao } from "@/components/ui/button";
@@ -31,6 +40,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AcoesReserva } from "./acoes-reserva";
+import { AgendaPorProfissional } from "./agenda-por-profissional";
 import { CartaoAtendimento } from "@/components/conta/cartao-atendimento";
 import type { AcaoConfirmada, ConfirmacaoPendente } from "./confirmar-acao";
 
@@ -45,6 +55,10 @@ interface AgendaDoDiaProps {
   erroAcao: string | null;
   /** Profissional do filtro, ou `TODOS_OS_PROFISSIONAIS`. */
   filtroProfissionalId: string;
+  visualizacao: VisualizacaoAgenda;
+  /** Catálogo atual (vazio se não carregou): nomes, inativos e quem não tem
+   * reserva no dia, na visualização por profissional. */
+  profissionais: readonly ProfissionalReal[];
   /** Id da reserva criada por esta tela, para marcar e rolar até ela. */
   recemCriadaId: string | null;
   aoLimparFiltro: () => void;
@@ -68,6 +82,8 @@ export function AgendaDoDia({
   gravando,
   erroAcao,
   filtroProfissionalId,
+  visualizacao,
+  profissionais,
   recemCriadaId,
   aoLimparFiltro,
   recarregar,
@@ -125,15 +141,68 @@ export function AgendaDoDia({
     [agenda, filtroProfissionalId],
   );
 
+  // Profissionais ativos sem reserva só aparecem como grupo vazio quando a
+  // lista do dia veio COMPLETA e sem filtro — com a lista cortada, "sem
+  // reserva" seria palpite.
+  const grupos = useMemo(
+    () =>
+      agenda && visualizacao === "profissional"
+        ? agruparPorProfissional(
+            visiveis,
+            profissionais,
+            agenda.completa && filtroProfissionalId === TODOS_OS_PROFISSIONAIS,
+          )
+        : [],
+    [agenda, visualizacao, visiveis, profissionais, filtroProfissionalId],
+  );
+
   // A reserva recém-criada entra na vista quando a agenda que a contém chega.
-  const listaRef = useRef<HTMLUListElement>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!recemCriadaId || !listaRef.current) return;
     const alvo = listaRef.current.querySelector<HTMLElement>(
       `[data-reserva-id="${CSS.escape(recemCriadaId)}"]`,
     );
     alvo?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [recemCriadaId, visiveis]);
+  }, [recemCriadaId, visiveis, visualizacao]);
+
+  function renderizarReserva(agendamento: AgendamentoReal) {
+    const acoes = acoesDaReserva(agendamento, agora);
+    const daLinha = confirmacao?.exibida.id === agendamento.id ? confirmacao : null;
+    return (
+      <CartaoAtendimento
+        agendamento={agendamento}
+        noHorario={estaNoHorario(agendamento, agora)}
+        recemCriada={agendamento.id === recemCriadaId}
+      >
+        {/* As ações só aparecem no que o servidor aceitaria alterar.
+          Esconder o botão NÃO é controle de acesso — é para não oferecer uma
+          ação cuja recusa já é conhecida. A decisão é revalidada no servidor,
+          dentro da transação. O relógio aqui é o do navegador (pode estar
+          errado), então isto nunca substitui a checagem de lá. */}
+        {(temAlgumaAcao(acoes) || daLinha) && (
+          <AcoesReserva
+            tenantId={tenantId}
+            agendamento={agendamento}
+            acoes={acoes}
+            gravando={gravando}
+            confirmacao={daLinha}
+            aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
+              setConfirmacao({
+                acao,
+                exibida: agendamento,
+                anterior: null,
+              })
+            }
+            aoFecharConfirmacao={() => setConfirmacao(null)}
+            aoCancelar={aoCancelar}
+            aoAlterarStatus={aoAlterarStatus}
+            aoRemarcar={aoRemarcar}
+          />
+        )}
+      </CartaoAtendimento>
+    );
+  }
 
   return (
     <section aria-label="Atendimentos do dia" className="space-y-3">
@@ -195,48 +264,23 @@ export function AgendaDoDia({
       )}
 
       {visiveis.length > 0 && (
-        <ul ref={listaRef} data-testid="agenda-do-dia" className="space-y-3">
-          {visiveis.map((agendamento) => {
-            const acoes = acoesDaReserva(agendamento, agora);
-            const daLinha = confirmacao?.exibida.id === agendamento.id ? confirmacao : null;
-            return (
-              <li key={agendamento.id} data-reserva-id={agendamento.id} className="scroll-mt-24">
-                <CartaoAtendimento
-                  agendamento={agendamento}
-                  noHorario={estaNoHorario(agendamento, agora)}
-                  recemCriada={agendamento.id === recemCriadaId}
-                >
-                  {/* As ações só aparecem no que o servidor aceitaria alterar.
-                    Esconder o botão NÃO é controle de acesso — é para não
-                    oferecer uma ação cuja recusa já é conhecida. A decisão é
-                    revalidada no servidor, dentro da transação. O relógio aqui é
-                    o do navegador (pode estar errado), então isto nunca
-                    substitui a checagem de lá. */}
-                  {(temAlgumaAcao(acoes) || daLinha) && (
-                    <AcoesReserva
-                      tenantId={tenantId}
-                      agendamento={agendamento}
-                      acoes={acoes}
-                      gravando={gravando}
-                      confirmacao={daLinha}
-                      aoAbrirConfirmacao={(acao: AcaoConfirmada) =>
-                        setConfirmacao({
-                          acao,
-                          exibida: agendamento,
-                          anterior: null,
-                        })
-                      }
-                      aoFecharConfirmacao={() => setConfirmacao(null)}
-                      aoCancelar={aoCancelar}
-                      aoAlterarStatus={aoAlterarStatus}
-                      aoRemarcar={aoRemarcar}
-                    />
-                  )}
-                </CartaoAtendimento>
-              </li>
-            );
-          })}
-        </ul>
+        <div ref={listaRef}>
+          {visualizacao === "lista" ? (
+            <ul data-testid="agenda-do-dia" className="space-y-3">
+              {visiveis.map((agendamento) => (
+                <li key={agendamento.id} data-reserva-id={agendamento.id} className="scroll-mt-24">
+                  {renderizarReserva(agendamento)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <AgendaPorProfissional
+              grupos={grupos}
+              completa={agenda?.completa ?? false}
+              renderizarReserva={renderizarReserva}
+            />
+          )}
+        </div>
       )}
     </section>
   );

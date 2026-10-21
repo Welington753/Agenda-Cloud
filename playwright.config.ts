@@ -14,12 +14,13 @@ export default defineConfig({
   // (playwright.proxy.config.ts, `npm run test:browser:proxy`). A Visão geral
   // e a visualização da agenda precisam do relógio de teste no backend:
   // também só rodam pela própria configuração
-  // (playwright.relogio-de-teste.config.ts, `npm run test:browser:visao-geral`
-  // e `npm run test:browser:agenda-view`).
+  // (playwright.relogio-de-teste.config.ts, `npm run test:browser:visao-geral`,
+  // `npm run test:browser:agenda-view` e `npm run test:browser:agenda-profissional`).
   testIgnore: [
     "same-origin-proxy-flow.spec.ts",
     "visao-geral-flow.spec.ts",
     "agenda-view-flow.spec.ts",
+    "agenda-por-profissional-flow.spec.ts",
   ],
   timeout: 30_000,
   fullyParallel: false,

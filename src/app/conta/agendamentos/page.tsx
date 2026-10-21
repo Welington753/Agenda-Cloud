@@ -14,7 +14,9 @@
 //
 // LAYOUT: a agenda do dia é o conteúdo principal, com a barra de data, filtro
 // e Atualizar no topo (barra-agenda.tsx). A nova reserva abre sob demanda num
-// painel (painel-nova-reserva.tsx) com o formulário de sempre.
+// painel (painel-nova-reserva.tsx) com o formulário de sempre. A lista do dia
+// pode ser vista como "Lista" (inicial) ou "Por profissional"
+// (alternar-visualizacao.tsx) — mesma consulta, só a apresentação muda.
 //
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
@@ -41,12 +43,14 @@ import {
   resumoDoDia,
   rotuloDoResumo,
   TODOS_OS_PROFISSIONAIS,
+  type VisualizacaoAgenda,
 } from "@/lib/profissionais/agenda-visual";
 import type { AgendamentoReal, SelecaoDeCliente } from "@/lib/api/appointments-api";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useToast } from "@/components/ui/toast";
 import { AgendaDoDia } from "./agenda-do-dia";
+import { AlternarVisualizacao } from "./alternar-visualizacao";
 import { BarraAgenda } from "./barra-agenda";
 import { PainelNovaReserva } from "./painel-nova-reserva";
 import { ReservaCriada } from "./reserva-criada";
@@ -64,6 +68,7 @@ export default function AgendamentosPage() {
   const dia = useDiaDoEstabelecimento(tenantIdAtivo);
   const { date, timezone, mudarData, irParaHoje, sincronizar } = dia;
   const [filtroProfissionalId, setFiltroProfissionalId] = useState(TODOS_OS_PROFISSIONAIS);
+  const [visualizacao, setVisualizacao] = useState<VisualizacaoAgenda>("lista");
   const [painelAberto, setPainelAberto] = useState(false);
   const [erroReserva, setErroReserva] = useState<string | null>(null);
   const [ultimaReserva, setUltimaReserva] = useState<{
@@ -120,13 +125,13 @@ export default function AgendamentosPage() {
     () => (agenda ? filtrarPorProfissional(agenda.appointments, filtroProfissionalId) : []),
     [agenda, filtroProfissionalId],
   );
+  const catalogo = useMemo(
+    () => (estadoProfissionais.status === "carregada" ? estadoProfissionais.profissionais : []),
+    [estadoProfissionais],
+  );
   const opcoesFiltro = useMemo(
-    () =>
-      opcoesDeProfissional(
-        estadoProfissionais.status === "carregada" ? estadoProfissionais.profissionais : [],
-        agenda?.appointments ?? [],
-      ),
-    [estadoProfissionais, agenda],
+    () => opcoesDeProfissional(catalogo, agenda?.appointments ?? []),
+    [catalogo, agenda],
   );
 
   if (!sessao || precisaSelecionar) return null;
@@ -232,6 +237,8 @@ export default function AgendamentosPage() {
         </p>
       )}
 
+      <AlternarVisualizacao valor={visualizacao} aoMudar={setVisualizacao} />
+
       <AgendaDoDia
         tenantId={tenantIdAtivo}
         estado={estado}
@@ -239,6 +246,8 @@ export default function AgendamentosPage() {
         gravando={gravando}
         erroAcao={erroAcao}
         filtroProfissionalId={filtroProfissionalId}
+        visualizacao={visualizacao}
+        profissionais={catalogo}
         recemCriadaId={ultimaReserva?.reserva.id ?? null}
         aoLimparFiltro={() => setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS)}
         recarregar={recarregar}
