@@ -324,6 +324,26 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/agendamento-publico
         run: npm run test:browser:agendamento-publico
 
+      # Invocação SEPARADA (2 cadastros, 1 login, 8 pedidos públicos — limite de
+      # 10 por hora por IP): avisos de NOVAS solicitações dentro da área /conta —
+      # chegam em outra página sem recarregar, nunca repetem, pausam com a
+      # página oculta ou sem conexão, "Ver solicitação" não grava nada, som
+      # opcional (bloqueado, o aviso continua), troca de estabelecimento e
+      # saída encerram as consultas; computador e celular. O segundo vínculo
+      # é gravado no PostgreSQL descartável (só loopback).
+      - name: Run real browser flows (in-app alerts for new booking requests)
+        id: browser_avisos_solicitacoes
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/avisos-solicitacoes
+        run: npm run test:browser:avisos-solicitacoes
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -435,6 +455,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas dos avisos de novas solicitações (computador e celular). Só os
+      # PNG `avisos-*`.
+      - name: Upload new-request alert screenshots
+        if: always() && steps.browser_avisos_solicitacoes.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: avisos-solicitacoes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/avisos-solicitacoes/**/avisos-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -519,6 +550,7 @@ jobs:
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
+            steps.browser_avisos_solicitacoes.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||

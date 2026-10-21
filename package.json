@@ -24,6 +24,7 @@
     "test:browser:clients": "playwright test tests/browser/clients-flow.spec.ts",
     "test:browser:whatsapp": "playwright test tests/browser/whatsapp-contato-flow.spec.ts",
     "test:browser:agendamento-publico": "playwright test tests/browser/agendamento-publico-flow.spec.ts",
+    "test:browser:avisos-solicitacoes": "playwright test tests/browser/avisos-solicitacoes-flow.spec.ts",
     "test:browser:agenda-view": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/agenda-view-flow.spec.ts",
     "test:browser:visao-geral": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/visao-geral-flow.spec.ts",
     "test:browser:agenda-profissional": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/agenda-por-profissional-flow.spec.ts",
