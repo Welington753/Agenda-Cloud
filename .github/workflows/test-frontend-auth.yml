@@ -270,6 +270,23 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
         run: npm run test:browser:appointments
 
+      # Invocação SEPARADA (2 cadastros e 2 logins, limites reais por IP): tela
+      # de Clientes — busca e seus estados, cadastro sem envio repetido,
+      # duplicidade, resultado incerto, cliente no seletor da agenda,
+      # isolamento atacado na API, 403 real e navegação no celular.
+      - name: Run real browser flows (clients search, registration, isolation, mobile navigation)
+        id: browser_clients
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/clients
+        run: npm run test:browser:clients
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -350,6 +367,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
+      # `clientes-*`.
+      - name: Upload clients screenshots
+        if: always() && steps.browser_clients.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: clientes-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/clients/**/clientes-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Capturas da agenda real em cada estado (vários atendimentos, vazio,
       # carregando, erro, painel aberto, reserva criada e em andamento), no
       # computador e no celular. Só os PNG `agenda-*`.
@@ -408,6 +436,7 @@ jobs:
             steps.browser_working_hours.outcome == 'failure' ||
             steps.browser_availability.outcome == 'failure' ||
             steps.browser_appointments.outcome == 'failure' ||
+            steps.browser_clients.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'

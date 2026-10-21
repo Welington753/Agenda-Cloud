@@ -102,6 +102,7 @@ test.describe("entrada e navegação do piloto", () => {
     expect(await nav.getByRole("link").allTextContents()).toEqual([
       "Visão geral",
       "Agenda",
+      "Clientes",
       "Serviços",
       "Profissionais",
       "Minha conta",
@@ -148,6 +149,7 @@ test.describe("entrada e navegação do piloto", () => {
     await expect(nav.getByRole("link", { name: "Agenda" })).toHaveAttribute("aria-current", "page");
 
     for (const [rotulo, caminho] of [
+      ["Clientes", /\/conta\/clientes$/],
       ["Serviços", /\/conta\/servicos$/],
       ["Profissionais", /\/conta\/profissionais$/],
       ["Visão geral", /\/conta\/visao-geral$/],
@@ -159,23 +161,33 @@ test.describe("entrada e navegação do piloto", () => {
       await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     }
 
-    // Celular: as cinco áreas (na barra inferior) e o "Sair" aparecem na tela,
-    // com área de toque de pelo menos 44 px, sem rolar a página para o lado.
+    // Celular: quatro áreas e o "Mais" na barra inferior, e o "Sair", aparecem
+    // na tela, com área de toque de pelo menos 44 px, sem rolar a página para
+    // o lado. Profissionais e Minha conta ficam no "Mais".
     await page.setViewportSize(CELULAR);
     for (const caminho of [
       "/conta/visao-geral",
       "/conta/agendamentos",
+      "/conta/clientes",
       "/conta/servicos",
       "/conta/profissionais",
       "/conta",
     ]) {
       await page.goto(caminho);
-      for (const rotulo of ["Visão geral", "Agenda", "Serviços", "Profissionais", "Minha conta"]) {
+      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Serviços"]) {
         const link = nav.getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = await link.boundingBox();
         expect(caixa!.height).toBeGreaterThanOrEqual(44);
       }
+      await nav.getByRole("button", { name: "Mais" }).click();
+      for (const rotulo of ["Profissionais", "Minha conta"]) {
+        const link = nav.getByRole("link", { name: rotulo });
+        await expect(link).toBeInViewport();
+        const caixa = await link.boundingBox();
+        expect(caixa!.height).toBeGreaterThanOrEqual(44);
+      }
+      await page.keyboard.press("Escape");
       await expect(page.getByRole("button", { name: "Sair" })).toBeInViewport();
       await semRolagemHorizontal(page);
     }
