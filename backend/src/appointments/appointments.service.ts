@@ -84,6 +84,7 @@ import { Professional } from '../entities/professional.entity.js';
 import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { Unit } from '../entities/unit.entity.js';
+import { AgendadorDeNotificacoes } from '../notifications/notification-scheduler.js';
 import {
   APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
   APPOINTMENT_CREATE_FORBIDDEN_MESSAGE,
@@ -202,6 +203,11 @@ export interface RescheduleOptionsView {
 
 @Injectable()
 export class AppointmentsService {
+  /** Grava a INTENÇÃO de notificar (confirmação e lembretes) dentro das
+   * mesmas transações que mudam a reserva. Nenhuma chamada externa: quem
+   * envia é o executor, depois do COMMIT (ver src/notifications/). */
+  private readonly notificacoes = new AgendadorDeNotificacoes();
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly availability: AvailabilityService,
@@ -299,6 +305,16 @@ export class AppointmentsService {
             position: 0,
           }),
         );
+
+        // Nasceu confirmada: mesma política da ação "confirmar", sem exigir
+        // um clique a mais. Pendente não programa nada ainda.
+        if (appointment.status === AppointmentStatus.CONFIRMED) {
+          await this.notificacoes.aoConfirmar(
+            tx,
+            { tenantId: authorized.tenantId, appointmentId: appointment.id, inicio: startAt, timezone },
+            this.agora(),
+          );
+        }
 
         return appointment;
       });
@@ -516,6 +532,14 @@ export class AppointmentsService {
         }),
       );
 
+      // Nada pendente sai mais para uma reserva cancelada.
+      await this.notificacoes.aoEncerrar(
+        tx,
+        { tenantId: authorized.tenantId, appointmentId: appointment.id },
+        'RESERVA_CANCELADA',
+        this.agora(),
+      );
+
       // `appointment_items` e qualquer outro registro filho ficam intactos:
       // nada é apagado, o histórico da reserva continua legível.
       //
@@ -596,6 +620,21 @@ export class AppointmentsService {
           changedBy: userId,
         }),
       );
+
+      // Confirmar programa a confirmação e os lembretes; iniciar, concluir e
+      // registrar falta invalidam o que ainda não saiu. Repetir a mesma ação
+      // já saiu acima (estado atual === destino), sem programar nada de novo.
+      const alvo = { tenantId: authorized.tenantId, appointmentId: appointment.id };
+      if (destino === AppointmentStatus.CONFIRMED) {
+        const timezone = await this.timezoneDoTenant(tx, authorized.tenantId);
+        await this.notificacoes.aoConfirmar(
+          tx,
+          { ...alvo, inicio: appointment.startAt, timezone },
+          this.agora(),
+        );
+      } else {
+        await this.notificacoes.aoEncerrar(tx, alvo, `RESERVA_${destino}`, this.agora());
+      }
 
       appointment.status = destino;
       return appointment;
@@ -701,6 +740,20 @@ export class AppointmentsService {
         // tem coluna para horário antigo/novo. Inventar uma transição
         // `CONFIRMED -> CONFIRMED` para "registrar algo" produziria histórico
         // falso.
+        // Lembretes do horário antigo saem; os do novo são recalculados a
+        // partir de agora (ver notification-scheduler.ts, `aoRemarcar`).
+        await this.notificacoes.aoRemarcar(
+          tx,
+          {
+            tenantId: authorized.tenantId,
+            appointmentId: appointment.id,
+            inicio: novoInicio,
+            timezone,
+          },
+          appointment.status === AppointmentStatus.CONFIRMED,
+          this.agora(),
+        );
+
         appointment.startAt = novoInicio;
         appointment.endAt = novoFim;
         return appointment;
