@@ -16,7 +16,7 @@
 // o ROMPIMENTO de conexão (`route.abort`) é simulado, porque não há outro
 // jeito de perder uma resposta de propósito.
 //
-// Orçamento de POST /auth/register: 2 de 5 (rate limit real por IP). Roda em
+// Orçamento de POST /auth/register: 4 de 5 (rate limit real por IP). Roda em
 // invocação própria do Playwright (`npm run test:browser:clients`).
 import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import { Client } from "pg";
@@ -416,5 +416,174 @@ test.describe("clientes do estabelecimento", () => {
       await semRolagemHorizontal(page);
       await page.screenshot({ path: test.info().outputPath(`clientes-${viewport.width}.png`), fullPage: true });
     }
+  });
+
+  // Seletor de cliente de "Novo agendamento": uma busca antiga, terminando
+  // depois, nunca altera resultado, erro ou carregamento da busca atual.
+  // Cada busca retida só segue quando o PRÓPRIO teste libera; a liberação
+  // fica em `finally` e as rotas só saem depois de o handler terminar.
+  test("seletor da agenda: busca antiga nunca vence a atual", async ({ page, request, playwright }) => {
+    await page.setViewportSize(COMPUTADOR);
+    const sufixo = Date.now().toString().slice(-6);
+    const alfa = `Alfa Seletor ${sufixo}`;
+    const beta = `Beta Seletor ${sufixo}`;
+    const gama = `Gama Seletor ${sufixo}`;
+
+    async function prepararAgenda(api: APIRequestContext, tenantId: string) {
+      const servico = await chamar<{ service: { id: string } }>(api, "POST", `/tenants/${tenantId}/services`, {
+        name: "Corte",
+        shortDescription: "",
+        priceCents: 5000,
+        priceVisible: true,
+        durationMinutes: 30,
+        bufferAfterMinutes: 0,
+        modality: "IN_PERSON",
+        activeInPublicBooking: true,
+        requiresManualConfirmation: false,
+      });
+      expect(servico.status).toBe(201);
+      const profissional = await chamar(api, "POST", `/tenants/${tenantId}/professionals`, {
+        name: "Ana Souza",
+        serviceIds: [servico.corpo.service.id],
+      });
+      expect(profissional.status).toBe(201);
+    }
+    async function cliente(api: APIRequestContext, tenantId: string, name: string, whatsapp: string) {
+      expect((await chamar(api, "POST", `/tenants/${tenantId}/consumers`, { name, whatsapp })).status).toBe(201);
+    }
+
+    const a = await cadastrar(request, "SelA");
+    await prepararAgenda(request, a.tenantId);
+    await cliente(request, a.tenantId, alfa, `(11) 93${sufixo.slice(0, 3)}-${sufixo.slice(2, 6)}`);
+    await cliente(request, a.tenantId, beta, `(11) 94${sufixo.slice(0, 3)}-${sufixo.slice(2, 6)}`);
+
+    const apiB = await playwright.request.newContext();
+    const b = await cadastrar(apiB, "SelB");
+    await prepararAgenda(apiB, b.tenantId);
+    await cliente(apiB, b.tenantId, gama, `(11) 95${sufixo.slice(0, 3)}-${sufixo.slice(2, 6)}`);
+    await apiB.dispose();
+    await noBancoDescartavel(
+      `INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`,
+      [`e2es${Date.now().toString(36)}`.slice(0, 30), a.userId, b.tenantId],
+    );
+
+    /** Retém as buscas por `termo` até `liberar`; `concluida` resolve depois
+     * que o handler entregou (ou não conseguiu entregar) a requisição. */
+    async function reter(termo: string, desfecho: "continuar" | "falhar") {
+      const retida = Promise.withResolvers<void>();
+      const liberar = Promise.withResolvers<void>();
+      const concluida = Promise.withResolvers<void>();
+      await page.route(
+        (url) => ehBusca(url) && url.searchParams.get("q") === termo,
+        async (rota) => {
+          retida.resolve();
+          try {
+            await liberar.promise;
+            await (desfecho === "falhar" ? rota.abort("connectionreset") : rota.continue());
+          } catch {
+            // A tela já abortou a requisição: não há mais a quem entregar.
+          } finally {
+            concluida.resolve();
+          }
+        },
+      );
+      return { retida: retida.promise, liberar: () => liberar.resolve(), concluida: concluida.promise };
+    }
+
+    await entrar(page, a.email);
+    await expect(page).toHaveURL(/\/conta\/selecionar-estabelecimento$/);
+    await page.getByRole("button", { name: new RegExp(a.businessName) }).click();
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await nav(page).getByRole("link", { name: "Agenda" }).click();
+    await page.getByTestId("novo-agendamento").click();
+    const painel = page.getByTestId("painel-novo-agendamento");
+    const campo = painel.getByLabel("Buscar cliente por nome ou telefone");
+    const resultados = painel.getByTestId("resultados-clientes");
+    const botaoBuscar = painel.getByRole("button", { name: /^(Buscar|Buscando\.\.\.)$/ });
+    const semResiduos = async () => {
+      await expect(painel.getByRole("button", { name: "Buscando..." })).toHaveCount(0);
+      await expect(painel.getByRole("alert")).toHaveCount(0);
+    };
+
+    // 1. A começa, B começa depois e termina primeiro, A chega por último.
+    const buscaA = await reter("Alfa", "continuar");
+    try {
+      await campo.fill("Alfa");
+      await botaoBuscar.click();
+      await buscaA.retida;
+      await campo.fill("Beta");
+      await campo.press("Enter");
+      await expect(resultados).toContainText(beta);
+    } finally {
+      buscaA.liberar();
+    }
+    await buscaA.concluida;
+    await page.unrouteAll({ behavior: "wait" });
+    await expect(resultados).toContainText(beta);
+    await expect(resultados).not.toContainText(alfa);
+    await semResiduos();
+
+    // 2. Resposta antiga depois de limpar a busca: nada volta a aparecer.
+    const buscaLimpa = await reter("Alfa", "continuar");
+    try {
+      await campo.fill("Alfa");
+      await campo.press("Enter");
+      await buscaLimpa.retida;
+      await campo.fill("");
+      await expect(resultados).toHaveCount(0);
+    } finally {
+      buscaLimpa.liberar();
+    }
+    await buscaLimpa.concluida;
+    await page.unrouteAll({ behavior: "wait" });
+    await expect(resultados).toHaveCount(0);
+    await expect(painel.getByText("Nenhum cliente encontrado")).toHaveCount(0);
+    await semResiduos();
+
+    // 3. Erro de uma busca antiga não substitui o resultado atual.
+    const buscaComErro = await reter("Alfa", "falhar");
+    try {
+      await campo.fill("Alfa");
+      await campo.press("Enter");
+      await buscaComErro.retida;
+      await campo.fill("Beta");
+      await campo.press("Enter");
+      await expect(resultados).toContainText(beta);
+    } finally {
+      buscaComErro.liberar();
+    }
+    await buscaComErro.concluida;
+    await page.unrouteAll({ behavior: "wait" });
+    await expect(resultados).toContainText(beta);
+    await semResiduos();
+
+    // 4. Troca de estabelecimento com busca de A em voo: nada de A em B.
+    const buscaDeA = await reter("Alfa", "continuar");
+    try {
+      await campo.fill("Alfa");
+      await campo.press("Enter");
+      await buscaDeA.retida;
+      await painel.getByRole("button", { name: "Fechar", exact: true }).click();
+      await page.getByRole("link", { name: "Trocar de estabelecimento" }).click();
+      await page.getByRole("button", { name: new RegExp(b.businessName) }).click();
+      await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(b.businessName);
+      await nav(page).getByRole("link", { name: "Agenda" }).click();
+      await page.getByTestId("novo-agendamento").click();
+      await expect(campo).toHaveValue("");
+    } finally {
+      buscaDeA.liberar();
+    }
+    await buscaDeA.concluida;
+    await page.unrouteAll({ behavior: "wait" });
+    await expect(resultados).toHaveCount(0);
+    await semResiduos();
+    await campo.fill("Gama");
+    await campo.press("Enter");
+    await expect(resultados).toContainText(gama);
+    await expect(resultados).not.toContainText(alfa);
+
+    // A seleção do cliente segue como antes.
+    await resultados.getByRole("button", { name: new RegExp(gama) }).click();
+    await expect(painel.getByText("Cliente selecionado:")).toContainText(gama);
   });
 });

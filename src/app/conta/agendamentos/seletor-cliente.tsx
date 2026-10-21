@@ -41,11 +41,30 @@ export function SeletorCliente({
   /** Tenant vigente conforme o render mais recente — resposta atrasada de um
    * estabelecimento anterior nunca escreve na tela do novo. */
   const tenantRef = useRef(tenantId);
+  // Busca mais recente vence (mesma regra de lib/clientes/use-clientes-reais.ts):
+  // cada busca leva um número de sequência e aborta a anterior. Uma resposta
+  // cuja sequência já não é a vigente não toca em resultados, erro nem
+  // carregamento.
+  const sequenciaRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  /** Invalida a busca em voo: a resposta dela, se chegar, é descartada. */
+  function invalidarBusca() {
+    sequenciaRef.current += 1;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+  }
+
   useEffect(() => {
     tenantRef.current = tenantId;
+    invalidarBusca();
     setResultados([]);
     setTermo("");
+    setBuscando(false);
+    setErroBusca(null);
   }, [tenantId]);
+
+  useEffect(() => () => invalidarBusca(), []);
 
   // Os dados do cliente novo sobem para o formulário a cada tecla — nada é
   // gravado aqui, só informado a quem monta o corpo da reserva.
@@ -57,13 +76,24 @@ export function SeletorCliente({
 
   async function buscar(evento: React.FormEvent) {
     evento.preventDefault();
-    if (termo.trim().length < 2 || buscando) return;
+    // Buscar de novo com uma busca em voo é permitido: a nova substitui a
+    // antiga, nunca o contrário.
+    if (termo.trim().length < 2) return;
 
+    invalidarBusca();
+    const sequencia = sequenciaRef.current;
+    const controller = new AbortController();
+    controllerRef.current = controller;
     const tenantDaChamada = tenantRef.current;
     setBuscando(true);
     setErroBusca(null);
-    const resultado = await agendamentosApi.buscarClientes(tenantDaChamada, termo.trim());
-    if (tenantRef.current !== tenantDaChamada) return;
+    const resultado = await agendamentosApi.buscarClientes(
+      tenantDaChamada,
+      termo.trim(),
+      controller.signal,
+    );
+    if (sequencia !== sequenciaRef.current || tenantRef.current !== tenantDaChamada) return;
+    controllerRef.current = null;
     setBuscando(false);
 
     if (!resultado.ok) {
@@ -112,7 +142,17 @@ export function SeletorCliente({
               aria-label="Buscar cliente por nome ou telefone"
               value={termo}
               disabled={desabilitado}
-              onChange={(e) => setTermo(e.target.value)}
+              onChange={(e) => {
+                setTermo(e.target.value);
+                // Termo que deixou de valer como busca: a busca em voo
+                // perde a vez e a tela volta ao estado sem busca.
+                if (e.target.value.trim().length < 2) {
+                  invalidarBusca();
+                  setResultados([]);
+                  setErroBusca(null);
+                  setBuscando(false);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -125,7 +165,7 @@ export function SeletorCliente({
             <Botao
               type="button"
               variante="secundaria"
-              disabled={desabilitado || buscando || termo.trim().length < 2}
+              disabled={desabilitado || termo.trim().length < 2}
               onClick={(e) => void buscar(e)}
             >
               {buscando ? "Buscando..." : "Buscar"}
