@@ -12,11 +12,32 @@ import {
   runPostMigrationBaselineCheck,
 } from './baseline-checks.js';
 import { validateDirectUrl } from './connection-guard.js';
+import {
+  compararObjetos,
+  descreverFalhasAntes,
+  descreverFalhasDepois,
+  lerEstadoNotificacoesAgendamentoPublico,
+  TOTAL_OBJETOS_ESPERADOS,
+} from './notificacoes-agendamento-publico-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
 
-export type PilotExpectation = 'empty' | 'initialized';
+/** `before-notifications-public-booking`/`after-notifications-public-booking`:
+ * antes e depois de aplicar NotificationJobs e PublicBooking num piloto que
+ * já tem dados (ver notificacoes-agendamento-publico-schema.ts). */
+export type PilotExpectation =
+  | 'empty'
+  | 'initialized'
+  | 'before-notifications-public-booking'
+  | 'after-notifications-public-booking';
+
+const EXPECTATIVAS: readonly PilotExpectation[] = [
+  'empty',
+  'initialized',
+  'before-notifications-public-booking',
+  'after-notifications-public-booking',
+];
 
 interface EnvLike {
   [key: string]: string | undefined;
@@ -64,10 +85,11 @@ function readRequired(env: EnvLike, name: string): string {
 
 function readExpectation(env: EnvLike): PilotExpectation {
   const value = env.PILOT_EXPECT;
-  if (value === 'empty' || value === 'initialized') return value;
+  const encontrada = EXPECTATIVAS.find((expectativa) => expectativa === value);
+  if (encontrada) return encontrada;
   throw new GuardedMigrationError(
     'ERR_INVALID_EXPECTATION',
-    'PILOT_EXPECT precisa ser exatamente "empty" ou "initialized".',
+    `PILOT_EXPECT precisa ser exatamente um destes: ${EXPECTATIVAS.join(', ')}.`,
   );
 }
 
@@ -145,6 +167,21 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
         return { success: false, code: 'ERR_TARGET_NOT_EMPTY' };
       }
       return { success: true };
+    }
+
+    if (
+      expectation === 'before-notifications-public-booking' ||
+      expectation === 'after-notifications-public-booking'
+    ) {
+      const estado = await lerEstadoNotificacoesAgendamentoPublico(client);
+      const falhas =
+        expectation === 'before-notifications-public-booking'
+          ? descreverFalhasAntes(estado)
+          : descreverFalhasDepois(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${compararObjetos(estado).conferidos}/${TOTAL_OBJETOS_ESPERADOS}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
 
     const report = await runPostMigrationBaselineCheck(client);

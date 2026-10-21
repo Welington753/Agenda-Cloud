@@ -262,6 +262,31 @@ O passo 5 precisa terminar em `RESULT: SUCCESS`, com `MIGRATIONS_APPLIED: 3` e `
 
 Se o passo 4 falhar no meio, **não** repita às cegas. Rode só o passo 5 para ver o estado, e investigue antes de qualquer nova tentativa. Num banco novo do piloto, sem dados, apagar e recriar o projeto do piloto (seção A) é uma saída aceitável.
 
+### C. Aplicar NotificationJobs e PublicBooking num piloto com dados
+
+Vale para o piloto que já tem as três migrations iniciais e dados de uso. As duas migrations (`1792540800000-NotificationJobs` e `1792627200000-PublicBooking`) só acrescentam: três colunas nulas em `consumers` e três tabelas novas. Nenhum cliente passa a ter autorização de WhatsApp.
+
+Mesma cópia limpa e mesmas variáveis da seção B (passos 1 e 2). Depois:
+
+1. **Backup antes de escrever.** De preferência, um branch do Neon criado a partir do branch do piloto. Sem acesso a isso, use `pg_dump -Fc` da URL direta, guardado fora do repositório e restaurado num PostgreSQL descartável, conferindo a mesma contagem de linhas por tabela que o piloto. Anote o horário do ponto de recuperação.
+2. **Conferência antes**, só leitura:
+   ```bash
+   PILOT_EXPECT=before-notifications-public-booking npm run pilot:check-database
+   ```
+   Precisa terminar em `RESULT: SUCCESS`, com `MIGRATIONS_APPLIED: 3`, `SCHEMA_OBJECTS_OK: 0/54` e `BASELINE_FAILURES: none`. O histórico precisa ter exatamente `InitialSchema`, `AllowUndefinedPlanPrice` e `InitialPlanCatalog`, nessa ordem. Nenhum objeto das duas migrations pode existir, e o alvo das FKs compostas (`appointments (tenant_id, id)`) precisa existir.
+3. **Aplicar**, no mesmo terminal:
+   ```bash
+   DIRECT_URL="$PILOT_DIRECT_URL" npm run migration:run:compiled
+   ```
+   O TypeORM aplica as duas numa única transação (`START TRANSACTION` … `COMMIT`): ou entram as duas, ou nenhuma.
+4. **Conferência depois**, só leitura:
+   ```bash
+   PILOT_EXPECT=after-notifications-public-booking npm run pilot:check-database
+   ```
+   Precisa terminar em `RESULT: SUCCESS`, com `MIGRATIONS_APPLIED: 5`, `SCHEMA_OBJECTS_OK: 54/54` e `BASELINE_FAILURES: none`. São as cinco migrations pelo nome e na ordem, mais cada coluna, constraint e índice com a definição exata do PostgreSQL (lista em `backend/scripts/lib/notificacoes-agendamento-publico-schema.ts`). Nunca uma contagem nem um "pelo menos cinco".
+
+Se o passo 3 falhar ou a conexão cair, **não** repita, não rode `migration:revert` e não restaure o backup sem decidir antes. Rode o passo 4 (ou o 2) para ver o estado real e investigue.
+
 ## 7. Sequência de publicação
 
 Faça os passos nesta ordem. Cada um depende do anterior.
