@@ -9,7 +9,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const DIRETORIOS_ALVO = ["src/app/conta", "src/lib/servicos", "src/lib/profissionais"];
+const DIRETORIOS_ALVO = [
+  "src/app/conta",
+  "src/lib/servicos",
+  "src/lib/profissionais",
+  "src/lib/clientes",
+];
 
 function listarArquivos(diretorio: string): string[] {
   return readdirSync(diretorio).flatMap((entrada) => {

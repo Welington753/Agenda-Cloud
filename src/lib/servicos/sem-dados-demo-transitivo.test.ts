@@ -17,6 +17,7 @@ const SRC = join(RAIZ, "src");
 const PONTOS_DE_ENTRADA = [
   "src/app/conta",
   "src/components/conta",
+  "src/lib/clientes",
   "src/lib/conta",
   "src/lib/profissionais",
   "src/lib/servicos",

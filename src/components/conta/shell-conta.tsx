@@ -2,14 +2,16 @@
 
 // Estrutura comum da área REAL (`/conta/**`): menu lateral no computador
 // (inspirado no da demonstração) e, no celular, barra superior com o
-// estabelecimento e "Sair" mais uma barra inferior com as cinco áreas — sem
-// menu escondido e sem rolagem horizontal.
+// estabelecimento e "Sair" mais uma barra inferior com quatro áreas e um
+// botão "Mais" (Profissionais e Minha conta) — seis rótulos lado a lado em
+// 360 px ficariam ilegíveis. Sem rolagem horizontal.
 //
 // A navegação, o estabelecimento e o "Sair" existem UMA vez no DOM e só mudam
 // de lugar com CSS: links duplicados (um por tamanho de tela) confundiriam
-// leitor de tela e localizadores. A única exceção é "Trocar", que tem uma
-// forma por tamanho, com a outra em `display: none` (fora da árvore de
-// acessibilidade).
+// leitor de tela e localizadores. As exceções são "Trocar", que tem uma forma
+// por tamanho, e os itens do "Mais", que no celular saem da barra e só
+// aparecem no menu aberto — em ambos a outra forma fica em `display: none`
+// (fora da árvore de acessibilidade).
 //
 // Só LÊ a sessão que `RequireRealSession` já validou (via `useRealAuth`): a
 // única requisição própria é o logout, com o mesmo comportamento de antes. O
@@ -20,14 +22,16 @@
 //
 // Nada aqui importa a demonstração (`AdminShell` usa a sessão simulada): é
 // por isso que este shell é próprio, e não uma variação daquele.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
   LayoutDashboard,
+  Contact,
   LogOut,
+  MoreHorizontal,
   Repeat,
   UserRound,
   Users,
@@ -36,13 +40,19 @@ import {
 import clsx from "clsx";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
-import { ITENS_NAVEGACAO_CONTA, itemAtivo } from "@/lib/conta/navegacao";
+import {
+  ITENS_MENU_MAIS,
+  ITENS_NAVEGACAO_CONTA,
+  itemAtivo,
+  type ItemNavegacaoConta,
+} from "@/lib/conta/navegacao";
 import { NOME_PRODUTO } from "@/lib/config";
 import { useToast } from "@/components/ui/toast";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/visao-geral": LayoutDashboard,
   "/conta/agendamentos": CalendarDays,
+  "/conta/clientes": Contact,
   "/conta/servicos": ClipboardList,
   "/conta/profissionais": Users,
   "/conta": UserRound,
@@ -52,6 +62,45 @@ const ICONE_POR_HREF: Record<string, LucideIcon> = {
  * celular para não cobrirem a barra inferior (ver globals.css). */
 const CLASSE_SHELL_ATIVO = "shell-conta-ativo";
 
+const CLASSE_ITEM = clsx(
+  "flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-center text-[11px] leading-tight font-medium",
+  "md:min-h-11 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
+  "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
+);
+// Fundo + sombra interna, não borda: a regra global `* { border-color }` de
+// globals.css venceria uma cor de borda utilitária.
+const CLASSE_ATIVO =
+  "bg-white/10 font-semibold text-white shadow-[inset_0_3px_0_var(--color-accent)] md:shadow-[inset_3px_0_0_var(--color-accent)]";
+const CLASSE_INATIVO = "text-white/70 hover:bg-white/5 hover:text-white";
+/** Item dentro do menu "Mais": linha inteira, ícone à esquerda, texto legível. */
+const CLASSE_ITEM_EM_LISTA =
+  "flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
+
+function LinkNavegacao({
+  item,
+  ativo,
+  emLista = false,
+}: {
+  item: ItemNavegacaoConta;
+  ativo: boolean;
+  emLista?: boolean;
+}) {
+  const Icone = ICONE_POR_HREF[item.href] ?? LayoutDashboard;
+  return (
+    <Link
+      href={item.href}
+      aria-current={ativo ? "page" : undefined}
+      className={clsx(
+        emLista ? CLASSE_ITEM_EM_LISTA : CLASSE_ITEM,
+        ativo ? (emLista ? "bg-white/10 font-semibold text-white" : CLASSE_ATIVO) : CLASSE_INATIVO,
+      )}
+    >
+      <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />
+      <span className={emLista ? undefined : "w-full truncate md:w-auto"}>{item.rotulo}</span>
+    </Link>
+  );
+}
+
 export function ShellConta({ children }: { children: ReactNode }) {
   const { estado, logout } = useRealAuth();
   const { notificar } = useToast();
@@ -59,11 +108,35 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   // Barreira contra clique duplo no "Sair" enquanto o logout está em voo.
   const [saindo, setSaindo] = useState(false);
+  const [maisAberto, setMaisAberto] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     document.documentElement.classList.add(CLASSE_SHELL_ATIVO);
     return () => document.documentElement.classList.remove(CLASSE_SHELL_ATIVO);
   }, []);
+
+  // Navegar fecha o "Mais".
+  useEffect(() => setMaisAberto(false), [pathname]);
+
+  // Escape ou toque fora fecham o "Mais".
+  useEffect(() => {
+    if (!maisAberto) return;
+    function aoTeclar(evento: KeyboardEvent) {
+      if (evento.key === "Escape") setMaisAberto(false);
+    }
+    function aoTocarFora(evento: PointerEvent) {
+      if (!navRef.current?.contains(evento.target as Node)) setMaisAberto(false);
+    }
+    document.addEventListener("keydown", aoTeclar);
+    document.addEventListener("pointerdown", aoTocarFora);
+    return () => {
+      document.removeEventListener("keydown", aoTeclar);
+      document.removeEventListener("pointerdown", aoTocarFora);
+    };
+  }, [maisAberto]);
+
+  const maisAtivo = ITENS_MENU_MAIS.some((item) => itemAtivo(pathname, item.href));
 
   if (estado.status !== "autenticado") return <>{children}</>;
 
@@ -117,37 +190,48 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
         {contexto && (
           <nav
+            ref={navRef}
             aria-label="Áreas da conta"
             className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
           >
             <ul className="grid grid-cols-5 md:flex md:flex-col md:gap-1">
-              {ITENS_NAVEGACAO_CONTA.map((item) => {
-                const ativo = itemAtivo(pathname, item.href);
-                const Icone = ICONE_POR_HREF[item.href] ?? LayoutDashboard;
-                return (
-                  <li key={item.href} className="min-w-0">
-                    <Link
-                      href={item.href}
-                      aria-current={ativo ? "page" : undefined}
-                      className={clsx(
-                        "flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-center text-[11px] leading-tight font-medium",
-                        "md:min-h-11 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
-                        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
-                        // Fundo + sombra interna, não borda: a regra global
-                        // `* { border-color }` de globals.css venceria uma cor
-                        // de borda utilitária.
-                        ativo
-                          ? "bg-white/10 font-semibold text-white shadow-[inset_0_3px_0_var(--color-accent)] md:shadow-[inset_3px_0_0_var(--color-accent)]"
-                          : "text-white/70 hover:bg-white/5 hover:text-white",
-                      )}
-                    >
-                      <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />
-                      <span className="w-full truncate md:w-auto">{item.rotulo}</span>
-                    </Link>
-                  </li>
-                );
-              })}
+              {ITENS_NAVEGACAO_CONTA.map((item) => (
+                <li
+                  key={item.href}
+                  // Itens do "Mais" saem da barra do celular com
+                  // `display: none` (fora da árvore de acessibilidade): só
+                  // a cópia do menu "Mais" existe ali.
+                  className={clsx("min-w-0", item.noCelular === "mais" && "hidden md:block")}
+                >
+                  <LinkNavegacao item={item} ativo={itemAtivo(pathname, item.href)} />
+                </li>
+              ))}
+              <li className="min-w-0 md:hidden">
+                <button
+                  type="button"
+                  aria-expanded={maisAberto}
+                  aria-controls="menu-mais"
+                  onClick={() => setMaisAberto((aberto) => !aberto)}
+                  className={clsx(CLASSE_ITEM, maisAtivo || maisAberto ? CLASSE_ATIVO : CLASSE_INATIVO, "w-full")}
+                >
+                  <MoreHorizontal size={20} aria-hidden="true" className="shrink-0" />
+                  <span className="w-full truncate">Mais</span>
+                  {maisAtivo && <span className="sr-only"> (página atual aqui)</span>}
+                </button>
+              </li>
             </ul>
+            {maisAberto && (
+              <ul
+                id="menu-mais"
+                className="absolute inset-x-0 bottom-full border-t border-white/10 bg-ink p-2 shadow-lg md:hidden"
+              >
+                {ITENS_MENU_MAIS.map((item) => (
+                  <li key={item.href}>
+                    <LinkNavegacao item={item} ativo={itemAtivo(pathname, item.href)} emLista />
+                  </li>
+                ))}
+              </ul>
+            )}
           </nav>
         )}
 

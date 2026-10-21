@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ITENS_NAVEGACAO_CONTA, itemAtivo } from "./navegacao";
+import { ITENS_MENU_MAIS, ITENS_NAVEGACAO_CONTA, itemAtivo } from "./navegacao";
 
 describe("ITENS_NAVEGACAO_CONTA", () => {
   it("só aponta para a área real, na ordem do dia a dia", () => {
     expect(ITENS_NAVEGACAO_CONTA.map((i) => i.href)).toEqual([
       "/conta/visao-geral",
       "/conta/agendamentos",
+      "/conta/clientes",
       "/conta/servicos",
       "/conta/profissionais",
       "/conta",
@@ -13,6 +14,7 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
     expect(ITENS_NAVEGACAO_CONTA.map((i) => i.rotulo)).toEqual([
       "Visão geral",
       "Agenda",
+      "Clientes",
       "Serviços",
       "Profissionais",
       "Minha conta",
@@ -20,6 +22,14 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
     for (const item of ITENS_NAVEGACAO_CONTA) {
       expect(item.href.startsWith("/conta")).toBe(true);
     }
+  });
+});
+
+describe("celular", () => {
+  it("a barra inferior tem quatro áreas e o resto fica em Mais", () => {
+    const naBarra = ITENS_NAVEGACAO_CONTA.filter((i) => i.noCelular === "barra");
+    expect(naBarra.map((i) => i.rotulo)).toEqual(["Visão geral", "Agenda", "Clientes", "Serviços"]);
+    expect(ITENS_MENU_MAIS.map((i) => i.rotulo)).toEqual(["Profissionais", "Minha conta"]);
   });
 });
 

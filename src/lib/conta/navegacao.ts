@@ -7,17 +7,28 @@
 export interface ItemNavegacaoConta {
   href: string;
   rotulo: string;
+  /** No celular, a barra inferior só comporta quatro áreas com rótulo legível
+   * e área de toque confortável; as demais ficam no menu "Mais". No
+   * computador todas aparecem no menu lateral. */
+  noCelular: "barra" | "mais";
 }
 
 /** Ordem pensada para o dia a dia: o resumo do dia, depois a agenda, que é o
- * que se abre mais vezes. "Minha conta" fica por último. */
+ * que se abre mais vezes, e os clientes, procurados na hora de agendar.
+ * "Minha conta" fica por último. */
 export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
-  { href: "/conta/visao-geral", rotulo: "Visão geral" },
-  { href: "/conta/agendamentos", rotulo: "Agenda" },
-  { href: "/conta/servicos", rotulo: "Serviços" },
-  { href: "/conta/profissionais", rotulo: "Profissionais" },
-  { href: "/conta", rotulo: "Minha conta" },
+  { href: "/conta/visao-geral", rotulo: "Visão geral", noCelular: "barra" },
+  { href: "/conta/agendamentos", rotulo: "Agenda", noCelular: "barra" },
+  { href: "/conta/clientes", rotulo: "Clientes", noCelular: "barra" },
+  { href: "/conta/servicos", rotulo: "Serviços", noCelular: "barra" },
+  { href: "/conta/profissionais", rotulo: "Profissionais", noCelular: "mais" },
+  { href: "/conta", rotulo: "Minha conta", noCelular: "mais" },
 ];
+
+/** Itens que, no celular, ficam atrás do botão "Mais". */
+export const ITENS_MENU_MAIS: readonly ItemNavegacaoConta[] = ITENS_NAVEGACAO_CONTA.filter(
+  (item) => item.noCelular === "mais",
+);
 
 /**
  * O item corresponde à página atual?
