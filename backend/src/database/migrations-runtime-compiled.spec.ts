@@ -35,14 +35,15 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as quatro migrations no dist (nunca specs)', () => {
+  it('descobre as cinco migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(4);
+    expect(migrationJsFiles).toHaveLength(5);
     expect(migrationJsFiles.some((f) => f.includes('InitialSchema'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('AllowUndefinedPlanPrice'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('InitialPlanCatalog'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('NotificationJobs'))).toBe(true);
+    expect(migrationJsFiles.some((f) => f.includes('PublicBooking'))).toBe(true);
     // Nenhum `.spec.js` deve escapar para o dist — só código de migration real.
     expect(files.some((f) => f.includes('.spec.'))).toBe(false);
   });

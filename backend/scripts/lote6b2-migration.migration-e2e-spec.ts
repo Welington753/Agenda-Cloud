@@ -36,7 +36,7 @@ const DIRECT_URL = process.env.MIGRATION_E2E_DIRECT_URL;
 // posterior precisa de roteiro próprio. Este teste prova as duas coisas: o
 // caminho compilado real continua aplicando tudo, e o guarda continua
 // fechado para o que não é do lote dele.
-const MIGRATIONS_POSTERIORES_AO_6B2 = ['NotificationJobs1792540800000'] as const;
+const MIGRATIONS_POSTERIORES_AO_6B2 = ['NotificationJobs1792540800000', 'PublicBooking1792627200000'] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
   'AllowUndefinedPlanPrice1788782450000',
@@ -163,8 +163,8 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       const tenants = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM tenants');
       const users = await client.query<{ n: string }>('SELECT count(*)::text AS n FROM users');
 
-      // 31 do 6B.2 + notification_jobs.
-      expect(Number(tables.rows[0]?.n)).toBe(32);
+      // 31 do 6B.2 + notification_jobs + public_booking_settings + public_booking_requests.
+      expect(Number(tables.rows[0]?.n)).toBe(34);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
