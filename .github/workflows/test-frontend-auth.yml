@@ -307,6 +307,24 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-view
         run: npm run test:browser:agenda-view
 
+      # Invocação SEPARADA (1 cadastro e 1 login), também pela
+      # playwright.relogio-de-teste.config.ts: a agenda "Por profissional" —
+      # grupos e ordem, alternância sem nova leitura, filtro, vazio, erro,
+      # lista incompleta, profissional inativo, cancelar com expectedStartAt,
+      # nova reserva marcada no grupo e atendimento em andamento.
+      - name: Run real browser flows (agenda grouped by professional)
+        id: browser_agenda_profissional
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-profissional
+        run: npm run test:browser:agenda-profissional
+
       # Invocação SEPARADA (2 cadastros e 3 logins, limites reais de 5 por IP):
       # Visão geral (indicadores e listas da agenda real de hoje, estados de
       # carregamento, falha, lista incompleta e sem permissão), estrutura comum
@@ -391,6 +409,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas da agenda "Por profissional" com vários profissionais e com a
+      # lista incompleta, no computador e no celular. Só os PNG
+      # `agenda-profissional-*`.
+      - name: Upload agenda by professional screenshots
+        if: always() && steps.browser_agenda_profissional.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agenda-por-profissional-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/agenda-profissional/**/agenda-profissional-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Capturas da área real reorganizada (Visão geral, Agenda, Serviços e
       # Profissionais), no computador e no celular. Só os PNG `conta-*`.
       - name: Upload account area screenshots
@@ -439,6 +469,7 @@ jobs:
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
+            steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )

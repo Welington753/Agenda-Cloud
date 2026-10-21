@@ -157,3 +157,63 @@ export function mensagemFalhaAgenda(falha: FalhaAgendamentoReal): string {
   }
   return mensagemFalhaAgendamento(falha);
 }
+
+export type VisualizacaoAgenda = "lista" | "profissional";
+
+export interface GrupoDeProfissional {
+  professionalId: string;
+  nome: string;
+  /** Inativo no catálogo atual — as reservas dele continuam aparecendo. */
+  inativo: boolean;
+  /** Em ordem cronológica. Vazio só para profissional ATIVO sem reserva num
+   * dia com a lista COMPLETA — sem reserva não quer dizer horário livre. */
+  agendamentos: AgendamentoReal[];
+}
+
+/**
+ * Agrupa as reservas JÁ carregadas (e já filtradas) por profissional, para a
+ * visualização "Por profissional". Não perde nem duplica nada: cada reserva
+ * entra exatamente no grupo do `professional.id` que o backend devolveu,
+ * inclusive de profissional inativo ou ausente do catálogo (o nome vem da
+ * própria reserva).
+ *
+ * Profissionais ativos sem reserva só viram grupo vazio quando
+ * `incluirSemReserva` — quem chama passa `true` apenas com a lista do dia
+ * COMPLETA e sem filtro; numa lista cortada, "sem reserva" seria um palpite.
+ *
+ * Grupos em ordem alfabética; reservas de cada grupo em ordem cronológica.
+ */
+export function agruparPorProfissional(
+  agendamentos: readonly AgendamentoReal[],
+  profissionais: readonly ProfissionalReal[],
+  incluirSemReserva: boolean,
+): GrupoDeProfissional[] {
+  const catalogo = new Map(profissionais.map((p) => [p.id, p]));
+  const grupos = new Map<string, GrupoDeProfissional>();
+
+  for (const agendamento of ordenarPorHorario(agendamentos)) {
+    const { id, name } = agendamento.professional;
+    let grupo = grupos.get(id);
+    if (!grupo) {
+      const doCatalogo = catalogo.get(id);
+      grupo = {
+        professionalId: id,
+        nome: doCatalogo?.name ?? name,
+        inativo: doCatalogo ? !doCatalogo.active : false,
+        agendamentos: [],
+      };
+      grupos.set(id, grupo);
+    }
+    grupo.agendamentos.push(agendamento);
+  }
+
+  if (incluirSemReserva) {
+    for (const p of profissionais) {
+      if (p.active && !grupos.has(p.id)) {
+        grupos.set(p.id, { professionalId: p.id, nome: p.name, inativo: false, agendamentos: [] });
+      }
+    }
+  }
+
+  return [...grupos.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}

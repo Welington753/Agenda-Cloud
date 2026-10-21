@@ -27,7 +27,11 @@ const [backend, frontend] = Array.isArray(base.webServer) ? base.webServer : [];
 export default defineConfig({
   ...base,
   testIgnore: undefined,
-  testMatch: ["visao-geral-flow.spec.ts", "agenda-view-flow.spec.ts"],
+  testMatch: [
+    "visao-geral-flow.spec.ts",
+    "agenda-view-flow.spec.ts",
+    "agenda-por-profissional-flow.spec.ts",
+  ],
   webServer: [
     {
       ...backend,
