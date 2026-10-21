@@ -129,6 +129,47 @@ describe('checkPilotDatabase', () => {
     expect(resultado).toEqual({ success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' });
   });
 
+  it('antes de NotificationJobs/PublicBooking: três migrations iniciais e nenhum objeto novo', async () => {
+    const { resultado, linhas, sql } = await rodar(
+      { ...ENV_VALIDO, PILOT_EXPECT: 'before-notifications-public-booking' },
+      [
+        [
+          /FROM typeorm_migrations/,
+          {
+            rows: [
+              { name: 'InitialSchema1788782400000' },
+              { name: 'AllowUndefinedPlanPrice1788782450000' },
+              { name: 'InitialPlanCatalog1788782460000' },
+            ],
+          },
+        ],
+        [/column_name = 'price_cents'/, { rows: [{ is_nullable: 'YES' }] }],
+        [/AS ok/, { rows: [{ ok: true }] }],
+      ],
+    );
+    expect(resultado).toEqual({ success: true });
+    expect(linhas).toEqual(
+      expect.arrayContaining(['MIGRATIONS_APPLIED: 3', 'SCHEMA_OBJECTS_OK: 0/54', 'BASELINE_FAILURES: none']),
+    );
+    expect(sql[0]).toBe('BEGIN TRANSACTION READ ONLY');
+    expect(sql.at(-1)).toBe('ROLLBACK');
+  });
+
+  it('depois de NotificationJobs/PublicBooking com o banco ainda antigo: falha listando os ausentes', async () => {
+    const { resultado, linhas } = await rodar(
+      { ...ENV_VALIDO, PILOT_EXPECT: 'after-notifications-public-booking' },
+      [
+        [/FROM typeorm_migrations/, { rows: [{ name: 'InitialSchema1788782400000' }] }],
+        [/column_name = 'price_cents'/, { rows: [{ is_nullable: 'YES' }] }],
+        [/AS ok/, { rows: [{ ok: true }] }],
+      ],
+    );
+    expect(resultado).toEqual({ success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' });
+    expect(linhas.find((linha) => linha.startsWith('BASELINE_FAILURES:'))).toContain(
+      'migration_history,ausente:consumers.whatsapp_opt_in_at',
+    );
+  });
+
   it('nenhuma linha de saída contém URL, senha, host ou Endpoint ID', async () => {
     const execucoes = [
       await rodar(ENV_VALIDO),
