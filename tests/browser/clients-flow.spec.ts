@@ -105,7 +105,11 @@ test.describe("clientes do estabelecimento", () => {
     await page.setViewportSize(COMPUTADOR);
     const a = await cadastrar(request, "A");
     const sufixo = Date.now().toString().slice(-6);
-    const nomeMaria = `Maria Teste ${sufixo}`;
+    // Nos NOMES, a marca é feita só de letras: a busca também compara os
+    // dígitos do termo com o telefone, e dígitos do relógio no nome podiam
+    // casar por acaso com o WhatsApp de outro cliente do teste.
+    const marca = sufixo.replace(/\d/g, (d) => "abcdefghij"[Number(d)]);
+    const nomeMaria = `Maria Teste ${marca}`;
     const whatsMaria = `(11) 9${sufixo.slice(0, 4)}-${sufixo.slice(2, 6)}`;
 
     await entrar(page, a.email);
@@ -171,7 +175,7 @@ test.describe("clientes do estabelecimento", () => {
     // ------------------------------------------------ persistido: recarregar e pesquisar
     await page.reload();
     await expect(page.getByText("Pesquise para encontrar um cliente")).toBeVisible();
-    await buscar(page, `Teste ${sufixo}`);
+    await buscar(page, `Teste ${marca}`);
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(1);
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
     // Pelo telefone normalizado, digitado de outro jeito.
@@ -207,7 +211,7 @@ test.describe("clientes do estabelecimento", () => {
     await page.getByRole("button", { name: "Cancelar" }).click();
 
     // ------------------------------------------------ cadastro ok, leitura falha: só a leitura repete
-    const nomeJoao = `João Leitura ${sufixo}`;
+    const nomeJoao = `João Leitura ${marca}`;
     let leituraFalhou = false;
     await page.route(
       (url) => ehBusca(url),
@@ -259,7 +263,7 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("lista-clientes")).not.toContainText(nomeMaria);
 
     // ------------------------------------------------ teto da busca é anunciado
-    const prefixo = `Lote ${sufixo}`;
+    const prefixo = `Lote ${marca}`;
     for (let i = 0; i < 21; i += 1) {
       const r = await chamar(request, "POST", `/tenants/${a.tenantId}/consumers`, {
         name: `${prefixo} ${String(i).padStart(2, "0")}`,
