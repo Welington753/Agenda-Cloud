@@ -14,6 +14,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import * as authApi from "@/lib/api/auth-api";
 import type { DadosCadastroReal, ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
 import { decidirFluxoCadastro, type ResultadoFluxoCadastro } from "./cadastro-fluxo";
+import { lerSessaoComTentativas } from "./leitura-sessao";
 import {
   podeAplicarResultado,
   reduzirResultadoSessao,
@@ -53,24 +54,48 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   // `podeAplicarResultado`). É isto que impede uma resposta atrasada de
   // /auth/me restaurar a sessão depois de um logout.
   const geracaoRef = useRef(0);
+  // Leitura de /auth/me em andamento (com suas esperas entre tentativas).
+  // Nunca há duas ao mesmo tempo: uma nova cancela a anterior, e login,
+  // logout e a desmontagem do provider também cancelam.
+  const leituraRef = useRef<AbortController | null>(null);
 
-  // Devolve o estado efetivamente aplicado, ou `null` quando a resposta
-  // chegou tarde demais (geração mudou) e foi descartada — quem chamou
-  // precisa saber a diferença entre "sessão restaurada" e "não deu".
-  const carregarSessao = useCallback(async (): Promise<EstadoAutenticacaoReal | null> => {
-    const geracaoDaChamada = geracaoRef.current;
-    const resultado = await authApi.buscarSessaoAtual();
-    if (!podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) return null;
-    const proximo = reduzirResultadoSessao(resultado, lerPreferenciaTenant());
-    setEstado(proximo);
-    return proximo;
+  const cancelarLeitura = useCallback(() => {
+    leituraRef.current?.abort();
+    leituraRef.current = null;
   }, []);
 
+  // Devolve o estado efetivamente aplicado, ou `null` quando a resposta
+  // chegou tarde demais (geração mudou ou leitura cancelada) e foi
+  // descartada — quem chamou precisa saber a diferença entre "sessão
+  // restaurada" e "não deu". `comTentativas` só na abertura e no "Tentar
+  // novamente": depois de um cadastro, uma leitura só (ver `cadastrar`).
+  const carregarSessao = useCallback(
+    async (comTentativas: boolean): Promise<EstadoAutenticacaoReal | null> => {
+      cancelarLeitura();
+      const controle = new AbortController();
+      leituraRef.current = controle;
+      const geracaoDaChamada = geracaoRef.current;
+      const resultado = await lerSessaoComTentativas(
+        (signal) => authApi.buscarSessaoAtual(signal),
+        controle.signal,
+        comTentativas ? {} : { esperas: [] },
+      );
+      if (leituraRef.current === controle) leituraRef.current = null;
+      if (resultado === null || !podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) return null;
+      const proximo = reduzirResultadoSessao(resultado, lerPreferenciaTenant());
+      setEstado(proximo);
+      return proximo;
+    },
+    [cancelarLeitura],
+  );
+
   useEffect(() => {
-    void carregarSessao();
-  }, [carregarSessao]);
+    void carregarSessao(true);
+    return cancelarLeitura;
+  }, [carregarSessao, cancelarLeitura]);
 
   const login = useCallback(async (email: string, senha: string) => {
+    cancelarLeitura();
     geracaoRef.current += 1;
     const geracaoDaChamada = geracaoRef.current;
     const resultado = await authApi.login(email, senha);
@@ -78,7 +103,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
       setEstado(reduzirResultadoSessao({ ok: true, dados: resultado.dados }, lerPreferenciaTenant()));
     }
     return resultado;
-  }, []);
+  }, [cancelarLeitura]);
 
   // `cadastrar` nunca repete o POST sozinho: uma única tentativa por chamada.
   // Se o register confirmar (201) mas o /auth/me falhar, o resultado é
@@ -92,7 +117,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
       // Cadastro confirmado: a partir daqui o cookie de sessão já existe no
       // navegador, então qualquer /auth/me em voo de antes está obsoleto.
       geracaoRef.current += 1;
-      const estadoFinal = await carregarSessao();
+      const estadoFinal = await carregarSessao(false);
       return decidirFluxoCadastro(true, null, estadoFinal);
     },
     [carregarSessao],
@@ -100,7 +125,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
 
   const restaurarSessao = useCallback(async (): Promise<ResultadoFluxoCadastro> => {
     geracaoRef.current += 1;
-    const estadoFinal = await carregarSessao();
+    const estadoFinal = await carregarSessao(false);
     return decidirFluxoCadastro(true, null, estadoFinal);
   }, [carregarSessao]);
 
@@ -108,16 +133,22 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     // Sai imediatamente na UI (otimista) — nunca deixa a tela autenticada
     // visível enquanto espera a rede; a geração muda ANTES do await, então
     // nenhuma resposta de /auth/me já em voo consegue mais escrever estado.
+    cancelarLeitura();
     geracaoRef.current += 1;
     salvarPreferenciaTenant(null);
     setEstado({ status: "nao_autenticado" });
 
     const resultado = await authApi.logout();
     return { confirmadoPeloServidor: resultado.ok };
-  }, []);
+  }, [cancelarLeitura]);
 
+  // "Tentar novamente" da tela de falha: volta a `carregando` (a tela mostra
+  // que está tentando) e refaz a leitura com tentativas. Ignorado se já há
+  // uma leitura em andamento — nunca empilha requisições.
   const recarregar = useCallback(() => {
-    void carregarSessao();
+    if (leituraRef.current !== null) return;
+    setEstado((atual) => (atual.status === "falha_comunicacao" ? { status: "carregando" } : atual));
+    void carregarSessao(true);
   }, [carregarSessao]);
 
   const selecionarTenantAtivo = useCallback((tenantId: string): boolean => {

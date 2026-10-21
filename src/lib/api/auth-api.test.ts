@@ -108,6 +108,42 @@ describe("buscarSessaoAtual", () => {
 
     expect(resultado).toEqual({ ok: true, dados: SESSAO_VALIDA });
   });
+
+  // Resposta observada no piloto enquanto o serviço do Render acorda: 502 em
+  // HTML gerado pela borda da hospedagem, sem passar pela API.
+  it.each([502, 503, 504])("%i da hospedagem vira falha de comunicação, nunca não autenticado", async (status) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html><body>Bad Gateway</body></html>", {
+          status,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      ),
+    );
+
+    const resultado = await buscarSessaoAtual();
+
+    expect(resultado).toEqual({ ok: false, falha: { tipo: "falha_comunicacao" } });
+  });
+
+  it("500 da API continua indisponível, não falha de comunicação", async () => {
+    mockFetch(500, { message: "Erro interno." });
+
+    const resultado = await buscarSessaoAtual();
+
+    expect(resultado).toEqual({ ok: false, falha: { tipo: "indisponivel" } });
+  });
+
+  it("repassa o sinal de cancelamento ao fetch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controle = new AbortController();
+
+    await buscarSessaoAtual(controle.signal);
+
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).signal).toBe(controle.signal);
+  });
 });
 
 describe("logout", () => {
