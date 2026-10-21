@@ -70,8 +70,8 @@ export function BarraAgenda(props: BarraAgendaProps) {
         </Botao>
       </div>
 
-      {/* Celular: navegação + Atualizar (só ícone) numa linha, dia e filtro na
-          seguinte. Computador: tudo numa linha só. */}
+      {/* Celular: navegação + Atualizar (só ícone) numa linha, depois o dia e
+          o filtro, um por linha. Computador: tudo numa linha só. */}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 sm:grid-cols-[auto_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-end">
         <div
           className="col-start-1 row-start-1 flex items-center gap-1 sm:col-start-auto sm:row-start-auto"
@@ -109,7 +109,10 @@ export function BarraAgenda(props: BarraAgendaProps) {
           </Botao>
         </div>
 
-        <div className="col-span-2 grid grid-cols-2 gap-3 sm:contents">
+        {/* Celular: dia e filtro em linhas próprias, na largura toda — lado a
+            lado, o filtro ficava com ~100 px e cortava "Todos os
+            profissionais". */}
+        <div className="col-span-2 grid gap-3 sm:contents">
           <div>
             <label htmlFor="data" className="mb-1 block text-xs font-medium text-ink-soft">
               Dia
@@ -134,7 +137,7 @@ export function BarraAgenda(props: BarraAgendaProps) {
               id="filtro-profissional"
               value={filtroProfissionalId}
               onChange={(e) => props.aoFiltrar(e.target.value)}
-              className={CLASSE_CAMPO}
+              className={`${CLASSE_CAMPO} truncate`}
             >
               <option value={TODOS_OS_PROFISSIONAIS}>Todos os profissionais</option>
               {profissionais.map((p) => (
