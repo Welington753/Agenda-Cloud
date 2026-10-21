@@ -19,6 +19,9 @@ export interface ItemNavegacaoConta {
 export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
   { href: "/conta/visao-geral", rotulo: "Visão geral", noCelular: "barra" },
   { href: "/conta/agendamentos", rotulo: "Agenda", noCelular: "barra" },
+  // Pedidos do agendamento online e reservas aguardando confirmação. No
+  // celular fica no "Mais", que mostra o contador de pendentes.
+  { href: "/conta/solicitacoes", rotulo: "Solicitações", noCelular: "mais" },
   { href: "/conta/clientes", rotulo: "Clientes", noCelular: "barra" },
   { href: "/conta/servicos", rotulo: "Serviços", noCelular: "barra" },
   { href: "/conta/profissionais", rotulo: "Profissionais", noCelular: "mais" },

@@ -44,6 +44,7 @@ import {
 } from "@/lib/conta/visao-geral";
 import type { AgendamentoReal } from "@/lib/api/appointments-api";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { AvisoSolicitacoes } from "@/components/conta/aviso-solicitacoes";
 import { CartaoAtendimento, StatusDoAtendimento } from "@/components/conta/cartao-atendimento";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -137,6 +138,8 @@ export default function VisaoGeralPage() {
         </>
       }
     >
+      <AvisoSolicitacoes tenantId={contexto.tenantId} />
+
       {carregando && <Carregando />}
 
       {estado.status === "falha" &&

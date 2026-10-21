@@ -1,0 +1,293 @@
+// Agendamento público real e solicitações do dono — navegador real, backend
+// real e PostgreSQL descartável.
+//
+// Prova, de ponta a ponta: a página só existe depois de o dono ativar; o
+// cliente agenda sem conta, no celular e no computador, e recebe "Aguardando
+// confirmação do estabelecimento"; o pedido aparece no painel (contador no
+// menu e aviso na Visão geral), continua lá depois de recarregar, e só sai
+// ao confirmar ou recusar; tela desatualizada é recusada; horário tomado por
+// outro cliente, resposta perdida e falha de comunicação têm mensagens
+// honestas; "Combinar outro horário" não grava nada.
+//
+// Nenhum WhatsApp real: wa.me é respondido dentro do navegador do teste.
+//
+// Orçamento: 1 cadastro e 1 login (limites reais de 5 por IP); 8 pedidos
+// públicos (limite de 10 por hora por IP). Invocação própria
+// (`npm run test:browser:agendamento-publico`).
+import { expect, test, type Browser, type Page } from "@playwright/test";
+import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
+
+const BACKEND_URL = "http://localhost:3001";
+const SENHA = "senha-do-agendamento-publico-123";
+const COMPUTADOR = { width: 1280, height: 800 };
+const CELULAR = { width: 390, height: 844 };
+const WHATSAPP = /^https:\/\/(wa\.me|api\.whatsapp\.com)\//;
+const rotuloDoDia = `dom ${DATA.slice(8, 10)}/${DATA.slice(5, 7)}`;
+const dataBr = DATA.split("-").reverse().join("/");
+
+async function api<T>(pagina: Page, caminho: string, method = "GET", body?: unknown) {
+  return pagina.evaluate(
+    async ({ url, method, body }) => {
+      const r = await fetch(url, {
+        method,
+        credentials: "include",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const texto = await r.text();
+      return { status: r.status, corpo: (texto ? JSON.parse(texto) : null) as T };
+    },
+    { url: `${BACKEND_URL}${caminho}`, method, body },
+  );
+}
+
+async function semRolagemHorizontal(p: Page) {
+  const l = await p.evaluate(() => ({ conteudo: document.documentElement.scrollWidth, janela: window.innerWidth }));
+  expect(l.conteudo).toBeLessThanOrEqual(l.janela);
+}
+
+/** Visitante anônimo: contexto novo, sem cookie nenhum. */
+async function visitante(browser: Browser, viewport: { width: number; height: number }) {
+  const contexto = await browser.newContext({ viewport });
+  return { contexto, pagina: await contexto.newPage() };
+}
+
+async function escolherHorario(p: Page, servico: string, profissional: string, hora: string) {
+  await p.getByTestId("lista-servicos-publicos").getByRole("button", { name: new RegExp(servico) }).click();
+  await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: new RegExp(profissional) }).click();
+  await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
+  await p.getByTestId("lista-horarios-publicos").getByRole("button", { name: hora, exact: true }).click();
+}
+
+async function preencher(p: Page, nome: string, whatsapp: string) {
+  await p.getByLabel("Nome").fill(nome);
+  await p.getByLabel("WhatsApp com DDD").fill(whatsapp);
+}
+
+test("agendamento público: página ativada, pedido pendente, painel do dono, confirmar e recusar", async ({
+  page,
+  context,
+  browser,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(COMPUTADOR);
+  await context.route(WHATSAPP, (rota) =>
+    rota.fulfill({ contentType: "text/html", body: "<p>WhatsApp (falso, teste)</p>" }),
+  );
+
+  const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `publico-${sufixo}@example.test`;
+  const estabelecimento = `Clínica Pública ${sufixo}`;
+  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
+    data: { ownerName: "Dona Pública", businessName: estabelecimento, email, phone: "11977770002", password: SENHA },
+  });
+  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("Senha").fill(SENHA);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+
+  const me = await api<{ activeContext: { tenantId: string } }>(page, "/auth/me");
+  const base = `/tenants/${me.corpo.activeContext.tenantId}`;
+  const servico = await api<{ service: { id: string } }>(page, `${base}/services`, "POST", {
+    name: "Sessão de fisioterapia",
+    shortDescription: "Avaliação e exercícios",
+    priceCents: 12000,
+    priceVisible: true,
+    durationMinutes: 60,
+    bufferAfterMinutes: 0,
+    modality: "IN_PERSON",
+    activeInPublicBooking: true,
+    // Sem confirmação manual: o pedido público nasce PENDING mesmo assim.
+    requiresManualConfirmation: false,
+  });
+  expect(servico.status).toBe(201);
+  const prof = await api<{ professional: { id: string } }>(page, `${base}/professionals`, "POST", {
+    name: "Ana Fisio",
+    serviceIds: [servico.corpo.service.id],
+  });
+  expect(prof.status).toBe(201);
+  expect(
+    (await api(page, `${base}/professionals/${prof.corpo.professional.id}/schedule`, "PUT", {
+      days: [{ weekday: WEEKDAY_DA_DATA, intervals: [{ start: "09:00", end: "13:00" }] }],
+    })).status,
+  ).toBe(200);
+  const settings = await api<{ settings: { slug: string; enabled: boolean } }>(page, `${base}/public-booking`);
+  const slug = settings.corpo.settings.slug;
+  expect(settings.corpo.settings.enabled).toBe(false);
+
+  // ------------------------------------------- antes de ativar: não existe
+  const anonimo = await visitante(browser, CELULAR);
+  await anonimo.pagina.goto(`/agendar/${slug}`);
+  await expect(anonimo.pagina.getByTestId("pagina-publica-falha")).toContainText(
+    "Esta página de agendamento não está disponível.",
+  );
+
+  // ------------------------------------------- dono ativa e copia o link
+  await page.goto("/conta/solicitacoes");
+  await expect(page.getByTestId("agendamento-online-estado")).toContainText("Página desativada");
+  await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
+  await page.getByTestId("alternar-agendamento-online").click();
+  await expect(page.getByTestId("agendamento-online-estado")).toHaveText("Página ativa");
+  const link = await page.getByTestId("link-publico").inputValue();
+  expect(link).toBe(`http://localhost:3000/agendar/${slug}`);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByTestId("copiar-link").click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+
+  // ------------------------------------------- cliente agenda no celular
+  const p = anonimo.pagina;
+  const escritasPrivadas: string[] = [];
+  p.on("request", (r) => {
+    if (r.url().includes("/tenants/") || r.url().includes("/consumers")) escritasPrivadas.push(r.url());
+  });
+  await p.goto(link);
+  await expect(p.getByRole("heading", { level: 1 })).toHaveText(estabelecimento);
+  await expect(p.getByTestId("lista-servicos-publicos")).toContainText("R$");
+  await escolherHorario(p, "Sessão de fisioterapia", "Ana Fisio", "09:00");
+  await preencher(p, "Joana Cliente", "(11) 98888-0001");
+  await semRolagemHorizontal(p);
+  await p.screenshot({ path: test.info().outputPath("publico-formulario-celular.png"), fullPage: true });
+  // Clique duplo: um pedido só.
+  await p.getByTestId("enviar-pedido").dblclick();
+  await expect(p.getByTestId("recibo-status")).toHaveText("Aguardando confirmação do estabelecimento");
+  await expect(p.getByTestId("recibo-pedido")).not.toContainText(/Confirmado/);
+  await expect(p.getByTestId("recibo-data")).toHaveText(dataBr);
+  await expect(p.getByTestId("recibo-hora")).toHaveText("09:00");
+  await p.screenshot({ path: test.info().outputPath("publico-recibo-celular.png"), fullPage: true });
+  expect(escritasPrivadas, "a página pública nunca chama rota privada").toEqual([]);
+
+  // ------------------------------------------- dono vê o aviso persistente
+  await page.goto("/conta/visao-geral");
+  await expect(page.getByTestId("aviso-solicitacoes")).toContainText("1 solicitação aguardando sua confirmação.");
+  await expect(page.getByTestId("contador-solicitacoes")).toContainText("1");
+  await page.reload();
+  await expect(page.getByTestId("contador-solicitacoes")).toContainText("1");
+  await page.getByRole("link", { name: /Ver solicitações/ }).click();
+  const lista = page.getByTestId("lista-solicitacoes");
+  await expect(lista.getByTestId("solicitacao")).toHaveCount(1);
+  const joana = lista.getByTestId("solicitacao").filter({ hasText: "Joana Cliente" });
+  await expect(joana.getByTestId("solicitacao-origem")).toHaveText("Pedido online");
+  await expect(joana.getByTestId("solicitacao-horario")).toHaveText(`${dataBr} às 09:00`);
+
+  // "Combinar outro horário" é só link: nada é gravado, o pedido continua pendente.
+  const escritas: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().startsWith(BACKEND_URL) && r.method() !== "GET") escritas.push(`${r.method()} ${r.url()}`);
+  });
+  const [aba] = await Promise.all([
+    context.waitForEvent("page"),
+    joana.getByTestId("combinar-outro-horario").click(),
+  ]);
+  expect(aba.url()).toMatch(/^https:\/\/wa\.me\/5511988880001\?text=/);
+  await aba.close();
+  expect(escritas).toEqual([]);
+  await page.reload();
+  await expect(page.getByTestId("lista-solicitacoes").getByTestId("solicitacao")).toHaveCount(1);
+
+  // ------------------------------------------- tela desatualizada
+  const [pendente] = (await api<{ requests: { id: string; startAt: string }[] }>(page, `${base}/booking-requests`)).corpo.requests;
+  // Outra aba remarca para 10:00 depois de esta tela carregar.
+  expect(
+    (await api(page, `${base}/appointments/${pendente.id}/reschedule`, "POST", {
+      startAt: instanteLocalDe("10:00"),
+      expectedStartAt: pendente.startAt,
+    })).status,
+  ).toBe(201);
+  await page.getByTestId("lista-solicitacoes").getByTestId("confirmar-solicitacao").click();
+  await expect(page.getByTestId("solicitacao-erro")).toContainText(/mudou|alterada/);
+  await expect(page.getByTestId("lista-solicitacoes").getByTestId("solicitacao-horario")).toHaveText(`${dataBr} às 10:00`);
+  // Nada foi confirmado pela tela desatualizada.
+  expect((await api<{ appointment: { status: string } }>(page, `${base}/appointments/${pendente.id}`)).corpo.appointment.status).toBe("PENDING");
+
+  // ------------------------------------------- confirmar, recarregar
+  await page.getByTestId("lista-solicitacoes").getByTestId("confirmar-solicitacao").click();
+  await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
+  await expect(page.getByTestId("contador-solicitacoes")).toHaveCount(0);
+  expect((await api<{ appointment: { status: string } }>(page, `${base}/appointments/${pendente.id}`)).corpo.appointment.status).toBe("CONFIRMED");
+
+  // ------------------------------------------- dois clientes, mesmo horário
+  const outro = await visitante(browser, COMPUTADOR);
+  await outro.pagina.goto(link);
+  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "11:00");
+  await preencher(outro.pagina, "Bruno Atrasado", "(11) 98888-0002");
+  // Enquanto Bruno preenchia, Carla pediu o mesmo horário.
+  const carla = await outro.pagina.evaluate(
+    async ({ url, corpo }) => (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })).status,
+    {
+      url: `${BACKEND_URL}/public/${slug}/booking-requests`,
+      corpo: {
+        serviceId: servico.corpo.service.id,
+        professionalId: prof.corpo.professional.id,
+        startAt: instanteLocalDe("11:00"),
+        name: "Carla Rápida",
+        whatsapp: "(11) 98888-0003",
+        idempotencyKey: `carla-${sufixo}`.padEnd(16, "x"),
+      },
+    },
+  );
+  expect(carla).toBe(201);
+  await outro.pagina.getByTestId("enviar-pedido").click();
+  await expect(outro.pagina.getByTestId("envio-falha")).toContainText("Este horário acabou de ser ocupado");
+  await expect(outro.pagina.getByTestId("lista-horarios-publicos").getByRole("button", { name: "11:00", exact: true })).toHaveCount(0);
+
+  // ------------------------------------------- resposta perdida → verificar envio
+  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "12:00");
+  await outro.pagina.route("**/public/*/booking-requests", async (rota) => {
+    await rota.fetch(); // o servidor grava...
+    await rota.abort("connectionreset"); // ...e a resposta se perde.
+  });
+  await outro.pagina.getByTestId("enviar-pedido").click();
+  await expect(outro.pagina.getByTestId("envio-incerto")).toContainText("pode ter sido registrado");
+  await expect(outro.pagina.getByTestId("enviar-pedido")).toHaveCount(0);
+  await outro.pagina.unroute("**/public/*/booking-requests");
+  await outro.pagina.screenshot({ path: test.info().outputPath("publico-incerto-computador.png"), fullPage: true });
+  await outro.pagina.getByTestId("verificar-envio").click();
+  await expect(outro.pagina.getByRole("heading", { name: "Este pedido já tinha sido recebido" })).toBeVisible();
+  await expect(outro.pagina.getByTestId("recibo-status")).toHaveText("Aguardando confirmação do estabelecimento");
+
+  // ------------------------------------------- falha de comunicação na leitura
+  const terceiro = await visitante(browser, CELULAR);
+  await terceiro.pagina.route("**/public/*/availability**", (rota) => rota.abort("internetdisconnected"));
+  await terceiro.pagina.goto(link);
+  await terceiro.pagina.getByTestId("lista-servicos-publicos").getByRole("button").first().click();
+  await terceiro.pagina.getByTestId("lista-profissionais-publicos").getByRole("button").first().click();
+  await expect(terceiro.pagina.getByTestId("horarios-falha")).toContainText("Verifique sua conexão");
+  await terceiro.pagina.unroute("**/public/*/availability**");
+  await terceiro.pagina.getByRole("button", { name: "Tentar de novo" }).click();
+  await expect(terceiro.pagina.getByTestId("lista-horarios-publicos").or(terceiro.pagina.getByTestId("sem-horarios"))).toBeVisible();
+  await terceiro.contexto.close();
+
+  // ------------------------------------------- dono recusa, no celular
+  await page.setViewportSize(CELULAR);
+  await page.goto("/conta/solicitacoes");
+  const cartoes = page.getByTestId("lista-solicitacoes").getByTestId("solicitacao");
+  await expect(cartoes).toHaveCount(2);
+  await expect(page.getByTestId("contador-mais")).toBeVisible();
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath("solicitacoes-celular.png"), fullPage: true });
+  const daCarla = cartoes.filter({ hasText: "Carla Rápida" });
+  await daCarla.getByTestId("recusar-solicitacao").click();
+  await daCarla.getByTestId("confirmar-recusa-botao").click();
+  await expect(cartoes).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByTestId("lista-solicitacoes").getByTestId("solicitacao")).toHaveCount(1);
+  await expect(page.getByTestId("lista-solicitacoes")).not.toContainText("Carla Rápida");
+  // O horário recusado volta a aparecer para o público.
+  await outro.pagina.goto(link);
+  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "11:00");
+  await page.setViewportSize(COMPUTADOR);
+  await page.screenshot({ path: test.info().outputPath("solicitacoes-computador.png"), fullPage: true });
+
+  // ------------------------------------------- desativar esconde de novo
+  await page.getByTestId("alternar-agendamento-online").click();
+  await expect(page.getByTestId("agendamento-online-estado")).toContainText("Página desativada");
+  await outro.pagina.goto(link);
+  await expect(outro.pagina.getByTestId("pagina-publica-falha")).toBeVisible();
+  await outro.contexto.close();
+  await anonimo.contexto.close();
+});

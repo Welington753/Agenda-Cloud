@@ -28,6 +28,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
+  Inbox,
   LayoutDashboard,
   Contact,
   LogOut,
@@ -48,10 +49,15 @@ import {
 } from "@/lib/conta/navegacao";
 import { NOME_PRODUTO } from "@/lib/config";
 import { useToast } from "@/components/ui/toast";
+import {
+  contagemVisivel,
+  useSolicitacoesPendentes,
+} from "@/lib/agendamento-publico/use-solicitacoes";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/visao-geral": LayoutDashboard,
   "/conta/agendamentos": CalendarDays,
+  "/conta/solicitacoes": Inbox,
   "/conta/clientes": Contact,
   "/conta/servicos": ClipboardList,
   "/conta/profissionais": Users,
@@ -76,14 +82,31 @@ const CLASSE_INATIVO = "text-white/70 hover:bg-white/5 hover:text-white";
 const CLASSE_ITEM_EM_LISTA =
   "flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
 
+/** Contador de pendentes ao lado do rótulo. Só aparece com número
+ * positivo vindo do servidor; o texto oculto diz o que o número significa. */
+function Contador({ total }: { total: number | null | undefined }) {
+  if (!total) return null;
+  return (
+    <span
+      data-testid="contador-solicitacoes"
+      className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--color-accent)] px-1.5 text-[11px] leading-5 font-semibold text-white"
+    >
+      {total > 99 ? "99+" : total}
+      <span className="sr-only"> {total === 1 ? "solicitação pendente" : "solicitações pendentes"}</span>
+    </span>
+  );
+}
+
 function LinkNavegacao({
   item,
   ativo,
   emLista = false,
+  contador,
 }: {
   item: ItemNavegacaoConta;
   ativo: boolean;
   emLista?: boolean;
+  contador?: number | null;
 }) {
   const Icone = ICONE_POR_HREF[item.href] ?? LayoutDashboard;
   return (
@@ -97,6 +120,7 @@ function LinkNavegacao({
     >
       <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />
       <span className={emLista ? undefined : "w-full truncate md:w-auto"}>{item.rotulo}</span>
+      <Contador total={contador} />
     </Link>
   );
 }
@@ -137,6 +161,13 @@ export function ShellConta({ children }: { children: ReactNode }) {
   }, [maisAberto]);
 
   const maisAtivo = ITENS_MENU_MAIS.some((item) => itemAtivo(pathname, item.href));
+
+  const tenantAtual = estado.status === "autenticado" ? estado.tenantIdAtivo : null;
+  const { estado: estadoSolicitacoes, recarregar: recarregarSolicitacoes } =
+    useSolicitacoesPendentes(tenantAtual);
+  const pendentes = contagemVisivel(estadoSolicitacoes);
+  // Cada navegação relê a contagem: o aviso acompanha o que está no banco.
+  useEffect(() => recarregarSolicitacoes(), [pathname, recarregarSolicitacoes]);
 
   if (estado.status !== "autenticado") return <>{children}</>;
 
@@ -203,7 +234,11 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   // a cópia do menu "Mais" existe ali.
                   className={clsx("min-w-0", item.noCelular === "mais" && "hidden md:block")}
                 >
-                  <LinkNavegacao item={item} ativo={itemAtivo(pathname, item.href)} />
+                  <LinkNavegacao
+                    item={item}
+                    ativo={itemAtivo(pathname, item.href)}
+                    contador={item.href === "/conta/solicitacoes" ? pendentes : undefined}
+                  />
                 </li>
               ))}
               <li className="min-w-0 md:hidden">
@@ -212,10 +247,18 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   aria-expanded={maisAberto}
                   aria-controls="menu-mais"
                   onClick={() => setMaisAberto((aberto) => !aberto)}
-                  className={clsx(CLASSE_ITEM, maisAtivo || maisAberto ? CLASSE_ATIVO : CLASSE_INATIVO, "w-full")}
+                  className={clsx(CLASSE_ITEM, maisAtivo || maisAberto ? CLASSE_ATIVO : CLASSE_INATIVO, "relative w-full")}
                 >
                   <MoreHorizontal size={20} aria-hidden="true" className="shrink-0" />
                   <span className="w-full truncate">Mais</span>
+                  {!!pendentes && (
+                    <span
+                      aria-hidden="true"
+                      data-testid="contador-mais"
+                      className="absolute top-1.5 right-[calc(50%-18px)] size-2.5 rounded-full bg-[var(--color-accent)]"
+                    />
+                  )}
+                  {!!pendentes && <span className="sr-only"> ({pendentes} solicitações pendentes)</span>}
                   {maisAtivo && <span className="sr-only"> (página atual aqui)</span>}
                 </button>
               </li>
@@ -227,7 +270,12 @@ export function ShellConta({ children }: { children: ReactNode }) {
               >
                 {ITENS_MENU_MAIS.map((item) => (
                   <li key={item.href}>
-                    <LinkNavegacao item={item} ativo={itemAtivo(pathname, item.href)} emLista />
+                    <LinkNavegacao
+                      item={item}
+                      ativo={itemAtivo(pathname, item.href)}
+                      emLista
+                      contador={item.href === "/conta/solicitacoes" ? pendentes : undefined}
+                    />
                   </li>
                 ))}
               </ul>
