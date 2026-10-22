@@ -8,8 +8,16 @@ import type { ResultadoAutenticacaoReal, SessaoRealContexto, TenantContextReal }
 export type EstadoAutenticacaoReal =
   | { status: "carregando" }
   | { status: "nao_autenticado" }
-  | { status: "falha_comunicacao" }
+  | {
+      status: "falha_comunicacao";
+      /** `sem_resposta`: a API não respondeu dentro do prazo (hospedagem
+       * acordando demais, fora do ar ou sem rede). `erro_servidor`: a API
+       * respondeu, mas com erro — repetir sozinho não resolve. */
+      motivo: MotivoFalhaSessao;
+    }
   | { status: "autenticado"; sessao: SessaoRealContexto; tenantIdAtivo: string | null };
+
+export type MotivoFalhaSessao = "sem_resposta" | "erro_servidor";
 
 /**
  * Decide qual tenant fica "ativo" a partir da sessão vinda do backend + uma
@@ -50,8 +58,12 @@ export function reduzirResultadoSessao(
   if (!resultado.ok) {
     // `limite_tentativas`/`indisponivel` em /auth/me (fora do login) também
     // nunca devem liberar a demonstração automaticamente nem fingir logout —
-    // tratados como a mesma falha de comunicação genérica para fins de UI.
-    return { status: "falha_comunicacao" };
+    // tratados como a mesma falha de comunicação genérica para fins de UI,
+    // só com o motivo separado para a mensagem.
+    return {
+      status: "falha_comunicacao",
+      motivo: resultado.falha.tipo === "falha_comunicacao" ? "sem_resposta" : "erro_servidor",
+    };
   }
   if (resultado.dados === null) {
     return { status: "nao_autenticado" };

@@ -11,10 +11,12 @@
 // tenant) em torno da lógica pura de `real-session-state.ts` — a decisão de
 // qual estado resulta de cada resposta vive lá, não aqui.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import * as authApi from "@/lib/api/auth-api";
 import type { DadosCadastroReal, ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
+import { lerComRecuperacao } from "@/lib/api/leitura-com-recuperacao";
 import { decidirFluxoCadastro, type ResultadoFluxoCadastro } from "./cadastro-fluxo";
-import { lerSessaoComTentativas } from "./leitura-sessao";
+import { LIMIAR_RETORNO_MS, aplicarVerificacao, rotaDispensaSessao, type EstadoConexao } from "./conexao";
 import {
   podeAplicarResultado,
   reduzirResultadoSessao,
@@ -32,6 +34,10 @@ export interface ResultadoLogout {
 
 interface RealAuthContextValue {
   estado: EstadoAutenticacaoReal;
+  /** Situação da conexão com a API enquanto uma leitura de sessão tenta
+   * alcançá-la (ver conexao.ts). Independente de `estado`: reconectar nunca
+   * desmonta a tela autenticada. */
+  conexao: EstadoConexao;
   login: (email: string, senha: string) => Promise<ResultadoAutenticacaoReal<SessaoRealContexto>>;
   /** POST /auth/register e, só se ele confirmar, restauração do contexto por
    * /auth/me. Nunca reenvia o cadastro por conta própria. */
@@ -40,6 +46,8 @@ interface RealAuthContextValue {
    * reenviar POST /auth/register. */
   restaurarSessao: () => Promise<ResultadoFluxoCadastro>;
   logout: () => Promise<ResultadoLogout>;
+  /** "Tentar novamente": refaz a leitura com recuperação. Ignorado com uma
+   * leitura já em andamento. */
   recarregar: () => void;
   selecionarTenantAtivo: (tenantId: string) => boolean;
 }
@@ -48,6 +56,20 @@ const RealAuthContext = createContext<RealAuthContextValue | undefined>(undefine
 
 export function RealAuthProvider({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<EstadoAutenticacaoReal>({ status: "carregando" });
+  const [conexao, setConexao] = useState<EstadoConexao>("ok");
+  // Cópia para os ouvintes de eventos do navegador (sem recriá-los a cada
+  // mudança de estado).
+  const estadoRef = useRef(estado);
+  const conexaoRef = useRef(conexao);
+  useEffect(() => {
+    estadoRef.current = estado;
+    conexaoRef.current = conexao;
+  }, [estado, conexao]);
+  // Já existe um estado decidido pela API (ou por login/logout). Enquanto
+  // não, a abertura da página ainda precisa ler a sessão.
+  const sessaoDecididaRef = useRef(false);
+  const pathname = usePathname();
+  const precisaDeSessao = !rotaDispensaSessao(pathname);
   // Incrementada a cada ação que decide autoritativamente o novo estado
   // (login, logout, recarregar) — uma resposta assíncrona só pode aplicar seu
   // resultado se a geração não mudou enquanto ela estava em voo (ver
@@ -60,39 +82,125 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   const leituraRef = useRef<AbortController | null>(null);
 
   const cancelarLeitura = useCallback(() => {
-    leituraRef.current?.abort();
+    if (leituraRef.current === null) return;
+    leituraRef.current.abort();
     leituraRef.current = null;
+    setConexao("ok");
   }, []);
 
+  // Modos:
+  // - `abertura`: com recuperação (lerComRecuperacao); o resultado decide a
+  //   tela (carregando → autenticado / login / falha);
+  // - `verificacao`: com recuperação, mas com a tela já decidida (volta ao
+  //   aplicativo, conexão de volta). Nunca troca a tela por carregamento ou
+  //   falha (ver `aplicarVerificacao`);
+  // - `unica`: UMA leitura, sem repetição (logo depois do cadastro).
   // Devolve o estado efetivamente aplicado, ou `null` quando a resposta
   // chegou tarde demais (geração mudou ou leitura cancelada) e foi
   // descartada — quem chamou precisa saber a diferença entre "sessão
-  // restaurada" e "não deu". `comTentativas` só na abertura e no "Tentar
-  // novamente": depois de um cadastro, uma leitura só (ver `cadastrar`).
+  // restaurada" e "não deu".
   const carregarSessao = useCallback(
-    async (comTentativas: boolean): Promise<EstadoAutenticacaoReal | null> => {
+    async (modo: "abertura" | "verificacao" | "unica"): Promise<EstadoAutenticacaoReal | null> => {
       cancelarLeitura();
       const controle = new AbortController();
       leituraRef.current = controle;
       const geracaoDaChamada = geracaoRef.current;
-      const resultado = await lerSessaoComTentativas(
-        (signal) => authApi.buscarSessaoAtual(signal),
-        controle.signal,
-        comTentativas ? {} : { esperas: [] },
-      );
-      if (leituraRef.current === controle) leituraRef.current = null;
-      if (resultado === null || !podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) return null;
+      const vigente = () => leituraRef.current === controle;
+
+      let resultado: ResultadoAutenticacaoReal<SessaoRealContexto | null> | null;
+      if (modo === "unica") {
+        const unico = await authApi.buscarSessaoAtual(controle.signal);
+        resultado = controle.signal.aborted ? null : unico;
+      } else {
+        const desfecho = await lerComRecuperacao(
+          (signal) => authApi.buscarSessaoAtual(signal),
+          (r) => !r.ok && r.falha.tipo === "falha_comunicacao",
+          controle.signal,
+          {
+            aoMudarFase: (fase) => {
+              if (vigente()) setConexao(fase);
+            },
+          },
+        );
+        resultado = desfecho?.resultado ?? null;
+      }
+      if (!vigente()) return null;
+      leituraRef.current = null;
+      if (resultado === null || !podeAplicarResultado(geracaoRef.current, geracaoDaChamada)) {
+        setConexao("ok");
+        return null;
+      }
+      sessaoDecididaRef.current = true;
+      if (modo === "verificacao") {
+        const decisao = aplicarVerificacao(estadoRef.current, resultado, lerPreferenciaTenant());
+        setConexao(decisao.conexao);
+        setEstado(decisao.estado);
+        return decisao.estado;
+      }
       const proximo = reduzirResultadoSessao(resultado, lerPreferenciaTenant());
+      setConexao("ok");
       setEstado(proximo);
       return proximo;
     },
     [cancelarLeitura],
   );
 
+  // Abertura: lê a sessão uma vez, só nas rotas que a usam. Sair para uma
+  // rota sem sessão no meio da leitura a cancela; voltar recomeça.
   useEffect(() => {
-    void carregarSessao(true);
+    if (!precisaDeSessao || sessaoDecididaRef.current) return;
+    void carregarSessao("abertura");
     return cancelarLeitura;
-  }, [carregarSessao, cancelarLeitura]);
+  }, [precisaDeSessao, carregarSessao, cancelarLeitura]);
+
+  // "Tentar novamente" (tela de falha ou aviso de conexão) e retorno da
+  // internet. Tela de falha: volta a `carregando` e lê de novo. Tela já
+  // aberta: verificação, sem desmontar nada. Nunca empilha leituras.
+  const recarregar = useCallback(() => {
+    if (leituraRef.current !== null) return;
+    if (estadoRef.current.status === "falha_comunicacao" || !sessaoDecididaRef.current) {
+      setEstado((atual) => (atual.status === "falha_comunicacao" ? { status: "carregando" } : atual));
+      void carregarSessao("abertura");
+      return;
+    }
+    void carregarSessao("verificacao");
+  }, [carregarSessao]);
+
+  // Eventos de acesso real, nunca um temporizador: voltar ao aplicativo
+  // depois de LIMIAR_RETORNO_MS oculto, ou a internet voltar depois de uma
+  // falha. Cada um faz no máximo UMA leitura com recuperação, que termina
+  // quando a API responde ou o prazo acaba.
+  useEffect(() => {
+    if (!precisaDeSessao) return;
+    let ocultaDesde: number | null = document.visibilityState === "hidden" ? Date.now() : null;
+
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === "hidden") {
+        ocultaDesde ??= Date.now();
+        return;
+      }
+      const ficouOculta = ocultaDesde !== null && Date.now() - ocultaDesde >= LIMIAR_RETORNO_MS;
+      ocultaDesde = null;
+      if (ficouOculta && sessaoDecididaRef.current) recarregar();
+    };
+    // iPhone: o aplicativo pode voltar da memória (bfcache) sem
+    // `visibilitychange`; `persisted` só é verdadeiro nesse retorno.
+    const aoMostrarPagina = (evento: PageTransitionEvent) => {
+      if (evento.persisted && sessaoDecididaRef.current) recarregar();
+    };
+    const aoVoltarOnline = () => {
+      if (estadoRef.current.status === "falha_comunicacao" || conexaoRef.current === "sem_resposta") recarregar();
+    };
+
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    window.addEventListener("pageshow", aoMostrarPagina);
+    window.addEventListener("online", aoVoltarOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+      window.removeEventListener("pageshow", aoMostrarPagina);
+      window.removeEventListener("online", aoVoltarOnline);
+    };
+  }, [precisaDeSessao, recarregar]);
 
   const login = useCallback(async (email: string, senha: string) => {
     cancelarLeitura();
@@ -100,6 +208,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     const geracaoDaChamada = geracaoRef.current;
     const resultado = await authApi.login(email, senha);
     if (podeAplicarResultado(geracaoRef.current, geracaoDaChamada) && resultado.ok) {
+      sessaoDecididaRef.current = true;
       setEstado(reduzirResultadoSessao({ ok: true, dados: resultado.dados }, lerPreferenciaTenant()));
     }
     return resultado;
@@ -117,7 +226,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
       // Cadastro confirmado: a partir daqui o cookie de sessão já existe no
       // navegador, então qualquer /auth/me em voo de antes está obsoleto.
       geracaoRef.current += 1;
-      const estadoFinal = await carregarSessao(false);
+      const estadoFinal = await carregarSessao("unica");
       return decidirFluxoCadastro(true, null, estadoFinal);
     },
     [carregarSessao],
@@ -125,7 +234,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
 
   const restaurarSessao = useCallback(async (): Promise<ResultadoFluxoCadastro> => {
     geracaoRef.current += 1;
-    const estadoFinal = await carregarSessao(false);
+    const estadoFinal = await carregarSessao("unica");
     return decidirFluxoCadastro(true, null, estadoFinal);
   }, [carregarSessao]);
 
@@ -134,6 +243,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     // visível enquanto espera a rede; a geração muda ANTES do await, então
     // nenhuma resposta de /auth/me já em voo consegue mais escrever estado.
     cancelarLeitura();
+    sessaoDecididaRef.current = true;
     geracaoRef.current += 1;
     salvarPreferenciaTenant(null);
     setEstado({ status: "nao_autenticado" });
@@ -141,15 +251,6 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     const resultado = await authApi.logout();
     return { confirmadoPeloServidor: resultado.ok };
   }, [cancelarLeitura]);
-
-  // "Tentar novamente" da tela de falha: volta a `carregando` (a tela mostra
-  // que está tentando) e refaz a leitura com tentativas. Ignorado se já há
-  // uma leitura em andamento — nunca empilha requisições.
-  const recarregar = useCallback(() => {
-    if (leituraRef.current !== null) return;
-    setEstado((atual) => (atual.status === "falha_comunicacao" ? { status: "carregando" } : atual));
-    void carregarSessao(true);
-  }, [carregarSessao]);
 
   const selecionarTenantAtivo = useCallback((tenantId: string): boolean => {
     let aceito = false;
@@ -164,7 +265,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <RealAuthContext.Provider
-      value={{ estado, login, cadastrar, restaurarSessao, logout, recarregar, selecionarTenantAtivo }}
+      value={{ estado, conexao, login, cadastrar, restaurarSessao, logout, recarregar, selecionarTenantAtivo }}
     >
       {children}
     </RealAuthContext.Provider>

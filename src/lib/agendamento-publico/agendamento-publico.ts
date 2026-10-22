@@ -88,7 +88,12 @@ export function mensagemFalhaPublica(falha: FalhaPublica): string {
     case "limite":
       return falha.mensagem ?? "Muitas tentativas. Aguarde alguns minutos e tente de novo.";
     case "falha_comunicacao":
-      return "Não foi possível falar com o servidor agora. Verifique sua conexão e tente de novo.";
+      return (
+        "Não foi possível falar com o servidor a tempo. Depois de um tempo sem uso ele pode levar cerca de " +
+        "um minuto para responder. Verifique sua conexão e tente de novo."
+      );
+    case "indisponivel":
+      return "O agendamento online está com um problema agora. Tente de novo em alguns minutos.";
     case "incerto":
       return MENSAGEM_INCERTO;
   }

@@ -191,15 +191,20 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
   }) => {
     const dados = dadosDeCadastro();
 
+    // Derruba só o GET /auth/me DEPOIS do cadastro (o POST /auth/register
+    // vai normalmente até o backend real e cria a conta de verdade). É a
+    // única forma de reproduzir num navegador "conta criada, sessão não
+    // carregada". Antes dele, a leitura da abertura responde normalmente: o
+    // formulário só envia depois de a API responder (ver cadastro/page.tsx).
+    let derrubarSessao = false;
     let chamadasDeCadastro = 0;
     page.on("request", (req) => {
-      if (req.url().endsWith("/auth/register") && req.method() === "POST") chamadasDeCadastro += 1;
+      if (req.url().endsWith("/auth/register") && req.method() === "POST") {
+        chamadasDeCadastro += 1;
+        derrubarSessao = true;
+      }
     });
 
-    // Derruba só o GET /auth/me (o POST /auth/register vai normalmente até o
-    // backend real e cria a conta de verdade). É a única forma de reproduzir
-    // num navegador "conta criada, sessão não carregada".
-    let derrubarSessao = true;
     await page.route("**/auth/me", async (rota) => {
       if (derrubarSessao) await rota.abort("failed");
       else await rota.continue();

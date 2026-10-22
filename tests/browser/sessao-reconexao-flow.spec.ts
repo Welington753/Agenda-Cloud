@@ -117,9 +117,19 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
     const registro = await simularBordaAcordando(page, () => apiFora);
 
     await page.goto("/conta");
-    await avancarAteLeitura(page, registro, 5);
-
-    await expect(page.getByRole("heading", { name: "Não foi possível conectar ao servidor" })).toBeVisible();
+    // Prazo total da recuperação (lib/api/leitura-com-recuperacao.ts): o
+    // relógio anda até a tela de falha aparecer.
+    const falha = page.getByRole("heading", { name: "Não foi possível conectar ao servidor" });
+    await expect
+      .poll(
+        async () => {
+          if ((await falha.count()) === 0) await page.clock.runFor(5_000);
+          return falha.count();
+        },
+        { timeout: 50_000, intervals: [50] },
+      )
+      .toBe(1);
+    const leiturasNaFalha = registro.leituras;
     await expect(page).toHaveURL(/\/conta$/);
     await expect(page.getByText("E-mail ou senha inválidos.")).toHaveCount(0);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
@@ -127,14 +137,14 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
     // Limite de tentativas: o tempo passa e nenhuma leitura nova acontece
     // sozinha depois da tela de falha.
     await page.clock.runFor(60_000);
-    expect(registro.leituras).toBe(5);
+    expect(registro.leituras).toBe(leiturasNaFalha);
 
     apiFora = false;
     await page.getByRole("button", { name: "Tentar novamente" }).click();
 
     await expect(page.getByText("Dono(a)")).toBeVisible();
     await expect(page).toHaveURL(/\/conta$/);
-    expect(registro.leituras).toBe(6);
+    expect(registro.leituras).toBe(leiturasNaFalha + 1);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
     await page.context().close();
   });

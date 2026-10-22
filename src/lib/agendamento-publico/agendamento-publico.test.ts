@@ -50,6 +50,8 @@ describe("textos do pedido", () => {
     expect(mensagemFalhaPublica({ tipo: "conflito", mensagem: "X" })).toBe("X");
     expect(mensagemFalhaPublica({ tipo: "conflito", mensagem: null })).toMatch(/ocupado/);
     expect(mensagemFalhaPublica({ tipo: "falha_comunicacao" })).toMatch(/conexão/);
+    expect(mensagemFalhaPublica({ tipo: "indisponivel" })).toMatch(/problema/);
+    expect(mensagemFalhaPublica({ tipo: "indisponivel" })).not.toMatch(/conexão|acordar|sem uso/);
     expect(mensagemSemHorario("sem_jornada")).toMatch(/Sem atendimento/);
     expect(mensagemSemHorario("sem_horario_livre")).toMatch(/ocupados/);
   });

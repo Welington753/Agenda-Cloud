@@ -12,18 +12,17 @@
 // qualquer repetição. Sem resposta do servidor, o formulário trava e oferece
 // "Verificar envio" (mesma chave: o servidor devolve o pedido já gravado ou
 // grava agora, nunca dois). Nada é reenviado sozinho.
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+//
+// LEITURAS (página e horários) usam a recuperação comum
+// (lib/api/leitura-com-recuperacao.ts): se a hospedagem gratuita estiver
+// acordando, a tela diz "Conectando ao servidor…" e tenta de novo sozinha,
+// dentro do prazo. O envio do pedido nunca entra nessa repetição.
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import clsx from "clsx";
 import { AlertTriangle, CalendarCheck, RefreshCw } from "lucide-react";
-import {
-  consultarHorariosPublicos,
-  enviarPedidoPublico,
-  obterPaginaPublica,
-  type FalhaPublica,
-  type PaginaPublica,
-  type ReciboPedido,
-} from "@/lib/api/public-booking-api";
+import { ConectandoAoServidor } from "@/components/conexao/aviso-conexao";
+import { enviarPedidoPublico, type FalhaPublica, type ReciboPedido } from "@/lib/api/public-booking-api";
 import {
   dataBr,
   diasOferecidos,
@@ -42,13 +41,8 @@ import {
   OPCAO_INATIVA,
   Recibo,
   Secao,
-  type EstadoHorarios,
 } from "./componentes";
-
-type EstadoPagina =
-  | { status: "carregando" }
-  | { status: "falha"; falha: FalhaPublica }
-  | { status: "pronta"; pagina: PaginaPublica };
+import { useHorariosPublicos, usePaginaPublica } from "./use-leituras-publicas";
 
 type EstadoEnvio =
   | { status: "ocioso" }
@@ -58,12 +52,11 @@ type EstadoEnvio =
 
 export default function AgendarOnlinePage() {
   const { slug } = useParams<{ slug: string }>();
-  const [estado, setEstado] = useState<EstadoPagina>({ status: "carregando" });
+  const { estado, carregarPagina } = usePaginaPublica(slug);
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [professionalId, setProfessionalId] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [slot, setSlot] = useState<{ startAt: string; localStart: string } | null>(null);
-  const [horarios, setHorarios] = useState<EstadoHorarios>({ status: "ocioso" });
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [envio, setEnvio] = useState<EstadoEnvio>({ status: "ocioso" });
@@ -72,16 +65,6 @@ export default function AgendarOnlinePage() {
   // Barreira síncrona contra clique duplo: o estado "enviando" só vale no
   // próximo render, e dois cliques no mesmo quadro passariam pelos dois.
   const emVoo = useRef(false);
-
-  const carregarPagina = useCallback(async () => {
-    setEstado({ status: "carregando" });
-    const r = await obterPaginaPublica(slug);
-    setEstado(r.ok ? { status: "pronta", pagina: r.dados } : { status: "falha", falha: r.falha });
-  }, [slug]);
-
-  useEffect(() => {
-    void carregarPagina();
-  }, [carregarPagina]);
 
   const pagina = estado.status === "pronta" ? estado.pagina : null;
   const dias = useMemo(
@@ -98,19 +81,7 @@ export default function AgendarOnlinePage() {
     setChave(gerarChaveDeEnvio());
   }, [serviceId, professionalId, slot, nome, whatsapp]);
 
-  useEffect(() => {
-    if (!serviceId || !professionalId || !date) {
-      setHorarios({ status: "ocioso" });
-      return;
-    }
-    const controle = new AbortController();
-    setHorarios({ status: "carregando" });
-    void consultarHorariosPublicos(slug, { serviceId, professionalId, date }, controle.signal).then((r) => {
-      if (controle.signal.aborted) return;
-      setHorarios(r.ok ? { status: "pronto", horarios: r.dados } : { status: "falha", falha: r.falha });
-    });
-    return () => controle.abort();
-  }, [slug, serviceId, professionalId, date, versaoHorarios]);
+  const horarios = useHorariosPublicos(slug, { serviceId, professionalId, date }, versaoHorarios);
 
   const travado = envio.status === "enviando" || (envio.status === "falha" && envio.falha.tipo === "incerto");
   const podeEnviar = !!slot && nome.trim().length >= 2 && whatsapp.trim().length >= 10 && !travado;
@@ -144,8 +115,18 @@ export default function AgendarOnlinePage() {
   if (estado.status === "carregando") {
     return (
       <Moldura>
-        <Skeleton className="h-8 w-2/3" />
-        <Skeleton className="h-40 w-full" />
+        {estado.fase ? (
+          <Cartao>
+            <CartaoCorpo>
+              <ConectandoAoServidor conexao={estado.fase} />
+            </CartaoCorpo>
+          </Cartao>
+        ) : (
+          <>
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-40 w-full" />
+          </>
+        )}
       </Moldura>
     );
   }
