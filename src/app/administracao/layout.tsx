@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { RequireRealSession } from "@/components/auth/require-real-session";
 import { AcessoAdministracao } from "@/components/administracao/acesso-administracao";
+import { MarcadorAparencia } from "@/components/aparencia/aparencia";
 
 export default function AdministracaoLayout({
   children,
@@ -8,8 +9,11 @@ export default function AdministracaoLayout({
   children: ReactNode;
 }) {
   return (
-    <RequireRealSession>
-      <AcessoAdministracao>{children}</AcessoAdministracao>
-    </RequireRealSession>
+    <>
+      <MarcadorAparencia />
+      <RequireRealSession>
+        <AcessoAdministracao>{children}</AcessoAdministracao>
+      </RequireRealSession>
+    </>
   );
 }

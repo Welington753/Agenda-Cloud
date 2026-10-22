@@ -22,7 +22,7 @@ export function BarraDeEtapas({
                 aria-current={atual ? "step" : undefined}
                 className={clsx(
                   "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors",
-                  concluida && "bg-accent text-white",
+                  concluida && "bg-accent text-on-accent",
                   atual && !concluida && "border-2 border-accent text-accent",
                   !atual && !concluida && "border border-border text-ink-soft"
                 )}

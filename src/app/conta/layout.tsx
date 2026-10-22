@@ -18,13 +18,18 @@ import type { ReactNode } from "react";
 import { RequireRealSession } from "@/components/auth/require-real-session";
 import { ShellConta } from "@/components/conta/shell-conta";
 import { SolicitacoesProvider } from "@/lib/agendamento-publico/use-solicitacoes";
+import { MarcadorAparencia } from "@/components/aparencia/aparencia";
 
 export default function ContaLayout({ children }: { children: ReactNode }) {
+  // Área real adaptável: claro, escuro ou seguir aparelho (menu da conta).
   return (
-    <RequireRealSession>
-      <SolicitacoesProvider>
-        <ShellConta>{children}</ShellConta>
-      </SolicitacoesProvider>
-    </RequireRealSession>
+    <>
+      <MarcadorAparencia />
+      <RequireRealSession>
+        <SolicitacoesProvider>
+          <ShellConta>{children}</ShellConta>
+        </SolicitacoesProvider>
+      </RequireRealSession>
+    </>
   );
 }
