@@ -9,6 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppointmentsModule } from '../appointments/appointments.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { AvailabilityModule } from '../availability/availability.module.js';
+import { PushModule } from '../push/push.module.js';
 import { parseClientIpSource, parseProxySecret } from '../config/client-ip.js';
 import {
   createPublicReadRateLimiter,
@@ -21,7 +22,7 @@ import {
 import { PublicBookingService } from './public-booking.service.js';
 
 @Module({
-  imports: [ConfigModule, AuthModule, AvailabilityModule, AppointmentsModule],
+  imports: [ConfigModule, AuthModule, AvailabilityModule, AppointmentsModule, PushModule],
   controllers: [PublicBookingController, PublicBookingAdminController],
   providers: [PublicBookingService],
 })

@@ -444,6 +444,26 @@ mais de 100 pendentes (limite da rota, ordenada por horário), um pedido novo
 para depois da centésima não aparece na lista nem avisa até as anteriores
 serem respondidas.
 
+**Web Push (aviso com o aplicativo em segundo plano ou a tela bloqueada):**
+o pedido público grava, na MESMA transação, um evento em
+`booking_request_alerts` (migration `1792713600000-WebPush`; repetir a
+chave de idempotência não cria outro; rollback não deixa evento). Depois do
+commit, `DisparadorDePush` (backend/src/push/) envia, por aparelho inscrito,
+um conteúdo cifrado (RFC 8291, VAPID RFC 8292, só `node:crypto`) com apenas
+os ids do estabelecimento e da solicitação; o service worker (public/sw.js,
+sem cache) mostra "Nova solicitação de agendamento. Toque para analisar." e
+abre `/conta/solicitacoes?estabelecimento=…&solicitacao=…`, onde a página
+revalida sessão, vínculo e permissão e só destaca o cartão. Inscrição presa a
+usuário + estabelecimento (FK para `memberships`) + sessão (sair ou revogar
+a sessão desliga). Antes de cada envio: solicitação ainda `PENDING`,
+estabelecimento ativo, sessão viva, permissão de ver a agenda, destino na
+lista de serviços de push (anti-SSRF). Cada tentativa fica em
+`push_deliveries`; `ACCEPTED` é aceitação do serviço de push, não prova de
+exibição. Recuperação sem Cron: na subida da API e de carona na consulta da
+lista pela área real; o evento expira em 24 h ou no início do atendimento.
+Configuração e roteiro físico: docs/runbooks/publicacao-piloto-render.md,
+seção 6, partes D e E.
+
 **Publicação futura (nada foi publicado):**
 
 1. Backup do banco.

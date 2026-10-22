@@ -22,7 +22,11 @@
 //  4. limites por telefone: 3 pedidos por 24 h e 2 pendentes futuros;
 //  5. cliente pelo telefone, sem alterar cadastro existente;
 //  6. reserva `PENDING` revalidada com o motor real (AppointmentsService);
-//  7. linha em `public_booking_requests`.
+//  7. linha em `public_booking_requests`;
+//  8. evento "solicitação nova" em `booking_request_alerts` (Web Push).
+//     Só DEPOIS do commit o executor tenta enviar (push-dispatcher.ts):
+//     rollback = sem evento, e falha no push nunca desfaz nem transforma em
+//     erro um pedido já gravado.
 // A constraint de sobreposição continua sendo a proteção final: dois
 // pedidos para o mesmo horário passam pela validação ao mesmo tempo, um
 // commita e o outro recebe 409.
@@ -63,6 +67,8 @@ import { ProfessionalService } from '../entities/professional-service.entity.js'
 import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { Unit } from '../entities/unit.entity.js';
+import { registrarAlerta } from '../push/booking-alerts.repository.js';
+import { DisparadorDePush } from '../push/push-dispatcher.js';
 import {
   canManagePublicBooking,
   PUBLIC_BOOKING_FORBIDDEN_MESSAGE,
@@ -150,6 +156,8 @@ export class PublicBookingService {
     private readonly appointments: AppointmentsService,
     @Optional()
     private readonly agora: () => Date = () => new Date(),
+    @Optional()
+    private readonly disparador?: DisparadorDePush,
   ) {}
 
   // ------------------------------------------------------------- público
@@ -227,6 +235,18 @@ export class PublicBookingService {
   }
 
   async request(slug: string, dto: PublicBookingRequestDto): Promise<PublicReceiptView> {
+    const recibo = await this.gravarPedido(slug, dto);
+    // Depois do commit. Nunca lança: o pedido já está gravado.
+    try {
+      if (recibo.replayed) this.disparador?.aproveitarTrafego();
+      else this.disparador?.depoisDoPedido();
+    } catch {
+      // O evento está no banco; a retomada envia depois.
+    }
+    return recibo;
+  }
+
+  private async gravarPedido(slug: string, dto: PublicBookingRequestDto): Promise<PublicReceiptView> {
     const agora = this.agora();
     const telefone = normalizePhone(dto.whatsapp);
     const startAt = new Date(dto.startAt);
@@ -288,6 +308,8 @@ export class PublicBookingService {
           agora,
         });
 
+        await registrarAlerta(tx, { tenantId: tenant.id, appointmentId: criado.appointment.id, inicio: startAt }, agora);
+
         return {
           status: criado.appointment.status,
           startAt: startAt.toISOString(),
@@ -343,6 +365,8 @@ export class PublicBookingService {
     tenantId: string,
   ): Promise<{ requests: PendingRequestView[]; complete: boolean }> {
     const { appointments, complete } = await this.appointments.listPending(userId, tenantId);
+    // Carona: a área real consultando a lista retoma avisos pendentes.
+    this.disparador?.aproveitarTrafego();
     const origem = await origemPublica(
       this.dataSource.manager,
       tenantId,

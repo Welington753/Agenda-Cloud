@@ -31,7 +31,7 @@ export type FalhaPrivada =
 
 export type ResultadoPrivado<T> = { ok: true; dados: T } | { ok: false; falha: FalhaPrivada };
 
-function falhaPorStatus(status: number, data: unknown): FalhaPrivada {
+export function falhaPorStatus(status: number, data: unknown): FalhaPrivada {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) {
     const m = (data as Record<string, unknown> | null)?.message;

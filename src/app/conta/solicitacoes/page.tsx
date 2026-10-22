@@ -18,7 +18,9 @@
 //
 // A lista se atualiza sozinha (SolicitacoesProvider, no layout de /conta),
 // e uma solicitação aberta por "Ver solicitação" num aviso chega aqui com o
-// cartão em destaque — só destacado, nunca confirmado.
+// cartão em destaque — só destacado, nunca confirmado. O mesmo vale para o
+// toque numa notificação Web Push (?estabelecimento=&solicitacao=, ver
+// use-destino-da-notificacao.ts): estabelecimento revalidado, nada confirmado.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -44,6 +46,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { AgendamentoOnline, mensagemFalhaPrivada } from "./agendamento-online";
 import { PreferenciasDeAviso } from "./preferencias-de-aviso";
+import { NotificacoesDoDispositivo } from "./notificacoes-do-dispositivo";
+import { MENSAGEM_DO_DESTINO, useDestinoDaNotificacao } from "@/lib/push/use-destino-da-notificacao";
 
 export default function SolicitacoesPage() {
   const { estado: estadoSessao } = useRealAuth();
@@ -51,10 +55,13 @@ export default function SolicitacoesPage() {
   const sessao = estadoSessao.status === "autenticado" ? estadoSessao.sessao : null;
   const tenantId = estadoSessao.status === "autenticado" ? estadoSessao.tenantIdAtivo : null;
   const precisaSelecionar = !!sessao && sessao.requiresTenantSelection && !tenantId;
+  // Chegada pela notificação: escolhe o estabelecimento dela (se a conta
+  // ainda tiver acesso) em vez de mandar para a tela de escolha.
+  const destino = useDestinoDaNotificacao();
 
   useEffect(() => {
-    if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
-  }, [precisaSelecionar, router]);
+    if (precisaSelecionar && !destino.pendente) router.replace("/conta/selecionar-estabelecimento");
+  }, [precisaSelecionar, destino.pendente, router]);
 
   const { estado, recarregar } = useSolicitacoesPendentes();
   const { destaque, limparDestaque } = useAvisosDeSolicitacoes();
@@ -84,7 +91,18 @@ export default function SolicitacoesPage() {
         </Botao>
       }
     >
+      {destino.aviso && (
+        <Cartao data-testid="aviso-destino-notificacao">
+          <CartaoCorpo className="flex items-start gap-3">
+            <AlertTriangle size={20} className="mt-0.5 shrink-0 text-ink-soft" aria-hidden="true" />
+            <p role="status" className="text-sm text-ink">
+              {MENSAGEM_DO_DESTINO[destino.aviso]}
+            </p>
+          </CartaoCorpo>
+        </Cartao>
+      )}
       <AgendamentoOnline tenantId={tenantId} />
+      <NotificacoesDoDispositivo tenantId={tenantId} />
       <PreferenciasDeAviso />
 
       <section className="space-y-3" aria-labelledby="titulo-pendentes">

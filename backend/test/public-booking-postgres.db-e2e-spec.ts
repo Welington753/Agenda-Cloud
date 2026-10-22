@@ -642,4 +642,105 @@ describe.skipIf(!DIRECT_URL)('agendamento público contra PostgreSQL descartáve
     const lista = await publico.pendingRequests(manual.ownerUserId, manual.tenantId);
     expect(lista.requests.map((r) => [r.id, r.origin, r.requestedAt])).toEqual([[pendente.id, 'INTERNAL', null]]);
   });
+
+  // ------------------------------------------------------------ horários duplicados
+  // A proteção final é a constraint `appointments_no_overlap_excl`
+  // (tenant + profissional + período, ignorando CANCELED) e a validação
+  // transacional do pedido; esconder horário na tela é só conforto.
+
+  const DEZ_E_MEIA = '2027-03-07T13:30:00.000Z';
+  const ONZE_E_QUINZE = '2027-03-07T14:15:00.000Z';
+
+  async function ativas(tenantId: string): Promise<number> {
+    const [{ total }] = (await dataSource.query(
+      `SELECT count(*)::int AS total FROM appointments WHERE tenant_id = $1 AND status <> 'CANCELED'`,
+      [tenantId],
+    )) as { total: number }[];
+    return total;
+  }
+
+  it('duplicidade: pedidos simultâneos em períodos sobrepostos do mesmo profissional — só um grava', async () => {
+    const c = await criarCenario();
+    const resultados = await Promise.allSettled([pedir(c, DEZ), pedir(c, DEZ_E_MEIA)]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const [recusa] = resultados.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(recusa.reason).toBeInstanceOf(HttpException);
+    expect(await ativas(c.tenantId)).toBe(1);
+  });
+
+  it('duplicidade: pedido público concorrendo com reserva interna — mesma proteção', async () => {
+    const c = await criarCenario();
+    const resultados = await Promise.allSettled([
+      pedir(c, DEZ),
+      agendamentos.create(c.ownerUserId, c.tenantId, {
+        professionalId: c.professionalId,
+        serviceId: c.serviceId,
+        startAt: DEZ_E_MEIA,
+        consumer: { mode: 'new', data: { name: 'Balcão', whatsapp: telefone() } },
+      }),
+    ]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(await ativas(c.tenantId)).toBe(1);
+  });
+
+  it('duplicidade: pedido PENDING já ocupa o período (agenda interna e página pública)', async () => {
+    const c = await criarCenario();
+    expect((await pedir(c, DEZ)).status).toBe('PENDING');
+    const erro = await erroDe(
+      agendamentos.create(c.ownerUserId, c.tenantId, {
+        professionalId: c.professionalId,
+        serviceId: c.serviceId,
+        startAt: DEZ_E_MEIA,
+        consumer: { mode: 'new', data: { name: 'Balcão', whatsapp: telefone() } },
+      }),
+    );
+    expect(erro).toBeInstanceOf(ConflictException);
+    const livres = await publico.availabilityFor(c.slug, { serviceId: c.serviceId, professionalId: c.professionalId, date: DATA });
+    const horas = livres.slots.map((s) => s.localStart);
+    for (const ocupada of ['09:15', '09:45', '10:00', '10:30', '10:45']) expect(horas).not.toContain(ocupada);
+    expect(horas).toContain('09:00');
+    expect(horas).toContain('11:00');
+  });
+
+  it('duplicidade: duração e intervalo depois do atendimento contam na ocupação', async () => {
+    const c = await criarCenario();
+    await dataSource.query(`UPDATE services SET buffer_after_minutes = 15 WHERE id = $1`, [c.serviceId]);
+    await pedir(c, DEZ); // ocupa 10:00–11:15
+    expect(await erroDe(pedir(c, ONZE))).toBeInstanceOf(ConflictException);
+    expect((await pedir(c, ONZE_E_QUINZE)).status).toBe('PENDING');
+  });
+
+  it('duplicidade: profissionais diferentes atendem no mesmo horário; cancelar libera o período', async () => {
+    const c = await criarCenario();
+    const outro = await profissionais.create(c.ownerUserId, c.tenantId, { name: 'Outra Profissional', serviceIds: [c.serviceId] });
+    await horarios.replace(c.ownerUserId, c.tenantId, outro.id, {
+      days: [{ weekday: WEEKDAY, intervals: [{ start: '09:00', end: '18:00' }] }],
+    });
+    const [a, b] = await Promise.all([pedir(c, DEZ), pedir(c, DEZ, { professionalId: outro.id })]);
+    expect([a.status, b.status]).toEqual(['PENDING', 'PENDING']);
+    expect(await ativas(c.tenantId)).toBe(2);
+
+    const { requests } = await publico.pendingRequests(c.ownerUserId, c.tenantId);
+    const doPrimeiro = requests.find((r) => r.professional.id === c.professionalId);
+    await agendamentos.cancel(c.ownerUserId, c.tenantId, doPrimeiro!.id, { expectedStartAt: DEZ });
+    expect((await pedir(c, DEZ)).status).toBe('PENDING');
+  });
+
+  it('duplicidade: a constraint do banco recusa sobreposição mesmo sem passar pela aplicação', async () => {
+    const c = await criarCenario();
+    await pedir(c, DEZ);
+    const [{ id }] = (await dataSource.query(`SELECT id FROM appointments WHERE tenant_id = $1`, [c.tenantId])) as {
+      id: string;
+    }[];
+    // Cópia da reserva, 30 min depois, direto no SQL (sem validação nenhuma).
+    await expect(
+      dataSource.query(
+        `INSERT INTO appointments
+           SELECT (jsonb_populate_record(NULL::appointments, to_jsonb(a) || jsonb_build_object(
+             'id', $2::text, 'start_at', $3::timestamptz, 'end_at', $4::timestamptz))).*
+             FROM appointments a WHERE a.id = $1`,
+        [id, `e2edup${sufixo}`.slice(0, 30), DEZ_E_MEIA, '2027-03-07T14:30:00.000Z'],
+      ),
+    ).rejects.toMatchObject({ code: '23P01', constraint: 'appointments_no_overlap_excl' });
+  });
 });
