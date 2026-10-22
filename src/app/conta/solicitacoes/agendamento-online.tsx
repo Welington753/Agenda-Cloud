@@ -14,26 +14,12 @@ import {
   type FalhaPrivada,
 } from "@/lib/api/booking-requests-api";
 import { linkPublico } from "@/lib/agendamento-publico/agendamento-publico";
+import { mensagemFalhaPrivada } from "@/lib/agendamento-publico/solicitacoes";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { BotoesDoLinkPublico } from "@/components/conta/link-publico";
-
-export function mensagemFalhaPrivada(falha: FalhaPrivada): string {
-  switch (falha.tipo) {
-    case "sem_permissao":
-      return falha.mensagem ?? "Você não tem permissão para esta área.";
-    case "falha_comunicacao":
-      return "Não foi possível falar com o servidor. Verifique a conexão e tente de novo.";
-    case "sem_acesso":
-      return "Estabelecimento não encontrado.";
-    case "nao_autenticado":
-      return "Sua sessão terminou. Entre de novo.";
-    default:
-      return "O servidor não respondeu como esperado. Tente de novo em instantes.";
-  }
-}
 
 export function AgendamentoOnline({ tenantId }: { tenantId: string }) {
   const { notificar } = useToast();

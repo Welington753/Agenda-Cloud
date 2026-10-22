@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ITENS_MENU_MAIS, ITENS_NAVEGACAO_CONTA, itemAtivo } from "./navegacao";
+import { ITENS_MENU_MAIS, ITENS_NAVEGACAO_CONTA, itemAtivo, rotuloDoSino } from "./navegacao";
 
 describe("ITENS_NAVEGACAO_CONTA", () => {
   it("só aponta para a área real, na ordem do dia a dia", () => {
@@ -57,5 +57,14 @@ describe("itemAtivo", () => {
     expect(itemAtivo("/conta/servicos-antigos", "/conta/servicos")).toBe(false);
     expect(itemAtivo("/conta/agendamentos", "/conta/servicos")).toBe(false);
     expect(itemAtivo(null, "/conta")).toBe(false);
+  });
+});
+
+describe("rotuloDoSino", () => {
+  it("diz o número real de pendentes, e nada quando a lista não carregou", () => {
+    expect(rotuloDoSino(null)).toBe("Notificações");
+    expect(rotuloDoSino(0)).toBe("Notificações: nenhuma solicitação pendente");
+    expect(rotuloDoSino(1)).toBe("Notificações: 1 solicitação pendente");
+    expect(rotuloDoSino(7)).toBe("Notificações: 7 solicitações pendentes");
   });
 });

@@ -97,6 +97,12 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await expect(paginaSemSessao).toHaveURL(/\/login\?next=%2Fconta$/);
     await paginaSemSessao.close();
 
+    // "Sair" fica no menu da conta.
+
+
+    await page.getByTestId("abrir-menu-conta").click();
+
+
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
 

@@ -10,115 +10,16 @@
 //   configurações), não suportado, instalar no iPhone, servidor sem push.
 // - "Ativado" vale para ESTE aparelho, ESTE estabelecimento e ESTA sessão:
 //   sair da conta desliga (ver encerrarNoDispositivo e a migration WebPush).
-import { useCallback, useEffect, useState } from "react";
 import { BellOff, BellRing, Smartphone } from "lucide-react";
-import {
-  ativarInscricao,
-  consultarInscricao,
-  desativarInscricao,
-  obterConfiguracaoPush,
-  type FalhaPush,
-} from "@/lib/api/push-api";
-import { inscrever, inscricaoAtual, lerAmbiente } from "@/lib/push/dispositivo";
-import { avaliarSuporte } from "@/lib/push/suporte";
+import { useNotificacoesDoDispositivo } from "@/lib/push/use-notificacoes-do-dispositivo";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { mensagemFalhaPrivada } from "./agendamento-online";
-
-type Estado =
-  | { tipo: "verificando" }
-  | { tipo: "nao_suportado" }
-  | { tipo: "instalar_no_iphone" }
-  | { tipo: "servidor_sem_push" }
-  | { tipo: "bloqueado" }
-  | { tipo: "desativado"; publicKey: string }
-  | { tipo: "ativado"; publicKey: string }
-  | { tipo: "falha"; mensagem: string };
-
-function mensagemDaFalha(falha: FalhaPush): string {
-  if (falha.tipo === "push_desligado") return "O servidor ainda não está configurado para enviar notificações.";
-  if (falha.tipo === "inscricao_recusada") return falha.mensagem ?? "Este navegador não pôde ser inscrito. Tente de novo.";
-  return mensagemFalhaPrivada(falha);
-}
 
 export function NotificacoesDoDispositivo({ tenantId }: { tenantId: string }) {
-  const [estado, setEstado] = useState<Estado>({ tipo: "verificando" });
-  const [ocupado, setOcupado] = useState(false);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  const verificar = useCallback(
-    async (signal?: AbortSignal) => {
-      const suporte = avaliarSuporte(lerAmbiente());
-      if (suporte !== "suportado") return setEstado({ tipo: suporte });
-      const config = await obterConfiguracaoPush(signal);
-      if (signal?.aborted) return;
-      if (!config.ok) return setEstado({ tipo: "falha", mensagem: mensagemFalhaPrivada(config.falha) });
-      if (!config.dados.enabled || !config.dados.publicKey) return setEstado({ tipo: "servidor_sem_push" });
-      const publicKey = config.dados.publicKey;
-      if (Notification.permission === "denied") return setEstado({ tipo: "bloqueado" });
-      const atual = Notification.permission === "granted" ? await inscricaoAtual().catch(() => null) : null;
-      if (!atual) return setEstado({ tipo: "desativado", publicKey });
-      const r = await consultarInscricao(tenantId, atual.endpoint, signal);
-      if (signal?.aborted) return;
-      if (!r.ok) return setEstado({ tipo: "falha", mensagem: mensagemDaFalha(r.falha) });
-      setEstado({ tipo: r.dados ? "ativado" : "desativado", publicKey });
-    },
-    [tenantId],
-  );
-
-  useEffect(() => {
-    const controle = new AbortController();
-    void verificar(controle.signal);
-    return () => controle.abort();
-  }, [verificar]);
-
-  async function ativar(publicKey: string) {
-    if (ocupado) return;
-    setOcupado(true);
-    setAviso(null);
-    try {
-      // Pedido de permissão SÓ aqui, no clique.
-      const permissao = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
-      if (permissao === "denied") return setEstado({ tipo: "bloqueado" });
-      if (permissao !== "granted") {
-        setAviso("A permissão não foi concedida. Toque em ativar de novo quando quiser.");
-        return;
-      }
-      const inscricao = await inscrever(publicKey);
-      const r = await ativarInscricao(tenantId, inscricao.toJSON());
-      if (!r.ok) {
-        setAviso(mensagemDaFalha(r.falha));
-        return;
-      }
-      setEstado({ tipo: "ativado", publicKey });
-    } catch {
-      setAviso("O navegador não conseguiu ativar as notificações agora. Tente de novo em instantes.");
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  async function desativar(publicKey: string) {
-    if (ocupado) return;
-    setOcupado(true);
-    setAviso(null);
-    try {
-      const atual = await inscricaoAtual();
-      if (atual) {
-        const r = await desativarInscricao(tenantId, atual.endpoint);
-        if (!r.ok) {
-          setAviso(mensagemDaFalha(r.falha));
-          return;
-        }
-      }
-      setEstado({ tipo: "desativado", publicKey });
-    } catch {
-      setAviso("Não foi possível desativar agora. Tente de novo.");
-    } finally {
-      setOcupado(false);
-    }
-  }
+  // Verificação, ativar e desativar: lib/push/use-notificacoes-do-dispositivo.ts
+  // (o mesmo estado que o menu da conta resume).
+  const { estado, ocupado, aviso, verificar, ativar, desativar } = useNotificacoesDoDispositivo(tenantId);
 
   return (
     <Cartao data-testid="notificacoes-dispositivo" data-estado={estado.tipo}>
@@ -126,7 +27,7 @@ export function NotificacoesDoDispositivo({ tenantId }: { tenantId: string }) {
         <div className="flex items-start gap-3">
           <Smartphone size={20} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
           <div className="min-w-0 space-y-1">
-            <h2 className="text-base font-semibold text-ink">Notificações neste dispositivo</h2>
+            <h3 className="text-base font-semibold text-ink">Notificações neste dispositivo</h3>
             <p className="text-sm text-ink-soft">
               Receba um aviso de solicitação nova mesmo com o aplicativo em segundo plano ou a tela
               bloqueada, quando o aparelho permitir. O aviso é discreto: não mostra o nome do cliente.
