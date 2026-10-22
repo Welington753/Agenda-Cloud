@@ -21,6 +21,7 @@ export const SLUGS_RESERVADOS = [
   "403",
   "api",
   "admin",
+  "administracao",
   "configuracoes",
   "agendar",
   "onboarding",

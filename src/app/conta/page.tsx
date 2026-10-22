@@ -20,6 +20,7 @@ import { formatarData } from "@/lib/format";
 import { LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
 
 const PRIMEIROS_PASSOS = [
   {
@@ -68,6 +69,7 @@ export default function ContaPage() {
 
   return (
     <PaginaConta titulo={`Olá, ${sessao.user.name.split(" ")[0]}`} descricao={sessao.user.email}>
+      <LinkAdministracao />
       {!sessao.hasEstablishmentAccess && (
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">

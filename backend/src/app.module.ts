@@ -9,6 +9,7 @@ import { ConsumersModule } from './consumers/consumers.module.js';
 import { AppointmentsModule } from './appointments/appointments.module.js';
 import { PublicBookingModule } from './public-booking/public-booking.module.js';
 import { PushModule } from './push/push.module.js';
+import { PlatformModule } from './platform/platform.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -24,6 +25,7 @@ import { AppService } from './app.service.js';
     AppointmentsModule,
     PublicBookingModule,
     PushModule,
+    PlatformModule,
   ],
   controllers: [AppController],
   providers: [AppService],
