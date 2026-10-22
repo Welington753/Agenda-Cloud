@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { reiniciarPedidosDePartida } from "./acordar-api";
 import { apiRequest } from "./http-client";
 
 afterEach(() => {
@@ -66,6 +67,31 @@ describe("apiRequest", () => {
       );
       expect(await apiRequest("/auth/me")).toEqual({ kind: "network-error" });
     }
+  });
+
+  it("hospedagem no lugar da API: pede a partida direto à API, sem repetir o POST", async () => {
+    reiniciarPedidosDePartida();
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith("/auth/login")
+        ? new Response(JSON.stringify({ message: "API indisponível." }), {
+            status: 502,
+            headers: {
+              "x-agenda-proxy-error": "upstream-unavailable",
+              "x-agenda-acordar-api": "https://api.exemplo.test",
+            },
+          })
+        : new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await apiRequest("/auth/login", { method: "POST", body: { email: "a@b.com", password: "x" } });
+
+    expect(resultado).toEqual({ kind: "network-error" });
+    const chamadas = fetchMock.mock.calls as [string, RequestInit][];
+    expect(chamadas.filter(([url]) => url.endsWith("/auth/login"))).toHaveLength(1);
+    expect(chamadas.filter(([url]) => url === "https://api.exemplo.test/")).toHaveLength(1);
+    const [, init] = chamadas.find(([url]) => url === "https://api.exemplo.test/")!;
+    expect(init).toMatchObject({ mode: "no-cors", credentials: "omit" });
   });
 
   it("502 da própria API (sem o marcador do proxy) continua http-error", async () => {

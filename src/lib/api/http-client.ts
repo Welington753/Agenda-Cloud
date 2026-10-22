@@ -17,7 +17,8 @@
 // isso continua sendo `network-error`: para a UI, a API está fora do ar do
 // mesmo jeito que numa chamada direta. O mesmo vale para uma página HTML da
 // hospedagem (ver abaixo): a API não chegou a responder.
-import { CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "@/lib/api/proxy-marcadores";
+import { pedirPartidaDaApi } from "@/lib/api/acordar-api";
+import { CABECALHO_ACORDAR_API, CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "@/lib/api/proxy-marcadores";
 import { API_BASE_URL } from "@/lib/config";
 
 export type ApiResult<T> =
@@ -48,6 +49,9 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
     return { kind: "network-error" };
   }
   if (response.headers.get(CABECALHO_ERRO_PROXY) === ERRO_API_INDISPONIVEL) {
+    // A hospedagem respondeu no lugar da API: só um pedido do navegador a
+    // acorda (lib/api/acordar-api.ts). O pedido original nunca é repetido aqui.
+    pedirPartidaDaApi(response.headers.get(CABECALHO_ACORDAR_API));
     return { kind: "network-error" };
   }
   // A API e o proxy só respondem JSON (ou corpo vazio). Uma página HTML

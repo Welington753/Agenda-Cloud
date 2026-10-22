@@ -19,7 +19,7 @@
 import { isIP } from "node:net";
 
 import type { ConfiguracaoProxy } from "./proxy-config";
-import { CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "./proxy-marcadores";
+import { CABECALHO_ACORDAR_API, CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "./proxy-marcadores";
 
 export const CABECALHO_SEGREDO_PROXY = "x-agenda-proxy-secret";
 export const CABECALHO_IP_CLIENTE = "x-agenda-client-ip";
@@ -155,6 +155,17 @@ export async function encaminharParaApi(
   } catch {
     return respostaDoProxy(502, "API indisponível.", true);
   }
+  // A API só responde JSON. Uma página HTML 5xx é a hospedagem respondendo
+  // no lugar dela: com a API hibernada, o Render devolve a este servidor uma
+  // página 502 em menos de 1 s e NÃO acorda a API (piloto, 2026-10-22). Vai
+  // ao navegador como indisponível, com a origem pública da API, para que o
+  // próprio navegador peça a partida (lib/api/acordar-api.ts).
+  if (resposta.status >= 500 && resposta.headers.get("content-type")?.toLowerCase().includes("text/html")) {
+    const indisponivel = respostaDoProxy(502, "API indisponível.", true);
+    indisponivel.headers.set(CABECALHO_ACORDAR_API, configuracao.destino.origin);
+    return indisponivel;
+  }
+
   const semCorpo = resposta.status === 204 || resposta.status === 304 || conteudo.byteLength === 0;
   return new Response(semCorpo ? null : conteudo, {
     status: resposta.status,

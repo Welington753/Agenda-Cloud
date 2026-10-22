@@ -450,3 +450,121 @@ test.describe("link público de agendamento", () => {
     await contexto.close();
   });
 });
+
+// Comportamento do Render observado no piloto (2026-10-22, ver
+// docs/plans/recuperacao-apos-hibernacao-continuidade.md): com a API
+// hibernada, os pedidos do proxy recebem uma página 502 da hospedagem e
+// NUNCA acordam a API; só um pedido de fora do Render a acorda. Aqui o proxy
+// é simulado nas respostas (502 marcado, com a origem da API) e a API só
+// "sobe" depois que o navegador fizer o pedido direto de partida.
+const RAIZ_DA_API = `${BACKEND_URL}/`;
+const PROXY_SEM_API = {
+  status: 502,
+  contentType: "application/json",
+  headers: {
+    "cache-control": "no-store",
+    "x-agenda-proxy-error": "upstream-unavailable",
+    "x-agenda-acordar-api": BACKEND_URL,
+    // Esta suíte chama a API em outra origem (`NEXT_PUBLIC_API_URL`); no
+    // piloto o proxy é da mesma origem e isto não é necessário.
+    "access-control-allow-origin": "http://localhost:3000",
+    "access-control-allow-credentials": "true",
+    "access-control-expose-headers": "x-agenda-proxy-error, x-agenda-acordar-api",
+  },
+  body: JSON.stringify({ message: "API indisponível." }),
+};
+
+/** API hibernada atrás do proxy: só sobe depois do pedido direto de partida
+ * e de mais `leiturasAteSubir` leituras (o tempo de subida). */
+async function apiHibernadaAtrasDoProxy(page: Page, leiturasAteSubir = 2) {
+  const registro = {
+    partidas: [] as { metodo: string; origem: string | undefined; cookie: string | undefined }[],
+    leiturasDepoisDaPartida: 0,
+    acordada: false,
+    dormir() {
+      registro.acordada = false;
+      registro.partidas = [];
+      registro.leiturasDepoisDaPartida = 0;
+    },
+  };
+  await page.route(RAIZ_DA_API, async (rota) => {
+    const cabecalhos = await rota.request().allHeaders();
+    // `no-cors` num GET de outra origem não envia `Origin`; um `fetch` CORS enviaria.
+    registro.partidas.push({ metodo: rota.request().method(), origem: cabecalhos.origin, cookie: cabecalhos.cookie });
+    return rota.continue();
+  });
+  const responderPeloProxy = async (rota: Route) => {
+    if (registro.acordada) return rota.continue();
+    if (registro.partidas.length > 0 && ++registro.leiturasDepoisDaPartida > leiturasAteSubir) {
+      registro.acordada = true;
+      return rota.continue();
+    }
+    return rota.fulfill(PROXY_SEM_API);
+  };
+  await page.route(AUTH_ME, responderPeloProxy);
+  await page.route("**/auth/login", responderPeloProxy);
+  return registro;
+}
+
+test.describe("API hibernada que o proxy não acorda", () => {
+  test("/conta: o navegador pede a partida UMA vez, sem cookie, e a sessão volta", async ({ browser }) => {
+    test.setTimeout(60_000);
+    const { contexto, page } = await comSessao(browser);
+    const cookieAntes = await cookieDeSessao(page);
+    await page.clock.install();
+    const api = await apiHibernadaAtrasDoProxy(page);
+    const escritas: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() !== "GET") escritas.push(`${r.method()} ${r.url()}`);
+    });
+
+    await page.goto("/conta");
+    await expect.poll(() => api.partidas.length).toBe(1);
+    await avancarAte(page, () => api.acordada);
+    await expect(page.getByText("Dono(a)")).toBeVisible();
+    expect(api.partidas).toEqual([{ metodo: "GET", origem: undefined, cookie: undefined }]);
+    expect(escritas).toEqual([]);
+    expect(await cookieDeSessao(page)).toBe(cookieAntes);
+    await page.clock.runFor(10 * 60_000);
+    expect(api.partidas, "nada de pedido periódico").toHaveLength(1);
+    await contexto.close();
+  });
+
+  test("clicar em Entrar com a API hibernada: UM POST, nunca repetido; a partida é pedida e o 2º clique entra", async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    const contexto = await browser.newContext();
+    const page = await contexto.newPage();
+    await page.clock.install();
+    const api = await apiHibernadaAtrasDoProxy(page, 0);
+    let logins = 0;
+    page.on("request", (r) => {
+      if (r.method() === "POST" && new URL(r.url()).pathname === "/auth/login") logins += 1;
+    });
+
+    // A página de login abre com a API acordada (leitura de sessão: 401)...
+    api.acordada = true;
+    await page.goto("/login?next=%2Fconta%2Fclientes");
+    await expect(page.getByRole("button", { name: "Entrar" })).toBeEnabled();
+    // ...e ela hiberna antes do clique.
+    api.dormir();
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Senha").fill(SENHA);
+    await page.getByRole("button", { name: "Entrar" }).click();
+
+    await expect.poll(() => api.partidas.length).toBe(1);
+    await expect(page.getByText("Não foi possível conectar ao servidor").first()).toBeVisible();
+    await page.clock.runFor(5 * 60_000);
+    expect(logins, "o POST nunca é reenviado sozinho").toBe(1);
+    await expect(page.getByLabel("E-mail")).toHaveValue(email);
+    await expect(page.getByLabel("Senha")).toHaveValue(SENHA);
+    expect(api.partidas).toEqual([{ metodo: "GET", origem: undefined, cookie: undefined }]);
+
+    // A partida já foi pedida; a API subiu. A pessoa clica de novo.
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/conta\/clientes$/);
+    expect(logins).toBe(2);
+    await contexto.close();
+  });
+});
