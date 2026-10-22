@@ -270,6 +270,20 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
         run: npm run test:browser:appointments
 
+      - name: Run real platform administration (authorization, pagination, detail, mobile)
+        id: browser_administracao
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/administracao
+        run: npm run test:browser:administracao
+
       # Invocação SEPARADA (4 cadastros e 3 logins, limites reais por IP): tela
       # de Clientes — busca e seus estados, cadastro sem envio repetido,
       # duplicidade, resultado incerto, cliente no seletor da agenda,
@@ -519,6 +533,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas da administração: desktop e celular, só dados descartáveis.
+      - name: Upload platform administration screenshots
+        if: always() && steps.browser_administracao.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: administracao-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/administracao/**/administracao-*.png
+          retention-days: 7
+          if-no-files-found: error
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -601,6 +625,7 @@ jobs:
             steps.browser_availability.outcome == 'failure' ||
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
+            steps.browser_administracao.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||

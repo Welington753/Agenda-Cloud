@@ -16,6 +16,9 @@ const DIRETORIOS_ALVO = [
   "src/lib/clientes",
   "src/lib/agendamento-publico",
   "src/app/agendar",
+  "src/app/administracao",
+  "src/lib/administracao",
+  "src/components/administracao",
 ];
 
 function listarArquivos(diretorio: string): string[] {
