@@ -47,7 +47,7 @@ export function ReservaCriada({ reserva, date, aoDispensar }: ReservaCriadaProps
         type="button"
         aria-label="Dispensar aviso"
         onClick={aoDispensar}
-        className="flex size-9 shrink-0 items-center justify-center rounded-full text-ink-soft hover:bg-white/60"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full text-ink-soft hover:bg-card/60"
       >
         <X size={18} />
       </button>

@@ -46,3 +46,12 @@ export function itemAtivo(pathname: string | null, href: string): boolean {
   if (href === "/conta") return atual === "/conta";
   return atual === href || atual.startsWith(`${href}/`);
 }
+
+/** Nome acessível do sino do cabeçalho. Sem lista carregada (`null`), não
+ * afirma número nenhum. */
+export function rotuloDoSino(pendentes: number | null): string {
+  if (pendentes === null) return "Notificações";
+  if (pendentes === 0) return "Notificações: nenhuma solicitação pendente";
+  if (pendentes === 1) return "Notificações: 1 solicitação pendente";
+  return `Notificações: ${pendentes} solicitações pendentes`;
+}

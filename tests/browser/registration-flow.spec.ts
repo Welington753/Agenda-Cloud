@@ -162,6 +162,12 @@ test.describe("cadastro real pela tela (POST /auth/register a partir do formulá
     await expect(page).toHaveURL(/\/conta$/);
     await expect(page.getByText(dados.email)).toBeVisible();
 
+    // "Sair" fica no menu da conta.
+
+
+    await page.getByTestId("abrir-menu-conta").click();
+
+
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
     expect((await context.cookies("http://localhost:3001")).find((c) => c.name === "session_token")).toBeFalsy();

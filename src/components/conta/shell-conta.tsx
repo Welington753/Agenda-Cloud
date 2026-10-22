@@ -2,7 +2,9 @@
 
 // Estrutura comum da área REAL (`/conta/**`): menu lateral no computador
 // (inspirado no da demonstração) e, no celular, barra superior com o
-// estabelecimento e "Sair" mais uma barra inferior com quatro áreas e um
+// estabelecimento, o sino "Notificações" e o menu da conta (aparência,
+// notificações deste aparelho e "Sair", ver menu-conta.tsx) mais uma barra
+// inferior com quatro áreas e um
 // botão "Mais" (Profissionais e Minha conta) — seis rótulos lado a lado em
 // 360 px ficariam ilegíveis. Sem rolagem horizontal.
 //
@@ -31,7 +33,6 @@ import {
   Inbox,
   LayoutDashboard,
   Contact,
-  LogOut,
   MoreHorizontal,
   Repeat,
   UserRound,
@@ -54,6 +55,7 @@ import {
   useSolicitacoesPendentes,
 } from "@/lib/agendamento-publico/use-solicitacoes";
 import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicitacoes";
+import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { encerrarNoDispositivo } from "@/lib/push/dispositivo";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
@@ -91,7 +93,7 @@ function Contador({ total }: { total: number | null | undefined }) {
   return (
     <span
       data-testid="contador-solicitacoes"
-      className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--color-accent)] px-1.5 text-[11px] leading-5 font-semibold text-white"
+      className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--color-accent)] px-1.5 text-[11px] leading-5 font-semibold text-on-accent"
     >
       {total > 99 ? "99+" : total}
       <span className="sr-only"> {total === 1 ? "solicitação pendente" : "solicitações pendentes"}</span>
@@ -193,9 +195,10 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-ink px-4 py-3 text-white md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0">
-        {/* Marca e estabelecimento ativo */}
-        <div className="min-w-0 md:px-5 md:py-6">
+      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-white md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0">
+        {/* Marca, estabelecimento ativo e o sino "Notificações" */}
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
+          <div className="min-w-0">
           <Link
             href="/conta/visao-geral"
             className="font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-white"
@@ -220,13 +223,15 @@ export function ShellConta({ children }: { children: ReactNode }) {
               <span className="sr-only"> de estabelecimento</span>
             </Link>
           )}
+          </div>
+          {contexto && <SinoNotificacoes pendentes={pendentes} />}
         </div>
 
         {contexto && (
           <nav
             ref={navRef}
             aria-label="Áreas da conta"
-            className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
           >
             <ul className="grid grid-cols-5 md:flex md:flex-col md:gap-1">
               {ITENS_NAVEGACAO_CONTA.map((item) => (
@@ -269,7 +274,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             {maisAberto && (
               <ul
                 id="menu-mais"
-                className="absolute inset-x-0 bottom-full border-t border-white/10 bg-ink p-2 shadow-lg md:hidden"
+                className="absolute inset-x-0 bottom-full border-t border-white/10 bg-chrome p-2 shadow-lg md:hidden"
               >
                 {ITENS_MENU_MAIS.map((item) => (
                   <li key={item.href}>
@@ -286,9 +291,10 @@ export function ShellConta({ children }: { children: ReactNode }) {
           </nav>
         )}
 
-        {/* Usuário e Sair: no rodapé do menu no computador, no canto da barra
-            superior no celular. */}
-        <div className="flex shrink-0 items-center gap-1 md:mt-auto md:block md:space-y-1 md:border-t md:border-white/10 md:px-3 md:py-4">
+        {/* Menu da conta (quem está conectado, notificações, aparência e
+            Sair): no rodapé do menu no computador, no canto da barra superior
+            no celular. */}
+        <div className="flex shrink-0 items-center gap-1 md:mt-auto md:block md:border-t md:border-white/10 md:px-3 md:py-4">
           {podeTrocar && (
             <Link
               href="/conta/selecionar-estabelecimento"
@@ -298,20 +304,14 @@ export function ShellConta({ children }: { children: ReactNode }) {
               <Repeat size={18} aria-hidden="true" />
             </Link>
           )}
-          <div className="hidden px-3 md:block" data-testid="usuario-conectado">
-            <p className="text-xs text-white/50">Conectado como</p>
-            <p className="truncate text-sm font-medium text-white">{sessao.user.name}</p>
-          </div>
-          <button
-            type="button"
-            disabled={saindo}
-            aria-busy={saindo}
-            onClick={() => void aoSair()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-3 text-sm text-white/80 hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50 md:w-full"
-          >
-            <LogOut size={16} aria-hidden="true" />
-            Sair
-          </button>
+          <MenuConta
+            nome={sessao.user.name}
+            email={sessao.user.email}
+            tenantId={contexto ? tenantIdAtivo : null}
+            pendentes={pendentes}
+            saindo={saindo}
+            aoSair={() => void aoSair()}
+          />
         </div>
       </aside>
 

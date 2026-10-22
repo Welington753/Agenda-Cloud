@@ -162,7 +162,7 @@ test.describe("entrada e navegação do piloto", () => {
       await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     }
 
-    // Celular: quatro áreas e o "Mais" na barra inferior, e o "Sair", aparecem
+    // Celular: quatro áreas e o "Mais" na barra inferior, e o menu da conta, aparecem
     // na tela, com área de toque de pelo menos 44 px, sem rolar a página para
     // o lado. Profissionais e Minha conta ficam no "Mais".
     await page.setViewportSize(CELULAR);
@@ -189,10 +189,16 @@ test.describe("entrada e navegação do piloto", () => {
         expect(caixa!.height).toBeGreaterThanOrEqual(44);
       }
       await page.keyboard.press("Escape");
-      await expect(page.getByRole("button", { name: "Sair" })).toBeInViewport();
+      await expect(page.getByTestId("abrir-menu-conta")).toBeInViewport();
       await semRolagemHorizontal(page);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
+
+    // "Sair" fica no menu da conta.
+
+
+    await page.getByTestId("abrir-menu-conta").click();
+
 
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);

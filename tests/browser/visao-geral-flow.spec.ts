@@ -440,6 +440,10 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page.getByTestId("visao-geral-sem-permissao")).toBeVisible();
     await expect(page.getByTestId("indicador-agendamentos")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
+    // "Sair" fica no menu da conta.
+
+    await page.getByTestId("abrir-menu-conta").click();
+
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
 
@@ -448,6 +452,10 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fconta%2Fservicos$/);
     await entrar(page, b.email, page.url());
     await expect(page).toHaveURL(/\/conta\/servicos$/);
+    // "Sair" fica no menu da conta.
+
+    await page.getByTestId("abrir-menu-conta").click();
+
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
     await entrar(page, b.email, "/login?next=%2F%2Foutro-site.example%2Fphishing");

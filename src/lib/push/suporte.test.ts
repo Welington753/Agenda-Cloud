@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avaliarSuporte, bytesDaChave, ehIos, lerDestinoDaNotificacao, mesmaChave, type Ambiente } from "./suporte";
+import { avaliarSuporte, bytesDaChave, ehIos, lerDestinoDaNotificacao, mesmaChave, resumoDoPush, type Ambiente } from "./suporte";
 
 const COMPLETO: Ambiente = { temServiceWorker: true, temPushManager: true, temNotification: true, ehIos: false, instalado: false };
 const SAFARI_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
@@ -44,5 +44,19 @@ describe("destino da notificação", () => {
     for (const busca of ["", "?estabelecimento=t1", "?estabelecimento=../x&solicitacao=a", "?estabelecimento=t1&solicitacao=https://evil"]) {
       expect(lerDestinoDaNotificacao(busca)).toBeNull();
     }
+  });
+});
+
+describe("resumo do push no menu da conta", () => {
+  it("quatro situações para quem lê, sem transformar dúvida em desativado", () => {
+    expect(resumoDoPush("ativado").situacao).toBe("ativado");
+    expect(resumoDoPush("desativado").situacao).toBe("desativado");
+    expect(resumoDoPush("bloqueado").situacao).toBe("bloqueado");
+    for (const t of ["nao_suportado", "instalar_no_iphone", "servidor_sem_push"] as const) {
+      expect(resumoDoPush(t).situacao).toBe("indisponivel");
+    }
+    expect(resumoDoPush("instalar_no_iphone").texto).toMatch(/Tela de Início/);
+    expect(resumoDoPush("verificando").situacao).toBe("verificando");
+    expect(resumoDoPush("falha").situacao).toBe("falha");
   });
 });

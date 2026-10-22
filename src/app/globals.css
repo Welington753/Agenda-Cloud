@@ -18,10 +18,80 @@
   --color-warning-soft: #f4e6c4;
   --color-info: #3b5a6b;
   --color-info-soft: #dde7ea;
+  /* Texto sobre `accent`/`danger` cheios (botões, horário escolhido). */
+  --color-on-accent: #ffffff;
+  --color-on-danger: #ffffff;
+  /* Borda de campo e de opção selecionável: precisa de 3:1 com o fundo. */
+  --color-border-strong: #8f8270;
+  /* Barra/menu escuro da área real e painel lateral do login: escuro nos
+     dois temas, com texto branco. */
+  --color-chrome: #1c1a17;
   --shadow-soft: 0 1px 2px rgba(28, 26, 23, 0.06), 0 4px 12px rgba(28, 26, 23, 0.05);
   --shadow-lift: 0 8px 24px rgba(28, 26, 23, 0.12);
   --radius-card: 0.875rem;
   --radius-control: 0.625rem;
+}
+
+/* Tema escuro — SÓ em página adaptável (MarcadorAparencia, ver
+   lib/aparencia/tema.ts): escolha "escuro", ou "sistema" com o aparelho no
+   escuro. Os dois blocos são iguais de propósito: o segundo só vale dentro
+   da media query. Mesma identidade (papel quente, tinta, laranja queimado),
+   com contraste conferido: texto ≥ 7:1, secundário ≥ 7:1, estados ≥ 6:1,
+   bordas de campo ≥ 3:1. */
+html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
+  color-scheme: dark;
+  --color-ink: #f3ede4;
+  --color-ink-soft: #c4baab;
+  --color-paper: #16130f;
+  --color-paper-muted: #2a251f;
+  --color-card: #211d18;
+  --color-border: #3d362d;
+  --color-border-strong: #7d705f;
+  --color-accent: #e39552;
+  --color-accent-hover: #f0ad70;
+  --color-accent-soft: #43301d;
+  --color-success: #74c597;
+  --color-success-soft: #1c3326;
+  --color-danger: #f2897f;
+  --color-danger-soft: #3e211d;
+  --color-warning: #e6bb5a;
+  --color-warning-soft: #3a2f16;
+  --color-info: #9dbfd1;
+  --color-info-soft: #1e2d35;
+  --color-on-accent: #1a1009;
+  --color-on-danger: #1a0806;
+  --color-chrome: #0f0d0a;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-tema="sistema"]:has([data-aparencia-adaptavel]) {
+    color-scheme: dark;
+    --color-ink: #f3ede4;
+    --color-ink-soft: #c4baab;
+    --color-paper: #16130f;
+    --color-paper-muted: #2a251f;
+    --color-card: #211d18;
+    --color-border: #3d362d;
+    --color-border-strong: #7d705f;
+    --color-accent: #e39552;
+    --color-accent-hover: #f0ad70;
+    --color-accent-soft: #43301d;
+    --color-success: #74c597;
+    --color-success-soft: #1c3326;
+    --color-danger: #f2897f;
+    --color-danger-soft: #3e211d;
+    --color-warning: #e6bb5a;
+    --color-warning-soft: #3a2f16;
+    --color-info: #9dbfd1;
+    --color-info-soft: #1e2d35;
+    --color-on-accent: #1a1009;
+    --color-on-danger: #1a0806;
+    --color-chrome: #0f0d0a;
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
 }
 
 @theme inline {
@@ -42,6 +112,10 @@
   --color-warning-soft: var(--color-warning-soft);
   --color-info: var(--color-info);
   --color-info-soft: var(--color-info-soft);
+  --color-on-accent: var(--color-on-accent);
+  --color-on-danger: var(--color-on-danger);
+  --color-border-strong: var(--color-border-strong);
+  --color-chrome: var(--color-chrome);
   --font-sans: var(--font-jakarta);
 }
 

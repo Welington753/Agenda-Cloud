@@ -32,7 +32,7 @@ import { alterarStatusAgendamento } from "@/lib/api/appointment-status-api";
 import { cancelarAgendamento } from "@/lib/api/appointments-api";
 import { mensagemFalhaStatus } from "@/lib/profissionais/andamento";
 import { mensagemFalhaCancelamento } from "@/lib/profissionais/agendamentos";
-import { dataLocalDoInstante } from "@/lib/agendamento-publico/solicitacoes";
+import { dataLocalDoInstante, mensagemFalhaPrivada } from "@/lib/agendamento-publico/solicitacoes";
 import { dataBr } from "@/lib/agendamento-publico/agendamento-publico";
 import {
   useAvisosDeSolicitacoes,
@@ -44,7 +44,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { AgendamentoOnline, mensagemFalhaPrivada } from "./agendamento-online";
+import { AgendamentoOnline } from "./agendamento-online";
 import { PreferenciasDeAviso } from "./preferencias-de-aviso";
 import { NotificacoesDoDispositivo } from "./notificacoes-do-dispositivo";
 import { MENSAGEM_DO_DESTINO, useDestinoDaNotificacao } from "@/lib/push/use-destino-da-notificacao";
@@ -101,10 +101,6 @@ export default function SolicitacoesPage() {
           </CartaoCorpo>
         </Cartao>
       )}
-      <AgendamentoOnline tenantId={tenantId} />
-      <NotificacoesDoDispositivo tenantId={tenantId} />
-      <PreferenciasDeAviso />
-
       <section className="space-y-3" aria-labelledby="titulo-pendentes">
         <h2 id="titulo-pendentes" className="text-lg font-semibold text-ink">
           Aguardando confirmação
@@ -155,6 +151,18 @@ export default function SolicitacoesPage() {
           </p>
         )}
       </section>
+
+      {/* Destino de "Notificações" no menu da conta: os controles que já
+          existiam (push neste aparelho e som), logo depois da lista. */}
+      <section id="notificacoes" className="scroll-mt-24 space-y-3" aria-labelledby="titulo-notificacoes">
+        <h2 id="titulo-notificacoes" className="text-lg font-semibold text-ink">
+          Notificações
+        </h2>
+        <NotificacoesDoDispositivo tenantId={tenantId} />
+        <PreferenciasDeAviso />
+      </section>
+
+      <AgendamentoOnline tenantId={tenantId} />
     </PaginaConta>
   );
 }

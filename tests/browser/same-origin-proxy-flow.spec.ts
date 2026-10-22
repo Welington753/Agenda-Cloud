@@ -186,6 +186,10 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
 
     // Logout: o cookie some e a sessão fica revogada no servidor.
     await page.goto("/conta");
+    // "Sair" fica no menu da conta.
+
+    await page.getByTestId("abrir-menu-conta").click();
+
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
     expect((await context.cookies()).find((c) => c.name === "session_token")).toBeFalsy();

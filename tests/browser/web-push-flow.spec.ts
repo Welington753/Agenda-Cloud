@@ -328,6 +328,10 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
   await page.screenshot({ path: test.info().outputPath("push-celular-ativado.png"), animations: "disabled" });
 
   // ------------------------------------------------ sair desliga este aparelho
+  // "Sair" fica no menu da conta.
+
+  await page.getByTestId("abrir-menu-conta").click();
+
   await page.getByRole("button", { name: "Sair" }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect((await contadores(page)).cancelamentos).toBeGreaterThanOrEqual(1);

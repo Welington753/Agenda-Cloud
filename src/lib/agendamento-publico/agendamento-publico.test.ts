@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  agruparPorPeriodo,
   dataBr,
+  dataPorExtenso,
   diasOferecidos,
   estadoDoRecibo,
+  filtrarServicos,
   gerarChaveDeEnvio,
+  iniciaisDoEstabelecimento,
   linkPublico,
   mensagemFalhaPublica,
   mensagemSemHorario,
+  nomeDoFuso,
+  nomePlausivel,
+  precoPublico,
   precoTexto,
   somarDias,
+  tituloDoRecibo,
+  whatsappPlausivel,
 } from "./agendamento-publico";
 
 describe("datas no fuso do estabelecimento", () => {
@@ -72,6 +81,58 @@ describe("chave e link", () => {
 
   it("link público do estabelecimento", () => {
     expect(linkPublico("https://app.exemplo.com/", "clinica-ana")).toBe("https://app.exemplo.com/agendar/clinica-ana");
+  });
+});
+
+describe("apresentação da página pública", () => {
+  it("iniciais do estabelecimento sem logo", () => {
+    expect(iniciaisDoEstabelecimento("Clínica da Ana")).toBe("CA");
+    expect(iniciaisDoEstabelecimento("estúdio")).toBe("ES");
+    expect(iniciaisDoEstabelecimento("  Pet & Cia  ")).toBe("PC");
+    expect(iniciaisDoEstabelecimento("")).toBe("?");
+  });
+
+  it("busca local por nome, sem acento nem maiúsculas", () => {
+    const lista = [{ name: "Sessão de Fisioterapia" }, { name: "Massagem" }, { name: "Avaliação" }];
+    expect(filtrarServicos(lista, "sessao").map((s) => s.name)).toEqual(["Sessão de Fisioterapia"]);
+    expect(filtrarServicos(lista, "  MASS ").map((s) => s.name)).toEqual(["Massagem"]);
+    expect(filtrarServicos(lista, "")).toHaveLength(3);
+    expect(filtrarServicos(lista, "xyz")).toEqual([]);
+  });
+
+  it("preço ausente ou oculto aparece como Sob consulta", () => {
+    expect(precoPublico(null, true)).toBe("Sob consulta");
+    expect(precoPublico(null, false)).toBe("Sob consulta");
+    expect(precoPublico(4500, true)).toMatch(/45,00/);
+  });
+
+  it("horários agrupados por período local, na ordem do servidor", () => {
+    const grupos = agruparPorPeriodo([{ localStart: "08:00" }, { localStart: "11:30" }, { localStart: "12:00" }, { localStart: "18:00" }]);
+    expect(grupos.map((g) => [g.periodo, g.slots.length])).toEqual([
+      ["Manhã", 2],
+      ["Tarde", 1],
+      ["Noite", 1],
+    ]);
+  });
+
+  it("data por extenso e nome do fuso do estabelecimento", () => {
+    expect(dataPorExtenso("2027-03-07")).toBe("domingo, 07/03/2027");
+    expect(nomeDoFuso("America/Sao_Paulo", new Date("2027-03-07T12:00:00Z"))).toMatch(/\(America\/Sao_Paulo\)$/);
+    expect(nomeDoFuso("Fuso/Inexistente", new Date())).toBe("Fuso/Inexistente");
+  });
+
+  it("validação local mínima dos dados", () => {
+    expect(nomePlausivel(" J ")).toBe(false);
+    expect(nomePlausivel("Jo")).toBe(true);
+    expect(whatsappPlausivel("(11) 98765-4321")).toBe(true);
+    expect(whatsappPlausivel("+55 11 98765-4321")).toBe(true);
+    expect(whatsappPlausivel("98765-4321")).toBe(false);
+  });
+
+  it("título do recibo: pendente nunca parece confirmado", () => {
+    expect(tituloDoRecibo("PENDING")).toBe("Solicitação enviada — aguardando confirmação");
+    expect(tituloDoRecibo("PENDING")).not.toMatch(/confirmad[oa]\b/i);
+    expect(tituloDoRecibo("CONFIRMED")).toMatch(/confirmado/);
   });
 });
 

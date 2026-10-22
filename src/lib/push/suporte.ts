@@ -63,3 +63,41 @@ export function lerDestinoDaNotificacao(busca: string): DestinoDaNotificacao | n
   if (!tenantId || !solicitacaoId || !ID_VALIDO.test(tenantId) || !ID_VALIDO.test(solicitacaoId)) return null;
   return { tenantId, solicitacaoId };
 }
+
+/** Estados das notificações deste aparelho (ver use-notificacoes-do-dispositivo.ts). */
+export type TipoEstadoPush =
+  | "verificando"
+  | "nao_suportado"
+  | "instalar_no_iphone"
+  | "servidor_sem_push"
+  | "bloqueado"
+  | "desativado"
+  | "ativado"
+  | "falha";
+
+/** Resumo de uma linha para o menu da conta. Quatro situações para quem lê
+ * (ativado, desativado, bloqueado, indisponível), mais "verificando" e
+ * "falha", que nunca viram "desativado" (seria afirmar o que não se sabe). */
+export function resumoDoPush(tipo: TipoEstadoPush): {
+  situacao: "ativado" | "desativado" | "bloqueado" | "indisponivel" | "verificando" | "falha";
+  texto: string;
+} {
+  switch (tipo) {
+    case "ativado":
+      return { situacao: "ativado", texto: "Ativadas neste aparelho" };
+    case "desativado":
+      return { situacao: "desativado", texto: "Desativadas neste aparelho" };
+    case "bloqueado":
+      return { situacao: "bloqueado", texto: "Bloqueadas nas configurações do navegador" };
+    case "instalar_no_iphone":
+      return { situacao: "indisponivel", texto: "Indisponíveis: no iPhone, adicione à Tela de Início" };
+    case "servidor_sem_push":
+      return { situacao: "indisponivel", texto: "Indisponíveis: o servidor não envia notificações" };
+    case "nao_suportado":
+      return { situacao: "indisponivel", texto: "Indisponíveis neste navegador" };
+    case "verificando":
+      return { situacao: "verificando", texto: "Verificando…" };
+    case "falha":
+      return { situacao: "falha", texto: "Não foi possível verificar agora" };
+  }
+}

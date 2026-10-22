@@ -384,8 +384,9 @@ test.describe("link público de agendamento", () => {
       }
       return rota.continue();
     });
+    // Um profissional só: a etapa "Profissional" é pulada, ele já vem escolhido.
     await p.getByTestId("lista-servicos-publicos").getByRole("button").first().click();
-    await p.getByTestId("lista-profissionais-publicos").getByRole("button").first().click();
+    await expect(p.getByTestId("profissional-unico")).toContainText("Bia Corte");
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DATA) }).click();
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DIA_SEGUINTE) }).click();
     await expect(p.getByTestId("sem-horarios")).toBeVisible();
@@ -396,8 +397,10 @@ test.describe("link público de agendamento", () => {
 
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DATA) }).click();
     await p.getByTestId("lista-horarios-publicos").getByRole("button", { name: "09:00", exact: true }).click();
+    await p.getByTestId("continuar-horario").click();
     await p.getByLabel("Nome").fill("Carla Cliente");
     await p.getByLabel("WhatsApp com DDD").fill("(11) 98888-0009");
+    await p.getByTestId("revisar-pedido").click();
 
     // O servidor grava, mas a resposta volta como a borda (502 em HTML).
     await p.route("**/booking-requests", async (rota) => {
@@ -408,11 +411,14 @@ test.describe("link público de agendamento", () => {
     await expect(p.getByTestId("envio-incerto")).toContainText("pode ter sido registrado");
     await p.clock.runFor(10 * 60_000);
     expect(pedidos.total, "o envio nunca é repetido sozinho").toBe(1);
-    await expect(p.getByLabel("Nome")).toHaveValue("Carla Cliente");
+    // Os dados continuam na revisão, e voltar fica travado até verificar.
+    await expect(p.getByTestId("resumo-nome")).toHaveText("Carla Cliente");
+    await expect(p.getByTestId("voltar-etapa")).toBeDisabled();
 
     await p.unroute("**/booking-requests");
     await p.getByTestId("verificar-envio").click();
-    await expect(p.getByRole("heading", { name: "Este pedido já tinha sido recebido" })).toBeVisible();
+    await expect(p.getByTestId("recibo-titulo")).toHaveText("Solicitação enviada — aguardando confirmação");
+    await expect(p.getByTestId("recibo-repetido")).toContainText("já tinha sido recebido");
     expect(pedidos.total).toBe(2);
 
     // No banco: UM pedido.

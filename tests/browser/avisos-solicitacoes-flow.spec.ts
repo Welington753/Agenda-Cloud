@@ -377,6 +377,10 @@ test("avisos de novas solicitações: chegam sem recarregar, sem repetir, pausam
   await page.setViewportSize(COMPUTADOR);
 
   // ------------------------------------------------ sair encerra as consultas
+  // "Sair" fica no menu da conta.
+
+  await page.getByTestId("abrir-menu-conta").click();
+
   await page.getByRole("button", { name: "Sair" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await ocioso(consultas);

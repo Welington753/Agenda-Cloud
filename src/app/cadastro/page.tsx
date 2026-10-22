@@ -115,7 +115,7 @@ export default function CadastroPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-ink p-10 text-white lg:flex">
+      <div className="hidden flex-col justify-between bg-chrome p-10 text-white lg:flex">
         <div>
           <p className="font-bold tracking-tight">{NOME_PRODUTO}</p>
         </div>
