@@ -140,3 +140,28 @@ simulada não comprova o SQL nem o fluxo completo.
 
 Não houve push, PR, merge, deploy, migration ou promoção de conta real.
 O commit será entregue em bundle Git para importação no clone Windows.
+
+## Validação no clone Windows — 22/10/2026
+
+Bundle importado com o SHA original. Node 24.16, `npm ci` na raiz e no
+backend. PostgreSQL 18.6 descartável, criado só para esta validação em
+diretório temporário, na porta 55433, com TLS (verificação completa do
+certificado autoassinado) e as seis migrations aplicadas por
+`migration:run:compiled`. `IGNORE_DOTENV_FILE=true` em todos os processos;
+nenhum `.env` real, `agenda_dev`, Neon, piloto ou produção foi usado.
+
+- Backend `test:db-e2e`: 145 testes em 10 arquivos, sem skip, incluindo os
+  cinco casos de `platform-postgres.db-e2e-spec.ts`.
+- `test:browser:administracao` com API e banco reais: falhou na primeira
+  execução porque o `__next-route-announcer__` do Next.js também tem
+  role="alert". Os estados do portão passaram a ficar num `<main>` e a spec
+  restringe alert/status a ele. Depois disso passou, com capturas de
+  lista e ficha em 1280, 390 e 360 px, sem rolagem horizontal. O rótulo
+  "Total de estabelecimentos" excedia o cartão em 360 px e virou
+  "Total cadastrado".
+- Também passaram: unit frontend (801), unit backend (1.376), HTTP e2e
+  (120), lint, lint de tipos, typecheck, builds, e as suítes de navegador
+  `auth` (8), `services` (5) e `visao-geral` (1).
+- `test:browser:proxy`: 4 de 5 passam. O caso de cadastro/login pela mesma
+  origem para em "Conectando ao servidor…" neste Windows, e falha do mesmo
+  jeito no commit base `20e3fdc`. É anterior a este lote; o CI Linux decide.
