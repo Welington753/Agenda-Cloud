@@ -89,7 +89,21 @@ autoassinado, migrations aplicadas por `migration:run:compiled`.
 `agenda_dev`, Neon, piloto ou produção foi usado. Push nunca enviado: o
 PushManager é simulado onde é preciso e as chaves VAPID são da execução.
 
-Os resultados de cada suíte estão no PR.
+- Unidade do frontend: 823 testes; lint e lint de tipos sem erro (só os
+  dois avisos antigos); typecheck e build.
+- Navegador, cada suíte na própria invocação (servidores novos): auth (8),
+  services (5), professionals (3), working-hours (2), availability (2),
+  appointments (4), administracao (1), clients (3), whatsapp (1),
+  agendamento-publico (1), avisos-solicitacoes (1), recuperacao (12),
+  push (1), aparencia (2, nova), agenda-view (1), agenda-profissional (1)
+  e visao-geral (1). Todas passaram.
+- `test:browser:proxy`: 4 de 5. O caso de cadastro/login pela mesma origem
+  para em "Conectando ao servidor…" antes do login, a mesma falha já
+  registrada neste Windows no commit base `20e3fdc`. O CI Linux decide.
+- Backend sem alteração neste lote; as suítes dele rodam no CI.
+- Capturas conferidas: as cinco etapas do agendamento e o menu da conta, em
+  claro e escuro, a 360, 390 e 1280 px, com nome de estabelecimento e de
+  serviço longos, sem rolagem lateral.
 
 ## Fica para a validação física, depois da publicação
 
