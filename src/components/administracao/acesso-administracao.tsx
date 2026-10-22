@@ -60,18 +60,18 @@ export function AcessoAdministracao({ children }: { children: ReactNode }) {
   }
   if (estado.status !== "pronto")
     return (
-      <div className="mx-auto w-full max-w-2xl p-5">
+      <main className="mx-auto w-full max-w-2xl p-5">
         <EstadoLeitura estado={estado} recarregar={recarregar} />
-      </div>
+      </main>
     );
   if (!estado.dados.canViewEstablishments)
     return (
-      <div className="mx-auto w-full max-w-2xl p-5">
+      <main className="mx-auto w-full max-w-2xl p-5">
         <EstadoLeitura
           estado={{ status: "erro", motivo: "permissao" }}
           recarregar={recarregar}
         />
-      </div>
+      </main>
     );
   return (
     <div className="min-h-screen bg-paper md:grid md:grid-cols-[240px_minmax(0,1fr)]">

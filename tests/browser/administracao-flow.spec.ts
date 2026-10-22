@@ -39,8 +39,11 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
       user: { id: string };
       tenant: { id: string };
     };
+    // O Next.js injeta `__next-route-announcer__` com role="alert" fora do
+    // <main>, assim como a região de avisos com role="status".
+    const main = page.getByRole("main");
     await page.goto("/administracao");
-    await expect(page.getByRole("alert")).toHaveText(
+    await expect(main.getByRole("alert")).toHaveText(
       "Sua conta não tem acesso à administração da plataforma.",
     );
     expect(
@@ -91,7 +94,7 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     ).toBeVisible();
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
-    await expect(page.getByRole("status")).toHaveText(
+    await expect(main.getByRole("status")).toHaveText(
       "22 estabelecimento(s) encontrado(s)",
     );
     await expect(
@@ -138,7 +141,7 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByLabel("Situação do acesso").selectOption("SUSPENDED");
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
-    await expect(page.getByRole("status")).toHaveText(
+    await expect(main.getByRole("status")).toHaveText(
       "1 estabelecimento(s) encontrado(s)",
     );
     for (const width of [1280, 390, 360]) {
@@ -157,7 +160,7 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     const route = `${API}/platform/establishments?*`;
     await page.route(route, (r) => r.abort("failed"));
     await page.getByRole("button", { name: "Atualizar", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(
+    await expect(main.getByRole("alert")).toContainText(
       "Não foi possível conectar ao servidor",
     );
     await expect(
@@ -165,7 +168,7 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     ).toHaveCount(0);
     await page.unroute(route);
     await page.getByRole("button", { name: "Tentar novamente" }).click();
-    await expect(page.getByRole("status")).toHaveText(
+    await expect(main.getByRole("status")).toHaveText(
       "1 estabelecimento(s) encontrado(s)",
     );
     // Papel revogado vale no próximo request, mesmo com sessão e layout montados.
@@ -173,7 +176,7 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
       account.user.id,
     ]);
     await page.getByRole("button", { name: "Atualizar", exact: true }).click();
-    await expect(page.getByRole("alert")).toHaveText(
+    await expect(main.getByRole("alert")).toHaveText(
       "Sua conta não tem acesso à administração da plataforma.",
     );
     await expect(

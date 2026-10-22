@@ -87,7 +87,7 @@ export default function EstabelecimentosPage() {
         >
           <EstatisticaCard
             icone={Building2}
-            rotulo="Total de estabelecimentos"
+            rotulo="Total cadastrado"
             valor={String(estado.dados.summary.total)}
           />
           <EstatisticaCard
