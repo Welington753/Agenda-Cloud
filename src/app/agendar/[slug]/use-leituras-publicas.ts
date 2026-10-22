@@ -14,7 +14,7 @@ import {
   type PaginaPublica,
   type ResultadoPublico,
 } from "@/lib/api/public-booking-api";
-import type { EstadoHorarios } from "./componentes";
+import type { EstadoHorarios } from "./escolhas";
 
 export type EstadoPagina =
   | { status: "carregando"; fase?: FaseRecuperacao }

@@ -2,8 +2,12 @@
 // real e PostgreSQL descartável.
 //
 // Prova, de ponta a ponta: a página só existe depois de o dono ativar; o
-// cliente agenda sem conta, no celular e no computador, e recebe "Aguardando
-// confirmação do estabelecimento"; o pedido aparece no painel (contador no
+// cliente agenda sem conta, no celular e no computador, pelo percurso
+// Serviço → Profissional → Dia e horário → Seus dados → Revisar (voltar
+// mantém o que vale; trocar serviço/profissional/dia derruba o horário e
+// relê a disponibilidade; profissional único pula a etapa; preço ausente é
+// "Sob consulta"), e recebe "Solicitação enviada — aguardando confirmação";
+// o pedido aparece no painel (contador no
 // menu e aviso na Visão geral), continua lá depois de recarregar, e só sai
 // ao confirmar ou recusar; tela desatualizada é recusada; horário tomado por
 // outro cliente, resposta perdida e falha de comunicação têm mensagens
@@ -52,16 +56,37 @@ async function visitante(browser: Browser, viewport: { width: number; height: nu
   return { contexto, pagina: await contexto.newPage() };
 }
 
-async function escolherHorario(p: Page, servico: string, profissional: string, hora: string) {
-  await p.getByTestId("lista-servicos-publicos").getByRole("button", { name: new RegExp(servico) }).click();
-  await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: new RegExp(profissional) }).click();
+const servicoPublico = (p: Page, nome: string) =>
+  p.getByTestId("lista-servicos-publicos").getByRole("button", { name: new RegExp(nome) });
+const horarioPublico = (p: Page, hora: string) =>
+  p.getByTestId("lista-horarios-publicos").getByRole("button", { name: hora, exact: true });
+
+/** Serviço → (profissional, se houver mais de um) → dia → horário → Continuar.
+ * `profissional: null` = o serviço tem um profissional só e a etapa é pulada. */
+async function escolherHorario(p: Page, servico: string, profissional: string | null, hora: string) {
+  await servicoPublico(p, servico).click();
+  if (profissional) {
+    await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: new RegExp(profissional) }).click();
+  } else {
+    await expect(p.getByTestId("profissional-unico")).toBeVisible();
+  }
   await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
-  await p.getByTestId("lista-horarios-publicos").getByRole("button", { name: hora, exact: true }).click();
+  await horarioPublico(p, hora).click();
+  await expect(horarioPublico(p, hora)).toHaveAttribute("aria-pressed", "true");
+  await p.getByTestId("continuar-horario").click();
 }
 
+/** Seus dados → Revisar. */
 async function preencher(p: Page, nome: string, whatsapp: string) {
   await p.getByLabel("Nome").fill(nome);
   await p.getByLabel("WhatsApp com DDD").fill(whatsapp);
+  await p.getByTestId("revisar-pedido").click();
+  await expect(p.getByTestId("resumo-pedido")).toBeVisible();
+}
+
+async function voltar(p: Page, titulo: string) {
+  await p.getByTestId("voltar-etapa").click();
+  await expect(p.getByTestId("titulo-etapa")).toHaveText(titulo);
 }
 
 test("agendamento público: página ativada, pedido pendente, painel do dono, confirmar e recusar", async ({
@@ -104,16 +129,37 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
     requiresManualConfirmation: false,
   });
   expect(servico.status).toBe(201);
+  // Segundo serviço: preço AUSENTE (aparece "Sob consulta") e dois
+  // profissionais. "Sessão de fisioterapia" continua só com a Ana.
+  const avaliacao = await api<{ service: { id: string } }>(page, `${base}/services`, "POST", {
+    name: "Avaliação inicial",
+    shortDescription: "Primeira conversa",
+    priceCents: null,
+    priceVisible: true,
+    durationMinutes: 30,
+    bufferAfterMinutes: 0,
+    modality: "IN_PERSON",
+    activeInPublicBooking: true,
+    requiresManualConfirmation: false,
+  });
+  expect(avaliacao.status).toBe(201);
   const prof = await api<{ professional: { id: string } }>(page, `${base}/professionals`, "POST", {
     name: "Ana Fisio",
-    serviceIds: [servico.corpo.service.id],
+    serviceIds: [servico.corpo.service.id, avaliacao.corpo.service.id],
   });
   expect(prof.status).toBe(201);
-  expect(
-    (await api(page, `${base}/professionals/${prof.corpo.professional.id}/schedule`, "PUT", {
-      days: [{ weekday: WEEKDAY_DA_DATA, intervals: [{ start: "09:00", end: "13:00" }] }],
-    })).status,
-  ).toBe(200);
+  const bruno = await api<{ professional: { id: string } }>(page, `${base}/professionals`, "POST", {
+    name: "Bruno Fisio",
+    serviceIds: [avaliacao.corpo.service.id],
+  });
+  expect(bruno.status).toBe(201);
+  for (const id of [prof.corpo.professional.id, bruno.corpo.professional.id]) {
+    expect(
+      (await api(page, `${base}/professionals/${id}/schedule`, "PUT", {
+        days: [{ weekday: WEEKDAY_DA_DATA, intervals: [{ start: "09:00", end: "13:00" }] }],
+      })).status,
+    ).toBe(200);
+  }
   const settings = await api<{ settings: { slug: string; enabled: boolean } }>(page, `${base}/public-booking`);
   const slug = settings.corpo.settings.slug;
   expect(settings.corpo.settings.enabled).toBe(false);
@@ -143,18 +189,89 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   p.on("request", (r) => {
     if (r.url().includes("/tenants/") || r.url().includes("/consumers")) escritasPrivadas.push(r.url());
   });
+  const consultasDeHorario: string[] = [];
+  p.on("request", (r) => {
+    if (r.url().includes("/availability?")) consultasDeHorario.push(r.url());
+  });
   await p.goto(link);
   await expect(p.getByRole("heading", { level: 1 })).toHaveText(estabelecimento);
-  await expect(p.getByTestId("lista-servicos-publicos")).toContainText("R$");
-  await escolherHorario(p, "Sessão de fisioterapia", "Ana Fisio", "09:00");
+  await expect(p.getByTestId("iniciais-estabelecimento")).toBeVisible();
+  await expect(p.getByTestId("progresso-agendamento")).toContainText("Etapa 1 de 5");
+  await expect(servicoPublico(p, "Sessão de fisioterapia")).toContainText("R$ 120,00");
+  await expect(servicoPublico(p, "Sessão de fisioterapia")).toContainText("60 min");
+  await expect(servicoPublico(p, "Avaliação inicial")).toContainText("Sob consulta");
+
+  // ---- percurso com dois profissionais, voltar e trocar escolhas
+  await servicoPublico(p, "Avaliação inicial").click();
+  await expect(p.getByTestId("titulo-etapa")).toHaveText("Escolha o profissional");
+  await expect(p.getByTestId("progresso-agendamento")).toContainText("Etapa 2 de 5");
+  await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button")).toHaveCount(2);
+  await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Bruno Fisio/ }).click();
+  await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
+  await horarioPublico(p, "09:00").click();
+  await expect(p.getByTestId("horario-escolhido")).toContainText("09:00");
+  const antesDaTroca = consultasDeHorario.length;
+  await voltar(p, "Escolha o profissional");
+  await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Bruno Fisio/ })).toHaveAttribute("aria-pressed", "true");
+  // Outro profissional: o horário escolhido cai e a disponibilidade é relida para ele.
+  await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Ana Fisio/ }).click();
+  await expect(p.getByTestId("horario-escolhido")).toHaveText("Escolha um horário");
+  await expect(p.getByTestId("continuar-horario")).toBeDisabled();
+  await expect.poll(() => consultasDeHorario.slice(antesDaTroca).some((u) => u.includes(prof.corpo.professional.id))).toBe(true);
+  await expect(horarioPublico(p, "09:00")).toHaveAttribute("aria-pressed", "false");
+  await voltar(p, "Escolha o profissional");
+  await voltar(p, "Escolha o serviço");
+  await expect(servicoPublico(p, "Avaliação inicial")).toHaveAttribute("aria-pressed", "true");
+
+  // ---- serviço com profissional único: etapa pulada, Ana já escolhida
+  await escolherHorario(p, "Sessão de fisioterapia", null, "09:00");
+  await expect(p.getByTestId("contexto-escolhas")).toContainText("Sessão de fisioterapia · com Ana Fisio");
   await preencher(p, "Joana Cliente", "(11) 98888-0001");
+  await expect(p.getByTestId("titulo-etapa")).toHaveText("Revise e envie");
+  await expect(p.getByTestId("resumo-estabelecimento")).toHaveText(estabelecimento);
+  await expect(p.getByTestId("resumo-servico")).toHaveText("Sessão de fisioterapia · 60 min");
+  await expect(p.getByTestId("resumo-profissional")).toHaveText("Ana Fisio");
+  await expect(p.getByTestId("resumo-data")).toHaveText(`domingo, ${dataBr}`);
+  await expect(p.getByTestId("resumo-hora")).toContainText("09:00");
+  await expect(p.getByTestId("resumo-hora")).toContainText("America/Sao_Paulo");
+  await expect(p.getByTestId("resumo-preco")).toHaveText("R$ 120,00");
+  await expect(p.getByTestId("resumo-nome")).toHaveText("Joana Cliente");
+  await expect(p.getByTestId("resumo-whatsapp")).toHaveText("(11) 98888-0001");
+  await expect(p.getByTestId("enviar-pedido")).toHaveText("Solicitar agendamento");
+
+  // Voltar mantém os dados e o horário; trocar o serviço derruba o horário.
+  await voltar(p, "Seus dados");
+  await expect(p.getByLabel("Nome")).toHaveValue("Joana Cliente");
+  await voltar(p, "Escolha o dia e o horário");
+  await expect(horarioPublico(p, "09:00")).toHaveAttribute("aria-pressed", "true");
+  await voltar(p, "Escolha o serviço");
+  await servicoPublico(p, "Avaliação inicial").click();
+  await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Ana Fisio/ })).toHaveAttribute("aria-pressed", "true");
+  await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Ana Fisio/ }).click();
+  await expect(p.getByTestId("horario-escolhido")).toHaveText("Escolha um horário");
+  await horarioPublico(p, "10:00").click();
+  await p.getByTestId("continuar-horario").click();
+  await expect(p.getByLabel("Nome")).toHaveValue("Joana Cliente");
+  await p.getByTestId("revisar-pedido").click();
+  await expect(p.getByTestId("resumo-preco")).toHaveText("Sob consulta");
+  await expect(p.getByTestId("resumo-servico")).toHaveText("Avaliação inicial · 30 min");
+  await semRolagemHorizontal(p);
+
+  // De volta à sessão de fisioterapia, 09:00, e envia.
+  await voltar(p, "Seus dados");
+  await voltar(p, "Escolha o dia e o horário");
+  await voltar(p, "Escolha o profissional");
+  await voltar(p, "Escolha o serviço");
+  await escolherHorario(p, "Sessão de fisioterapia", null, "09:00");
+  await p.getByTestId("revisar-pedido").click();
   await semRolagemHorizontal(p);
   await p.screenshot({ path: test.info().outputPath("publico-formulario-celular.png"), fullPage: true });
   // Clique duplo: um pedido só.
   await p.getByTestId("enviar-pedido").dblclick();
+  await expect(p.getByTestId("recibo-titulo")).toHaveText("Solicitação enviada — aguardando confirmação");
   await expect(p.getByTestId("recibo-status")).toHaveText("Aguardando confirmação do estabelecimento");
   await expect(p.getByTestId("recibo-pedido")).not.toContainText(/Confirmado/);
-  await expect(p.getByTestId("recibo-data")).toHaveText(dataBr);
+  await expect(p.getByTestId("recibo-data")).toHaveText(`domingo, ${dataBr}`);
   await expect(p.getByTestId("recibo-hora")).toHaveText("09:00");
   await p.screenshot({ path: test.info().outputPath("publico-recibo-celular.png"), fullPage: true });
   expect(escritasPrivadas, "a página pública nunca chama rota privada").toEqual([]);
@@ -163,6 +280,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await page.goto("/conta/visao-geral");
   await expect(page.getByTestId("aviso-solicitacoes")).toContainText("1 solicitação aguardando sua confirmação.");
   await expect(page.getByTestId("contador-solicitacoes")).toContainText("1");
+  await expect(page.getByTestId("contador-notificacoes")).toHaveText("1");
   await page.reload();
   await expect(page.getByTestId("contador-solicitacoes")).toContainText("1");
   await page.getByRole("link", { name: /Ver solicitações/ }).click();
@@ -213,7 +331,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   // ------------------------------------------- dois clientes, mesmo horário
   const outro = await visitante(browser, COMPUTADOR);
   await outro.pagina.goto(link);
-  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "11:00");
+  await escolherHorario(outro.pagina, "Sessão de fisioterapia", null, "11:00");
   await preencher(outro.pagina, "Bruno Atrasado", "(11) 98888-0002");
   // Enquanto Bruno preenchia, Carla pediu o mesmo horário.
   const carla = await outro.pagina.evaluate(
@@ -232,11 +350,18 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   );
   expect(carla).toBe(201);
   await outro.pagina.getByTestId("enviar-pedido").click();
+  // O conflito leva de volta à escolha do horário, com a lista relida.
+  await expect(outro.pagina.getByTestId("titulo-etapa")).toHaveText("Escolha o dia e o horário");
   await expect(outro.pagina.getByTestId("envio-falha")).toContainText("Este horário acabou de ser ocupado");
-  await expect(outro.pagina.getByTestId("lista-horarios-publicos").getByRole("button", { name: "11:00", exact: true })).toHaveCount(0);
+  await expect(horarioPublico(outro.pagina, "12:00")).toBeVisible();
+  await expect(horarioPublico(outro.pagina, "11:00")).toHaveCount(0);
 
   // ------------------------------------------- resposta perdida → verificar envio
-  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "12:00");
+  // Serviço, profissional, dia e dados continuam; só o horário é escolhido de novo.
+  await horarioPublico(outro.pagina, "12:00").click();
+  await outro.pagina.getByTestId("continuar-horario").click();
+  await expect(outro.pagina.getByLabel("Nome")).toHaveValue("Bruno Atrasado");
+  await outro.pagina.getByTestId("revisar-pedido").click();
   await outro.pagina.route("**/public/*/booking-requests", async (rota) => {
     await rota.fetch(); // o servidor grava...
     await rota.abort("connectionreset"); // ...e a resposta se perde.
@@ -247,7 +372,8 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await outro.pagina.unroute("**/public/*/booking-requests");
   await outro.pagina.screenshot({ path: test.info().outputPath("publico-incerto-computador.png"), fullPage: true });
   await outro.pagina.getByTestId("verificar-envio").click();
-  await expect(outro.pagina.getByRole("heading", { name: "Este pedido já tinha sido recebido" })).toBeVisible();
+  await expect(outro.pagina.getByTestId("recibo-titulo")).toHaveText("Solicitação enviada — aguardando confirmação");
+  await expect(outro.pagina.getByTestId("recibo-repetido")).toContainText("já tinha sido recebido");
   await expect(outro.pagina.getByTestId("recibo-status")).toHaveText("Aguardando confirmação do estabelecimento");
 
   // ------------------------------------------- falha de comunicação na leitura
@@ -293,7 +419,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await expect(page.getByTestId("lista-solicitacoes")).not.toContainText("Carla Rápida");
   // O horário recusado volta a aparecer para o público.
   await outro.pagina.goto(link);
-  await escolherHorario(outro.pagina, "Sessão de fisioterapia", "Ana Fisio", "11:00");
+  await escolherHorario(outro.pagina, "Sessão de fisioterapia", null, "11:00");
   await page.setViewportSize(COMPUTADOR);
   await page.screenshot({ path: test.info().outputPath("solicitacoes-computador.png"), fullPage: true });
 

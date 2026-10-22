@@ -110,3 +110,106 @@ export function mensagemSemHorario(motivo: string | null): string {
 export function linkPublico(origem: string, slug: string): string {
   return `${origem.replace(/\/+$/, "")}/agendar/${encodeURIComponent(slug)}`;
 }
+
+// ------------------------------------------------- apresentação da página
+
+/** Até duas letras para a apresentação do estabelecimento sem logo
+ * (o contrato público não traz logo). */
+export function iniciaisDoEstabelecimento(nome: string): string {
+  const palavras = nome
+    .trim()
+    .split(/\s+/)
+    .filter((p) => /[\p{L}\p{N}]/u.test(p) && !/^(d[aeo]s?|e|&)$/i.test(p));
+  const letra = (p: string) => p.match(/[\p{L}\p{N}]/u)?.[0] ?? "";
+  const iniciais = palavras.length > 1 ? letra(palavras[0]) + letra(palavras[1]) : (palavras[0] ?? "").replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2);
+  return iniciais.toLocaleUpperCase("pt-BR") || "?";
+}
+
+/** Com tantos serviços ou mais, a página oferece busca por nome. */
+export const BUSCA_A_PARTIR_DE = 6;
+
+function semAcento(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR");
+}
+
+/** Busca local no catálogo já carregado: por nome, sem diferenciar
+ * maiúsculas nem acentos. Termo vazio devolve tudo. */
+export function filtrarServicos<T extends { name: string }>(servicos: readonly T[], termo: string): T[] {
+  const alvo = semAcento(termo.trim());
+  if (!alvo) return [...servicos];
+  return servicos.filter((s) => semAcento(s.name).includes(alvo));
+}
+
+/** Preço como o cliente vê: oculto ou ausente é "Sob consulta". */
+export function precoPublico(priceCents: number | null, visivel: boolean): string {
+  return precoTexto(priceCents, visivel) ?? "Sob consulta";
+}
+
+export type Periodo = "Manhã" | "Tarde" | "Noite";
+
+/** Período do horário LOCAL (`HH:MM` do estabelecimento). */
+export function periodoDoHorario(localStart: string): Periodo {
+  const hora = Number(localStart.slice(0, 2));
+  if (hora < 12) return "Manhã";
+  if (hora < 18) return "Tarde";
+  return "Noite";
+}
+
+/** Horários agrupados por período, na ordem recebida (o servidor já ordena). */
+export function agruparPorPeriodo<T extends { localStart: string }>(slots: readonly T[]): { periodo: Periodo; slots: T[] }[] {
+  const grupos: { periodo: Periodo; slots: T[] }[] = [];
+  for (const s of slots) {
+    const periodo = periodoDoHorario(s.localStart);
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo?.periodo === periodo) ultimo.slots.push(s);
+    else grupos.push({ periodo, slots: [s] });
+  }
+  return grupos;
+}
+
+const DIAS_POR_EXTENSO = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+
+/** "domingo, 07/03/2027" — dia de calendário, sem fuso. */
+export function dataPorExtenso(data: string): string {
+  const [a, m, d] = data.split("-").map(Number);
+  return `${DIAS_POR_EXTENSO[new Date(Date.UTC(a, m - 1, d)).getUTCDay()]}, ${dataBr(data)}`;
+}
+
+/** Nome legível do fuso do estabelecimento ("Horário de Brasília"), com o
+ * identificador como reserva. */
+export function nomeDoFuso(timezone: string, agora: Date): string {
+  try {
+    const nome = new Intl.DateTimeFormat("pt-BR", { timeZone: timezone, timeZoneName: "longGeneric" })
+      .formatToParts(agora)
+      .find((p) => p.type === "timeZoneName")?.value;
+    return nome ? `${nome} (${timezone})` : timezone;
+  } catch {
+    return timezone;
+  }
+}
+
+/** WhatsApp com DDD: 10 a 13 dígitos (com ou sem 55). A regra final é do
+ * servidor; aqui só evita mandar o que certamente seria recusado. */
+export function whatsappPlausivel(texto: string): boolean {
+  const digitos = texto.replace(/\D/g, "").length;
+  return digitos >= 10 && digitos <= 13;
+}
+
+export function nomePlausivel(texto: string): boolean {
+  return texto.trim().length >= 2;
+}
+
+/** Título do recibo. PENDING diz, com todas as letras, que falta a
+ * confirmação do estabelecimento. */
+export function tituloDoRecibo(status: ReciboPedido["status"]): string {
+  switch (status) {
+    case "PENDING":
+      return "Solicitação enviada — aguardando confirmação";
+    case "CONFIRMED":
+      return "Agendamento confirmado pelo estabelecimento";
+    case "CANCELED":
+      return "Solicitação não confirmada";
+    default:
+      return "Solicitação registrada";
+  }
+}
