@@ -20,6 +20,7 @@ import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { FaixaConexao } from "@/components/conexao/aviso-conexao";
 import { NOME_PRODUTO } from "@/lib/config";
 import type { PapelEstabelecimento, PapelPlataforma } from "@/lib/types";
 
@@ -57,7 +58,13 @@ export default function LoginPage() {
 // default acima.
 function LoginPageConteudo() {
   const { entrarComo } = useAuth();
-  const { login } = useRealAuth();
+  const { login, estado, conexao, recarregar } = useRealAuth();
+  // A leitura de sessão da abertura (RealAuthProvider) é o acesso que acorda
+  // a API. Enquanto ela não responde, o envio espera: o login NUNCA é
+  // repetido sozinho, então mandá-lo para um servidor ainda dormindo só
+  // geraria um erro. O que foi digitado continua no formulário.
+  const aguardandoServidor = conexao === "acordando" || conexao === "sem_internet";
+  const conexaoExibida = estado.status === "falha_comunicacao" ? "sem_resposta" : conexao;
   const { notificar } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -74,7 +81,7 @@ function LoginPageConteudo() {
 
   async function aoEnviar(e: FormEvent) {
     e.preventDefault();
-    if (entrando) return;
+    if (entrando || aguardandoServidor) return;
     setEntrando(true);
     setErro(null);
 
@@ -144,6 +151,8 @@ function LoginPageConteudo() {
             <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
           </div>
 
+          <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
+
           <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
             <div>
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
@@ -194,9 +203,9 @@ function LoginPageConteudo() {
               </button>
             </div>
 
-            <Botao type="submit" className="w-full" disabled={entrando}>
+            <Botao type="submit" className="w-full" disabled={entrando || aguardandoServidor}>
               <KeyRound size={16} className="mr-1.5" />
-              {entrando ? "Entrando..." : "Entrar"}
+              {entrando ? "Entrando..." : aguardandoServidor ? "Aguardando o servidor..." : "Entrar"}
             </Botao>
           </form>
 

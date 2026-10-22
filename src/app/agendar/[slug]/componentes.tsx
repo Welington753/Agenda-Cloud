@@ -4,7 +4,8 @@
 // seção numerada, lista de horários e recibo do pedido.
 import type { ReactNode } from "react";
 import clsx from "clsx";
-import { Clock, RefreshCw, Store } from "lucide-react";
+import { Clock, Loader2, RefreshCw, Store, WifiOff } from "lucide-react";
+import type { FaseRecuperacao } from "@/lib/api/leitura-com-recuperacao";
 import type { FalhaPublica, HorariosPublicos, ReciboPedido } from "@/lib/api/public-booking-api";
 import {
   dataBr,
@@ -23,7 +24,7 @@ export const OPCAO_INATIVA = "border-border bg-card text-ink hover:bg-paper-mute
 
 export type EstadoHorarios =
   | { status: "ocioso" }
-  | { status: "carregando" }
+  | { status: "carregando"; fase?: FaseRecuperacao }
   | { status: "falha"; falha: FalhaPublica }
   | { status: "pronto"; horarios: HorariosPublicos };
 
@@ -39,7 +40,24 @@ export function Horarios({
   aoTentarDeNovo: () => void;
 }) {
   if (estado.status === "ocioso") return null;
-  if (estado.status === "carregando") return <Skeleton className="h-24 w-full" />;
+  if (estado.status === "carregando") {
+    if (estado.fase === "sem_internet") {
+      return (
+        <p role="status" data-testid="horarios-sem-internet" className="flex items-center gap-2 text-sm text-ink-soft">
+          <WifiOff size={16} aria-hidden="true" /> Sem conexão com a internet. Assim que ela voltar, os horários aparecem.
+        </p>
+      );
+    }
+    if (estado.fase === "acordando") {
+      return (
+        <p role="status" data-testid="horarios-conectando" className="flex items-center gap-2 text-sm text-ink-soft">
+          <Loader2 size={16} className="animate-spin" aria-hidden="true" /> Conectando ao servidor… pode levar cerca de
+          um minuto.
+        </p>
+      );
+    }
+    return <Skeleton className="h-24 w-full" />;
+  }
   if (estado.status === "falha") {
     return (
       <div role="alert" data-testid="horarios-falha" className="space-y-2 text-sm text-ink">

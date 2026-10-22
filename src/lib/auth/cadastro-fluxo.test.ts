@@ -23,7 +23,7 @@ describe("decidirFluxoCadastro", () => {
   });
 
   it("cadastro confirmado + /auth/me com falha de comunicação vira `sessao_pendente`, nunca `cadastro_falhou`", () => {
-    expect(decidirFluxoCadastro(true, null, { status: "falha_comunicacao" })).toEqual({ etapa: "sessao_pendente" });
+    expect(decidirFluxoCadastro(true, null, { status: "falha_comunicacao", motivo: "sem_resposta" })).toEqual({ etapa: "sessao_pendente" });
   });
 
   it("cadastro confirmado + /auth/me respondendo 401 vira `sessao_pendente` — a conta existe do mesmo jeito", () => {

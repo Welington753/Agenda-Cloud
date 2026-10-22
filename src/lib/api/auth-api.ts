@@ -72,15 +72,14 @@ export async function login(email: string, password: string): Promise<ResultadoA
   return { ok: true, dados: resultado.data };
 }
 
-const STATUS_DE_GATEWAY = new Set([502, 503, 504]);
-
 /** `null` em `dados` é um resultado válido (`ok: true`) — 401 aqui significa
  * "não autenticado", nunca uma falha de comunicação. Só vira `falha` quando o
  * servidor não respondeu de verdade (rede) ou respondeu algo inesperado.
  *
- * 502/503/504 contam como falha de comunicação: é o que a borda da
- * hospedagem devolve (em HTML, sem passar pela API) enquanto o serviço
- * hibernado do Render acorda — a API não chegou a responder. */
+ * O que a borda da hospedagem devolve enquanto o serviço hibernado do Render
+ * acorda (502/503/504 ou página HTML, sem passar pela API) já chega aqui
+ * como `network-error` (ver http-client.ts): falha de comunicação. Um erro
+ * da própria API (JSON) é `indisponivel`. */
 export async function buscarSessaoAtual(
   signal?: AbortSignal,
 ): Promise<ResultadoAutenticacaoReal<SessaoRealContexto | null>> {
@@ -89,7 +88,6 @@ export async function buscarSessaoAtual(
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (resultado.kind === "http-error") {
     if (resultado.status === 401) return { ok: true, dados: null };
-    if (STATUS_DE_GATEWAY.has(resultado.status)) return { ok: false, falha: { tipo: "falha_comunicacao" } };
     return { ok: false, falha: { tipo: "indisponivel" } };
   }
   if (!ehSessaoRealContexto(resultado.data)) return { ok: false, falha: { tipo: "indisponivel" } };

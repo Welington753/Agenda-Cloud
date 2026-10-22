@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { reiniciarPedidosDePartida } from "./acordar-api";
 import { apiRequest } from "./http-client";
 
 afterEach(() => {
@@ -68,9 +69,82 @@ describe("apiRequest", () => {
     }
   });
 
+  it("hospedagem no lugar da API: pede a partida direto à API, sem repetir o POST", async () => {
+    reiniciarPedidosDePartida();
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith("/auth/login")
+        ? new Response(JSON.stringify({ message: "API indisponível." }), {
+            status: 502,
+            headers: {
+              "x-agenda-proxy-error": "upstream-unavailable",
+              "x-agenda-acordar-api": "https://api.exemplo.test",
+            },
+          })
+        : new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await apiRequest("/auth/login", { method: "POST", body: { email: "a@b.com", password: "x" } });
+
+    expect(resultado).toEqual({ kind: "network-error" });
+    const chamadas = fetchMock.mock.calls as [string, RequestInit][];
+    expect(chamadas.filter(([url]) => url.endsWith("/auth/login"))).toHaveLength(1);
+    expect(chamadas.filter(([url]) => url === "https://api.exemplo.test/")).toHaveLength(1);
+    const [, init] = chamadas.find(([url]) => url === "https://api.exemplo.test/")!;
+    expect(init).toMatchObject({ mode: "no-cors", credentials: "omit" });
+  });
+
   it("502 da própria API (sem o marcador do proxy) continua http-error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 502 })));
     expect(await apiRequest("/auth/me")).toEqual({ kind: "http-error", status: 502, data: {} });
+  });
+
+  it("503 da própria API com corpo JSON continua http-error (erro real, nunca 'acordando')", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: "Cadastro temporariamente indisponível." }), {
+          status: 503,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        }),
+      ),
+    );
+    expect(await apiRequest("/auth/register", { method: "POST", body: {} })).toMatchObject({
+      kind: "http-error",
+      status: 503,
+    });
+  });
+
+  // Hospedagem respondendo no lugar da API (borda do Render, página de
+  // "serviço acordando"): a API não chegou a responder.
+  it.each([
+    [502, "text/html; charset=utf-8", "<html><body>Bad Gateway</body></html>"],
+    [503, "text/html", "<html>Service waking up</html>"],
+    [200, "text/html; charset=utf-8", "<!doctype html><html></html>"],
+    [502, "text/plain", "Bad Gateway"],
+    [504, null, ""],
+  ])("%i com %s da hospedagem vira network-error", async (status, contentType, corpo) => {
+    const headers = contentType ? { "content-type": contentType } : undefined;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(corpo || null, { status, headers })));
+    expect(await apiRequest("/auth/me")).toEqual({ kind: "network-error" });
+  });
+
+  it.each([401, 403, 429])("%i nunca vira network-error", async (status) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: "x" }), { status })),
+    );
+    expect(await apiRequest("/auth/me")).toMatchObject({ kind: "http-error", status });
+  });
+
+  it("corpo interrompido no meio da leitura vira network-error", async () => {
+    const corpo = new ReadableStream({
+      start(controle) {
+        controle.error(new TypeError("network error"));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(corpo, { status: 200 })));
+    expect(await apiRequest("/auth/me")).toEqual({ kind: "network-error" });
   });
 
   it("fetch rejeitando (rede/offline) vira kind: network-error, nunca é confundido com http-error", async () => {

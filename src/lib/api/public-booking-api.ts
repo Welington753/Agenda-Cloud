@@ -61,8 +61,12 @@ export type FalhaPublica =
   | { tipo: "conflito"; mensagem: string | null }
   /** 429: limite de tentativas. */
   | { tipo: "limite"; mensagem: string | null }
-  /** Leitura: sem resposta ou resposta ilegível. */
+  /** Leitura: a API não respondeu (rede, hospedagem acordando). Só esta
+   * falha é repetida sozinha (ver leitura-com-recuperacao.ts). */
   | { tipo: "falha_comunicacao" }
+  /** Leitura: a API respondeu com erro inesperado ou resposta ilegível.
+   * Repetir sozinho não resolve. */
+  | { tipo: "indisponivel" }
   /** Envio: não dá para saber se foi gravado. */
   | { tipo: "incerto" };
 
@@ -132,10 +136,10 @@ export async function obterPaginaPublica(
   const r = await apiRequest<unknown>(base(slug), { signal });
   if (r.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (r.kind === "http-error") {
-    return { ok: false, falha: falhaHttp(r.status, r.data) ?? { tipo: "falha_comunicacao" } };
+    return { ok: false, falha: falhaHttp(r.status, r.data) ?? { tipo: "indisponivel" } };
   }
   const corpo = r.data as { profile?: unknown };
-  if (!ehPagina(corpo?.profile)) return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (!ehPagina(corpo?.profile)) return { ok: false, falha: { tipo: "indisponivel" } };
   return { ok: true, dados: corpo.profile };
 }
 
@@ -148,10 +152,10 @@ export async function consultarHorariosPublicos(
   const r = await apiRequest<unknown>(`${base(slug)}/availability?${q}`, { signal });
   if (r.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (r.kind === "http-error") {
-    return { ok: false, falha: falhaHttp(r.status, r.data) ?? { tipo: "falha_comunicacao" } };
+    return { ok: false, falha: falhaHttp(r.status, r.data) ?? { tipo: "indisponivel" } };
   }
   const corpo = r.data as { availability?: unknown };
-  if (!ehHorarios(corpo?.availability)) return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (!ehHorarios(corpo?.availability)) return { ok: false, falha: { tipo: "indisponivel" } };
   return { ok: true, dados: corpo.availability };
 }
 

@@ -344,6 +344,24 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/avisos-solicitacoes
         run: npm run test:browser:avisos-solicitacoes
 
+      # Invocação SEPARADA (1 cadastro, 1 login, 2 pedidos públicos): abertura
+      # com a hospedagem gratuita acordando. Só o "servidor dormindo" é
+      # simulado (502 da borda, requisição pendurada, offline); o relógio da
+      # página é o do Playwright. Prova recuperação, prazo total, erros reais
+      # (403/429/500) sem repetição e nenhuma escrita reenviada sozinha.
+      - name: Run real browser flows (recovery while the free host wakes up)
+        id: browser_recuperacao
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/recuperacao
+        run: npm run test:browser:recuperacao
+
       # Invocação SEPARADA (2 cadastros, 2 logins, 2 pedidos públicos): Web
       # Push — PWA (manifesto, ícones, /sw.js sem cache), permissão só no
       # clique, estados ativado/desativado/bloqueado/não suportado/iPhone,

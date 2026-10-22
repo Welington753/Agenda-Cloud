@@ -84,7 +84,12 @@ describe("encontrarContextoPorTenantId", () => {
 describe("reduzirResultadoSessao", () => {
   it("falha de comunicação vira status falha_comunicacao, nunca nao_autenticado", () => {
     const estado = reduzirResultadoSessao({ ok: false, falha: { tipo: "falha_comunicacao" } }, null);
-    expect(estado).toEqual({ status: "falha_comunicacao" });
+    expect(estado).toEqual({ status: "falha_comunicacao", motivo: "sem_resposta" });
+  });
+
+  it("erro da própria API em /auth/me vira falha com motivo erro_servidor", () => {
+    const estado = reduzirResultadoSessao({ ok: false, falha: { tipo: "indisponivel" } }, null);
+    expect(estado).toEqual({ status: "falha_comunicacao", motivo: "erro_servidor" });
   });
 
   it("dados nulos (401 em /auth/me) viram nao_autenticado, nunca falha_comunicacao", () => {

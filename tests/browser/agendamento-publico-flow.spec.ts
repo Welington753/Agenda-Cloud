@@ -251,12 +251,26 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await expect(outro.pagina.getByTestId("recibo-status")).toHaveText("Aguardando confirmação do estabelecimento");
 
   // ------------------------------------------- falha de comunicação na leitura
+  // A leitura de horários se repete sozinha enquanto a API não responde
+  // (recuperação comum, ver lib/api/leitura-com-recuperacao.ts); o relógio da
+  // página anda até o prazo total acabar e a falha aparecer.
   const terceiro = await visitante(browser, CELULAR);
+  await terceiro.pagina.clock.install();
   await terceiro.pagina.route("**/public/*/availability**", (rota) => rota.abort("internetdisconnected"));
   await terceiro.pagina.goto(link);
   await terceiro.pagina.getByTestId("lista-servicos-publicos").getByRole("button").first().click();
   await terceiro.pagina.getByTestId("lista-profissionais-publicos").getByRole("button").first().click();
-  await expect(terceiro.pagina.getByTestId("horarios-falha")).toContainText("Verifique sua conexão");
+  const falhaHorarios = terceiro.pagina.getByTestId("horarios-falha");
+  await expect
+    .poll(
+      async () => {
+        if ((await falhaHorarios.count()) === 0) await terceiro.pagina.clock.runFor(5_000);
+        return falhaHorarios.count();
+      },
+      { timeout: 50_000, intervals: [50] },
+    )
+    .toBe(1);
+  await expect(falhaHorarios).toContainText("Verifique sua conexão");
   await terceiro.pagina.unroute("**/public/*/availability**");
   await terceiro.pagina.getByRole("button", { name: "Tentar de novo" }).click();
   await expect(terceiro.pagina.getByTestId("lista-horarios-publicos").or(terceiro.pagina.getByTestId("sem-horarios"))).toBeVisible();

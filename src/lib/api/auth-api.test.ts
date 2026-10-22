@@ -127,6 +127,14 @@ describe("buscarSessaoAtual", () => {
     expect(resultado).toEqual({ ok: false, falha: { tipo: "falha_comunicacao" } });
   });
 
+  it("502 em JSON da própria API é erro real (indisponivel), nunca 'servidor acordando'", async () => {
+    mockFetch(502, { message: "Bad Gateway", statusCode: 502 });
+
+    const resultado = await buscarSessaoAtual();
+
+    expect(resultado).toEqual({ ok: false, falha: { tipo: "indisponivel" } });
+  });
+
   it("500 da API continua indisponível, não falha de comunicação", async () => {
     mockFetch(500, { message: "Erro interno." });
 

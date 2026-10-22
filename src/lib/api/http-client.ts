@@ -15,8 +15,10 @@
 // lib/api/proxy.ts), quem responde é o proxy do Next.js. Quando a API não
 // responde, o proxy devolve 502/504 marcado com `X-Agenda-Proxy-Error`, e
 // isso continua sendo `network-error`: para a UI, a API está fora do ar do
-// mesmo jeito que numa chamada direta.
-import { CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "@/lib/api/proxy-marcadores";
+// mesmo jeito que numa chamada direta. O mesmo vale para uma página HTML da
+// hospedagem (ver abaixo): a API não chegou a responder.
+import { pedirPartidaDaApi } from "@/lib/api/acordar-api";
+import { CABECALHO_ACORDAR_API, CABECALHO_ERRO_PROXY, ERRO_API_INDISPONIVEL } from "@/lib/api/proxy-marcadores";
 import { API_BASE_URL } from "@/lib/config";
 
 export type ApiResult<T> =
@@ -29,6 +31,8 @@ export interface ApiRequestInit {
   body?: unknown;
   signal?: AbortSignal;
 }
+
+const STATUS_DE_GATEWAY = new Set([502, 503, 504]);
 
 export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Promise<ApiResult<T>> {
   let response: Response;
@@ -45,6 +49,15 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
     return { kind: "network-error" };
   }
   if (response.headers.get(CABECALHO_ERRO_PROXY) === ERRO_API_INDISPONIVEL) {
+    // A hospedagem respondeu no lugar da API: só um pedido do navegador a
+    // acorda (lib/api/acordar-api.ts). O pedido original nunca é repetido aqui.
+    pedirPartidaDaApi(response.headers.get(CABECALHO_ACORDAR_API));
+    return { kind: "network-error" };
+  }
+  // A API e o proxy só respondem JSON (ou corpo vazio). Uma página HTML
+  // aqui é da HOSPEDAGEM respondendo no lugar deles, com qualquer status:
+  // erro da borda ou página de "serviço acordando" do Render.
+  if (response.headers.get("content-type")?.toLowerCase().includes("text/html")) {
     return { kind: "network-error" };
   }
 
@@ -52,7 +65,13 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
   // limiter genérico) — nunca deixar `JSON.parse` derrubar a chamada por
   // causa disso; nesse caso `data` fica `null` e quem chama decide pelo
   // `status`, nunca pelo corpo.
-  const raw = await response.text();
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch {
+    // Conexão caiu (ou leitura cancelada) no meio do corpo.
+    return { kind: "network-error" };
+  }
   let data: unknown = null;
   if (raw) {
     try {
@@ -62,6 +81,11 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
     }
   }
 
+  // 502/503/504 sem corpo JSON também é a hospedagem: um erro da própria API
+  // sempre traz `{ message, statusCode }`.
+  if (STATUS_DE_GATEWAY.has(response.status) && data === null) {
+    return { kind: "network-error" };
+  }
   if (!response.ok) {
     return { kind: "http-error", status: response.status, data };
   }

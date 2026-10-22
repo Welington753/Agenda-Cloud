@@ -29,6 +29,7 @@ import {
 import { ROTA_POS_CADASTRO } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
+import { FaixaConexao } from "@/components/conexao/aviso-conexao";
 import { NOME_PRODUTO } from "@/lib/config";
 import { CampoCadastro } from "./campo-cadastro";
 
@@ -41,7 +42,11 @@ const FORMULARIO_VAZIO: FormularioCadastro = {
 };
 
 export default function CadastroPage() {
-  const { cadastrar, restaurarSessao } = useRealAuth();
+  const { cadastrar, restaurarSessao, estado, conexao, recarregar } = useRealAuth();
+  // Mesmo cuidado do login: o cadastro nunca é reenviado sozinho, então só
+  // sai depois de a leitura da abertura alcançar a API.
+  const aguardandoServidor = conexao === "acordando" || conexao === "sem_internet";
+  const conexaoExibida = estado.status === "falha_comunicacao" ? "sem_resposta" : conexao;
   const { notificar } = useToast();
   const router = useRouter();
 
@@ -67,7 +72,7 @@ export default function CadastroPage() {
 
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
-    if (enviando || sessaoPendente) return;
+    if (enviando || sessaoPendente || aguardandoServidor) return;
 
     const errosValidacao = validarCadastro(formulario);
     setErros(errosValidacao);
@@ -136,6 +141,8 @@ export default function CadastroPage() {
             <h1 className="text-2xl font-bold text-ink">Criar conta</h1>
             <p className="mt-1 text-sm text-ink-soft">Leva menos de um minuto.</p>
           </div>
+
+          {!sessaoPendente && <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />}
 
           {sessaoPendente ? (
             <div className="space-y-4">
@@ -224,9 +231,9 @@ export default function CadastroPage() {
                 </p>
               )}
 
-              <Botao type="submit" className="w-full" disabled={enviando} aria-busy={enviando}>
+              <Botao type="submit" className="w-full" disabled={enviando || aguardandoServidor} aria-busy={enviando}>
                 <UserPlus size={16} className="mr-1.5" />
-                {enviando ? "Criando conta..." : "Criar conta"}
+                {enviando ? "Criando conta..." : aguardandoServidor ? "Aguardando o servidor..." : "Criar conta"}
               </Botao>
             </form>
           )}
