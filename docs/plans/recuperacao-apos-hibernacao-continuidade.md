@@ -28,6 +28,32 @@ Nota de passagem de trabalho registrada em 2026-10-22. Branch `fix/recuperacao-a
 - O tempo real de subida do plano gratuito cabe no prazo total de 100 s do laço?
 - Algo externo mantém os serviços acordados (as duas sondagens os encontraram ativos)?
 
+## Atualização 2026-10-22 (manhã, outro computador)
+
+Relatos recebidos (não reproduzidos aqui):
+
+- O web acordou depois de mostrar a página 503 do próprio Render.
+- Pelo proxy, requisições receberam 502 em menos de 1 s durante quatro minutos, sem acordar a API.
+- Uma chamada direta à API esperou 31 s e a acordou.
+- Às ~11:46 UTC, ao clicar em Entrar no piloto (código publicado `4c57512`), apareceu "Não foi possível entrar agora. Tente novamente em instantes." Sem deploy.
+
+Conferências de código:
+
+- `src/lib/api/proxy.ts` e a rota `/agenda_api` são idênticos em `4c57512` e no PR. O proxy espera a API por até 90 s e só gera 502 próprio (com `X-Agenda-Proxy-Error`) quando o `fetch` lança.
+- O limite de 30 s por tentativa existe só no PR, que não está publicado. Ele não explica os 502 em menos de 1 s.
+- Em `4c57512`, essa mensagem do login corresponde à falha `indisponivel`: resposta HTTP sem o marcador do proxy, com status diferente de 401/429 (ou corpo fora do contrato). Uma falha do `fetch` no proxy daria "Não foi possível conectar ao servidor". Indício (ainda não prova): quem respondeu ao proxy com erro foi algo à frente da API, e o proxy repassou o status.
+- Ainda no PR: o cancelamento da requisição do navegador é repassado à chamada do proxy para a API (`requisicao.signal`). Com o corte de 30 s do PR e uma subida de 31 s, isso também poderia impedir a recuperação. Fica registrado como risco do PR, não como causa do incidente.
+
+Ferramentas neste computador: `gh` ausente (PR lido pela API pública), CLI `render` instalado com token expirado (precisa de `render login` pela pessoa), Docker parado e PostgreSQL 18 instalado. `vitest` em `75d9dfe`: 786 aprovados.
+
+Experimentos:
+
+- A primeira série (iniciada às 11:30 UTC) foi descartada: o acesso das ~11:46 tocou a API antes da sondagem das 11:50.
+- A segunda série, iniciada às ~11:48 UTC, tem dois ciclos. Cada um começa depois de 20 min sem requisição à API; nesse intervalo o web recebe só `GET /login`, que não chama a API.
+  - Ciclo 1: `GET /agenda_api/auth/me` pelo proxy, depois um único `POST /agenda_api/auth/login` (e-mail inexistente, nunca repetido), depois `GET /auth/me` direto com o User-Agent de navegador que o proxy repassa.
+  - Ciclo 2: proxy, de novo o proxy 60 s depois, e por fim direto com o User-Agent do curl.
+  - Cada requisição espera até 150 s. Os resultados serão registrados abaixo quando saírem.
+
 ## Próximo passo
 
 1. Repetir a sondagem somente leitura depois de mais de 15 min sem tráfego, medindo tempo e corpo das respostas de `/login` e `/agenda_api/auth/me`.
