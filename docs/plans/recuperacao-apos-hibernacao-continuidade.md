@@ -54,6 +54,59 @@ Experimentos:
   - Ciclo 2: proxy, de novo o proxy 60 s depois, e por fim direto com o User-Agent do curl.
   - Cada requisição espera até 150 s. Os resultados serão registrados abaixo quando saírem.
 
+### Logs do Render (CLI autenticado às ~12:00 UTC)
+
+Logs do tipo `app` dos dois serviços (o plano gratuito não trouxe logs de requisição). A partida da API aparece como `==> Running 'node dist/main.js'` seguida de `Nest application successfully started`, sem build. Isso já ocorreu antes, por exemplo em 2026-10-21 às 21:29 e às 22:37 UTC.
+
+- API: o último deploy subiu às 03:08 UTC. Entre 03:13 e 12:08 UTC não há **nenhuma** linha de log. Ou seja, o clique em Entrar das ~11:46, feito pelo proxy, não provocou partida da API.
+- Web: partida às 11:19:11 UTC (`next start`, pronto em 1,3 s), sem build. A origem desse acesso não está identificada.
+
+### Ciclo 1 (sondagens às 12:08 UTC, depois de 20 min sem requisição à API)
+
+| Horário (UTC) | Requisição | Resultado |
+| --- | --- | --- |
+| 12:08:09 | `GET /agenda_api/auth/me` pelo proxy | 502 em 0,90 s, página HTML "502" do Render (fonte Roobert) |
+| 12:08:10 | `POST /agenda_api/auth/login` pelo proxy, uma vez | 502 em 0,95 s, mesma página |
+| 12:08:12 | `GET /auth/me` direto, mesmo User-Agent e `accept` que o proxy repassa | 401 JSON da API em 32,6 s |
+| 12:08:29 | log da API: `Running 'node dist/main.js'` (instância `c7nbn`) | |
+| 12:08:39 | log da API: `Nest application successfully started` | |
+
+Leitura:
+
+- As respostas 502 do proxy têm `vary: rsc, next-router-state-tree, …` e `cache-control: no-store`, ou seja, passaram pelo Next.js, e não têm `X-Agenda-Proxy-Error`. Portanto o `fetch` do proxy **recebeu** essa página 502 do Render e a repassou; ela não foi gerada pelo nosso proxy. Isso também explica a mensagem do login em `4c57512` (`indisponivel`, porque http-client tratava 502 como erro HTTP comum).
+- A API estava de fato parada: houve partida registrada em log às 12:08:29, e não só demora.
+- A partida veio 20 s depois do 1º pedido pelo proxy e 17 s depois do pedido direto. Só com este ciclo não dá para dizer qual dos dois a provocou. A ausência de partida às ~11:46, quando houve apenas tráfego pelo proxy, indica que foi o direto. O ciclo 2 testa isso separadamente: dois pedidos pelo proxy com 60 s entre eles e só depois o direto.
+- Diferenças entre o pedido do proxy e o direto, além da rede de origem: o proxy usa o `fetch` do Node (undici), que acrescenta `accept-encoding`, `accept-language: *` e `sec-fetch-mode: cors`, e envia `x-agenda-proxy-secret`. Caminho, método (GET e POST falharam) e User-Agent foram iguais. O ciclo 3 repete o pedido com o mesmo `fetch` do Node e os mesmos cabeçalhos, porém a partir deste PC.
+
+### Ciclo 2 (12:28 UTC, depois de 20 min sem requisição à API)
+
+| Horário (UTC) | Requisição | Resultado |
+| --- | --- | --- |
+| 12:28:47 | `GET /agenda_api/auth/me` pelo proxy | 502 HTML do Render em 0,90 s |
+| 12:29:48 | o mesmo pedido, 61 s depois | 502 HTML do Render em 0,28 s |
+| 12:29:49 | `GET /auth/me` direto, User-Agent do curl | 401 JSON em 31,3 s |
+| 12:30:04 | log da API: `Running 'node dist/main.js'` (instância `pmsvw`) | |
+| 12:30:14 | log da API: `Nest application successfully started` | |
+
+Nenhuma partida foi registrada nos 61 s depois do 1º pedido pelo proxy. A partida começou 15 s depois do pedido direto.
+
+### Comprovado até aqui
+
+- Com a API hibernada, pedidos que saem do serviço web pelo proxy (`fetch` do Node para `https://<api>.onrender.com`) recebem em menos de 1 s uma página HTML 502 do Render e **não** provocam a partida da API. Vale para GET e para o POST de login, em três ocasiões: ~11:46 (clique real), ciclo 1 e ciclo 2.
+- Um pedido direto à API, feito deste PC (curl, com User-Agent de navegador ou de curl), provoca a partida (log `Running 'node dist/main.js'` 15–17 s depois) e é respondido em 31–33 s.
+- Em `4c57512`, o login mostra "Não foi possível entrar agora" porque recebe essa 502 HTML repassada pelo proxy. Repetir pelo proxy não resolve, pois o proxy nunca acorda a API. Isso vale também para o laço do PR #59 do jeito que está: ele repete só pelo proxy.
+
+### Descartado
+
+- O User-Agent não é a causa: o direto acorda a API tanto com o User-Agent de navegador quanto com o do curl, e o proxy falha com o User-Agent de navegador.
+- O método também não: GET e POST falham da mesma forma pelo proxy.
+- O limite de 30 s do PR não causou o incidente: ele não está publicado e as 502 chegam em menos de 1 s.
+- A falha não é do nosso proxy: não há `X-Agenda-Proxy-Error`, e a página é do Render.
+
+### Ainda incerto
+
+- Por que o pedido do web não acorda a API. Pode ser a rede de origem (dentro do Render, mesma região) ou o transporte e os cabeçalhos do `fetch` do Node. O ciclo 3 separa as duas hipóteses.
+
 ## Próximo passo
 
 1. Repetir a sondagem somente leitura depois de mais de 15 min sem tráfego, medindo tempo e corpo das respostas de `/login` e `/agenda_api/auth/me`.
