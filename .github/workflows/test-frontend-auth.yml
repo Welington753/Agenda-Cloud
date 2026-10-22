@@ -400,6 +400,29 @@ jobs:
           eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
           npm run test:browser:push
 
+      # Invocação SEPARADA (2 cadastros, 1 login, 3 pedidos públicos):
+      # aparência claro/escuro/seguir aparelho (primeira visita, escolha
+      # salva aplicada antes da pintura, demonstração sempre clara, destaque
+      # do horário, foco e contraste) e o menu da conta (sino com pendentes
+      # reais, situação das notificações deste aparelho sem pedir permissão,
+      # nenhuma consulta de solicitações a mais, Sair). Capturas em 360, 390
+      # e 1280 px nos dois temas. Chaves VAPID só deste processo, para o
+      # servidor responder "push ligado"; nada é enviado.
+      - name: Run real browser flows (light/dark appearance, account menu notifications)
+        id: browser_aparencia
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/aparencia
+        run: |
+          eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
+          npm run test:browser:aparencia
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -530,6 +553,21 @@ jobs:
         with:
           name: web-push-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/push/**/push-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # Capturas da aparência (agendamento público e menu da conta, claro e
+      # escuro, 360/390/1280 px). Só os PNG `aparencia-*`, `menu-conta-*` e
+      # `login-*`.
+      - name: Upload appearance screenshots
+        if: always() && steps.browser_aparencia.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aparencia-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/aparencia/**/aparencia-*.png
+            test-results/aparencia/**/menu-conta-*.png
+            test-results/aparencia/**/login-*.png
           if-no-files-found: error
           retention-days: 7
 
