@@ -8,6 +8,7 @@ import { AvailabilityModule } from './availability/availability.module.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { AppointmentsModule } from './appointments/appointments.module.js';
 import { PublicBookingModule } from './public-booking/public-booking.module.js';
+import { PushModule } from './push/push.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -22,6 +23,7 @@ import { AppService } from './app.service.js';
     ConsumersModule,
     AppointmentsModule,
     PublicBookingModule,
+    PushModule,
   ],
   controllers: [AppController],
   providers: [AppService],

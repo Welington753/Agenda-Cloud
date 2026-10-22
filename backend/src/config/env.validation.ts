@@ -7,6 +7,7 @@
 import { z } from 'zod';
 
 import { CLIENT_IP_SOURCES, DEFAULT_CLIENT_IP_SOURCE, MIN_PROXY_SECRET_LENGTH } from './client-ip.js';
+import { problemaNasChavesVapid } from '../push/web-push-crypto.js';
 
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\/.+/;
 
@@ -81,9 +82,29 @@ const envSchema = z.object({
   // ter o tamanho mínimo; um valor curto derruba a inicialização em vez de
   // ser ignorado em silêncio.
   API_PROXY_SECRET: z.string().min(MIN_PROXY_SECRET_LENGTH).optional(),
+  // Web Push (VAPID). As três juntas ou nenhuma: ausentes, a API sobe com o
+  // push DESLIGADO (a tela diz que o servidor não envia notificações). A
+  // chave PRIVADA fica só aqui, no ambiente do servidor, e precisa ser a
+  // MESMA entre publicações: trocar o par invalida todas as inscrições.
+  // Gerar com `npm run push:generate-vapid-keys` (backend/scripts).
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  WEB_PUSH_SUBJECT: z.string().min(1).optional(),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && !isHttpsOrigin(env.FRONTEND_URL)) {
     ctx.addIssue({ code: 'custom', path: ['FRONTEND_URL'], message: 'origem HTTPS exata' });
+  }
+  const push = [env.WEB_PUSH_VAPID_PUBLIC_KEY, env.WEB_PUSH_VAPID_PRIVATE_KEY, env.WEB_PUSH_SUBJECT];
+  const definidas = push.filter((valor) => valor !== undefined).length;
+  if (definidas > 0 && definidas < push.length) {
+    ctx.addIssue({ code: 'custom', path: ['WEB_PUSH_VAPID_PRIVATE_KEY'], message: 'três variáveis juntas' });
+  } else if (definidas === push.length) {
+    const campo = problemaNasChavesVapid({
+      publicKey: env.WEB_PUSH_VAPID_PUBLIC_KEY as string,
+      privateKey: env.WEB_PUSH_VAPID_PRIVATE_KEY as string,
+      subject: env.WEB_PUSH_SUBJECT as string,
+    });
+    if (campo) ctx.addIssue({ code: 'custom', path: [campo], message: 'inválida' });
   }
 });
 

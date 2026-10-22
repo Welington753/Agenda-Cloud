@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createECDH } from 'node:crypto';
 import { validateEnv } from './env.validation.js';
 
 const CONFIG_VALIDA = {
@@ -137,5 +138,34 @@ describe('validateEnv — hospedagem', () => {
 
   it('fora de production, FRONTEND_URL local em HTTP continua aceito', () => {
     expect(validateEnv(CONFIG_VALIDA).FRONTEND_URL).toBe('http://localhost:3000');
+  });
+});
+
+describe('validateEnv — Web Push (VAPID)', () => {
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  const VAPID = {
+    WEB_PUSH_VAPID_PUBLIC_KEY: ecdh.getPublicKey().toString('base64url'),
+    WEB_PUSH_VAPID_PRIVATE_KEY: ecdh.getPrivateKey().toString('base64url'),
+    WEB_PUSH_SUBJECT: 'mailto:suporte@exemplo.test',
+  };
+
+  it('ausente: sobe com o push desligado; completo e coerente: aceito', () => {
+    expect(validateEnv(CONFIG_VALIDA).WEB_PUSH_VAPID_PRIVATE_KEY).toBeUndefined();
+    expect(validateEnv({ ...CONFIG_VALIDA, ...VAPID }).WEB_PUSH_VAPID_PUBLIC_KEY).toBe(VAPID.WEB_PUSH_VAPID_PUBLIC_KEY);
+  });
+
+  it('incompleto ou par trocado derruba a inicialização sem ecoar a chave privada', () => {
+    const { WEB_PUSH_SUBJECT: _semContato, ...semContato } = VAPID;
+    expect(() => validateEnv({ ...CONFIG_VALIDA, ...semContato })).toThrow(/WEB_PUSH_VAPID_PRIVATE_KEY/);
+    const outro = createECDH('prime256v1');
+    outro.generateKeys();
+    const trocado = { ...VAPID, WEB_PUSH_VAPID_PUBLIC_KEY: outro.getPublicKey().toString('base64url') };
+    expect(() => validateEnv({ ...CONFIG_VALIDA, ...trocado })).toThrow(/WEB_PUSH_VAPID_PUBLIC_KEY/);
+    try {
+      validateEnv({ ...CONFIG_VALIDA, ...trocado });
+    } catch (erro) {
+      expect(String(erro)).not.toContain(VAPID.WEB_PUSH_VAPID_PRIVATE_KEY);
+    }
   });
 });

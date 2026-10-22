@@ -344,6 +344,30 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/avisos-solicitacoes
         run: npm run test:browser:avisos-solicitacoes
 
+      # Invocação SEPARADA (2 cadastros, 2 logins, 2 pedidos públicos): Web
+      # Push — PWA (manifesto, ícones, /sw.js sem cache), permissão só no
+      # clique, estados ativado/desativado/bloqueado/não suportado/iPhone,
+      # inscrição presa a usuário+estabelecimento+sessão, abrir a solicitação
+      # pela URL da notificação (troca de estabelecimento, login preservando o
+      # destino, vínculo removido) e sair desligando. O PushManager do
+      # Chromium é SIMULADO e nenhum serviço de push é chamado (o teste
+      # confere que não houve tentativa de envio). As chaves VAPID são
+      # geradas aqui, só para este processo: nenhum secret do GitHub.
+      - name: Run real browser flows (Web Push subscription, PWA, notification destination)
+        id: browser_push
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/push
+        run: |
+          eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
+          npm run test:browser:push
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -466,6 +490,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Capturas do Web Push no celular (Android ativado e instruções do
+      # iPhone). Só os PNG `push-*`.
+      - name: Upload Web Push screenshots
+        if: always() && steps.browser_push.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-push-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/push/**/push-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -551,6 +586,7 @@ jobs:
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||
+            steps.browser_push.outcome == 'failure' ||
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||

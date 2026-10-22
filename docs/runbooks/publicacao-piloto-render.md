@@ -101,6 +101,11 @@ O Render disponibiliza as variáveis do serviço tanto no build quanto no runtim
 | `FRONTEND_URL` | runtime (CORS) | `https://<web>.onrender.com` (origem exata, sem barra final) | digitado no painel (`sync: false`) |
 | `API_PROXY_SECRET` | runtime | gerado pelo Render | `render.yaml` (`generateValue: true`). Ninguém digita, copia ou vê o valor. |
 | `CLIENT_IP_SOURCE` | runtime | `cf-connecting-ip` | `render.yaml`. Vale só para chamadas **sem** o segredo do proxy. Ver seção 5. |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | runtime | chave pública VAPID (base64url) | gerada uma vez (seção 6, parte D) e digitada no painel (`sync: false`). Não é segredo, mas precisa formar par com a privada. |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | runtime | chave privada VAPID (base64url) | **secreta**, digitada só no painel da api (`sync: false`). Nunca no web, no repositório ou em log. Precisa ser a mesma entre deploys. |
+| `WEB_PUSH_SUBJECT` | runtime | `mailto:<e-mail de contato>` | digitado no painel (`sync: false`). Os serviços de push usam para contato em caso de abuso. |
+
+As três `WEB_PUSH_*` vão juntas ou nenhuma: sem elas, a API sobe com o push **desligado** (a tela diz que o servidor não envia notificações). Com uma faltando ou com o par trocado, a API **não sobe** e o log diz só o nome da variável.
 
 ### Serviço web (`agenda-cloud-piloto-web`)
 
@@ -287,6 +292,42 @@ Mesma cópia limpa e mesmas variáveis da seção B (passos 1 e 2). Depois:
 
 Se o passo 3 falhar ou a conexão cair, **não** repita, não rode `migration:revert` e não restaure o backup sem decidir antes. Rode o passo 4 (ou o 2) para ver o estado real e investigue.
 
+### D. Aplicar WebPush e configurar as chaves VAPID
+
+Vale para o piloto que já está em `after-notifications-public-booking` (cinco migrations). A migration `1792713600000-WebPush` só acrescenta três tabelas novas (`push_subscriptions`, `booking_request_alerts`, `push_deliveries`); nenhuma tabela existente muda.
+
+**Ordem de publicação: migration → API → web.** A API nova grava o evento de push na transação do pedido público: sem a migration, todo pedido público falharia. O web novo chama rotas que só a API nova tem.
+
+1. **Backup antes de escrever**, como na parte C, passo 1.
+2. **Conferência antes**, só leitura: `PILOT_EXPECT=after-notifications-public-booking npm run pilot:check-database` precisa dar `RESULT: SUCCESS` com `MIGRATIONS_APPLIED: 5`. Depois de aplicar a WebPush, esta mesma conferência passa a FALHAR (o histórico terá seis nomes) — é esperado.
+3. **Aplicar**: `DIRECT_URL="$PILOT_DIRECT_URL" npm run migration:run:compiled`. Uma transação só.
+4. **Conferência depois**, só leitura, no `psql` com a URL direta (ainda não há expectativa automática para este passo):
+   ```sql
+   BEGIN TRANSACTION READ ONLY;
+   SELECT name FROM typeorm_migrations ORDER BY id;          -- 6 nomes, o último WebPush1792713600000
+   SELECT to_regclass('push_subscriptions'), to_regclass('booking_request_alerts'), to_regclass('push_deliveries');
+   ROLLBACK;
+   ```
+5. **Chaves VAPID** (uma vez, em máquina de confiança): `cd backend && npm run push:generate-vapid-keys`. Copie as três linhas para **Environment** do serviço **api** (nunca do web), troque o e-mail do `WEB_PUSH_SUBJECT` e não guarde o texto em arquivo do repositório nem em chat. O Render mantém as variáveis entre deploys. Trocar o par depois obriga cada aparelho a ativar de novo.
+6. **Publicar a API** (mesmo commit), depois o **web** (mesmo commit, regra do PR #45).
+
+Nenhum serviço pago, Cron Job ou conta de provedor é necessário: Web Push usa o serviço de push do próprio navegador (Google, Apple, Mozilla, Microsoft), sem cadastro.
+
+**Se o processo morrer ou hibernar:** o evento fica no banco (`booking_request_alerts`, `PENDING` ou `PROCESSING` com concessão de 2 min). Ele é retomado quando a API sobe de novo (deploy ou primeira requisição depois da hibernação) e quando a área real consulta a lista de solicitações. Sem nenhum acesso, nada é enviado até alguém acessar; depois de 24 h (ou do início do atendimento) o evento expira sem aviso. Não há ping para manter o serviço acordado.
+
+### E. Roteiro físico do Web Push (depois de publicar)
+
+Os testes automáticos simulam o `PushManager` e um serviço de push falso: provam o conteúdo, o destino e as regras, **não** o recebimento num celular. Faça uma vez com aparelhos reais e anote o resultado:
+
+1. **Android (Chrome):** entre na área real, Solicitações → "Ativar notificações neste dispositivo" → aceitar. Estado "Ativado".
+2. **iPhone (iOS 16.4+):** no Safari, Compartilhar → "Adicionar à Tela de Início"; abra pelo ícone, entre e ative. No Safari comum, a tela deve mostrar as instruções, não o botão.
+3. Bloqueie a tela dos dois. De outro aparelho, faça um pedido pela página pública.
+4. Esperado: em segundos, "Nova solicitação de agendamento. Toque para analisar.", **sem** nome ou telefone do cliente.
+5. Toque: abre a solicitação certa (após login, se a sessão tiver acabado). Confira que ela continua **Aguardando confirmação**.
+6. Desative num aparelho e repita o pedido: só o outro recebe. Saia da conta no outro e repita: nenhum recebe.
+7. Com o serviço hibernado (15 min sem acesso), faça um pedido: o próprio pedido acorda a API e o aviso deve chegar. Anote o tempo.
+8. Se algo não chegar: em `push_deliveries`, `ACCEPTED` quer dizer que o serviço de push aceitou (não que o aparelho mostrou); `GONE` = inscrição expirada; `RETRY`/`FAILED` com o status HTTP. Economia de bateria e modo foco do aparelho podem segurar a notificação.
+
 ## 7. Sequência de publicação
 
 Faça os passos nesta ordem. Cada um depende do anterior.
@@ -388,6 +429,8 @@ No CI (`.github/workflows/test-frontend-auth.yml`, PostgreSQL descartável com T
 - a borda do Render escreve e sobrescreve `CF-Connecting-IP` em toda requisição a um web service, e acrescenta ao `X-Forwarded-For` (seção 5, fonte e limites).
 
 ### Só verificável com o ambiente publicado
+
+- Recebimento real de Web Push com Android e iPhone bloqueados (seção 6, parte E). O CI prova cifra, VAPID, destino, autorização e o fluxo da tela com o `PushManager` simulado — não a exibição num aparelho.
 
 - escuta em `0.0.0.0:$PORT` aceita pelo Render, e health checks verdes;
 - certificado público e endereço `*.onrender.com` de cada serviço;

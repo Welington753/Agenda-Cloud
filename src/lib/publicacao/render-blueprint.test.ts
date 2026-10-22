@@ -72,7 +72,14 @@ describe("render.yaml (piloto)", () => {
   });
 
   it("segredos e endereços ainda desconhecidos ficam fora do arquivo (sync: false)", () => {
-    for (const chave of ["DATABASE_URL", "DIRECT_URL", "FRONTEND_URL"]) {
+    for (const chave of [
+      "DATABASE_URL",
+      "DIRECT_URL",
+      "FRONTEND_URL",
+      "WEB_PUSH_VAPID_PUBLIC_KEY",
+      "WEB_PUSH_VAPID_PRIVATE_KEY",
+      "WEB_PUSH_SUBJECT",
+    ]) {
       expect(configuracaoDa(chave)).toBe("sync: false");
     }
     expect(configuracaoDa("API_PROXY_TARGET", WEB)).toBe("sync: false");

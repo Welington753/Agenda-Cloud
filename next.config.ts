@@ -11,7 +11,21 @@ if (erroDeApiUrl) {
 }
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Service worker das notificações (public/sw.js): sempre a versão nova,
+  // nunca de cache, e só scripts da própria origem. Ele mesmo não guarda
+  // página, sessão nem resposta da API (não há manipulador de fetch).
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -79,6 +79,19 @@ services:
       # em HTTPS pela validação de ambiente da API.
       - key: FRONTEND_URL
         sync: false
+      # Web Push (notificações de solicitação nova). As três juntas ou
+      # nenhuma: ausentes, a API sobe com o push DESLIGADO. Geradas UMA vez
+      # com `npm run push:generate-vapid-keys` (backend/) e digitadas no
+      # painel. A chave privada nunca vai para o frontend, o repositório ou
+      # log, e precisa ser a MESMA entre publicações: trocar o par obriga
+      # cada aparelho a ativar de novo. (Não é `generateValue`: o Render
+      # geraria texto aleatório, não um par de chaves P-256.)
+      - key: WEB_PUSH_VAPID_PUBLIC_KEY
+        sync: false
+      - key: WEB_PUSH_VAPID_PRIVATE_KEY
+        sync: false
+      - key: WEB_PUSH_SUBJECT
+        sync: false
 
   # Frontend Next.js (raiz do repositório).
   - type: web

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/auth-context";
@@ -15,6 +15,13 @@ export const metadata: Metadata = {
   title: `${NOME_PRODUTO} — Agenda e gestão para pequenos negócios`,
   description:
     "Agenda e gestão simples para salões, clínicas, estúdios, pet shops, terapeutas, consultores e outros negócios com horário marcado.",
+  // Aplicativo instalável (manifest.ts): no iPhone, "Adicionar à Tela de
+  // Início" abre em tela cheia — e só assim o iOS permite notificações.
+  appleWebApp: { capable: true, title: NOME_PRODUTO, statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1c1a17",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

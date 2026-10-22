@@ -54,6 +54,7 @@ import {
   useSolicitacoesPendentes,
 } from "@/lib/agendamento-publico/use-solicitacoes";
 import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicitacoes";
+import { encerrarNoDispositivo } from "@/lib/push/dispositivo";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/visao-geral": LayoutDashboard,
@@ -177,6 +178,9 @@ export function ShellConta({ children }: { children: ReactNode }) {
   async function aoSair() {
     if (saindo) return;
     setSaindo(true);
+    // Notificações deste aparelho param junto com a sessão (no máximo 1,5 s
+    // de espera; o servidor já não envia para sessão encerrada).
+    await encerrarNoDispositivo(tenantIdAtivo);
     const resultado = await logout();
     notificar(
       resultado.confirmadoPeloServidor
