@@ -107,7 +107,11 @@ describe('administração real da plataforma', () => {
         callback: (tx: EntityManager) => Promise<unknown>,
       ) => callback(manager),
     } as unknown as DataSource);
-    expect(await service.access('u')).toEqual({ canViewEstablishments: true });
+    expect(await service.access('u')).toEqual({
+      canViewEstablishments: true,
+      capabilities: { viewDirectory: true, manageEstablishments: true, managePlatformAccess: true },
+      platformRole: PlatformRole.MASTER_OWNER,
+    });
     findOne.mockResolvedValue({
       status: UserStatus.ACTIVE,
       platformRole: null,

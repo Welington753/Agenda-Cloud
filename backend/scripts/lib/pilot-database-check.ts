@@ -19,6 +19,13 @@ import {
   lerEstadoNotificacoesAgendamentoPublico,
   TOTAL_OBJETOS_ESPERADOS,
 } from './notificacoes-agendamento-publico-schema.js';
+import {
+  falhasAntesDeContas,
+  falhasDepoisDeContas,
+  lerEstadoContas,
+  objetosPresentes,
+  TOTAL_OBJETOS_CONTAS,
+} from './contas-administracao-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -30,13 +37,17 @@ export type PilotExpectation =
   | 'empty'
   | 'initialized'
   | 'before-notifications-public-booking'
-  | 'after-notifications-public-booking';
+  | 'after-notifications-public-booking'
+  | 'before-accounts-administration'
+  | 'after-accounts-administration';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
   'initialized',
   'before-notifications-public-booking',
   'after-notifications-public-booking',
+  'before-accounts-administration',
+  'after-accounts-administration',
 ];
 
 interface EnvLike {
@@ -180,6 +191,16 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
           : descreverFalhasDepois(estado);
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${compararObjetos(estado).conferidos}/${TOTAL_OBJETOS_ESPERADOS}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    if (expectation === 'before-accounts-administration' || expectation === 'after-accounts-administration') {
+      const estado = await lerEstadoContas(client);
+      const falhas =
+        expectation === 'before-accounts-administration' ? falhasAntesDeContas(estado) : falhasDepoisDeContas(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosPresentes(estado)}/${TOTAL_OBJETOS_CONTAS}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }

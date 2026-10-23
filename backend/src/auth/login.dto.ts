@@ -6,9 +6,14 @@
 // e-mail existente (todo mundo passa pela mesma regra).
 import { z } from 'zod';
 
+/** Mesma normalização do login (aparar e minúsculas) e o banco compara com
+ * `citext`: a administração nunca cria uma segunda conta para o mesmo
+ * endereço escrito com outra caixa. */
+export const emailSchema = z.string().trim().toLowerCase().email().max(254);
+
 export const loginSchema = z
   .object({
-    email: z.string().trim().toLowerCase().email().max(254),
+    email: emailSchema,
     password: z.string().min(10).max(128),
   })
   .strict();

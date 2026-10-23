@@ -333,6 +333,21 @@ Os testes automáticos simulam o `PushManager` e um serviço de push falso: prov
 7. Com o serviço hibernado (15 min sem acesso), faça um pedido: o próprio pedido acorda a API e o aviso deve chegar. Anote o tempo.
 8. Se algo não chegar: em `push_deliveries`, `ACCEPTED` quer dizer que o serviço de push aceitou (não que o aparelho mostrou); `GONE` = inscrição expirada; `RETRY`/`FAILED` com o status HTTP. Economia de bateria e modo foco do aparelho podem segurar a notificação.
 
+### F. Aplicar AccountsAdministration (convites e gestão de contas)
+
+Vale para o piloto que já está com as seis migrations até `WebPush1792713600000`. A migration `1792800000000-AccountsAdministration` só acrescenta: valores no enum `audit_action`, uma coluna em `audit_logs` e em `sessions`, colunas e constraints em `invites` (tabela que nenhum código escrevia) e a tabela `password_resets`. Nenhuma conta existente muda de situação; nenhum e-mail é marcado como verificado. Detalhes em `docs/plans/administracao-contas-convites.md`.
+
+**Ordem: backup → conferência antes → migration → conferência depois → API → web.** A API atual funciona com o schema novo (as colunas novas são nulas ou têm padrão); a API nova não funciona sem ele.
+
+1. **Backup antes de escrever**, como na parte C, passo 1 (branch do Neon a partir do piloto, ou `pg_dump -Fc` restaurado num PostgreSQL descartável com a mesma contagem de linhas por tabela). Anote o horário.
+2. **Conferência antes**, só leitura: `PILOT_EXPECT=before-accounts-administration npm run pilot:check-database` precisa dar `RESULT: SUCCESS`, `MIGRATIONS_APPLIED: 6`, `SCHEMA_OBJECTS_OK: 0/40` e `BASELINE_FAILURES: none`. A conferência também recusa convites que as constraints novas não aceitariam (`invites_incoherent_rows`, `invites_duplicated_pending`); se aparecer, pare e investigue antes de aplicar.
+3. **Aplicar**: `DIRECT_URL="$PILOT_DIRECT_URL" npm run migration:run:compiled`. Uma transação só.
+4. **Conferência depois**: `PILOT_EXPECT=after-accounts-administration npm run pilot:check-database` precisa dar `RESULT: SUCCESS`, `MIGRATIONS_APPLIED: 7`, `SCHEMA_OBJECTS_OK: 40/40` e `BASELINE_FAILURES: none`.
+5. **E-mail (opcional nesta hora)**: no serviço **api**, `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` e `EMAIL_FROM_NAME` (ver o plano, seção "E-mail"). Sem elas, a API sobe com o envio desligado: convites ficam com "envio não configurado" e ninguém novo é ativado.
+6. **Publicar a API**, depois o **web**, do mesmo commit.
+
+Se o passo 3 falhar, não repita nem reverta sem decidir antes: rode o passo 2 ou o 4 para ver o estado real. `migration:revert` desta migration apaga convites e redefinições registrados depois dela; os valores novos do enum ficam.
+
 ## 7. Sequência de publicação
 
 Faça os passos nesta ordem. Cada um depende do anterior.

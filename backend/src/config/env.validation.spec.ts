@@ -169,3 +169,35 @@ describe('validateEnv — Web Push (VAPID)', () => {
     }
   });
 });
+
+describe('validateEnv — e-mail transacional', () => {
+  const BREVO = {
+    EMAIL_PROVIDER: 'brevo',
+    EMAIL_API_KEY: 'chave-secreta-de-teste',
+    EMAIL_FROM: 'nao-responda@exemplo.test',
+  };
+
+  it('sem configuração, o envio fica desligado (none), nunca simulado', () => {
+    expect(validateEnv(CONFIG_VALIDA).EMAIL_PROVIDER).toBe('none');
+    expect(validateEnv({ ...CONFIG_VALIDA, ...BREVO }).EMAIL_PROVIDER).toBe('brevo');
+  });
+
+  it('provedor sem chave ou remetente derruba a inicialização sem ecoar a chave', () => {
+    expect(() => validateEnv({ ...CONFIG_VALIDA, EMAIL_PROVIDER: 'resend' })).toThrow(/EMAIL_API_KEY/);
+    expect(() => validateEnv({ ...CONFIG_VALIDA, ...BREVO, EMAIL_FROM: 'sem-arroba' })).toThrow(/EMAIL_FROM/);
+    expect(() => validateEnv({ ...CONFIG_VALIDA, ...BREVO, EMAIL_PROVIDER: 'smtp' })).toThrow(/EMAIL_PROVIDER/);
+    try {
+      validateEnv({ ...CONFIG_VALIDA, ...BREVO, EMAIL_FROM: 'sem-arroba' });
+    } catch (erro) {
+      expect(String(erro)).not.toContain(BREVO.EMAIL_API_KEY);
+    }
+  });
+
+  it('endereço alternativo da API só fora de production (caixa local de teste)', () => {
+    const local = { ...BREVO, EMAIL_API_BASE_URL: 'http://127.0.0.1:3025' };
+    expect(validateEnv({ ...CONFIG_VALIDA, ...local }).EMAIL_API_BASE_URL).toBe(local.EMAIL_API_BASE_URL);
+    expect(() =>
+      validateEnv({ ...CONFIG_VALIDA, ...local, NODE_ENV: 'production', FRONTEND_URL: 'https://app.exemplo.test' }),
+    ).toThrow(/EMAIL_API_BASE_URL/);
+  });
+});
