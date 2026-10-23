@@ -3,7 +3,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { LinkBotao } from "@/components/ui/button";
 import { SLOGAN_PRODUTO } from "@/lib/config";
 import Link from "next/link";
-import { HREF_CRIAR_CONTA, HREF_DEMONSTRACAO, HREF_ENTRAR } from "@/lib/site/conteudo-comercial";
+import { HREF_COMO_OBTER_ACESSO, HREF_DEMONSTRACAO, HREF_ENTRAR } from "@/lib/site/conteudo-comercial";
 
 const BENEFICIOS = [
   { icone: MessageSquareOff, titulo: "Menos mensagens", descricao: "O cliente marca sozinho, sem trocar mensagens para achar um horário livre." },
@@ -21,8 +21,8 @@ export function Hero() {
           Para salões, clínicas, estúdios, terapeutas, pet shops e qualquer negócio que atenda com hora marcada.
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkBotao href={HREF_CRIAR_CONTA} tamanho="lg" className="w-full sm:w-auto">
-            Criar conta
+          <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="lg" className="w-full sm:w-auto">
+            Como obter acesso
           </LinkBotao>
           <LinkBotao href={HREF_ENTRAR} tamanho="lg" variante="secundaria" className="w-full sm:w-auto">
             Entrar

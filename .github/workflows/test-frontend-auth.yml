@@ -173,7 +173,7 @@ jobs:
       # própria porta fixa via `env` de cada entrada `webServer` do
       # playwright.config.ts; um `PORT` neste nível vazaria para os dois
       # processos e faria ambos tentarem escutar a mesma porta.
-      - name: Run real browser flows (registration via the UI + login/session/logout)
+      - name: Run real browser flows (closed public signup + login/session/logout)
         id: browser_auth
         env:
           # Mesmo endereço de escuta da hospedagem (render.yaml): esta
@@ -295,6 +295,25 @@ jobs:
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/administracao
         run: npm run test:browser:administracao
+
+      # Invocação SEPARADA (aceite de convite: limite de 10 por 15 min por IP,
+      # em memória no backend): empresa criada pela tela, e-mail na caixa
+      # LOCAL (tests/browser/support/caixa-de-email.mjs, nada sai da
+      # máquina), ativação, conta existente, revogação, falha de envio,
+      # bloqueio com sessão aberta, permissões negadas e capturas.
+      - name: Run real account management (invites, activation, block, permissions)
+        id: browser_contas
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/contas
+        run: npm run test:browser:contas
 
       # Invocação SEPARADA (4 cadastros e 3 logins, limites reais por IP): tela
       # de Clientes — busca e seus estados, cadastro sem envio repetido,
@@ -622,6 +641,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Upload account management screenshots
+        if: always() && steps.browser_contas.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: contas-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/contas/**/contas-*.png
+          retention-days: 7
+          if-no-files-found: error
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -705,6 +733,7 @@ jobs:
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_administracao.outcome == 'failure' ||
+            steps.browser_contas.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||

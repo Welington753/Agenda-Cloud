@@ -22,9 +22,11 @@ export function useLeituraPlataforma<T>(
   const userId =
     autenticacao.status === "autenticado" ? autenticacao.sessao.user.id : null;
   const [tentativa, setTentativa] = useState(0);
+  const base = JSON.stringify([userId, path]);
   const chave = JSON.stringify([userId, path, tentativa]);
   const [resposta, setResposta] = useState<{
     chave: string;
+    base: string;
     estado: LeituraPlataforma<T>;
   } | null>(null);
   useEffect(() => {
@@ -53,16 +55,25 @@ export function useLeituraPlataforma<T>(
                     ? "ausente"
                     : "servidor",
           };
-        setResposta({ chave, estado });
+        setResposta({ chave, base, estado });
       },
     );
     return () => {
       encerrado = true;
       controller.abort();
     };
-  }, [chave, path, userId, validar]);
+  }, [base, chave, path, userId, validar]);
   const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
   const estado: LeituraPlataforma<T> =
     resposta?.chave === chave ? resposta.estado : { status: "carregando" };
-  return { estado, recarregar };
+  /** Dados da leitura ANTERIOR da mesma conta e consulta, só enquanto uma
+   * releitura carrega: a tela continua montada (formulários e resultados não
+   * somem). Nunca vale para outra consulta nem substitui um erro. */
+  const anterior: T | null =
+    estado.status === "carregando" &&
+    resposta?.base === base &&
+    resposta.estado.status === "pronto"
+      ? resposta.estado.dados
+      : null;
+  return { estado, recarregar, anterior };
 }

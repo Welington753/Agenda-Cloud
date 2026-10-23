@@ -49,7 +49,15 @@ export default defineConfig({
       // (`EADDRINUSE`, causa real de uma falha anterior deste workflow).
       command: "node dist/main.js",
       cwd: "backend",
-      env: { PORT: "3001" },
+      // E-mail de convites e redefinição vai para a caixa LOCAL abaixo
+      // (tests/browser/support/caixa-de-email.mjs): nada sai da máquina.
+      env: {
+        PORT: "3001",
+        EMAIL_PROVIDER: "brevo",
+        EMAIL_API_KEY: "chave-local-de-teste",
+        EMAIL_FROM: "nao-responda@agenda.test",
+        EMAIL_API_BASE_URL: "http://127.0.0.1:3025",
+      },
       url: "http://localhost:3001/auth/me",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
@@ -60,6 +68,13 @@ export default defineConfig({
       url: "http://localhost:3000/login",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+    },
+    // Por último: a configuração do relógio de teste usa os dois primeiros.
+    {
+      command: "node tests/browser/support/caixa-de-email.mjs",
+      url: "http://127.0.0.1:3025/saude",
+      reuseExistingServer: !process.env.CI,
+      timeout: 15_000,
     },
   ],
 });

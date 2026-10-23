@@ -13,20 +13,20 @@
 //    escondido não é controle de acesso, e um teste que só olhasse a tela
 //    não provaria nada sobre o servidor.
 //
-// Orçamento de POST /auth/register: o rate limit real é de 5 por 15 min por IP
-// (backend/src/auth/register-rate-limit.ts, MemoryStore no processo do
+// Orçamento de POST /invites/accept (fixture de contas): o rate limit real é de 10 por 15 min por IP
+// (backend/src/accounts/account-rate-limit.ts, MemoryStore no processo do
 // backend) e todos os testes saem do mesmo IP. Este arquivo gasta 3 (o fluxo
 // principal + os dois estabelecimentos do teste de isolamento), e
-// pilot-navigation-flow.spec.ts, na mesma invocação, gasta 1 — 4 de 5. As suítes de
+// pilot-navigation-flow.spec.ts, na mesma invocação, gasta 1 — 4 de 10. As suítes de
 // autenticação gastam outros 4, o que estouraria o limite numa execução única
 // — por isso o CI roda ESTA suíte numa invocação separada do Playwright, que
 // sobe um backend novo e portanto um rate limiter zerado (ver
 // .github/workflows/test-frontend-auth.yml). Nenhuma infraestrutura é
 // duplicada: é o mesmo Postgres descartável, só uma segunda invocação.
 // Conferir esta conta antes de acrescentar qualquer caso que cadastre.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-servicos-e2e-123";
 
 interface ContaCriada {
@@ -43,16 +43,13 @@ async function criarConta(request: APIRequestContext, rotulo: string): Promise<C
   const email = `servicos-${rotulo}-${sufixo}@example.test`;
   const estabelecimento = `Estabelecimento ${rotulo} ${sufixo}`;
 
-  const resposta = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(request, {
       ownerName: `Dono ${rotulo}`,
       businessName: estabelecimento,
       email,
       phone: "11977776666",
       password: SENHA_TESTE,
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
 
   return { email, senha: SENHA_TESTE, estabelecimento };
 }

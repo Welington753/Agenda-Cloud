@@ -7,13 +7,13 @@
 // entre estabelecimentos) é atacada DIRETAMENTE na API: botão escondido não
 // é controle de acesso.
 //
-// Orçamento de POST /auth/register: o rate limit real é 5 por 15 min por IP e
+// Orçamento de POST /invites/accept (fixture de contas): o rate limit real é 10 por 15 min por IP e
 // este arquivo gasta 2 (fluxo + isolamento). Roda em invocação SEPARADA do
 // Playwright, com backend novo e limiter zerado (ver
 // .github/workflows/test-frontend-auth.yml).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-horarios-e2e-123";
 
 interface ContaCriada {
@@ -25,16 +25,13 @@ async function criarConta(request: APIRequestContext, rotulo: string): Promise<C
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `horarios-${rotulo}-${sufixo}@example.test`;
 
-  const resposta = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(request, {
       ownerName: `Dono ${rotulo}`,
       businessName: `Estabelecimento ${rotulo} ${sufixo}`,
       email,
       phone: "11977776666",
       password: SENHA_TESTE,
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
 
   return { email, senha: SENHA_TESTE };
 }

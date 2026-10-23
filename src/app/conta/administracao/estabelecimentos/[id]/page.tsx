@@ -13,6 +13,7 @@ import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Botao, LinkBotao } from "@/components/ui/button";
+import { PessoasEstabelecimento } from "@/components/administracao/pessoas-estabelecimento";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -171,6 +172,7 @@ export default function DetalhePage() {
           )}
         </CartaoCorpo>
       </Cartao>
+      <PessoasEstabelecimento tenantId={item.id} />
       <Cartao>
         <CartaoCorpo>
           <h2 className="font-semibold">Mensalidades e pagamentos</h2>

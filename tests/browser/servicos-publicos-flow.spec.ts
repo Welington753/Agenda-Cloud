@@ -17,6 +17,7 @@
 //
 // Orçamento: 1 cadastro e 1 login; nenhum pedido público.
 // Invocação própria (`npm run test:browser:servicos-publicos`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Page } from "@playwright/test";
 import { DATA, WEEKDAY_DA_DATA } from "./data-de-teste";
 
@@ -67,10 +68,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   test.setTimeout(120_000);
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `servicos-publicos-${sufixo}@example.test`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: { ownerName: "Dono Estiloso", businessName: `Barzinho Estiloso ${sufixo}`, email, phone: "11977770005", password: SENHA },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await contaPorConvite(request, { ownerName: "Dono Estiloso", businessName: `Barzinho Estiloso ${sufixo}`, email, phone: "11977770005", password: SENHA });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(SENHA);

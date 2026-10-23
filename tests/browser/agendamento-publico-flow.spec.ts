@@ -18,6 +18,7 @@
 // Orçamento: 1 cadastro e 1 login (limites reais de 5 por IP); 8 pedidos
 // públicos (limite de 10 por hora por IP). Invocação própria
 // (`npm run test:browser:agendamento-publico`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
 
@@ -108,10 +109,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `publico-${sufixo}@example.test`;
   const estabelecimento = `Clínica Pública ${sufixo}`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: { ownerName: "Dona Pública", businessName: estabelecimento, email, phone: "11977770002", password: SENHA },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await contaPorConvite(request, { ownerName: "Dona Pública", businessName: estabelecimento, email, phone: "11977770002", password: SENHA });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(SENHA);

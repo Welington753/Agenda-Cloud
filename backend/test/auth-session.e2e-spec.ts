@@ -1,6 +1,6 @@
 // E2E de POST /auth/login, GET /auth/me e POST /auth/logout dentro do
 // AppModule real (prova que AuthModule está corretamente registrado e a DI
-// resolve de ponta a ponta) — mesmo padrão de auth-register.e2e-spec.ts:
+// resolve de ponta a ponta) — mesmo padrão de app.e2e-spec.ts:
 // `DataSource` é substituído ANTES de `.compile()` (nunca abre socket
 // nenhum). `AuthService` e `SessionGuard` também são substituídos aqui — a
 // lógica de negócio já é coberta em profundidade por auth.service.login.spec.ts,
@@ -86,7 +86,6 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
       .useValue({
         login: loginMock,
         logout: logoutMock,
-        register: vi.fn(),
         getSessionContext: getSessionContextMock,
       })
       .overrideGuard(SessionGuard)

@@ -11,13 +11,13 @@
 //    de outro tenant) é atacada DIRETAMENTE na API, nunca só pela UI.
 //
 // Invocação SEPARADA do Playwright (mesmo motivo de services-flow.spec.ts):
-// orçamento de POST /auth/register é 5 por 15 min por IP, e este arquivo
+// orçamento de POST /invites/accept (fixture de contas) é 10 por 15 min por IP, e este arquivo
 // gasta 3 (fluxo principal + os dois estabelecimentos do teste de
 // isolamento) — rodar junto de outra suíte de registro estouraria o limite.
 // Ver .github/workflows/test-frontend-auth.yml.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-profissionais-e2e-123";
 
 interface ContaCriada {
@@ -29,16 +29,13 @@ async function criarConta(request: APIRequestContext, rotulo: string): Promise<C
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `profissionais-${rotulo}-${sufixo}@example.test`;
 
-  const resposta = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(request, {
       ownerName: `Dono ${rotulo}`,
       businessName: `Estabelecimento ${rotulo} ${sufixo}`,
       email,
       phone: "11977776666",
       password: SENHA_TESTE,
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
 
   return { email, senha: SENHA_TESTE };
 }

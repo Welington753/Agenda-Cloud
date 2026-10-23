@@ -11,11 +11,11 @@
 // administração é autorizada de novo no servidor, e um papel revogado vira
 // 403 ali mesmo que o item continue no menu até a próxima leitura.
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { ehAcesso } from "./contratos";
+import { ehAcesso, type AcessoPlataforma as Acesso } from "./contratos";
 import { useLeituraPlataforma, type LeituraPlataforma } from "./use-leitura-plataforma";
 
 interface AcessoPlataforma {
-  estado: LeituraPlataforma<{ canViewEstablishments: boolean }>;
+  estado: LeituraPlataforma<Acesso>;
   recarregar: () => void;
 }
 
@@ -37,4 +37,20 @@ export function useAcessoPlataforma(): AcessoPlataforma {
  * Carregando, falha de rede ou resposta estranha nunca mostram o item. */
 export function acessoConfirmado(estado: AcessoPlataforma["estado"]): boolean {
   return estado.status === "pronto" && estado.dados.canViewEstablishments;
+}
+
+/** Capacidades confirmadas pelo servidor; sem resposta válida, nenhuma. */
+export function capacidadesConfirmadas(estado: AcessoPlataforma["estado"]) {
+  if (estado.status !== "pronto") return { viewDirectory: false, manageEstablishments: false, managePlatformAccess: false };
+  return (
+    estado.dados.capabilities ?? {
+      viewDirectory: estado.dados.canViewEstablishments,
+      manageEstablishments: false,
+      managePlatformAccess: false,
+    }
+  );
+}
+
+export function useCapacidades() {
+  return capacidadesConfirmadas(useAcessoPlataforma().estado);
 }

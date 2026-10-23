@@ -53,10 +53,28 @@ const inteiro = (value: unknown): value is number =>
 const texto = (value: unknown): value is string => typeof value === "string";
 const data = (value: unknown): value is string =>
   texto(value) && Number.isFinite(Date.parse(value));
-export function ehAcesso(
-  value: unknown,
-): value is { canViewEstablishments: boolean } {
-  return objeto(value) && typeof value.canViewEstablishments === "boolean";
+export interface AcessoPlataforma {
+  canViewEstablishments: boolean;
+  /** O que mostrar na tela; o servidor confere de novo em cada operação.
+   * Ausente (API anterior) conta como "só consulta". */
+  capabilities?: {
+    viewDirectory: boolean;
+    manageEstablishments: boolean;
+    managePlatformAccess: boolean;
+  };
+  platformRole?: string | null;
+}
+export function ehAcesso(value: unknown): value is AcessoPlataforma {
+  if (!objeto(value) || typeof value.canViewEstablishments !== "boolean")
+    return false;
+  const caps = value.capabilities;
+  if (caps === undefined) return true;
+  return (
+    objeto(caps) &&
+    typeof caps.viewDirectory === "boolean" &&
+    typeof caps.manageEstablishments === "boolean" &&
+    typeof caps.managePlatformAccess === "boolean"
+  );
 }
 export function ehEstabelecimento(
   value: unknown,

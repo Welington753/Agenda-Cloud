@@ -1,17 +1,18 @@
-// POST /auth/register, POST /auth/login, GET /auth/me, POST /auth/logout —
+// POST /auth/login, GET /auth/me, POST /auth/logout —
 // mesma disciplina em todos: cookie só depois do serviço resolver (ou seja,
 // depois do COMMIT da transação, ver auth.service.ts); qualquer erro lançado
 // pelo serviço nunca chega perto de `res.cookie`.
+//
+// Não existe `POST /auth/register`: o cadastro livre foi fechado. Contas novas
+// só nascem por convite da administração (src/accounts/).
 import {
   Body,
   Controller,
-  ConflictException,
   Get,
   HttpCode,
   Post,
   Req,
   Res,
-  ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -24,10 +25,9 @@ import {
   buildClearSessionCookieOptions,
   buildSessionCookieOptions,
 } from '../config/session-cookie.config.js';
-import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError } from './auth.errors.js';
+import { InvalidCredentialsError } from './auth.errors.js';
 import { AuthService } from './auth.service.js';
 import { loginSchema, type LoginDto } from './login.dto.js';
-import { registerSchema, type RegisterDto } from './register.dto.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from './session-context.js';
 import { SessionGuard } from './session.guard.js';
 
@@ -48,43 +48,6 @@ export class AuthController {
       parseClientIpSource(this.configService.get('CLIENT_IP_SOURCE')),
       parseProxySecret(this.configService.get('API_PROXY_SECRET')),
     );
-  }
-
-  @Post('register')
-  @HttpCode(201)
-  async register(
-    @Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    let result;
-    try {
-      result = await this.authService.register(dto, {
-        now: new Date(),
-        userAgent: req.get('user-agent'),
-        ipAddress: this.clientIp(req),
-      });
-    } catch (error) {
-      if (error instanceof EmailAlreadyInUseError) {
-        throw new ConflictException('E-mail já cadastrado.');
-      }
-      if (error instanceof PlanUnavailableError) {
-        throw new ServiceUnavailableException('Cadastro temporariamente indisponível.');
-      }
-      throw error;
-    }
-
-    const nodeEnv = this.configService.getOrThrow<string>('NODE_ENV');
-    res.cookie(SESSION_COOKIE_NAME, result.token, buildSessionCookieOptions(nodeEnv));
-
-    return {
-      user: result.user,
-      tenant: result.tenant,
-      unit: result.unit,
-      membership: result.membership,
-      plan: result.plan,
-      trial: result.trial,
-    };
   }
 
   @Post('login')

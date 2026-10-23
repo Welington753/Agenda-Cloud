@@ -10,8 +10,9 @@
 // Playwright (`page.clock`): o teste avança o tempo até a próxima leitura
 // chegar, sem sleeps.
 //
-// Um cadastro só para a suíte inteira: POST /auth/register tem limite de 5
+// Um cadastro só para a suíte inteira: POST /invites/accept (fixture de contas) tem limite de 10
 // por 15 minutos por IP, dividido com os outros testes de `test:browser:auth`.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Browser, type BrowserContextOptions, type Page, type Route } from "@playwright/test";
 
 const BACKEND_URL = "http://localhost:3001";
@@ -26,16 +27,13 @@ test.beforeAll(async ({ browser }) => {
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   // `contexto.request` divide os cookies com o navegador: o cookie de sessão
   // do cadastro fica guardado como depois de um login de verdade.
-  const resposta = await contexto.request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(contexto.request, {
       ownerName: "Maria Reconexão",
       businessName: `Estúdio Reconexão ${sufixo}`,
       email: `playwright-reconexao-${sufixo}@example.test`,
       phone: "11999998888",
       password: "senha-de-teste-e2e-123",
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
   sessaoCadastrada = await contexto.storageState();
   await contexto.close();
 });

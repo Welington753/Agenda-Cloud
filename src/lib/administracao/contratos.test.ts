@@ -50,6 +50,9 @@ describe("contrato da administração", () => {
     expect(ehAcesso({ canViewEstablishments: "true" })).toBe(false);
     expect(ehAcesso({})).toBe(false);
     expect(ehAcesso({ canViewEstablishments: false })).toBe(true);
+    const caps = { viewDirectory: true, manageEstablishments: false, managePlatformAccess: false };
+    expect(ehAcesso({ canViewEstablishments: true, capabilities: caps })).toBe(true);
+    expect(ehAcesso({ canViewEstablishments: true, capabilities: { ...caps, managePlatformAccess: "sim" } })).toBe(false);
   });
   it("totais devem vir do servidor: página vazia não substitui total global", () => {
     expect(ehListaEstabelecimentos(lista)).toBe(true);

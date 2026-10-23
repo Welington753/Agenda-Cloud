@@ -7,13 +7,14 @@
 // AUTORIZAÇÃO (acesso cruzado entre estabelecimentos) é atacada DIRETAMENTE
 // na API: botão escondido não é controle de acesso.
 //
-// Orçamento de POST /auth/register: o rate limit real é 5 por 15 min por IP e
+// Orçamento de POST /invites/accept (fixture de contas): o rate limit real é 10 por 15 min por IP e
 // este arquivo gasta 4 — fluxo, isolamento, remarcar/cancelar (Lote 6D.6) e
 // o andamento do atendimento (Lote 6D.7).
 // Roda em invocação SEPARADA do Playwright, com backend novo e limiter zerado
 // (ver .github/workflows/test-frontend-auth.yml). O limite nunca é afrouxado
 // para o teste passar; se o orçamento apertar, o caminho é outra invocação
 // separada, nunca mexer no limiter.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 // Domingo no futuro, DERIVADO do relógio a cada execução, e os instantes UTC
 // calculados a partir dele no fuso do estabelecimento (09:00 local segue sendo
@@ -21,7 +22,6 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from "@
 // oferecido — ver o porquê em data-de-teste.ts.
 import { DATA, DATA_SEGUINTE, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-agendamentos-e2e-123";
 
 interface ContaCriada {
@@ -33,16 +33,13 @@ async function criarConta(request: APIRequestContext, rotulo: string): Promise<C
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `agendamentos-${rotulo}-${sufixo}@example.test`;
 
-  const resposta = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(request, {
       ownerName: `Dono ${rotulo}`,
       businessName: `Estabelecimento ${rotulo} ${sufixo}`,
       email,
       phone: "11977776666",
       password: SENHA_TESTE,
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
 
   return { email, senha: SENHA_TESTE };
 }

@@ -16,6 +16,7 @@
 // Orçamento: 1 cadastro e 1 login (limites reais de 5 por IP); 2 pedidos
 // públicos (limite de 10 por hora). Invocação própria
 // (`npm run test:browser:recuperacao`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import {
   expect,
   test,
@@ -50,16 +51,13 @@ test.beforeAll(async ({ browser }) => {
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   email = `playwright-recuperacao-${sufixo}@example.test`;
   const api = contexto.request;
-  const cadastro = await api.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(api, {
       ownerName: "Rita Recuperação",
       businessName: `Estúdio Recuperação ${sufixo}`,
       email,
       phone: "11977770009",
       password: SENHA,
-    },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+    });
   const me = await (await api.get(`${BACKEND_URL}/auth/me`)).json();
   tenantId = me.activeContext.tenantId;
   const base = `${BACKEND_URL}/tenants/${tenantId}`;

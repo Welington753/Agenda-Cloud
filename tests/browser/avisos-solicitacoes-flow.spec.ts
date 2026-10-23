@@ -21,6 +21,7 @@
 // Orçamento: 2 cadastros e 1 login (limites reais de 5 por IP); 8 pedidos
 // públicos (limite de 10 por hora por IP), cada um com um telefone. Invocação
 // própria (`npm run test:browser:avisos-solicitacoes`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, request as novoContextoApi, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
@@ -64,8 +65,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string, sufixo: string)
     phone: "11977774444",
     password: SENHA,
   };
-  const r = await api.post(`${BACKEND_URL}/auth/register`, { data: dados });
-  expect(r.status(), await r.text()).toBe(201);
+  await contaPorConvite(api, dados);
   const me = await chamar<{ user: { id: string }; activeContext: { tenantId: string } }>(api, "GET", "/auth/me");
   return { ...dados, userId: me.user.id, tenantId: me.activeContext.tenantId };
 }

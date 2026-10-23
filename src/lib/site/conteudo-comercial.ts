@@ -20,8 +20,9 @@ export const NAV_SITE: ItemNavegacao[] = [
 
 /** Login da conta REAL (backend NestJS). */
 export const HREF_ENTRAR = "/login";
-/** Cadastro da conta REAL: cria usuário, estabelecimento e sessão. */
-export const HREF_CRIAR_CONTA = "/cadastro";
+/** Como obter acesso à conta REAL: não há cadastro aberto; a administração
+ * cria o estabelecimento e convida o responsável por e-mail. */
+export const HREF_COMO_OBTER_ACESSO = "/cadastro";
 /** Demonstração local (onboarding + painel com dados fictícios no navegador).
  * Nunca chamar de "teste grátis" da conta real: são coisas diferentes. */
 export const HREF_DEMONSTRACAO = "/onboarding";

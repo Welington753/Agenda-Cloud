@@ -7,7 +7,7 @@
 // de `expectedStartAt`), mesmos estados de vazio, erro e lista incompleta, e
 // o destaque de atendimento em andamento e de reserva recém-criada.
 //
-// Orçamento de POST /auth/register: 1 de 5. Roda pela
+// Orçamento de POST /invites/accept (fixture de contas): 1 de 10. Roda pela
 // playwright.relogio-de-teste.config.ts (`npm run test:browser:agenda-profissional`):
 // o backend sobe às 10:00 de hoje no fuso do estabelecimento e o navegador no
 // mesmo instante, então o atendimento em andamento de HOJE sempre existe.
@@ -15,6 +15,7 @@
 // Só a resposta INCOMPLETA é alterada pelo teste (o campo `complete` da
 // resposta real vira `false`): não há como obrigar o backend a cortar um dia
 // sem criar centenas de reservas. As reservas continuam as reais.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Page } from "@playwright/test";
 import {
   DATA,
@@ -103,16 +104,13 @@ test("agenda por profissional: grupos, ordem, alternância, filtro, estados e a�
   // ------------------------------------------------------------- fixture
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `agenda-prof-${sufixo}@example.test`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  const conta = await contaPorConvite(request, {
       ownerName: "Dona dos Grupos",
       businessName: `Estúdio Grupos ${sufixo}`,
       email,
       phone: "11977771111",
       password: SENHA,
-    },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+    });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(SENHA);
@@ -123,7 +121,7 @@ test("agenda por profissional: grupos, ordem, alternância, filtro, estados e a�
     page,
     "/auth/me",
   );
-  conferirRelogioDoBackend(me.corpo.activeContext.trial.trialStartAt);
+  conferirRelogioDoBackend(conta.ativadaEm);
   await conferirRelogioDoNavegador(page);
   const base = `/tenants/${me.corpo.activeContext.tenantId}`;
 

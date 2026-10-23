@@ -3,7 +3,7 @@ import {
   FLUXO_DEMONSTRACAO,
   FUNCIONALIDADES_DISPONIVEIS,
   FUNCIONALIDADES_EM_DESENVOLVIMENTO,
-  HREF_CRIAR_CONTA,
+  HREF_COMO_OBTER_ACESSO,
   HREF_DEMONSTRACAO,
   HREF_ENTRAR,
   NAV_SITE,
@@ -95,10 +95,10 @@ describe("navegação", () => {
     expect(NAV_SITE.every((i) => i.href.startsWith("#"))).toBe(true);
   });
 
-  it("Entrar, Criar conta e Ver demonstração levam a três destinos distintos", () => {
-    // Entrar e Criar conta são a conta REAL; a demonstração é local.
+  it("Entrar, Como obter acesso e Ver demonstração levam a três destinos distintos", () => {
+    // Entrar e o acesso por convite são a conta REAL; a demonstração é local.
     expect(HREF_ENTRAR).toBe("/login");
-    expect(HREF_CRIAR_CONTA).toBe("/cadastro");
+    expect(HREF_COMO_OBTER_ACESSO).toBe("/cadastro");
     expect(HREF_DEMONSTRACAO).toBe("/onboarding");
   });
 });

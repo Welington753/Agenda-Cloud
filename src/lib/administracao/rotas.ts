@@ -16,6 +16,30 @@ export function rotaFichaEstabelecimento(id: string): string {
   return `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}/${encodeURIComponent(id)}`;
 }
 
+export const ROTA_USUARIOS = `${ROTA_ADMINISTRACAO}/usuarios`;
+export const ROTA_CONVITES = `${ROTA_ADMINISTRACAO}/convites`;
+export const ROTA_PAPEIS = `${ROTA_ADMINISTRACAO}/papeis`;
+export const ROTA_HISTORICO = `${ROTA_ADMINISTRACAO}/historico`;
+export const ROTA_NOVO_ESTABELECIMENTO = `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}/novo`;
+
+export function rotaFichaUsuario(id: string): string {
+  return `${ROTA_USUARIOS}/${encodeURIComponent(id)}`;
+}
+
+/** Seções da administração, na ordem das abas. */
+export const SECOES_ADMINISTRACAO: readonly { href: string; rotulo: string }[] = [
+  { href: ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotulo: "Estabelecimentos" },
+  { href: ROTA_USUARIOS, rotulo: "Usuários" },
+  { href: ROTA_CONVITES, rotulo: "Convites" },
+  { href: ROTA_PAPEIS, rotulo: "Papéis e permissões" },
+  { href: ROTA_HISTORICO, rotulo: "Histórico" },
+];
+
+export function secaoAtiva(pathname: string | null, href: string): boolean {
+  if (!pathname) return false;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 /** A página atual é da administração da plataforma? */
 export function emAdministracao(pathname: string | null): boolean {
   if (!pathname) return false;

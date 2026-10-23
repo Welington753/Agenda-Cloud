@@ -10,7 +10,6 @@ import {
   PUBLIC_REQUEST_RATE_LIMIT_WINDOW_MS,
 } from './public-booking-rate-limit.js';
 import { LOGIN_RATE_LIMIT_MAX } from '../auth/login-rate-limit.js';
-import { REGISTER_RATE_LIMIT_MAX } from '../auth/register-rate-limit.js';
 
 describe('canManagePublicBooking', () => {
   it('só DONO, e DENIED pertinente restringe', () => {
@@ -66,6 +65,5 @@ describe('limites explícitos', () => {
     expect(PUBLIC_REQUEST_RATE_LIMIT_WINDOW_MS).toBe(60 * 60 * 1000);
     expect(PUBLIC_READ_RATE_LIMIT_MAX).toBe(120);
     expect(LOGIN_RATE_LIMIT_MAX).toBe(5);
-    expect(REGISTER_RATE_LIMIT_MAX).toBe(5);
   });
 });
