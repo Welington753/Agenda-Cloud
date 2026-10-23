@@ -90,9 +90,24 @@ const envSchema = z.object({
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(1).optional(),
   WEB_PUSH_SUBJECT: z.string().min(1).optional(),
+  // E-mail transacional (convites e redefinição de senha), ver
+  // src/email/email-sender.ts. `none` desliga o envio sem simular sucesso.
+  EMAIL_PROVIDER: z.enum(['none', 'brevo', 'resend']).default('none'),
+  EMAIL_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.email().optional(),
+  EMAIL_FROM_NAME: z.string().trim().min(1).max(80).optional(),
+  // Só para testes (caixa de e-mail local). Proibido em production.
+  EMAIL_API_BASE_URL: z.url().optional(),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && !isHttpsOrigin(env.FRONTEND_URL)) {
     ctx.addIssue({ code: 'custom', path: ['FRONTEND_URL'], message: 'origem HTTPS exata' });
+  }
+  if (env.EMAIL_PROVIDER !== 'none') {
+    if (!env.EMAIL_API_KEY) ctx.addIssue({ code: 'custom', path: ['EMAIL_API_KEY'], message: 'obrigatória' });
+    if (!env.EMAIL_FROM) ctx.addIssue({ code: 'custom', path: ['EMAIL_FROM'], message: 'obrigatório' });
+  }
+  if (env.EMAIL_API_BASE_URL && env.NODE_ENV === 'production') {
+    ctx.addIssue({ code: 'custom', path: ['EMAIL_API_BASE_URL'], message: 'só fora de production' });
   }
   const push = [env.WEB_PUSH_VAPID_PUBLIC_KEY, env.WEB_PUSH_VAPID_PRIVATE_KEY, env.WEB_PUSH_SUBJECT];
   const definidas = push.filter((valor) => valor !== undefined).length;

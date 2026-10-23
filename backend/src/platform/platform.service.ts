@@ -8,6 +8,7 @@ import {
 } from '../auth/trial-policy.js';
 import {
   canViewEstablishments,
+  platformCapabilities,
   requirePlatformAccess,
 } from './platform-access.js';
 import type { EstablishmentQuery } from './platform.dto.js';
@@ -50,7 +51,14 @@ export class PlatformService {
     const user = await this.dataSource.manager.findOne(User, {
       where: { id: userId },
     });
-    return { canViewEstablishments: canViewEstablishments(user) };
+    // `capabilities` diz à tela o que mostrar; o servidor confere de novo em
+    // cada operação. O papel só aparece para quem tem acesso.
+    const capabilities = platformCapabilities(user);
+    return {
+      canViewEstablishments: canViewEstablishments(user),
+      capabilities,
+      platformRole: capabilities.viewDirectory ? (user?.platformRole ?? null) : null,
+    };
   }
 
   /** Autorização relida em TODA consulta. Nenhum papel/tenantId do navegador

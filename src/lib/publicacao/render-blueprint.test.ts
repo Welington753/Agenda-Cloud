@@ -79,6 +79,10 @@ describe("render.yaml (piloto)", () => {
       "WEB_PUSH_VAPID_PUBLIC_KEY",
       "WEB_PUSH_VAPID_PRIVATE_KEY",
       "WEB_PUSH_SUBJECT",
+      "EMAIL_PROVIDER",
+      "EMAIL_API_KEY",
+      "EMAIL_FROM",
+      "EMAIL_FROM_NAME",
     ]) {
       expect(configuracaoDa(chave)).toBe("sync: false");
     }

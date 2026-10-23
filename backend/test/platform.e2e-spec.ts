@@ -99,12 +99,18 @@ describe('administração da plataforma — HTTP', () => {
       .get('/platform/establishments/tenant_a')
       .expect(403);
   });
-  it('não cria rota de alteração, promoção de papel ou suporte', async () => {
-    for (const path of [
-      '/platform/establishments',
-      '/platform/establishments/tenant_a',
-      '/platform/access',
-    ]) {
+  it('não cria rota de alteração da ficha, promoção pelo acesso ou suporte', async () => {
+    // Criar estabelecimento existe (gestão de contas), mas só com o formulário
+    // completo: um corpo forjado nunca chega ao serviço.
+    await request(app.getHttpServer())
+      .post('/platform/establishments')
+      .send({ platformRole: 'MASTER_OWNER' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch('/platform/establishments')
+      .send({ status: 'ACTIVE' })
+      .expect(404);
+    for (const path of ['/platform/establishments/tenant_a', '/platform/access']) {
       await request(app.getHttpServer())
         .post(path)
         .send({ platformRole: 'MASTER_OWNER' })

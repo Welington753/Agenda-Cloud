@@ -139,6 +139,18 @@ jobs:
           npm run build:migrations-runtime
           npm run migration:run:compiled
 
+      # Integração do backend contra o MESMO PostgreSQL descartável já
+      # migrado (contas e convites, concorrência, auditoria, agenda...). Cada
+      # arquivo usa marcadores próprios e não apaga dados dos outros; o
+      # e-mail vai para uma caixa HTTP local criada pelo próprio teste.
+      - name: Backend PostgreSQL integration tests (db-e2e)
+        working-directory: backend
+        env:
+          DB_E2E_DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          IGNORE_DOTENV_FILE: "true"
+        run: npm run test:db-e2e
+
       - name: Build backend (Nest)
         working-directory: backend
         run: npm run build

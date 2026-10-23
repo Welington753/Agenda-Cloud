@@ -92,6 +92,20 @@ services:
         sync: false
       - key: WEB_PUSH_SUBJECT
         sync: false
+      # E-mail de convites e de redefinição de senha, por API HTTPS (o plano
+      # gratuito bloqueia SMTP). Ausentes, a API sobe com o envio DESLIGADO:
+      # convites ficam "envio não configurado" e nenhuma conta nova é ativada.
+      # EMAIL_PROVIDER: `brevo` ou `resend`; EMAIL_FROM: remetente verificado
+      # no provedor; EMAIL_API_KEY: chave do provedor, só no painel. Ver
+      # docs/plans/administracao-contas-convites.md, "E-mail".
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        sync: false
 
   # Frontend Next.js (raiz do repositório).
   - type: web

@@ -10,6 +10,7 @@ import { AppointmentsModule } from './appointments/appointments.module.js';
 import { PublicBookingModule } from './public-booking/public-booking.module.js';
 import { PushModule } from './push/push.module.js';
 import { PlatformModule } from './platform/platform.module.js';
+import { AccountsModule } from './accounts/accounts.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -26,6 +27,7 @@ import { AppService } from './app.service.js';
     PublicBookingModule,
     PushModule,
     PlatformModule,
+    AccountsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
