@@ -1,16 +1,17 @@
-// Um cadastro, PostgreSQL descartável real. A promoção de papel é só
-// fixture de teste: não existe rota pública para promover uma conta.
-import { expect, test } from "@playwright/test";
+// Administração da plataforma integrada à área da conta: mesmo menu,
+// cabeçalho, aparência e menu da conta. PostgreSQL descartável real; a
+// promoção de papel é só fixture de teste: não existe rota pública para
+// promover uma conta.
+import { expect, test, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
 
 const API = "http://localhost:3001";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 24);
+const LISTA = "/conta/administracao/estabelecimentos";
+const SEM_ACESSO = "Sua conta não tem acesso à administração da plataforma.";
 
-test("administração real: autorização, busca, paginação, ficha e revogação", async ({
-  page,
-}, testInfo) => {
-  test.setTimeout(90_000);
+async function conectar(): Promise<Client> {
   const url = process.env.DATABASE_URL;
   if (
     !url ||
@@ -23,29 +24,75 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     ssl: { rejectUnauthorized: true },
   });
   await db.connect();
+  return db;
+}
+
+async function cadastrar(page: Page, marca: string) {
+  const register = await page.request.post(`${API}/auth/register`, {
+    data: {
+      ownerName: "Responsável Plataforma",
+      businessName: `${marca} Principal`,
+      email: `${marca}@example.test`,
+      phone: "11999998888",
+      password: "senha-administracao-123",
+    },
+  });
+  expect(register.status(), await register.text()).toBe(201);
+  return (await register.json()) as {
+    user: { id: string };
+    tenant: { id: string };
+  };
+}
+
+const nav = (page: Page) =>
+  page.getByRole("navigation", { name: "Áreas da conta" });
+
+/** Sem rolagem horizontal, nas três larguras, em claro e escuro. */
+async function capturar(page: Page, nome: string, pasta: (f: string) => string) {
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    for (const width of [1280, 390, 360]) {
+      await page.setViewportSize({ width, height: 844 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: pasta(`administracao-${nome}-${tema}-${width}.png`),
+        fullPage: true,
+      });
+    }
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1280, height: 844 });
+}
+
+test("administração no menu principal: autorização, busca, ficha, contexto e revogação", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const db = await conectar();
   try {
     const marca = `administracao-${id()}`;
-    const register = await page.request.post(`${API}/auth/register`, {
-      data: {
-        ownerName: "Responsável Plataforma",
-        businessName: `${marca} Principal`,
-        email: `${marca}@example.test`,
-        phone: "11999998888",
-        password: "senha-administracao-123",
-      },
-    });
-    expect(register.status(), await register.text()).toBe(201);
-    const account = (await register.json()) as {
-      user: { id: string };
-      tenant: { id: string };
-    };
+    const principal = `${marca} Principal`;
+    const account = await cadastrar(page, marca);
     // O Next.js injeta `__next-route-announcer__` com role="alert" fora do
     // <main>, assim como a região de avisos com role="status".
     const main = page.getByRole("main");
+
+    // Usuário comum: sem item no menu e, por URL direta (inclusive o
+    // endereço antigo), a recusa aparece no mesmo menu da conta.
+    await page.goto("/conta/visao-geral");
+    await expect(nav(page).getByRole("link", { name: "Agenda" })).toBeVisible();
+    await expect(
+      nav(page).getByRole("link", { name: "Administração" }),
+    ).toHaveCount(0);
     await page.goto("/administracao");
-    await expect(main.getByRole("alert")).toHaveText(
-      "Sua conta não tem acesso à administração da plataforma.",
-    );
+    await expect(page).toHaveURL(LISTA);
+    await expect(main.getByRole("alert")).toHaveText(SEM_ACESSO);
+    await expect(nav(page).getByRole("link", { name: "Agenda" })).toBeVisible();
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(principal);
     expect(
       (await page.request.get(`${API}/platform/establishments`)).status(),
     ).toBe(403);
@@ -88,10 +135,27 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
       )
         escritas++;
     });
-    await page.reload();
+
+    // Com o papel confirmado pelo backend, "Administração" entra no menu
+    // principal e abre na área central, com o mesmo cabeçalho.
+    await page.goto("/conta/visao-geral");
+    await expect(page.getByTestId("modo-administracao")).toHaveCount(0);
+    await nav(page).getByRole("link", { name: "Administração" }).click();
+    await expect(page).toHaveURL(LISTA);
     await expect(
       page.getByRole("heading", { name: "Estabelecimentos", exact: true }),
     ).toBeVisible();
+    await expect(
+      nav(page).getByRole("link", { name: "Administração" }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("modo-administracao")).toHaveText(
+      "Administração da plataforma",
+    );
+    await expect(page.getByTestId("faixa-administracao")).toContainText(
+      `Seu estabelecimento ativo continua sendo ${principal}`,
+    );
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(principal);
+
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
     await expect(main.getByRole("status")).toHaveText(
@@ -104,9 +168,38 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     await expect(
       page.getByText("Página 2 de 2", { exact: true }),
     ).toBeVisible();
+
+    // Ficha de OUTRA empresa: não troca o estabelecimento ativo, não cria
+    // vínculo e não entra como dono dela.
     await page
-      .getByRole("link", { name: `${marca} Principal`, exact: true })
+      .getByRole("link", { name: `${marca} Negócio 0`, exact: true })
       .click();
+    await expect(
+      page.getByRole("heading", { name: `${marca} Negócio 0`, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Sem responsável vinculado.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(principal);
+    await nav(page).getByRole("link", { name: "Agenda" }).click();
+    await expect(page).toHaveURL("/conta/agendamentos");
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(principal);
+    await expect(page.getByTestId("modo-administracao")).toHaveCount(0);
+    const vinculos = await db.query<{ tenant_id: string }>(
+      "SELECT tenant_id FROM memberships WHERE user_id = $1",
+      [account.user.id],
+    );
+    expect(vinculos.rows).toEqual([{ tenant_id: account.tenant.id }]);
+    const me = await page.request.get(`${API}/auth/me`);
+    expect(
+      ((await me.json()) as { contexts: { tenantId: string }[] }).contexts.map(
+        (c) => c.tenantId,
+      ),
+    ).toEqual([account.tenant.id]);
+
+    // Endereço antigo da ficha encaminha para a experiência integrada.
+    await page.goto(`/administracao/estabelecimentos/${account.tenant.id}`);
+    await expect(page).toHaveURL(`${LISTA}/${account.tenant.id}`);
     await expect(
       page.getByRole("heading", { name: "Responsáveis", exact: true }),
     ).toBeVisible();
@@ -121,41 +214,31 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: `${marca} Principal`, exact: true }),
+      page.getByRole("heading", { name: principal, exact: true }),
     ).toBeVisible();
-    for (const width of [1280, 390, 360]) {
-      await page.setViewportSize({ width, height: 844 });
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      await page.screenshot({
-        path: testInfo.outputPath(`administracao-ficha-${width}.png`),
-        fullPage: true,
-      });
-    }
-    await page
-      .getByRole("link", { name: "← Estabelecimentos", exact: true })
-      .click();
+    await capturar(page, "ficha", (f) => testInfo.outputPath(f));
+
+    // No celular, a entrada fica no "Mais", sem apertar a barra.
+    await page.setViewportSize({ width: 360, height: 844 });
+    const mais = nav(page).getByRole("button", { name: /Mais/ });
+    await mais.click();
+    const menuMais = page.locator("#menu-mais");
+    await expect(
+      menuMais.getByRole("link", { name: "Administração" }),
+    ).toBeVisible();
+    await expect(nav(page).locator(":scope > ul:not(#menu-mais) > li:visible")).toHaveCount(5);
+    await menuMais.getByRole("link", { name: "Administração" }).click();
+    await expect(page).toHaveURL(LISTA);
+    await page.setViewportSize({ width: 1280, height: 844 });
+
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByLabel("Situação do acesso").selectOption("SUSPENDED");
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
     await expect(main.getByRole("status")).toHaveText(
       "1 estabelecimento(s) encontrado(s)",
     );
-    for (const width of [1280, 390, 360]) {
-      await page.setViewportSize({ width, height: 844 });
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      await page.screenshot({
-        path: testInfo.outputPath(`administracao-lista-${width}.png`),
-        fullPage: true,
-      });
-    }
+    await capturar(page, "lista", (f) => testInfo.outputPath(f));
+
     // Falha de rede não se transforma em zero estabelecimentos.
     const route = `${API}/platform/establishments?*`;
     await page.route(route, (r) => r.abort("failed"));
@@ -176,13 +259,80 @@ test("administração real: autorização, busca, paginação, ficha e revogaç�
       account.user.id,
     ]);
     await page.getByRole("button", { name: "Atualizar", exact: true }).click();
-    await expect(main.getByRole("alert")).toHaveText(
-      "Sua conta não tem acesso à administração da plataforma.",
-    );
+    await expect(main.getByRole("alert")).toHaveText(SEM_ACESSO);
     await expect(
       page.getByText(`${marca} Negócio 0`, { exact: true }),
     ).toHaveCount(0);
+    // Na próxima carga, o item sai do menu.
+    await page.goto("/conta/visao-geral");
+    await expect(nav(page).getByRole("link", { name: "Agenda" })).toBeVisible();
+    await expect(
+      nav(page).getByRole("link", { name: "Administração" }),
+    ).toHaveCount(0);
     expect(escritas).toBe(0);
+  } finally {
+    await db.end();
+  }
+});
+
+test("administrador sem estabelecimento usa a administração; suporte sem permissão não", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const db = await conectar();
+  try {
+    const marca = `administracao-sem-vinculo-${id()}`;
+    const account = await cadastrar(page, marca);
+    // Sem vínculo nenhum: a empresa criada no cadastro fica sem responsável.
+    await db.query("DELETE FROM memberships WHERE user_id = $1", [
+      account.user.id,
+    ]);
+    await db.query(
+      "UPDATE users SET platform_role = 'MASTER_ADMIN', platform_permissions = ARRAY['ESTABLISHMENTS_MANAGE']::platform_permission[] WHERE id = $1",
+      [account.user.id],
+    );
+    const main = page.getByRole("main");
+
+    await page.goto("/conta");
+    await expect(nav(page).getByRole("link")).toHaveText([
+      "Administração",
+      "Minha conta",
+    ]);
+    await expect(page.getByTestId("estabelecimento-ativo")).toHaveCount(0);
+    await nav(page).getByRole("link", { name: "Administração" }).click();
+    await expect(page).toHaveURL(LISTA);
+    await expect(page.getByTestId("modo-administracao")).toBeVisible();
+    await expect(page.getByTestId("faixa-administracao")).toContainText(
+      "Sua conta não tem estabelecimento vinculado",
+    );
+    await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
+    await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
+    await expect(main.getByRole("status")).toHaveText(
+      "1 estabelecimento(s) encontrado(s)",
+    );
+    // Celular: só duas áreas na barra, sem "Mais".
+    await page.setViewportSize({ width: 360, height: 844 });
+    await expect(nav(page).getByRole("button", { name: /Mais/ })).toHaveCount(0);
+    await expect(
+      nav(page).getByRole("link", { name: "Administração" }),
+    ).toBeVisible();
+    await capturar(page, "sem-estabelecimento", (f) => testInfo.outputPath(f));
+
+    // Suporte só com SUPPORT_ACCESS: o servidor nega, o menu não oferece.
+    await db.query(
+      "UPDATE users SET platform_role = 'MASTER_SUPPORT', platform_permissions = ARRAY['SUPPORT_ACCESS']::platform_permission[] WHERE id = $1",
+      [account.user.id],
+    );
+    await page.goto("/conta");
+    await expect(
+      page.getByRole("heading", { name: /^Olá/ }),
+    ).toBeVisible();
+    await expect(nav(page)).toHaveCount(0);
+    await page.goto(LISTA);
+    await expect(main.getByRole("alert")).toHaveText(SEM_ACESSO);
+    expect(
+      (await page.request.get(`${API}/platform/establishments`)).status(),
+    ).toBe(403);
   } finally {
     await db.end();
   }

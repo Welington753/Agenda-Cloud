@@ -51,6 +51,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { EstatisticaCard } from "@/components/ui/estatistica-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
 
 /** Quantos próximos atendimentos a Visão geral mostra; o resto fica na agenda. */
 const LIMITE_DE_PROXIMOS = 8;
@@ -102,11 +103,10 @@ export default function VisaoGeralPage() {
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
-            <p className="text-sm text-ink-soft">
-              Sua conta ainda não está vinculada a um estabelecimento.
-            </p>
+            <p className="text-sm text-ink-soft">Sua conta ainda não está vinculada a um estabelecimento.</p>
           </CartaoCorpo>
         </Cartao>
+        <LinkAdministracao />
       </PaginaConta>
     );
   }

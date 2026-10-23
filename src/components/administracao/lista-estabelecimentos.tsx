@@ -6,6 +6,7 @@ import {
   precoCatalogo,
   type EstabelecimentoAdministrado,
 } from "@/lib/administracao/contratos";
+import { rotaFichaEstabelecimento } from "@/lib/administracao/rotas";
 
 export function ListaEstabelecimentos({
   items,
@@ -38,7 +39,7 @@ export function ListaEstabelecimentos({
             <div className="grid min-w-0 gap-4 lg:grid-cols-[2fr_2fr_1.2fr_1fr] lg:items-center">
               <div className="min-w-0">
                 <Link
-                  href={`/administracao/estabelecimentos/${encodeURIComponent(item.id)}`}
+                  href={rotaFichaEstabelecimento(item.id)}
                   className="inline-flex min-h-11 max-w-full items-center gap-2 break-words font-semibold text-ink hover:text-accent"
                 >
                   <span className="min-w-0 break-words">{item.name}</span>

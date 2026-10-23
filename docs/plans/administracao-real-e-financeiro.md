@@ -165,3 +165,120 @@ nenhum `.env` real, `agenda_dev`, Neon, piloto ou produção foi usado.
 - `test:browser:proxy`: 4 de 5 passam. O caso de cadastro/login pela mesma
   origem para em "Conectando ao servidor…" neste Windows, e falha do mesmo
   jeito no commit base `20e3fdc`. É anterior a este lote; o CI Linux decide.
+
+## Segundo lote: administração dentro do menu principal
+
+Base: integration em `35f4713`. Sem mudança no backend, sem migration e sem
+variável nova.
+
+### O que mudou
+
+- A administração passou a morar em `/conta/administracao/**`, dentro do
+  mesmo layout da área real: menu, cabeçalho, aparência (claro, escuro ou
+  aparelho) e menu da conta são os de sempre. O menu próprio da
+  administração deixou de existir.
+- `GET /platform/access` é lido uma vez pelo layout de `/conta`
+  (`AcessoPlataformaProvider`). Com `canViewEstablishments: true`, o menu
+  ganha "Administração" num grupo "Plataforma", depois de "Minha conta".
+  No celular o item fica no "Mais": a barra continua com quatro áreas.
+  Carregando, falha ou resposta inválida nunca mostram o item.
+- Administrador sem vínculo com estabelecimento: o menu mostra só
+  "Administração" e "Minha conta" (no celular, as duas na barra, sem "Mais").
+  A Visão geral e Minha conta oferecem o atalho para a administração.
+- Nas páginas da administração, o cabeçalho mostra "Administração da
+  plataforma" e uma faixa diz qual é o estabelecimento ativo, que não muda.
+  A ficha de outra empresa usa só a leitura de plataforma: não troca o
+  contexto da sessão, não cria Membership e não abre sessão de suporte.
+- Endereços antigos: `/administracao` e `/conta/administracao` levam à lista;
+  `/administracao/<caminho>` leva a `/conta/administracao/<caminho>`, com a
+  busca preservada (307, `next.config.ts`). `/login?next=/administracao`
+  continua funcionando.
+- O acesso continua decidido no servidor a cada leitura. O item do menu só
+  apresenta; um papel revogado vira 403 na próxima leitura, e o item sai na
+  próxima carga da área.
+
+### Funções reais disponíveis
+
+| Função | Estado |
+| --- | --- |
+| Lista de estabelecimentos com busca, filtro de situação e plano, paginação | Real (`GET /platform/establishments`) |
+| Indicadores globais: total, ativos, em teste, acesso restrito | Real (mesma resposta, independentes do filtro) |
+| Ficha: dados, responsáveis, plano e preço de catálogo, uso, unidades | Real (`GET /platform/establishments/:id`) |
+| Editar empresa, responsáveis, plano, configurações, financeiro | Não existe: nenhum botão é exibido |
+
+### O que falta para as próximas funções
+
+Levantado no código em `35f4713`. Nada disto foi implementado neste lote.
+
+1. **Editar dados da empresa.** Não há rota de escrita em `platform/`. O nome
+   exibido vem de `units.name` da unidade principal; o slug é único (`citext`)
+   e já usado no agendamento público. Falta: `PATCH` com zod, decisão de quem
+   edita (só `MASTER_OWNER` ou também `ESTABLISHMENTS_MANAGE`), tratamento de
+   slug duplicado e de links públicos antigos, e gravação em `audit_logs`
+   (a tabela existe; hoje só o cadastro escreve nela).
+2. **Mudar a situação do acesso** (ativo, suspenso, cancelado). `tenants.status`
+   já decide se o vínculo vale na sessão (`isTenantUsableForSession`). Falta
+   a rota, a política de efeitos (sessões abertas, agendamento público,
+   notificações) e a auditoria. Hoje a ficha só mostra a situação.
+3. **Responsáveis.** Usuários são globais (uma conta pode ter vários
+   estabelecimentos) e o e-mail é a credencial de login. Falta convite ou
+   transferência de responsável com criação/remoção de Membership auditada.
+   A tabela `invites` existe, mas não tem rota.
+4. **Mudar o plano.** `tenants.plan_id` e o catálogo `plans` existem. Falta a
+   rota com a permissão `PLANS_MANAGE` decidida, conferência de limites
+   (`max_professionals`, `max_units`) contra o uso atual, histórico de troca
+   e auditoria. Trocar só o `plan_id` hoje apagaria o histórico.
+5. **Configurações por estabelecimento.** `plan_features` e
+   `tenant_feature_overrides` existem no schema, mas nenhum código de runtime
+   lê ou grava essas tabelas. Antes da tela, falta definir quais recursos
+   elas controlam de fato.
+6. **Valores contratados e pagamentos.** Não há tabela. Depende da proposta
+   financeira acima (contrato, cobrança por competência, recebimento),
+   da migration aprovada e das rotas. Até lá, a tela só mostra preço de
+   catálogo, rotulado como tal, e não calcula faturamento.
+7. **Administradores da plataforma.** `ADMINISTRATORS_MANAGE` existe no enum,
+   sem rota. A promoção continua manual, por script operacional.
+
+Cada item acima precisa de backend, testes de banco e revisão próprios.
+Nenhum deles deve aparecer como botão antes de funcionar.
+
+### Verificação
+
+- PostgreSQL 18.6 descartável, criado só para esta validação, na porta
+  55433, com TLS e verificação completa do certificado autoassinado;
+  as migrations aplicadas por `migration:run:compiled`.
+  `IGNORE_DOTENV_FILE=true` em todos os processos; nenhum `.env` real,
+  `agenda_dev`, Neon, piloto ou produção.
+- `test:browser:administracao`, agora com dois casos:
+  - usuário comum sem item no menu e recusado por URL direta (nova e antiga);
+    `MASTER_OWNER` com o item no menu, lista, filtros, paginação, ficha de
+    outra empresa sem trocar o estabelecimento ativo nem criar vínculo
+    (conferido em `memberships` e em `/auth/me`), ida para a Agenda, ficha
+    pelo endereço antigo, "Mais" no celular, falha de rede, revogação e
+    nenhuma escrita na API;
+  - `MASTER_ADMIN` com `ESTABLISHMENTS_MANAGE` sem estabelecimento usando
+    a administração; `MASTER_SUPPORT` só com `SUPPORT_ACCESS` sem item e
+    recusado.
+  - Capturas de lista, ficha e administrador sem estabelecimento em claro
+    e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
+- Correção junto: `selecionarTenantAtivo` decidia a troca de dentro do
+  updater do `setEstado`. Com outra atualização pendente, o React adia o
+  updater e a função devolvia `false`: a escolha valia, mas a tela de
+  seleção não navegava. O novo provider de acesso tornou isso visível em
+  `clients-flow` (a mesma suíte passa na base `35f4713`). A decisão agora
+  vem do estado já renderizado.
+- Executado no clone Windows (Node 24, Chromium do Playwright):
+  frontend `npm test` (73 arquivos, 836 testes), `lint` e `lint:types`
+  sem erros (avisos antigos de `appointments-api.test.ts` e
+  `http-client.test.ts`), `tsc --noEmit`, build Next.js; build NestJS e
+  migrations no banco descartável. Suítes de navegador com API e banco
+  reais: `administracao` (2), `auth` (8), `services` (5), `clients` (3),
+  `avisos-solicitacoes` (1), `aparencia` (2), `push` (1), `recuperacao` (12),
+  `visao-geral` (1), `agenda-view` (1), `agenda-profissional` (1),
+  `professionals` (3), `appointments` (4), `agendamento-publico` (1).
+  O backend não mudou; as suítes de backend ficam com o CI.
+
+### Publicação
+
+Só o serviço web (`agenda-cloud-piloto-web`) muda. A API não muda, não há
+migration nem variável nova. Nenhuma publicação foi feita neste lote.

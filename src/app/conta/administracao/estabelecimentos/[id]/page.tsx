@@ -8,6 +8,7 @@ import {
   dataCadastro,
   precoCatalogo,
 } from "@/lib/administracao/contratos";
+import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS } from "@/lib/administracao/rotas";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -33,7 +34,7 @@ export default function DetalhePage() {
   return (
     <div className="space-y-6">
       <LinkBotao
-        href="/administracao/estabelecimentos"
+        href={ROTA_ESTABELECIMENTOS_ADMINISTRADOS}
         variante="fantasma"
         className="min-h-11"
       >
