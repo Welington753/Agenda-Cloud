@@ -335,6 +335,12 @@ Os testes automáticos simulam o `PushManager` e um serviço de push falso: prov
 
 ### F. Aplicar AccountsAdministration (convites e gestão de contas)
 
+**Roteiro operacional: `docs/runbooks/publicacao-contas-piloto.md`.** Ele traz
+o procedimento guardado e ensaiado: lançador no Windows Terminal, URL oculta,
+TLS no socket, backup com restauração conferida em banco descartável, só a
+migration pendente, conferência `after`, compatibilidade e recuperação. O
+resumo abaixo continua valendo como referência.
+
 Vale para o piloto que já está com as seis migrations até `WebPush1792713600000`. A migration `1792800000000-AccountsAdministration` só acrescenta: valores no enum `audit_action`, uma coluna em `audit_logs` e em `sessions`, colunas e constraints em `invites` (tabela que nenhum código escrevia) e a tabela `password_resets`. Nenhuma conta existente muda de situação; nenhum e-mail é marcado como verificado. Detalhes em `docs/plans/administracao-contas-convites.md`.
 
 **Ordem: backup → conferência antes → migration → conferência depois → API → web.** A API atual funciona com o schema novo (as colunas novas são nulas ou têm padrão); a API nova não funciona sem ele.
@@ -380,7 +386,7 @@ Faça os passos nesta ordem. Cada um depende do anterior.
      - `curl -si -X POST "$WEB/agenda_api/auth/logout" -H "Origin: https://exemplo.invalid"` deve responder `403`, sem `Set-Cookie`;
      - sem `-H "Origin: ..."`, também `403`.
    - Login, sessão e logout no navegador:
-     1. Crie a conta em `$WEB/cadastro`. Não existe exclusão de conta: use a conta real do primeiro estabelecimento ou uma conta de teste claramente identificada.
+     1. Use uma conta existente. Desde o PR #65 o cadastro público está fechado: contas novas entram por convite da administração (`/conta/administracao`). Não existe exclusão de conta.
      2. Em DevTools → Network, confirme que as chamadas vão para `$WEB/agenda_api/...` e **nenhuma** para `$API`.
      3. Em DevTools → Application → Cookies, confira em `$WEB` o cookie `session_token` com `HttpOnly`, `Secure`, `SameSite=Lax` e sem `Domain`. Em `$API` não deve haver cookie.
      4. Recarregue `/conta`: a sessão continua.

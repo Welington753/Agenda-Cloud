@@ -120,6 +120,39 @@ Recomendação para o piloto: **Brevo** com um domínio próprio autenticado
 (DKIM/DMARC). Sem domínio, o Brevo funciona para teste, com entrega incerta.
 Nenhum dos dois promete gratuidade ilimitada; os limites podem mudar.
 
+### Sem domínio próprio (conferido em 23/10/2026)
+
+- **Resend não atende.** Sem domínio verificado, o remetente de teste
+  `onboarding@resend.dev` "can only send emails to the email address
+  associated with your Resend account"
+  ([403](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)).
+  Convites a outras pessoas recebem 403.
+- **Brevo atende, com limites.**
+  - O envio transacional por API exige só um remetente "registered and
+    verified" ([API](https://developers.brevo.com/docs/send-a-transactional-email)).
+    A restrição de destinatário que aparece ali vale só para templates
+    dinâmicos, que este código não usa.
+  - Um endereço `@gmail.com` não pode ser autenticado. O Brevo troca o
+    domínio do remetente por `@brevosend.com`
+    ([autenticação](https://help.brevo.com/hc/en-us/articles/17286219877778-FAQs-About-domain-authentication-Brevo-code-DKIM-DMARC)).
+  - A entrega a destinatários reais diferentes é possível, mas incerta (spam
+    provável). Serve para teste, não como garantia de produção.
+- **Bloqueio de IP do Brevo.**
+  - Contas criadas desde maio de 2024 recusam chamadas de API vindas de IP
+    não autorizado
+    ([Authorized IPs](https://help.brevo.com/hc/en-us/articles/5740111683858-Authorize-and-block-IP-addresses-for-API-and-SMTP-security)).
+  - O Render usa faixas de saída compartilhadas por região, listadas no
+    painel do serviço em **Connect → Outbound**
+    ([IPs de saída](https://render.com/docs/outbound-ip-addresses)).
+  - Antes de enviar, autorize essas faixas ou desative o bloqueio. Sem isso, o
+    convite fica `FAILED` (`HTTP_4XX`) e o log mostra `HTTP 401`.
+- **Ativação.** Relatos de terceiros (não da documentação oficial) dizem que
+  algumas contas novas precisam pedir ao suporte do Brevo a ativação da
+  plataforma transacional. O sintoma é o mesmo: falha `HTTP_4XX`.
+- **Cartão.** A página de preços do Brevo anuncia o plano gratuito sem cartão.
+  Ela não pôde ser lida automaticamente; confira no cadastro. Nada aqui exige
+  plano pago.
+
 Envio depois do commit, com estado registrado (`PENDING`, `SENT` =
 provedor aceitou, `FAILED` com código, `NOT_CONFIGURED`). "Enviado" nunca
 significa "recebido". Sem provedor, a conta fica pendente e a tela mostra a
