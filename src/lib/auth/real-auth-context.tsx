@@ -253,14 +253,15 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   }, [cancelarLeitura]);
 
   const selecionarTenantAtivo = useCallback((tenantId: string): boolean => {
-    let aceito = false;
-    setEstado((atual) => {
-      const proximo = selecionarTenant(atual, tenantId);
-      aceito = proximo !== atual;
-      return proximo;
-    });
-    if (aceito) salvarPreferenciaTenant(tenantId);
-    return aceito;
+    // A decisão vem do estado já renderizado, não de dentro do updater: o
+    // React só roda o updater na hora quando a fila do componente está vazia;
+    // com outra atualização pendente ele fica para a próxima renderização, e
+    // quem chamou receberia `false` mesmo com a troca aplicada depois.
+    const atual = estadoRef.current;
+    if (selecionarTenant(atual, tenantId) === atual) return false;
+    setEstado((pendente) => selecionarTenant(pendente, tenantId));
+    salvarPreferenciaTenant(tenantId);
+    return true;
   }, []);
 
   return (

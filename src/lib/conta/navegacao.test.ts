@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ITENS_MENU_MAIS, ITENS_NAVEGACAO_CONTA, itemAtivo, rotuloDoSino } from "./navegacao";
+import {
+  ITENS_MENU_MAIS,
+  ITENS_NAVEGACAO_CONTA,
+  itemAtivo,
+  itensDaNavegacao,
+  rotuloDoSino,
+} from "./navegacao";
 
 describe("ITENS_NAVEGACAO_CONTA", () => {
   it("só aponta para a área real, na ordem do dia a dia", () => {
@@ -35,6 +41,46 @@ describe("celular", () => {
   });
 });
 
+describe("itensDaNavegacao", () => {
+  const rotulos = (itens: ReturnType<typeof itensDaNavegacao>) => itens.map((i) => i.rotulo);
+
+  it("sem acesso confirmado à plataforma, o menu é o de sempre", () => {
+    expect(itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false })).toBe(
+      ITENS_NAVEGACAO_CONTA,
+    );
+  });
+
+  it("com acesso, Administração vem por último, no grupo da plataforma e no Mais do celular", () => {
+    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true });
+    expect(rotulos(itens)).toEqual([...rotulos(ITENS_NAVEGACAO_CONTA), "Administração"]);
+    expect(itens.at(-1)).toEqual({
+      href: "/conta/administracao",
+      rotulo: "Administração",
+      noCelular: "mais",
+      grupo: "plataforma",
+    });
+    // A barra do celular continua com as mesmas quatro áreas.
+    expect(rotulos(itens.filter((i) => i.noCelular === "barra"))).toEqual([
+      "Visão geral",
+      "Agenda",
+      "Clientes",
+      "Serviços",
+    ]);
+  });
+
+  it("administrador sem estabelecimento vê só Administração e Minha conta, na barra", () => {
+    const itens = itensDaNavegacao({ comEstabelecimento: false, comAdministracao: true });
+    expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
+      ["/conta/administracao", "barra"],
+      ["/conta", "barra"],
+    ]);
+  });
+
+  it("sem estabelecimento e sem acesso, não há menu", () => {
+    expect(itensDaNavegacao({ comEstabelecimento: false, comAdministracao: false })).toEqual([]);
+  });
+});
+
 describe("itemAtivo", () => {
   it("Minha conta só é ativa na própria página", () => {
     expect(itemAtivo("/conta", "/conta")).toBe(true);
@@ -51,6 +97,8 @@ describe("itemAtivo", () => {
     expect(itemAtivo("/conta/profissionais/p1/horarios", "/conta/profissionais")).toBe(true);
     expect(itemAtivo("/conta/profissionais/p1/disponibilidade", "/conta/profissionais")).toBe(true);
     expect(itemAtivo("/conta/profissionais", "/conta/profissionais")).toBe(true);
+    expect(itemAtivo("/conta/administracao/estabelecimentos/t1", "/conta/administracao")).toBe(true);
+    expect(itemAtivo("/conta/administracao/estabelecimentos", "/conta")).toBe(false);
   });
 
   it("não confunde prefixos parecidos nem rota ausente", () => {

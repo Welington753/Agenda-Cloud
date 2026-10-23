@@ -18,36 +18,34 @@
 // Só LÊ a sessão que `RequireRealSession` já validou (via `useRealAuth`): a
 // única requisição própria é o logout, com o mesmo comportamento de antes. O
 // estabelecimento exibido é o contexto ATIVO da sessão, escolhido entre os
-// vínculos que o backend devolveu — nunca um id vindo da URL. A navegação só
-// aparece quando há um estabelecimento ativo: antes da escolha (quem tem mais
-// de um vínculo) as páginas nem teriam o que mostrar.
+// vínculos que o backend devolveu — nunca um id vindo da URL. A navegação da
+// operação só aparece quando há um estabelecimento ativo: antes da escolha
+// (quem tem mais de um vínculo) as páginas nem teriam o que mostrar.
+//
+// Quem administra a plataforma (acesso confirmado por `GET /platform/access`,
+// ver lib/administracao/use-acesso-plataforma.tsx) ganha "Administração" no
+// mesmo menu — no "Mais" do celular — mesmo sem vínculo com estabelecimento.
+// Nas páginas da administração o cabeçalho diz "Administração da plataforma";
+// o estabelecimento ativo continua o mesmo, porque a ficha de outra empresa
+// nunca vira contexto da sessão.
 //
 // Nada aqui importa a demonstração (`AdminShell` usa a sessão simulada): é
 // por isso que este shell é próprio, e não uma variação daquele.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  CalendarDays,
-  ClipboardList,
-  Inbox,
-  LayoutDashboard,
-  Contact,
-  MoreHorizontal,
-  Repeat,
-  UserRound,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { MoreHorizontal, Repeat, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
+import { itensDaNavegacao, itemAtivo } from "@/lib/conta/navegacao";
 import {
-  ITENS_MENU_MAIS,
-  ITENS_NAVEGACAO_CONTA,
-  itemAtivo,
-  type ItemNavegacaoConta,
-} from "@/lib/conta/navegacao";
+  CLASSE_ATIVO,
+  CLASSE_INATIVO,
+  CLASSE_ITEM,
+  COLUNAS_NO_CELULAR,
+  LinkNavegacao,
+} from "@/components/conta/link-navegacao";
 import { NOME_PRODUTO } from "@/lib/config";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -57,77 +55,12 @@ import {
 import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicitacoes";
 import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { encerrarNoDispositivo } from "@/lib/push/dispositivo";
-
-const ICONE_POR_HREF: Record<string, LucideIcon> = {
-  "/conta/visao-geral": LayoutDashboard,
-  "/conta/agendamentos": CalendarDays,
-  "/conta/solicitacoes": Inbox,
-  "/conta/clientes": Contact,
-  "/conta/servicos": ClipboardList,
-  "/conta/profissionais": Users,
-  "/conta": UserRound,
-};
+import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
+import { emAdministracao } from "@/lib/administracao/rotas";
 
 /** Classe no `<html>` enquanto o shell está montado: sobe as notificações no
  * celular para não cobrirem a barra inferior (ver globals.css). */
 const CLASSE_SHELL_ATIVO = "shell-conta-ativo";
-
-const CLASSE_ITEM = clsx(
-  "flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-center text-[11px] leading-tight font-medium",
-  "md:min-h-11 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
-  "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
-);
-// Fundo + sombra interna, não borda: a regra global `* { border-color }` de
-// globals.css venceria uma cor de borda utilitária.
-const CLASSE_ATIVO =
-  "bg-white/10 font-semibold text-white shadow-[inset_0_3px_0_var(--color-accent)] md:shadow-[inset_3px_0_0_var(--color-accent)]";
-const CLASSE_INATIVO = "text-white/70 hover:bg-white/5 hover:text-white";
-/** Item dentro do menu "Mais": linha inteira, ícone à esquerda, texto legível. */
-const CLASSE_ITEM_EM_LISTA =
-  "flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
-
-/** Contador de pendentes ao lado do rótulo. Só aparece com número
- * positivo vindo do servidor; o texto oculto diz o que o número significa. */
-function Contador({ total }: { total: number | null | undefined }) {
-  if (!total) return null;
-  return (
-    <span
-      data-testid="contador-solicitacoes"
-      className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[var(--color-accent)] px-1.5 text-[11px] leading-5 font-semibold text-on-accent"
-    >
-      {total > 99 ? "99+" : total}
-      <span className="sr-only"> {total === 1 ? "solicitação pendente" : "solicitações pendentes"}</span>
-    </span>
-  );
-}
-
-function LinkNavegacao({
-  item,
-  ativo,
-  emLista = false,
-  contador,
-}: {
-  item: ItemNavegacaoConta;
-  ativo: boolean;
-  emLista?: boolean;
-  contador?: number | null;
-}) {
-  const Icone = ICONE_POR_HREF[item.href] ?? LayoutDashboard;
-  return (
-    <Link
-      href={item.href}
-      aria-current={ativo ? "page" : undefined}
-      className={clsx(
-        emLista ? CLASSE_ITEM_EM_LISTA : CLASSE_ITEM,
-        ativo ? (emLista ? "bg-white/10 font-semibold text-white" : CLASSE_ATIVO) : CLASSE_INATIVO,
-      )}
-    >
-      <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />
-      <span className={emLista ? undefined : "w-full truncate md:w-auto"}>{item.rotulo}</span>
-      <Contador total={contador} />
-    </Link>
-  );
-}
 
 export function ShellConta({ children }: { children: ReactNode }) {
   const { estado, logout } = useRealAuth();
@@ -164,18 +97,28 @@ export function ShellConta({ children }: { children: ReactNode }) {
     };
   }, [maisAberto]);
 
-  const maisAtivo = ITENS_MENU_MAIS.some((item) => itemAtivo(pathname, item.href));
-
   // Lista do SolicitacoesProvider (layout de /conta), que já relê a cada
   // navegação e periodicamente com a página visível.
   const { estado: estadoSolicitacoes } = useSolicitacoesPendentes();
   const pendentes = contagemVisivel(estadoSolicitacoes);
+
+  // "Administração" só entra com o acesso confirmado pelo backend.
+  const { estado: estadoAcesso } = useAcessoPlataforma();
 
   if (estado.status !== "autenticado") return <>{children}</>;
 
   const { sessao, tenantIdAtivo } = estado;
   const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
   const podeTrocar = sessao.contexts.length > 1;
+  const itens = itensDaNavegacao({
+    comEstabelecimento: !!contexto,
+    comAdministracao: acessoConfirmado(estadoAcesso),
+  });
+  const itensMais = itens.filter((item) => item.noCelular === "mais");
+  const maisAtivo = itensMais.some((item) => itemAtivo(pathname, item.href));
+  const colunasNoCelular = itens.length - itensMais.length + (itensMais.length ? 1 : 0);
+  // Administrando a plataforma ou operando o estabelecimento: o cabeçalho diz.
+  const modoAdministracao = emAdministracao(pathname);
 
   async function aoSair() {
     if (saindo) return;
@@ -200,14 +143,34 @@ export function ShellConta({ children }: { children: ReactNode }) {
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
           <div className="min-w-0">
           <Link
-            href="/conta/visao-geral"
+            href={contexto ? "/conta/visao-geral" : "/conta"}
             className="font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-white"
           >
             {NOME_PRODUTO}
           </Link>
+          {modoAdministracao && (
+            <p
+              data-testid="modo-administracao"
+              className="mt-0.5 flex max-w-full items-start gap-1 text-xs font-semibold text-white md:mt-2"
+            >
+              <ShieldCheck size={14} aria-hidden="true" className="mt-px shrink-0" />
+              {/* No celular cabe numa linha; no computador, o sino divide a
+                  largura do menu e o texto quebra em vez de ser cortado. */}
+              <span className="truncate md:whitespace-normal">Administração da plataforma</span>
+            </p>
+          )}
+          {contexto && modoAdministracao && (
+            <p className="mt-3 hidden text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
+              Seu estabelecimento
+            </p>
+          )}
           {contexto && (
             <p
-              className="truncate text-xs text-white/70 md:mt-1 md:text-sm md:text-white"
+              className={clsx(
+                "truncate text-xs text-white/70 md:mt-1 md:text-sm md:text-white",
+                // No celular, a faixa da administração já diz qual é.
+                modoAdministracao && "hidden md:block",
+              )}
               data-testid="estabelecimento-ativo"
             >
               {contexto.tenantName}
@@ -227,14 +190,14 @@ export function ShellConta({ children }: { children: ReactNode }) {
           {contexto && <SinoNotificacoes pendentes={pendentes} />}
         </div>
 
-        {contexto && (
+        {itens.length > 0 && (
           <nav
             ref={navRef}
             aria-label="Áreas da conta"
             className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
           >
-            <ul className="grid grid-cols-5 md:flex md:flex-col md:gap-1">
-              {ITENS_NAVEGACAO_CONTA.map((item) => (
+            <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
+              {itens.map((item) => (
                 <li
                   key={item.href}
                   // Itens do "Mais" saem da barra do celular com
@@ -242,6 +205,13 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   // a cópia do menu "Mais" existe ali.
                   className={clsx("min-w-0", item.noCelular === "mais" && "hidden md:block")}
                 >
+                  {/* No computador, a administração fica num grupo próprio,
+                      separado da operação do estabelecimento. */}
+                  {item.grupo === "plataforma" && contexto && (
+                    <span className="mt-4 hidden border-t border-white/10 px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
+                      Plataforma
+                    </span>
+                  )}
                   <LinkNavegacao
                     item={item}
                     ativo={itemAtivo(pathname, item.href)}
@@ -249,35 +219,40 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   />
                 </li>
               ))}
-              <li className="min-w-0 md:hidden">
-                <button
-                  type="button"
-                  aria-expanded={maisAberto}
-                  aria-controls="menu-mais"
-                  onClick={() => setMaisAberto((aberto) => !aberto)}
-                  className={clsx(CLASSE_ITEM, maisAtivo || maisAberto ? CLASSE_ATIVO : CLASSE_INATIVO, "relative w-full")}
-                >
-                  <MoreHorizontal size={20} aria-hidden="true" className="shrink-0" />
-                  <span className="w-full truncate">Mais</span>
-                  {!!pendentes && (
-                    <span
-                      aria-hidden="true"
-                      data-testid="contador-mais"
-                      className="absolute top-1.5 right-[calc(50%-18px)] size-2.5 rounded-full bg-[var(--color-accent)]"
-                    />
-                  )}
-                  {!!pendentes && <span className="sr-only"> ({pendentes} solicitações pendentes)</span>}
-                  {maisAtivo && <span className="sr-only"> (página atual aqui)</span>}
-                </button>
-              </li>
+              {itensMais.length > 0 && (
+                <li className="min-w-0 md:hidden">
+                  <button
+                    type="button"
+                    aria-expanded={maisAberto}
+                    aria-controls="menu-mais"
+                    onClick={() => setMaisAberto((aberto) => !aberto)}
+                    className={clsx(CLASSE_ITEM, maisAtivo || maisAberto ? CLASSE_ATIVO : CLASSE_INATIVO, "relative w-full")}
+                  >
+                    <MoreHorizontal size={20} aria-hidden="true" className="shrink-0" />
+                    <span className="w-full truncate">Mais</span>
+                    {!!pendentes && (
+                      <span
+                        aria-hidden="true"
+                        data-testid="contador-mais"
+                        className="absolute top-1.5 right-[calc(50%-18px)] size-2.5 rounded-full bg-[var(--color-accent)]"
+                      />
+                    )}
+                    {!!pendentes && <span className="sr-only"> ({pendentes} solicitações pendentes)</span>}
+                    {maisAtivo && <span className="sr-only"> (página atual aqui)</span>}
+                  </button>
+                </li>
+              )}
             </ul>
-            {maisAberto && (
+            {maisAberto && itensMais.length > 0 && (
               <ul
                 id="menu-mais"
                 className="absolute inset-x-0 bottom-full border-t border-white/10 bg-chrome p-2 shadow-lg md:hidden"
               >
-                {ITENS_MENU_MAIS.map((item) => (
-                  <li key={item.href}>
+                {itensMais.map((item) => (
+                  <li
+                    key={item.href}
+                    className={clsx(item.grupo === "plataforma" && "mt-1 border-t border-white/10 pt-1")}
+                  >
                     <LinkNavegacao
                       item={item}
                       ativo={itemAtivo(pathname, item.href)}
@@ -319,7 +294,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
         className={clsx(
           "px-4 py-6 sm:px-6 md:ml-64 md:py-8 lg:px-8",
           // Espaço para a barra inferior do celular não cobrir o fim da página.
-          contexto ? "pb-28 md:pb-8" : undefined,
+          itens.length > 0 ? "pb-28 md:pb-8" : undefined,
         )}
       >
         {children}

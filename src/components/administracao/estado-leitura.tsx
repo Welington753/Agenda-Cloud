@@ -3,6 +3,7 @@
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import type { LeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
+import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS } from "@/lib/administracao/rotas";
 
 const MENSAGENS = {
   sessao: "Sua sessão precisa ser verificada novamente.",
@@ -33,7 +34,7 @@ export function EstadoLeitura({
         <LinkBotao
           href={
             estado.motivo === "ausente"
-              ? "/administracao/estabelecimentos"
+              ? ROTA_ESTABELECIMENTOS_ADMINISTRADOS
               : "/conta"
           }
           variante="secundaria"
