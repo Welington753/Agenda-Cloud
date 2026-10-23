@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { rootCertificates } from "node:tls";
+import { TLSSocket, checkServerIdentity, rootCertificates } from "node:tls";
 import { homedir, userInfo } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,19 @@ const parar = (codigo) => {
   throw new Parada(codigo);
 };
 
+// Todo pg.Client aberto fica aqui até ser encerrado, para que nenhuma falha
+// (inclusive no meio de `conectar`) deixe uma conexão abandonada.
+const conexoesAbertas = new Set();
+// Erros que o pg.Client emite fora de uma consulta (ex.: o servidor encerra a
+// conexão ociosa, 57P01). São guardados para o relatório final; a próxima
+// operação nesse cliente falha e o procedimento termina, nunca continua.
+const errosDeConexao = [];
+
+async function encerrar(client) {
+  if (!conexoesAbertas.delete(client)) return;
+  await client.end().catch(() => {});
+}
+
 function lerOculto(rotulo) {
   return new Promise((resolve, reject) => {
     const stdin = process.stdin;
@@ -72,6 +85,8 @@ function lerOculto(rotulo) {
         }
         if (ch === "\u0003") {
           stdin.setRawMode(false);
+          stdin.pause();
+          stdin.off("data", aoReceber);
           process.stdout.write("\n");
           return reject(new Parada("CANCELADO"));
         }
@@ -124,6 +139,28 @@ function conferirDestino(bruta) {
   };
 }
 
+/**
+ * TLS conferido no socket do próprio cliente. No Neon o TLS termina no proxy:
+ * a sessão que o PostgreSQL enxerga vem do proxy, e `pg_stat_ssl.ssl` dela é
+ * `false` mesmo com o trecho externo cifrado e verificado. Por isso aquele
+ * valor só é informativo.
+ */
+function conferirTransporte(client, destino) {
+  const socket = client.connection?.stream;
+  if (!(socket instanceof TLSSocket) || socket.encrypted !== true) parar("ERR_CONEXAO_SEM_TLS");
+  if (socket.authorized !== true) parar("ERR_CERTIFICADO_NAO_CONFIAVEL");
+  const protocolo = socket.getProtocol();
+  if (!["TLSv1.2", "TLSv1.3"].includes(protocolo)) parar("ERR_TLS_PROTOCOLO_FRACO");
+  const certificado = socket.getPeerCertificate(true);
+  if (!certificado?.subject) parar("ERR_CERTIFICADO_AUSENTE");
+  if (checkServerIdentity(destino.host, certificado) !== undefined) parar("ERR_HOSTNAME_DO_CERTIFICADO");
+  const cadeia = [];
+  for (let c = certificado; c?.subject && cadeia.length < 6; c = c.issuerCertificate === c ? null : c.issuerCertificate) {
+    cadeia.push(c.subject.CN ?? c.subject.O ?? "?");
+  }
+  return { protocolo, cadeia, validoAte: certificado.valid_to };
+}
+
 async function conectar(destino) {
   // TLS sempre verificado (cadeia e hostname), independente do sslmode da URL.
   const client = new Client({
@@ -137,15 +174,27 @@ async function conectar(destino) {
     application_name: "agenda-cloud-provisionamento-master-owner",
     connectionTimeoutMillis: 60_000,
   });
-  await client.connect();
-  const [{ ssl, banco }] = (
-    await client.query(
-      "SELECT s.ssl, current_database() AS banco FROM pg_stat_ssl s WHERE s.pid = pg_backend_pid()",
-    )
-  ).rows;
-  if (ssl !== true) parar("ERR_CONEXAO_SEM_TLS");
-  if (banco !== BANCO) parar("ERR_BANCO_DIFERENTE_DE_NEONDB");
-  return client;
+  client.on("error", (erro) => {
+    errosDeConexao.push(erro);
+    log(`CONEXAO_ENCERRADA: ${erro?.code ?? "sem código"} ${String(erro?.message ?? erro).slice(0, 200)}`);
+  });
+  conexoesAbertas.add(client);
+  try {
+    await client.connect();
+    const tls = conferirTransporte(client, destino);
+    const [{ banco, sslInterno }] = (
+      await client.query(
+        "SELECT current_database() AS banco, (SELECT s.ssl FROM pg_stat_ssl s WHERE s.pid = pg_backend_pid()) AS \"sslInterno\"",
+      )
+    ).rows;
+    if (banco !== BANCO) parar("ERR_BANCO_DIFERENTE_DE_NEONDB");
+    log(`TLS_CLIENTE: ${tls.protocolo} hostname=ok cadeia=${tls.cadeia.join(" <- ")} validoAte=${tls.validoAte}`);
+    log(`TLS_INTERNO_PG_STAT_SSL (informativo): ${sslInterno}`);
+    return client;
+  } catch (erro) {
+    await encerrar(client);
+    throw erro;
+  }
 }
 
 const CONTA_SQL = `SELECT u.id, u.email::text AS email, u.status::text AS status,
@@ -288,7 +337,7 @@ async function principal() {
     log(`BACKUP_OK: ${tamanho} bytes sha256=${sha256.slice(0, 16)}...`);
     await leitor.query("COMMIT");
   } finally {
-    await leitor.end().catch(() => {});
+    await encerrar(leitor);
   }
 
   // 3) Confirmação explícita.
@@ -340,7 +389,7 @@ async function principal() {
     await escritor.query("ROLLBACK").catch(() => {});
     throw erro;
   } finally {
-    await escritor.end().catch(() => {});
+    await encerrar(escritor);
   }
 
   // 5) Conferência após o commit, em nova conexão somente leitura.
@@ -382,22 +431,43 @@ async function principal() {
     log(`RESULTADO: ${ok ? "MASTER_OWNER atribuído e conferido" : "gravado, mas a conferência divergiu — investigar"}`);
     if (!ok) process.exitCode = 2;
   } finally {
-    await conferente.end().catch(() => {});
+    await encerrar(conferente);
   }
 }
 
-principal().catch((erro) => {
-  const codigo = erro instanceof Parada ? erro.message : "ERR_INESPERADO";
-  log(`ERRO: ${codigo}`);
-  if (!(erro instanceof Parada)) {
-    // Mensagem do driver sem a URL; pg nunca inclui a senha nas mensagens.
-    log(`DETALHE: ${String(erro?.message ?? erro).slice(0, 300)}`);
-  }
-  if (podeRegistrar) try {
-    mkdirSync(PASTA, { recursive: true });
-    registrar({ operacao: "atribuir_platform_role", iniciadaEm: inicio.toISOString(), email: EMAIL, resultado: "falhou", codigo, concluidaEm: new Date().toISOString() });
-  } catch {
-    // O erro original é o que importa.
-  }
-  process.exitCode = 1;
-});
+principal()
+  .catch((erro) => {
+    const codigo = erro instanceof Parada ? erro.message : "ERR_INESPERADO";
+    log(`ERRO: ${codigo}`);
+    if (!(erro instanceof Parada)) {
+      // Mensagem do driver sem a URL; pg nunca inclui a senha nas mensagens.
+      log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 300)}`);
+    }
+    // A falha que aparece numa consulta pode ser consequência de uma conexão
+    // que o servidor já tinha encerrado; o erro original vem junto.
+    for (const e of errosDeConexao) log(`ORIGEM: conexão encerrada antes (${e?.code ?? "sem código"})`);
+    if (podeRegistrar) try {
+      mkdirSync(PASTA, { recursive: true });
+      registrar({
+        operacao: "atribuir_platform_role",
+        iniciadaEm: inicio.toISOString(),
+        email: EMAIL,
+        resultado: "falhou",
+        codigo,
+        codigoDriver: erro?.code ?? null,
+        conexoesEncerradas: errosDeConexao.map((e) => e?.code ?? null),
+        concluidaEm: new Date().toISOString(),
+      });
+    } catch {
+      // O erro original é o que importa.
+    }
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    // Nenhuma conexão sobrevive ao procedimento, com sucesso ou falha.
+    await Promise.allSettled([...conexoesAbertas].map(encerrar));
+    process.stdin.pause();
+    if (errosDeConexao.length > 0 && !process.exitCode) {
+      log("AVISO: o servidor encerrou uma conexão depois da última operação; confira as linhas CONFERE_*");
+    }
+  });

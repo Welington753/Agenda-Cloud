@@ -21,9 +21,14 @@ Atualização de 23/10/2026 (PC do trabalho):
   responde no web do piloto. Não há mudança em `backend/` entre `b5a2c06` e
   `35f4713`, então o schema que o script lê é o mesmo.
 - A versão versionada do script foi reensaiada contra banco descartável (ver
-  "Ensaio da versão versionada"). Nenhuma mudança no script foi necessária.
+  "Ensaio da versão versionada"). Naquele ensaio nenhuma mudança pareceu
+  necessária; a execução real mostrou que era (ver abaixo).
 - A conta **continua NÃO promovida**: a execução real depende dos Endpoint IDs
   e da URL direta, que só o usuário tem, e de um terminal interativo.
+- Primeira execução real (em `a70c279`) parou em `ERR_CONEXAO_SEM_TLS` na
+  primeira conexão, antes de ler a conta, do backup, da confirmação e de
+  qualquer `UPDATE`; depois o processo caiu com `Unhandled 'error' event`
+  (`57P01`). Nada foi gravado. Causa e correção em "Falha de 23/10/2026".
 
 ## O que falta
 
@@ -47,7 +52,11 @@ Etapas, todas no próprio script:
    `*.neon.tech`, banco `neondb`, sem pooler, sem o endpoint proibido em
    nenhuma parte da URL, sem `sslmode` afrouxado nem `uselibpqcompat`.
 3. TLS com cadeia e hostname verificados (independe do `sslmode` da URL),
-   conferido em `pg_stat_ssl`, e `current_database() = neondb`.
+   conferido no socket do cliente (`TLSSocket` cifrado e `authorized`,
+   TLS 1.2+, `checkServerIdentity` com o host da URL), e
+   `current_database() = neondb`. `pg_stat_ssl` só é exibido: no Neon o TLS
+   termina no proxy e a sessão interna aparece como `false`. Toda conexão tem
+   listener de `error` e é encerrada em qualquer falha.
 4. Leitura somente: exatamente uma conta com o e-mail (o `citext` segue a
    normalização do login), ativa e com credencial `argon2id`. Não mostra
    senha nem hash. Se já for MASTER_OWNER, termina sem alteração.
@@ -117,7 +126,14 @@ cd ..
 git switch integration/nestjs-typeorm-frontend
 ```
 
-Saída esperada numa promoção: `TLS_VERIFICADO: true`, `CONTAS_COM_O_EMAIL: 1`,
+No PC do trabalho a execução usa um worktree separado,
+`C:\Projetos\Agenda-Cloud-promocao` (branch
+`chore/continuidade-promocao-master-owner`, `backend\node_modules` como junção
+para o do clone principal), para não trocar a branch do clone principal.
+
+Saída esperada numa promoção: `TLS_CLIENTE: TLSv1.3 hostname=ok cadeia=...`
+(`TLS_INTERNO_PG_STAT_SSL (informativo): false` é normal no Neon),
+`TLS_VERIFICADO: true`, `CONTAS_COM_O_EMAIL: 1`,
 `PAPEL_ATUAL: nenhum` (ou o papel atual), `CREDENCIAL_REAL_ARGON2ID: true`,
 `BACKUP_OK`, a frase de confirmação, `COMMIT: ok`, todas as linhas
 `CONFERE_*: true` e `RESULTADO: MASTER_OWNER atribuído e conferido`. Qualquer
@@ -200,6 +216,99 @@ Resultados:
   imprimir o resultado, porque um pipe pausado mantém o loop vivo. Num console
   real do Windows, `stdin.pause()` depois do modo raw deixa o Node sair (teste
   separado). É uma limitação do harness, não do script.
+- Limitação desse ensaio, que levou à falha abaixo: o TLS terminava no próprio
+  PostgreSQL, então `pg_stat_ssl.ssl` era `true`. Não representava o proxy do
+  Neon.
+
+## Falha de 23/10/2026 e correção
+
+Primeira execução real, em `a70c279`, contra o piloto:
+
+```
+DESTINO_ENDPOINT_PILOTO: true
+DIFERENTE_DO_PROIBIDO: true
+BANCO: neondb
+ERRO: ERR_CONEXAO_SEM_TLS
+```
+
+seguida de `Unhandled 'error' event` do `pg.Client` com
+`terminating connection due to administrator command` (`57P01`) e código de
+saída 1.
+
+Comprovado (código e reprodução descartável):
+
+- `ERR_CONEXAO_SEM_TLS` vinha de `conectar()`, na primeira conexão (leitor),
+  logo depois de `client.connect()`: `SELECT s.ssl ... FROM pg_stat_ssl` e
+  `if (ssl !== true)`. Isso antecede a leitura da conta, o backup, a
+  confirmação e qualquer `UPDATE`; nada foi gravado.
+- `pg_stat_ssl` descreve a sessão que o PostgreSQL recebe. Atrás de um proxy
+  que termina o TLS, como o do Neon, essa sessão chega sem TLS e aparece como
+  `false`, mesmo com o trecho cliente-proxy cifrado e verificado. Com um proxy
+  descartável que termina TLS e repassa em TCP, a versão `a70c279` reproduziu
+  exatamente `ERR_CONEXAO_SEM_TLS`, e o servidor mostrou a sessão do script como
+  `idle` com `ssl = f`.
+- O `parar()` lançava dentro de `conectar()` antes de devolver o cliente, sem
+  `client.end()` e sem listener de `error`. A conexão ficou aberta e ociosa e
+  mantinha o processo vivo. Quando o servidor a encerrou (`57P01` vem como
+  ErrorResponse sem consulta ativa), o `pg.Client` emitiu `error` sem ouvinte e
+  o Node abortou. Reproduzido com `pg_terminate_backend` na sessão abandonada:
+  mesma mensagem, mesmo código.
+
+Não comprovado: quem encerrou a conexão no piloto. `57P01` é o que o
+PostgreSQL envia ao receber SIGTERM (por exemplo `pg_terminate_backend`, ou um
+desligamento rápido do compute). Não há evidência, nesta máquina, de que tenha
+sido suspensão por inatividade, reinício ou ação manual.
+
+Correção no script (proteções de destino, conta, backup, confirmação e
+transação inalteradas):
+
+- TLS conferido no socket do cliente: `TLSSocket` com `encrypted`,
+  `authorized === true` (cadeia validada pelo Node com `rejectUnauthorized`),
+  TLS 1.2 ou 1.3 e `tls.checkServerIdentity` com o host da URL. Saída
+  `TLS_CLIENTE` mostra protocolo, cadeia e validade. `pg_stat_ssl` virou
+  informativo (`TLS_INTERNO_PG_STAT_SSL`).
+- `conectar()` registra o cliente, anexa listener de `error` antes do
+  `connect()` e o encerra em qualquer falha antes de relançar. Todo `end()`
+  passa por `encerrar()`, e um `finally` final encerra o que ainda estiver
+  aberto.
+- O listener não deixa o procedimento seguir: registra o erro
+  (`CONEXAO_ENCERRADA: <código>`); a próxima operação nesse cliente falha, e
+  o erro final traz `ORIGEM: conexão encerrada antes (<código>)`, também gravado
+  em `operacoes.jsonl` (`codigoDriver`, `conexoesEncerradas`).
+- Ctrl+C na entrada oculta também pausa o stdin.
+
+Observação, sem mudança: o `pg` do Node trata `channel_binding=require` como
+preferência (usa `SCRAM-SHA-256-PLUS` só se o servidor oferecer). O `pg_dump`
+recebe `PGCHANNELBINDING=require` e o exige; se o servidor não oferecer, o
+backup falha e nada é gravado.
+
+### Ensaio da correção — 23/10/2026
+
+Mesmo PostgreSQL 18.6 descartável, `neondb` recriado com as seis migrations e
+os mesmos dados fictícios. Proxy descartável em Node (responde `S` ao
+SSLRequest, termina TLS e repassa em TCP para o PostgreSQL, que aceita
+`hostnossl` só para esse banco e usuário de ensaio), em variações:
+
+| Caso | Resultado |
+| --- | --- |
+| `a70c279` pelo proxy TLS | `ERR_CONEXAO_SEM_TLS`, conexão deixada `idle`; ao encerrá-la, `Unhandled 'error' event` `57P01` (reprodução) |
+| Proxy sem TLS (`N`) | `The server does not support SSL connections`, saída 1 |
+| Certificado de CA não confiável | `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, saída 1 |
+| Hostname incorreto, CA confiável | `ERR_TLS_CERT_ALTNAME_INVALID`, saída 1 |
+| Banco reescrito no proxy (falha depois de conectar) | `ERR_BANCO_DIFERENTE_DE_NEONDB`, saída 1 |
+| Leitor encerrado no servidor durante o backup | `CONEXAO_ENCERRADA: 57P01`, `pg_dump` sem o snapshot, `ORIGEM: ... (57P01)`, saída 1, nada gravado |
+| `channel_binding=require` pelo proxy (sem PLUS) | `pg_dump` recusa, saída 1, nada gravado |
+| Direto no PostgreSQL com TLS, abortar | `TLS_INTERNO_PG_STAT_SSL: true`, abortado |
+| Proxy: abortar (Enter vazio) | abortado, nada gravado |
+| Proxy: promover | `COMMIT: ok`, oito `CONFERE_*: true` |
+| Proxy: repetir | sem alteração |
+
+Em todos os casos o processo terminou sozinho, sem evento não tratado, e o
+servidor não ficou com nenhuma sessão `agenda-cloud-%`. As demais contas,
+credenciais, vínculos e sessões tiveram hash idêntico antes e depois. O dump da
+promoção foi restaurado: sha256 e contagens das 37 tabelas iguais ao
+manifesto, com a conta-alvo sem papel. Nenhuma senha apareceu nos registros.
+Nada foi testado contra o Neon.
 
 ## Publicação
 
