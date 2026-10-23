@@ -416,6 +416,64 @@ elas e nunca lida):
 - `vitest run scripts/` no backend: 227 testes em 15 arquivos; `oxlint` sem
   avisos.
 
+## Confirmação perdida — 23/10/2026
+
+Execução real em `53eae79` (12:56 UTC): URL aceita, TLS verificado, conta
+encontrada sem papel, backup feito (`BACKUP_OK: 127954 bytes`). Na
+confirmação, a frase correta apareceu na tela, mas o resultado foi
+`RESULTADO: abortado, nada gravado` (registro `abortado_sem_confirmacao`).
+Nada foi gravado no piloto; o backup dessa execução ficou na pasta de
+operações.
+
+Comprovado no Windows Terminal, com dados fictícios:
+
+- O aborto vem de `resposta !== frase`, onde `resposta` era o **primeiro**
+  bloco `data` recebido pelo `lerVisivel`, em modo de linha (sem
+  `setRawMode`), depois do `resume()`.
+- Sozinho, o `lerVisivel` recebe a frase inteira (`"PROMOVER
+  wwluiz90@gmail.com\r\n"`). Depois da leitura oculta em modo raw, a primeira
+  linha digitada **some antes de chegar ao JavaScript**: o primeiro Enter não
+  produz nada e o primeiro bloco entregue é o `"\r\n"` de um segundo Enter, ou
+  seja, resposta vazia. Igual com 0 ms ou 3 s entre as leituras; nada ficava
+  no buffer do stream (`readableLength = 0`).
+- O fluxo completo com o arquivo de `53eae79`, contra o PostgreSQL descartável,
+  reproduziu a tela da execução real: frase correta visível, um Enter sem
+  efeito e, no segundo, `abortado, nada gravado`.
+
+Não comprovado: o mecanismo interno (libuv/console do Windows) que descarta
+a linha ao voltar do modo raw para o de linha. A correção não depende dele.
+
+Correção:
+
+- A confirmação passou a ser lida também em modo raw (`lerConfirmacao`, mesmo
+  leitor da URL, com eco). Não há mais troca para o modo de linha durante o
+  procedimento. Backspace apaga também na tela; controles não são ecoados.
+- Comparação exata com a frase (`conferirConfirmacao`). Vazia, diferente,
+  Ctrl+V sem colagem, controles ou texto depois do Enter abortam com
+  `MOTIVO:` e com `motivo` (só a categoria) no `operacoes.jsonl`. O que foi
+  digitado não é registrado.
+
+Testes:
+
+- `promover-master-owner-entrada.spec.ts`: 34 testes; `vitest run scripts/`:
+  238 testes em 15 arquivos; `oxlint` sem avisos.
+- Fluxo completo no Windows Terminal (URL colada com Ctrl+V real, frase
+  digitada ou colada), contra o PostgreSQL descartável atrás do proxy TLS:
+
+| Caso | Resultado |
+| --- | --- |
+| `53eae79`, frase correta digitada | primeiro Enter sem efeito; no segundo, abortado (reprodução) |
+| Corrigido, Enter vazio | `MOTIVO: confirmação vazia`, abortado, nada gravado |
+| Corrigido, frase errada | `MOTIVO: a frase digitada é diferente`, abortado, nada gravado |
+| Corrigido, frase digitada | um Enter: `COMMIT: ok`, oito `CONFERE_*: true` |
+| Corrigido, repetir | `sem alteração (já é MASTER_OWNER)` |
+| Corrigido, frase colada | um Enter: `COMMIT: ok`, oito `CONFERE_*: true` |
+
+  Só a conta-alvo mudou de papel. Demais contas, credenciais, vínculos e
+  sessões tiveram hash idêntico antes e depois. Nenhuma sessão
+  `agenda-cloud-%` ficou aberta depois de cada caso. A senha não apareceu na
+  tela, e nem a senha nem a frase apareceram no registro.
+
 ## Publicação
 
 O SHA `35f4713` da integration, que contém o PR #60, foi publicado pelo usuário

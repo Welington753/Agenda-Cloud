@@ -7,6 +7,8 @@ import {
   MOTIVOS,
   Parada,
   classificarEntrada,
+  conferirConfirmacao,
+  lerConfirmacao,
   lerOculto,
 } from './promover-master-owner-entrada.mjs';
 
@@ -34,11 +36,14 @@ class StdinFalso extends EventEmitter {
   }
 }
 
-function ler(blocos: string[], opcoes: { isTTY?: boolean } = {}) {
+function ler(
+  blocos: string[],
+  opcoes: { isTTY?: boolean; leitor?: typeof lerOculto } = {},
+) {
   const stdin = new StdinFalso();
   if (opcoes.isTTY === false) stdin.isTTY = false;
   const escrito: string[] = [];
-  const promessa = lerOculto('URL: ', {
+  const promessa = (opcoes.leitor ?? lerOculto)('URL: ', {
     stdin,
     stdout: { write: (t: string) => escrito.push(t) },
     esperaAposEnterMs: 20,
@@ -132,5 +137,56 @@ describe('lerOculto', () => {
     const { promessa, escrito } = ler([], { isTTY: false });
     await expect(promessa).rejects.toMatchObject({ message: 'ERR_TERMINAL_NAO_INTERATIVO' });
     expect(escrito).toEqual([]);
+  });
+});
+
+describe('lerConfirmacao', () => {
+  const FRASE = 'PROMOVER wwluiz90@gmail.com';
+  const confirmar = (blocos: string[]) => ler(blocos, { leitor: lerConfirmacao });
+
+  it('lê em modo raw, com eco, e devolve a frase exata', async () => {
+    const { promessa, stdin, escrito } = confirmar([...FRASE, '\r']);
+    const valor = await promessa;
+    expect(valor).toBe(FRASE);
+    expect(conferirConfirmacao(valor, FRASE)).toBeNull();
+    expect(escrito.join('')).toBe(`URL: ${FRASE}\n`);
+    expect(stdin.raw).toEqual([true, false]);
+    expect(stdin.pausado).toBe(true);
+    expect(stdin.listenerCount('data')).toBe(0);
+  });
+
+  it('frase colada num bloco só, com CR LF', async () => {
+    const { promessa } = confirmar([`${FRASE}\r\n`]);
+    expect(conferirConfirmacao(await promessa, FRASE)).toBeNull();
+  });
+
+  it('Backspace apaga também na tela', async () => {
+    const { promessa, escrito } = confirmar([`${FRASE}x`, '\u007f', '\r']);
+    expect(await promessa).toBe(FRASE);
+    expect(escrito.join('')).toContain('\b \b');
+  });
+
+  it('controles entram no valor sem eco', async () => {
+    const { promessa, escrito } = confirmar(['\u0016', '\r']);
+    expect(conferirConfirmacao(await promessa, FRASE)).toBe('ERR_CONFIRMACAO_CTRL_V_SEM_COLAGEM');
+    expect(escrito.join('')).not.toContain('\u0016');
+  });
+
+  it('texto depois do Enter é recusado', async () => {
+    const { promessa } = confirmar([`${FRASE}\r${FRASE}\r`]);
+    await expect(promessa).rejects.toMatchObject({ message: 'ERR_CONFIRMACAO_MAIS_DE_UMA_LINHA' });
+  });
+
+  it.each([
+    ['', 'ERR_CONFIRMACAO_VAZIA'],
+    ['   ', 'ERR_CONFIRMACAO_VAZIA'],
+    ['promover wwluiz90@gmail.com', 'ERR_CONFIRMACAO_DIFERENTE'],
+    [`${FRASE} `, 'ERR_CONFIRMACAO_DIFERENTE'],
+    ['PROMOVER outra@example.com', 'ERR_CONFIRMACAO_DIFERENTE'],
+    [`${FRASE}\u001b`, 'ERR_CONFIRMACAO_CARACTERE_DE_CONTROLE'],
+  ])('confirmação %j aborta com %s', (resposta, codigo) => {
+    expect(conferirConfirmacao(resposta, FRASE)).toBe(codigo);
+    expect(MOTIVOS[codigo]).toBeTruthy();
+    expect(MOTIVOS[codigo]).not.toContain(resposta.trim() || '\u0000');
   });
 });

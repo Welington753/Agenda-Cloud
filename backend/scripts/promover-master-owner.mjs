@@ -25,7 +25,7 @@ import { TLSSocket, checkServerIdentity, rootCertificates } from "node:tls";
 import { homedir, userInfo } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MOTIVOS, Parada, classificarEntrada, lerOculto } from "./promover-master-owner-entrada.mjs";
+import { MOTIVOS, Parada, classificarEntrada, conferirConfirmacao, lerConfirmacao, lerOculto } from "./promover-master-owner-entrada.mjs";
 
 // `pg` do próprio backend (backend/node_modules).
 const require = createRequire(import.meta.url);
@@ -63,18 +63,6 @@ const errosDeConexao = [];
 async function encerrar(client) {
   if (!conexoesAbertas.delete(client)) return;
   await client.end().catch(() => {});
-}
-
-function lerVisivel(rotulo) {
-  return new Promise((resolve) => {
-    process.stdout.write(rotulo);
-    process.stdin.resume();
-    process.stdin.setEncoding("utf8");
-    process.stdin.once("data", (dados) => {
-      process.stdin.pause();
-      resolve(String(dados).replace(/[\r\n]+$/, ""));
-    });
-  });
 }
 
 /** Destino conferido só pela URL, antes de qualquer rede. */
@@ -311,9 +299,17 @@ async function principal() {
 
   // 3) Confirmação explícita.
   const frase = `PROMOVER ${EMAIL}`;
-  const resposta = await lerVisivel(`Para gravar, digite exatamente "${frase}": `);
-  if (resposta !== frase) {
-    registrar({ ...base, userId: conta.id, papelAnterior: conta.platformRole, resultado: "abortado_sem_confirmacao", backup: manifesto.backup, concluidaEm: new Date().toISOString() });
+  let motivo = null;
+  try {
+    motivo = conferirConfirmacao(await lerConfirmacao(`Para gravar, digite exatamente "${frase}": `), frase);
+  } catch (erro) {
+    if (!(erro instanceof Parada && erro.message === "ERR_CONFIRMACAO_MAIS_DE_UMA_LINHA")) throw erro;
+    motivo = erro.message;
+  }
+  if (motivo) {
+    // Só a categoria; o que foi digitado não é registrado.
+    registrar({ ...base, userId: conta.id, papelAnterior: conta.platformRole, resultado: "abortado_sem_confirmacao", motivo, backup: manifesto.backup, concluidaEm: new Date().toISOString() });
+    log(`MOTIVO: ${MOTIVOS[motivo]}`);
     log("RESULTADO: abortado, nada gravado");
     return;
   }
