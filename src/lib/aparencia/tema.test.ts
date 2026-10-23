@@ -54,6 +54,12 @@ describe("tokens do tema escuro (globals.css)", () => {
     expect(css).not.toMatch(/^\s*html\[data-tema="escuro"\]\s*\{/m);
   });
 
+  it("o agendamento público segue só o aparelho: nunca entra no bloco da escolha 'escuro'", () => {
+    const inicioMedia = css.indexOf("@media (prefers-color-scheme: dark)");
+    expect(css.slice(inicioMedia)).toMatch(/html:has\(\[data-aparencia-aparelho\]\)\s*\{/);
+    expect(css.slice(0, inicioMedia)).not.toMatch(/html:has\(\[data-aparencia-aparelho\]\)/);
+  });
+
   it("o bloco 'escuro' e o bloco 'seguir aparelho' definem os mesmos valores", () => {
     const bloco = (inicio: string) => {
       const i = css.indexOf(inicio);

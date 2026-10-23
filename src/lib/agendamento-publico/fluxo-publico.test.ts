@@ -33,40 +33,50 @@ function completo(): Escolhas {
 }
 
 describe("percurso do agendamento público", () => {
-  it("serviço com vários profissionais vai para a escolha do profissional", () => {
+  it("serviço com vários profissionais não escolhe nenhum por conta própria", () => {
     const r = escolherServico(PAGINA, ESCOLHAS_VAZIAS, "corte", "2027-03-07");
-    expect(r.proxima).toBe(ETAPA_PROFISSIONAL);
-    expect(r.escolhas.professionalId).toBeNull();
+    expect(r.professionalId).toBeNull();
+    expect(etapaMaxima(PAGINA, r)).toBe(ETAPA_PROFISSIONAL);
   });
 
-  it("profissional único já vem escolhido (com o id certo) e a etapa é pulada na ida e na volta", () => {
+  it("profissional único já vem escolhido (com o id certo), mas a etapa não é pulada", () => {
     const r = escolherServico(PAGINA, ESCOLHAS_VAZIAS, "massagem", "2027-03-07");
-    expect(r.proxima).toBe(ETAPA_HORARIO);
-    expect(r.escolhas.professionalId).toBe("caio");
-    expect(r.escolhas.date).toBe("2027-03-07");
-    expect(etapaAnterior(PAGINA, r.escolhas, ETAPA_HORARIO)).toBe(ETAPA_SERVICO);
-    expect(etapaAnterior(PAGINA, completo(), ETAPA_HORARIO)).toBe(ETAPA_PROFISSIONAL);
-    expect(etapaAnterior(PAGINA, completo(), ETAPA_REVISAR)).toBe(ETAPA_DADOS);
+    expect(r.professionalId).toBe("caio");
+    expect(r.date).toBe("2027-03-07");
+    // Pode seguir para o horário, mas voltar passa de novo pela etapa Profissional.
+    expect(etapaMaxima(PAGINA, r)).toBe(ETAPA_HORARIO);
+    expect(etapaAnterior(ETAPA_HORARIO)).toBe(ETAPA_PROFISSIONAL);
+    expect(etapaAnterior(ETAPA_PROFISSIONAL)).toBe(ETAPA_SERVICO);
+    expect(etapaAnterior(ETAPA_REVISAR)).toBe(ETAPA_DADOS);
+  });
+
+  it("serviço sem profissional elegível não deixa passar da etapa Profissional", () => {
+    const pagina: PaginaPublica = { ...PAGINA, services: [...PAGINA.services, servico("orfao")] };
+    const r = escolherServico(pagina, ESCOLHAS_VAZIAS, "orfao", "2027-03-07");
+    expect(r.professionalId).toBeNull();
+    expect(etapaMaxima(pagina, r)).toBe(ETAPA_PROFISSIONAL);
+    // Nem com um id de outro serviço forçado.
+    expect(etapaMaxima(pagina, { ...r, professionalId: "ana", date: "2027-03-07", slot: NOVE })).toBe(ETAPA_PROFISSIONAL);
   });
 
   it("trocar o serviço mantém o profissional que ainda atende e derruba o horário", () => {
     const r = escolherServico(PAGINA, { ...completo(), professionalId: "ana" }, "barba", null);
-    expect(r.escolhas.professionalId).toBe("ana");
-    expect(r.escolhas.slot).toBeNull();
-    expect(r.escolhas.nome).toBe("Joana");
+    expect(r.professionalId).toBe("ana");
+    expect(r.slot).toBeNull();
+    expect(r.nome).toBe("Joana");
   });
 
   it("serviço que o profissional não atende limpa o profissional (ou troca pelo único)", () => {
     const t = escolherServico(PAGINA, { ...completo(), professionalId: "caio" }, "corte", null);
-    expect(t.escolhas.professionalId).toBeNull();
-    expect(t.escolhas.slot).toBeNull();
+    expect(t.professionalId).toBeNull();
+    expect(t.slot).toBeNull();
     const s = escolherServico(PAGINA, { ...completo(), professionalId: "ana" }, "massagem", null);
-    expect(s.escolhas.professionalId).toBe("caio");
-    expect(s.escolhas.slot).toBeNull();
+    expect(s.professionalId).toBe("caio");
+    expect(s.slot).toBeNull();
   });
 
   it("escolher de novo o mesmo serviço e profissional mantém o horário", () => {
-    expect(escolherServico(PAGINA, completo(), "corte", null).escolhas.slot).toEqual(NOVE);
+    expect(escolherServico(PAGINA, completo(), "corte", null).slot).toEqual(NOVE);
     expect(escolherProfissional(completo(), "bia", null).slot).toEqual(NOVE);
   });
 

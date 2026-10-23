@@ -5,7 +5,7 @@
 // ícone + `aria-pressed`, nunca só a cor; cores só por tokens, então a
 // seleção aparece igual no claro e no escuro.
 import clsx from "clsx";
-import { Check, Clock, Loader2, RefreshCw, WifiOff } from "lucide-react";
+import { Check, ChevronRight, Clock, Loader2, RefreshCw, WifiOff } from "lucide-react";
 import type { FaseRecuperacao } from "@/lib/api/leitura-com-recuperacao";
 import type { FalhaPublica, HorariosPublicos, PaginaPublica } from "@/lib/api/public-booking-api";
 import {
@@ -98,6 +98,54 @@ export function CartaoProfissional({
       <span className="min-w-0 text-base break-words">{p.name}</span>
       <MarcaEscolhido ativo={ativo} />
     </button>
+  );
+}
+
+/** Etapa "Profissional", sempre mostrada. Vários: a pessoa escolhe (tocar
+ * já avança). Um: vem pré-selecionado, com o nome escrito, e a pessoa
+ * confirma em "Continuar". Nenhum: a etapa diz isso e não deixa seguir —
+ * diferente de "sem horários no dia", que é da etapa seguinte. */
+export function EtapaProfissional({
+  opcoes,
+  escolhido,
+  aoEscolher,
+  aoContinuar,
+}: {
+  opcoes: PaginaPublica["professionals"];
+  escolhido: string | null;
+  aoEscolher: (professionalId: string) => void;
+  aoContinuar: () => void;
+}) {
+  if (opcoes.length === 0) {
+    return (
+      <p
+        role="status"
+        data-testid="sem-profissional"
+        className="rounded-[var(--radius-control)] bg-paper-muted p-3 text-sm text-ink"
+      >
+        Nenhum profissional disponível para este serviço no agendamento online. Volte e escolha outro serviço.
+      </p>
+    );
+  }
+  const unico = opcoes.length === 1 ? opcoes[0] : null;
+  return (
+    <section className="space-y-3" aria-label="Profissional">
+      {unico && (
+        <p className="text-sm text-ink-soft" data-testid="profissional-unico">
+          Este serviço é feito por <span className="font-medium text-ink">{unico.name}</span>.
+        </p>
+      )}
+      <div className="grid gap-2 sm:grid-cols-2" data-testid="lista-profissionais-publicos">
+        {opcoes.map((p) => (
+          <CartaoProfissional key={p.id} profissional={p} ativo={escolhido === p.id} aoEscolher={() => aoEscolher(p.id)} />
+        ))}
+      </div>
+      {escolhido && (
+        <Botao type="button" tamanho="lg" className="w-full sm:w-auto" onClick={aoContinuar} data-testid="continuar-profissional">
+          Continuar <ChevronRight size={18} aria-hidden="true" />
+        </Botao>
+      )}
+    </section>
   );
 }
 

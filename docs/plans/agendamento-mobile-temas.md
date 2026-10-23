@@ -112,3 +112,44 @@ PushManager é simulado onde é preciso e as chaves VAPID são da execução.
   instalado na Tela de Início.
 - Recebimento real de push no iPhone instalado e no Android (roteiro em
   `docs/runbooks/publicacao-piloto-render.md`).
+
+## Correção (23/10/2026): serviços ausentes, etapa Profissional e tema do público
+
+### Serviços que não aparecem no agendamento público
+
+Reproduzido em banco descartável: com a página pública já ativa, serviços
+cadastrados pela tela de Serviços nascem `active` e `activeInPublicBooking`,
+mas `GET /public/:slug` não os devolve. Causa comprovada: a regra do servidor
+(`public-booking.service.ts`, `profile`) só oferece serviço realizado por pelo
+menos um profissional ativo e ligado no online, e cadastrar um serviço não
+cria vínculo com profissional. Não há cache, seleção antiga nem perda no
+frontend: depois de marcar o serviço no profissional (tela Profissionais), ele
+aparece ao recarregar a página pública.
+
+A regra continua igual. A tela de Serviços passou a avisar, em cada serviço
+ativo fora do online, o que falta ("nenhum profissional ativo realiza este
+serviço", com link para Profissionais, ou "desligado no agendamento online").
+Nada é ligado nem vinculado automaticamente.
+
+### Etapa Profissional
+
+Na versão anterior, com um único profissional a etapa era pulada (decisão do
+lote de 22/10). Agora ela é sempre mostrada: vários profissionais para
+escolher; um, pré-selecionado com o nome escrito e "Continuar"; nenhum, uma
+mensagem e sem continuar (diferente de "sem horários no dia").
+
+### Tema do agendamento público
+
+A página do cliente não tem mais seletor e segue sempre o aparelho
+(`MarcadorAparelho`), mesmo com uma escolha manual salva pelo dono no mesmo
+navegador. O `data-tema` e o valor salvo do dono não são tocados e voltam a
+valer na área privada.
+
+### Validação
+
+Spec novo `servicos-publicos-flow.spec.ts`: falhou antes da correção no aviso
+ao dono (depois de reproduzir a ausência) e passa depois. Unidade 829, lint,
+typecheck e build; navegador: servicos-publicos, agendamento-publico,
+aparencia, recuperacao, services, professionals, avisos-solicitacoes, push,
+auth, clients, appointments, availability, administracao e visao-geral, todos
+passaram. Sem mudança de backend, schema ou migration.

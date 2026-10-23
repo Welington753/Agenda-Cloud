@@ -8,12 +8,14 @@
 // Sem estabelecimento ativo, a tela nunca inventa um: encaminha para a seleção
 // já existente quando há vários vínculos, ou mostra o estado de ausência de
 // acesso quando não há nenhum.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlusCircle, Store, Wrench } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useServicosReais } from "@/lib/servicos/use-servicos-reais";
+import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
+import { motivoForaDoOnline, type MotivoForaDoOnline } from "@/lib/servicos/agendamento-online";
 import { mensagemFalhaServicos } from "@/lib/servicos/mensagens";
 import type { DadosServicoReal, ServicoReal } from "@/lib/api/services-api";
 import { Botao } from "@/components/ui/button";
@@ -38,6 +40,20 @@ export default function ServicosPage() {
 
   const { estado, gravando, recarregar, criar, editar, desativar, reativar } =
     useServicosReais(tenantIdAtivo);
+  // Só LEITURA dos profissionais, para avisar qual serviço ativo ainda não
+  // aparece no agendamento online e por quê (lib/servicos/agendamento-online.ts).
+  // Sem a lista (carregando, falha, sem permissão), nenhum aviso: não se
+  // afirma o que não se sabe.
+  const { estado: estadoProfissionais } = useProfissionaisReais(tenantIdAtivo);
+  const motivos = useMemo(() => {
+    const mapa = new Map<string, MotivoForaDoOnline>();
+    if (estado.status !== "carregada" || estadoProfissionais.status !== "carregada") return mapa;
+    for (const servico of estado.servicos) {
+      const motivo = motivoForaDoOnline(servico, estadoProfissionais.profissionais);
+      if (motivo) mapa.set(servico.id, motivo);
+    }
+    return mapa;
+  }, [estado, estadoProfissionais]);
   const [edicao, setEdicao] = useState<Edicao>({ modo: "fechado" });
   const [erroFormulario, setErroFormulario] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<ServicoReal | null>(null);
@@ -204,6 +220,7 @@ export default function ServicosPage() {
           {estado.servicos.length > 0 && (
             <ListaServicos
               servicos={estado.servicos}
+              motivosForaDoOnline={motivos}
               gravando={gravando}
               confirmando={confirmando}
               reativandoId={reativandoId}

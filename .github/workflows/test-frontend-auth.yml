@@ -400,6 +400,24 @@ jobs:
           eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
           npm run test:browser:push
 
+      # Invocação SEPARADA (1 cadastro, 1 login, nenhum pedido público):
+      # serviço criado depois da ativação só vai ao público com profissional
+      # ativo vinculado; a tela de Serviços diz o que falta; inativo,
+      # desligado do online ou só com profissional inativo ficam fora; etapa
+      # Profissional com vários, um e nenhum profissional.
+      - name: Run real browser flows (public services eligibility, professional step)
+        id: browser_servicos_publicos
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/servicos-publicos
+        run: npm run test:browser:servicos-publicos
+
       # Invocação SEPARADA (2 cadastros, 1 login, 3 pedidos públicos):
       # aparência claro/escuro/seguir aparelho (primeira visita, escolha
       # salva aplicada antes da pintura, demonstração sempre clara, destaque
@@ -568,6 +586,17 @@ jobs:
             test-results/aparencia/**/aparencia-*.png
             test-results/aparencia/**/menu-conta-*.png
             test-results/aparencia/**/login-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # Capturas do aviso "não aparece no agendamento online" na tela de
+      # Serviços (claro e escuro, 360/390/1280 px). Só os PNG `servicos-aviso-*`.
+      - name: Upload public services eligibility screenshots
+        if: always() && steps.browser_servicos_publicos.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: servicos-publicos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/servicos-publicos/**/servicos-aviso-*.png
           if-no-files-found: error
           retention-days: 7
 

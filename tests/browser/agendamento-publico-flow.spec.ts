@@ -5,7 +5,7 @@
 // cliente agenda sem conta, no celular e no computador, pelo percurso
 // Serviço → Profissional → Dia e horário → Seus dados → Revisar (voltar
 // mantém o que vale; trocar serviço/profissional/dia derruba o horário e
-// relê a disponibilidade; profissional único pula a etapa; preço ausente é
+// relê a disponibilidade; profissional único vem pré-selecionado na etapa; preço ausente é
 // "Sob consulta"), e recebe "Solicitação enviada — aguardando confirmação";
 // o pedido aparece no painel (contador no
 // menu e aviso na Visão geral), continua lá depois de recarregar, e só sai
@@ -61,14 +61,18 @@ const servicoPublico = (p: Page, nome: string) =>
 const horarioPublico = (p: Page, hora: string) =>
   p.getByTestId("lista-horarios-publicos").getByRole("button", { name: hora, exact: true });
 
-/** Serviço → (profissional, se houver mais de um) → dia → horário → Continuar.
- * `profissional: null` = o serviço tem um profissional só e a etapa é pulada. */
+/** Serviço → profissional → dia → horário → Continuar.
+ * `profissional: null` = o serviço tem um profissional só: a etapa aparece
+ * com ele pré-selecionado e a pessoa confirma em "Continuar". */
 async function escolherHorario(p: Page, servico: string, profissional: string | null, hora: string) {
   await servicoPublico(p, servico).click();
   if (profissional) {
     await p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: new RegExp(profissional) }).click();
   } else {
+    await expect(p.getByTestId("titulo-etapa")).toHaveText("Escolha o profissional");
     await expect(p.getByTestId("profissional-unico")).toBeVisible();
+    await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button")).toHaveAttribute("aria-pressed", "true");
+    await p.getByTestId("continuar-profissional").click();
   }
   await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
   await horarioPublico(p, hora).click();
@@ -223,7 +227,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await voltar(p, "Escolha o serviço");
   await expect(servicoPublico(p, "Avaliação inicial")).toHaveAttribute("aria-pressed", "true");
 
-  // ---- serviço com profissional único: etapa pulada, Ana já escolhida
+  // ---- serviço com profissional único: etapa mostrada, Ana já escolhida
   await escolherHorario(p, "Sessão de fisioterapia", null, "09:00");
   await expect(p.getByTestId("contexto-escolhas")).toContainText("Sessão de fisioterapia · com Ana Fisio");
   await preencher(p, "Joana Cliente", "(11) 98888-0001");
@@ -244,6 +248,9 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await expect(p.getByLabel("Nome")).toHaveValue("Joana Cliente");
   await voltar(p, "Escolha o dia e o horário");
   await expect(horarioPublico(p, "09:00")).toHaveAttribute("aria-pressed", "true");
+  // Profissional único não é pulado na volta: aparece, ainda escolhido.
+  await voltar(p, "Escolha o profissional");
+  await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Ana Fisio/ })).toHaveAttribute("aria-pressed", "true");
   await voltar(p, "Escolha o serviço");
   await servicoPublico(p, "Avaliação inicial").click();
   await expect(p.getByTestId("lista-profissionais-publicos").getByRole("button", { name: /Ana Fisio/ })).toHaveAttribute("aria-pressed", "true");

@@ -85,7 +85,6 @@ export function EtapaServico({
 }
 
 export function EtapaHorario({
-  profissionalUnico,
   fuso,
   dias,
   escolhas,
@@ -96,8 +95,6 @@ export function EtapaHorario({
   aoTentarDeNovo,
   aoContinuar,
 }: {
-  /** Nome do profissional quando ele é o único do serviço. */
-  profissionalUnico: string | null;
   fuso: string;
   dias: DiaOferecido[];
   escolhas: Escolhas;
@@ -111,12 +108,6 @@ export function EtapaHorario({
   const { date, slot } = escolhas;
   return (
     <section className="space-y-4" aria-label="Dia e horário">
-      {profissionalUnico && (
-        <p className="text-sm text-ink-soft" data-testid="profissional-unico">
-          Atendimento com <span className="font-medium text-ink">{profissionalUnico}</span>, único profissional deste
-          serviço.
-        </p>
-      )}
       <p className="text-xs text-ink-soft" data-testid="fuso-estabelecimento">
         Dias e horários no fuso do estabelecimento: {fuso}.
       </p>

@@ -384,9 +384,10 @@ test.describe("link público de agendamento", () => {
       }
       return rota.continue();
     });
-    // Um profissional só: a etapa "Profissional" é pulada, ele já vem escolhido.
+    // Um profissional só: a etapa "Profissional" aparece com ele já escolhido.
     await p.getByTestId("lista-servicos-publicos").getByRole("button").first().click();
     await expect(p.getByTestId("profissional-unico")).toContainText("Bia Corte");
+    await p.getByTestId("continuar-profissional").click();
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DATA) }).click();
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DIA_SEGUINTE) }).click();
     await expect(p.getByTestId("sem-horarios")).toBeVisible();

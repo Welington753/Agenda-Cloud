@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { MarcadorAparencia } from "@/components/aparencia/aparencia";
+import { MarcadorAparelho } from "@/components/aparencia/aparencia";
 
-// Agendamento público: página adaptável (claro, escuro ou seguir aparelho).
+// Agendamento público: segue SEMPRE a aparência do aparelho do cliente,
+// mesmo que o dono tenha escolhido um tema na área privada deste navegador.
 export default function AgendarLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <MarcadorAparencia />
+      <MarcadorAparelho />
       {children}
     </>
   );
