@@ -24,6 +24,8 @@ import type { DeniedPermissionsDto, PlatformAccessDto, StatusChangeDto, UpdateUs
 import { assertCanManageAccount, loadActor, requireCapability, FORBIDDEN_MESSAGE, type Actor } from './actor.js';
 import { recordAudit } from './audit.js';
 import { requireRecentReauth } from './reauth.js';
+import { avancarVersao } from './user-version.js';
+import { linhasDe } from '../notifications/notification-jobs.repository.js';
 import { EFFECTIVE_TENANT_PERMISSIONS, EFFECTIVE_TENANT_ROLES } from './tenant-effective-access.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 
@@ -77,12 +79,12 @@ export class AccountsAdminService {
         phone: dto.phone === undefined ? target.phone : dto.phone,
       };
       if (novo.name === target.name && novo.phone === target.phone) return { updatedAt: target.updated_at };
-      await manager.query('UPDATE users SET name = $2, phone = $3, updated_at = $4 WHERE id = $1', [
-        target.id,
-        novo.name,
-        novo.phone,
-        now,
-      ]);
+      const [versao] = linhasDe<{ updated_at: Date }>(
+        await manager.query(
+          `UPDATE users SET name = $2, phone = $3, ${avancarVersao('$4')} WHERE id = $1 RETURNING updated_at`,
+          [target.id, novo.name, novo.phone, now],
+        ),
+      );
       await recordAudit(
         manager,
         {
@@ -95,7 +97,7 @@ export class AccountsAdminService {
         },
         now,
       );
-      return { updatedAt: now };
+      return { updatedAt: versao.updated_at };
     });
   }
 
@@ -109,10 +111,18 @@ export class AccountsAdminService {
       if (target.platform_role === PlatformRole.MASTER_OWNER && target.status === 'ACTIVE') {
         await this.requireAnotherOwner(manager, target.id);
       }
-      await manager.query(`UPDATE users SET status = 'SUSPENDED', updated_at = $2 WHERE id = $1`, [target.id, now]);
-      const sessoes = await manager.query<unknown[]>(
-        `UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL RETURNING id`,
-        [target.id, now],
+      const [versao] = linhasDe<{ updated_at: Date }>(
+        await manager.query(
+          `UPDATE users SET status = 'SUSPENDED', ${avancarVersao('$2')} WHERE id = $1 RETURNING updated_at`,
+          [target.id, now],
+        ),
+      );
+      // UPDATE ... RETURNING devolve [linhas, contagem] pelo TypeORM.
+      const sessoes = linhasDe<{ id: string }>(
+        await manager.query(
+          `UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL RETURNING id`,
+          [target.id, now],
+        ),
       );
       await recordAudit(
         manager,
@@ -126,7 +136,7 @@ export class AccountsAdminService {
         },
         now,
       );
-      return { updatedAt: now, status: 'SUSPENDED' as const };
+      return { updatedAt: versao.updated_at, status: 'SUSPENDED' as const };
     });
   }
 
@@ -138,11 +148,12 @@ export class AccountsAdminService {
       if (target.status !== 'SUSPENDED') throw conflito('NAO_BLOQUEADA', 'A conta não está bloqueada.');
       // Sem senha definida, a conta volta a ser só um convite pendente.
       const status = target.has_credential ? 'ACTIVE' : 'INVITED';
-      await manager.query(`UPDATE users SET status = $2::user_status, updated_at = $3 WHERE id = $1`, [
-        target.id,
-        status,
-        now,
-      ]);
+      const [versao] = linhasDe<{ updated_at: Date }>(
+        await manager.query(
+          `UPDATE users SET status = $2::user_status, ${avancarVersao('$3')} WHERE id = $1 RETURNING updated_at`,
+          [target.id, status, now],
+        ),
+      );
       await recordAudit(
         manager,
         {
@@ -155,7 +166,7 @@ export class AccountsAdminService {
         },
         now,
       );
-      return { updatedAt: now, status };
+      return { updatedAt: versao.updated_at, status };
     });
   }
 
@@ -182,7 +193,7 @@ export class AccountsAdminService {
       }
       await manager.query(
         `UPDATE users SET platform_role = $2::platform_role, platform_permissions = $3::platform_permission[],
-                updated_at = $4 WHERE id = $1`,
+                ${avancarVersao('$4')} WHERE id = $1`,
         [target.id, role, role ? permissions : null, now],
       );
       await recordAudit(

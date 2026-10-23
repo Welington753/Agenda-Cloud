@@ -46,6 +46,7 @@ import type { CreateEstablishmentDto, InviteMemberDto, PlatformInviteDto } from 
 import { PLATFORM_ACCOUNT_MESSAGE, SELF_MESSAGE, loadActor, requireCapability, type Actor } from './actor.js';
 import { recordAudit } from './audit.js';
 import { loadInviteView, type InviteView } from './invite-views.js';
+import { avancarVersao } from './user-version.js';
 
 export const MAX_SLUG_SAVE_RETRIES = 3;
 
@@ -365,7 +366,7 @@ export class InvitesService {
           throw new UnauthorizedException({ code: 'SENHA_INCORRETA', message: 'Senha incorreta para esta conta.' });
         }
         await manager.query(
-          'UPDATE users SET email_verified = true, updated_at = $2 WHERE id = $1 AND email_verified = false',
+          `UPDATE users SET email_verified = true, ${avancarVersao('$2')} WHERE id = $1 AND email_verified = false`,
           [user.id, context.now],
         );
       } else {
@@ -374,7 +375,7 @@ export class InvitesService {
           [generateId(), user.id, await hashPassword(password), CREDENTIAL_ALGORITHM, context.now],
         );
         await manager.query(
-          `UPDATE users SET status = 'ACTIVE', email_verified = true, updated_at = $2 WHERE id = $1`,
+          `UPDATE users SET status = 'ACTIVE', email_verified = true, ${avancarVersao('$2')} WHERE id = $1`,
           [user.id, context.now],
         );
       }
@@ -397,7 +398,7 @@ export class InvitesService {
       } else {
         await manager.query(
           `UPDATE users SET platform_role = $2::platform_role, platform_permissions = $3::platform_permission[],
-                  updated_at = $4 WHERE id = $1`,
+                  ${avancarVersao('$4')} WHERE id = $1`,
           [user.id, alvo.platform_role, alvo.platform_permissions, context.now],
         );
         destination = '/conta/administracao';

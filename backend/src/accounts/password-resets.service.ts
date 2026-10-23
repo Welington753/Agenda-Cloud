@@ -18,6 +18,7 @@ import { emailDeRedefinicao, linkDeRedefinicao } from './account-emails.js';
 import { generateAccountToken, hashAccountToken, isValidAccountTokenFormat, linkExpiresAt } from './account-token.js';
 import { assertCanManageAccount, loadActor } from './actor.js';
 import { recordAudit } from './audit.js';
+import { avancarVersao } from './user-version.js';
 
 export interface PasswordResetView {
   id: string;
@@ -166,7 +167,10 @@ export class PasswordResetsService {
         [alvo.user_id, await hashPassword(password), CREDENTIAL_ALGORITHM, now],
       );
       // O link chegou ao e-mail da conta: isso prova o endereço.
-      await manager.query(`UPDATE users SET email_verified = true, updated_at = $2 WHERE id = $1`, [alvo.user_id, now]);
+      await manager.query(`UPDATE users SET email_verified = true, ${avancarVersao('$2')} WHERE id = $1`, [
+        alvo.user_id,
+        now,
+      ]);
       await manager.query(`UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL`, [
         alvo.user_id,
         now,

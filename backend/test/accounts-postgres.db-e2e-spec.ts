@@ -484,6 +484,11 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     expect(sessao.revoked_at).not.toBeNull();
     const [user] = await db.query(`SELECT status FROM users WHERE id = $1`, [pessoa.userId]);
     expect(user.status).toBe('SUSPENDED');
+    const [registro] = await db.query(
+      `SELECT new_data FROM audit_logs WHERE target_user_id = $1 AND action = 'USER_BLOCKED'`,
+      [pessoa.userId],
+    );
+    expect(registro.new_data).toEqual({ status: 'SUSPENDED', revokedSessions: 1 });
     // Conta bloqueada não aceita convite nem recebe outro.
     await expect(
       invites.inviteMember(master.userId, t1, { requestKey: requestKey(), name: 'B', email: email('bloq-pessoa'), role: 'DONO' }),
@@ -511,7 +516,14 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const master = await conta('conf-master', { role: 'MASTER_OWNER' });
     const alvo = await conta('conf-alvo');
     const lido = await updatedAt(alvo.userId);
-    await admin.updateUser(master.userId, alvo.userId, { expectedUpdatedAt: lido, name: 'Primeira tela' });
+    // Mesmo milissegundo da versão lida: a versão ainda precisa avançar.
+    const primeira = await admin.updateUser(
+      master.userId,
+      alvo.userId,
+      { expectedUpdatedAt: lido, name: 'Primeira tela' },
+      new Date(lido),
+    );
+    expect(new Date(primeira.updatedAt).getTime()).toBeGreaterThan(new Date(lido).getTime());
     await expect(admin.updateUser(master.userId, alvo.userId, { expectedUpdatedAt: lido, name: 'Segunda tela' })).rejects.toThrow(
       ConflictException,
     );
