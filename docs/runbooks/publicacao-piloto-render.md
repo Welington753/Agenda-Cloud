@@ -423,6 +423,7 @@ Sem mudar código: adicione o domínio ao serviço **web** (só a ele; a API con
 
 - **Deploy falhou antes de ficar Live:** o Render cancela sozinho quando o build falha ou o health check não passa. O deploy anterior continua no ar e não há nada a fazer além de investigar.
 - **Ficou Live com defeito:** em cada serviço afetado, vá em **Deploys**, escolha o último deploy bom e clique em **Rollback**.
+  - **Exceção para a API desde o PR #65:** não use Rollback na API para um deploy anterior a ele, porque reabriria `POST /auth/register`, o cadastro público. Publique a API de reserva com o cadastro fechado (`5fe8166`, branch `reserva/api-cadastro-fechado`), como em `docs/runbooks/publicacao-contas-piloto.md`, "API de reserva".
   - O rollback reutiliza o artefato daquele deploy, com as variáveis de ambiente e o comando de start da época.
   - Pelo painel, ele também desliga o auto-deploy, que já está desligado aqui.
   - O frontend volta com o `NEXT_PUBLIC_API_URL` embutido naquele build.

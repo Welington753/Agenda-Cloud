@@ -21,21 +21,34 @@ para cá.
 - Ensaio completo contra um PostgreSQL descartável que imita o piloto (seção
   "Ensaio").
 
-**Operação no piloto: nada executado.** Nenhuma conexão foi aberta com o
-piloto, nenhum backup do piloto foi feito, a migration não foi aplicada e nada
-foi publicado no Render.
+**Operação no piloto, executada em 23/10/2026** a partir de
+`C:\Projetos\Agenda-Cloud-publicacao`, no commit
+`f37cbc9947806d12d6705cd812e8043fcbcace67`:
+
+- `preparar`: backup `contas-preparar-2026-10-23T17-49-14-052Z`. O piloto
+  roda PostgreSQL 17.11 e tinha 6 migrations e 37 tabelas.
+- `restauracao`: contagens e md5 iguais, e migration ensaiada na cópia.
+- `aplicar`: `AccountsAdministration1792800000000` aplicada às 18:05:42 UTC
+  e conferida (`aplicada_e_conferida`). O backup anterior a ela é
+  `contas-aplicar-2026-10-23T17-59-40-736Z`, com ponto de recuperação
+  18:01:11 UTC.
+
+**Ainda não feito:** deploy da API e do web, e configuração de e-mail. A API
+que está no ar (`35f4713`) funciona com o schema novo e ainda aceita o
+cadastro público, como antes.
+
+**Recuperação preparada:** a API de reserva com o cadastro fechado,
+`5fe816626b7e891099f0c08ae8b309e1130234f9` (ver "API de reserva").
 
 ## O que publicar
 
-O commit de `integration/nestjs-typeorm-frontend` que contiver este runbook.
-Entre `26d9d85` e ele só mudam `backend/scripts/` e `docs/`; o código da API e
-do web é o mesmo de `26d9d85`.
+- **API e web:** `f37cbc9947806d12d6705cd812e8043fcbcace67`, o commit de onde
+  a migration foi aplicada. Commits posteriores da integration que só mudam
+  `docs/` têm o mesmo código e também servem.
+- **Só em recuperação:** a API de reserva `5fe8166`. Ela nunca é mesclada na
+  integration.
 
-Use **o mesmo SHA** em todas as etapas:
-
-- nas fases do procedimento: a fase `aplicar` recusa um backup conferido de
-  outro commit;
-- no deploy da API e do web.
+Use o mesmo SHA na API e no web.
 
 ## Pré-requisitos (uma vez)
 
@@ -206,6 +219,10 @@ anterior.
 
 ### 5. Publicar a API
 
+Antes, tenha à mão a seção "API de reserva": ela é o caminho de volta, e o
+botão **Rollback** do Render **não** deve ser usado na API, porque o deploy
+anterior reabre o cadastro público.
+
 No Render, serviço `agenda-cloud-piloto-api`:
 
 1. **Manual Deploy → Deploy a specific commit → `<sha>`**.
@@ -276,6 +293,7 @@ Ver "E-mail" no fim deste runbook e `docs/plans/administracao-contas-convites.md
 | API nova + schema novo | alvo | CI do PR #65 e suítes de navegador |
 | web novo + API atual | evitar | login funciona; a administração nova chama rotas que a API atual não tem |
 | web atual + API nova | janela curta e aceitável | o formulário antigo de `/cadastro` recebe 404 (cadastro fechado) |
+| API de reserva + schema novo + web novo | recuperação | ensaio de 23/10/2026: cadastro 404 direto e pelo proxy, login, sessão, bloqueio, restrição e agenda funcionam; a administração nova fica indisponível (seção "API de reserva") |
 
 Por isso a ordem é: **migration → API → web**, todos do mesmo SHA.
 
@@ -297,24 +315,143 @@ abaixo exige `migration:revert` nem restaurar o backup por cima do piloto.
   com o schema novo, então não há urgência para desfazer.
 - **Deploy da API falhou antes de ficar Live.** O Render mantém o deploy
   anterior, que funciona com o schema novo. Investigue e publique de novo.
-- **API nova Live com defeito.** **Rollback** no Render para o deploy anterior
-  da API, e do web se ele já tiver sido publicado.
-  - O schema novo continua, e a API antiga funciona com ele.
-  - Convites, redefinições e histórico gravados pela API nova ficam no banco,
-    intactos. A API antiga só os ignora.
-  - Contas bloqueadas continuam bloqueadas: a API antiga também exige
-    `ACTIVE` no login e na sessão.
-  - Vínculos removidos continuam removidos.
-  - Restrições por estabelecimento (`DENIED`) continuam valendo: a API antiga
-    lê a mesma tabela de overrides.
-  - Papéis de plataforma dados pela API nova continuam valendo, pelas mesmas
-    regras de `platform_role` e `ESTABLISHMENTS_MANAGE`.
-  - Convites pendentes não podem ser aceitos até a API nova voltar. Os links
-    valem 24 h; depois, use **Reenviar**.
-  - **Atenção:** a API antiga reabre `POST /auth/register`, o cadastro
-    público. Mantenha o rollback pelo menor tempo possível.
-- **Web novo com defeito.** Rollback só do web. A API nova atende o web antigo;
-  só o formulário de cadastro antigo recebe 404.
+- **API nova Live com defeito que não dá para corrigir na hora.** Publique a
+  **API de reserva** (seção abaixo), não o deploy anterior. O web novo
+  continua no ar. Depois corrija a API nova e publique de novo pela
+  integration.
+- **Não use o botão Rollback na API.** O deploy anterior é `35f4713`, que
+  aceita `POST /auth/register`, direto e pelo proxy. Esconder o formulário no
+  web não fecha o cadastro.
+- **Web novo com defeito.** Rollback só do web, ou deploy de outro commit do
+  web. A API nova atende o web antigo, e o formulário de cadastro antigo
+  recebe 404.
+
+### API de reserva (cadastro fechado)
+
+- **Branch:** `reserva/api-cadastro-fechado`. Nunca mesclar na integration.
+- **SHA:** `5fe816626b7e891099f0c08ae8b309e1130234f9`.
+- **Base:** `35f4713`, a API publicada antes dos PRs #64 e #65, cujo backend é
+  igual ao de `9847c6a`.
+- **Mudança única:** a rota `POST /auth/register` e o limitador dela foram
+  removidos. O cadastro responde `404` direto e pelo proxy, não emite cookie e
+  não chama o serviço. O resto é o código de `35f4713`.
+- **Variáveis:** as mesmas do serviço. As variáveis de e-mail, se existirem,
+  são ignoradas.
+
+#### Publicar a reserva
+
+1. No serviço `agenda-cloud-piloto-api`: **Manual Deploy → Deploy a specific
+   commit** com o SHA completo `5fe816626b7e891099f0c08ae8b309e1130234f9`.
+   A documentação do Render diz que o commit vem do repositório ligado, por
+   SHA. Ela não diz se o commit precisa estar na branch ligada, e isso não foi
+   testado aqui.
+2. **Se o Render não aceitar o SHA:** em **Settings → Build & Deploy →
+   Branch**, troque temporariamente para `reserva/api-cadastro-fechado` e
+   faça **Manual Deploy → Deploy latest commit**. O auto-deploy está
+   desligado.
+3. Espere ficar **Live** e confira:
+   - `POST $API/auth/register` deve dar `404`;
+   - `POST $WEB/agenda_api/auth/register` com `Origin: $WEB` deve dar `404`;
+   - `GET $WEB/agenda_api/auth/me` deve dar `401`;
+   - o login de uma conta existente pelo web deve funcionar.
+
+#### Voltar para a API nova
+
+Depois de corrigida a API nova:
+
+1. Se a branch do serviço foi trocada, volte-a para
+   `integration/nestjs-typeorm-frontend`.
+2. Faça **Deploy a specific commit** com o SHA corrigido da integration.
+3. Repita as conferências da etapa 5.
+
+#### Durante a reserva
+
+**Continua funcionando**, com dados de todos:
+
+- login, sessão, saída e restauração de sessão, inclusive as sessões criadas
+  pela API nova;
+- agenda, serviços, profissionais, jornadas, disponibilidade, clientes,
+  solicitações e agendamento público;
+- a consulta de estabelecimentos na administração (`/platform/establishments`).
+
+**Continua valendo**, porque a reserva lê as mesmas tabelas:
+
+- contas bloqueadas (`SUSPENDED`) não entram, e as sessões antigas delas são
+  recusadas;
+- restrições por estabelecimento (`DENIED`);
+- vínculos removidos;
+- papéis de plataforma.
+
+**Fica indisponível** (a reserva não tem as rotas; o web novo mostra erro):
+
+| Tela ou ação do web novo | O que aparece | Rota sem resposta |
+| --- | --- | --- |
+| Administração → Usuários | "Estabelecimento não encontrado." | `GET /platform/users`, `/platform/establishment-options` |
+| Administração → Convites | o mesmo aviso | `GET /platform/invites` |
+| Administração → Papéis e permissões | o mesmo aviso | `GET /platform/roles` |
+| Administração → Histórico | o mesmo aviso | `GET /platform/audit` |
+| Novo estabelecimento | "Sua conta pode consultar, mas não criar estabelecimentos." | `GET /platform/plans`, `POST /platform/establishments` |
+| `/convite` (aceitar convite) | "Convite indisponível" | `POST /invites/preview`, `/invites/accept` |
+| `/redefinir-senha` | link inválido | `POST /password-resets/preview`, `/password-resets/complete` |
+| Bloquear, reativar, restringir, desvincular, mudar papel, reautenticação | não há como acionar | rotas `/platform/users/*`, `/platform/memberships/*`, `/platform/reauth` |
+
+O aviso "Estabelecimento não encontrado." é a mensagem genérica de 404 do web.
+Durante a reserva, ele significa que a função não existe nessa API.
+
+**Pendências durante a reserva:**
+
+- Convites e redefinições já enviados não podem ser usados. Eles vencem em
+  24 h; depois da volta da API nova, use **Reenviar** ou peça um link novo.
+- Não há como bloquear uma conta pela tela. Se for urgente, só por operação
+  manual no banco, com decisão explícita.
+- Nenhum dado gravado pela API nova é apagado ou alterado pela reserva.
+
+#### Testes executados (23/10/2026)
+
+**Ambiente:**
+
+- PostgreSQL 18.6 descartável em `localhost:55433`, com TLS verificado e as 7
+  migrations;
+- `IGNORE_DOTENV_FILE=true`;
+- dados de testes anteriores: cerca de 600 usuários e 539 tenants.
+
+**Dados criados pela API nova** (código de `f37cbc9`), pelo caminho real:
+
+- três contas ativadas por convite;
+- uma promovida a `MASTER_OWNER`, só no banco descartável;
+- reautenticação, bloqueio de uma conta e restrição `SERVICOS_GERENCIAR` de
+  outra.
+
+**Na reserva**, direto e pelo proxy do web novo (`next start` com
+`API_PROXY_TARGET`):
+
+- cadastro `404` em 7 tentativas diretas e 3 pelo proxy, sem cookie, com as
+  contagens de `users`, `tenants`, `units`, `memberships`, `credentials` e
+  `audit_logs` iguais;
+- login e sessão pelo proxy `200/200`, e a sessão criada pela API nova é
+  aceita;
+- conta bloqueada: login `401` e sessão antiga `401`;
+- conta restrita: ver serviços `200`, criar `403`, nenhum serviço gravado;
+- agenda: serviço `201`, profissional `201`, jornada `200`, disponibilidade
+  com 39 horários, agendamento `201`, listagem com o agendamento, e o mesmo
+  horário recusado com `409`;
+- navegador (Chromium):
+  - login pela tela;
+  - visão geral, agenda, serviços, profissionais, clientes, solicitações e
+    estabelecimentos sem nenhuma chamada com erro;
+  - as telas da administração nova com os avisos da tabela acima;
+  - `/cadastro` sem formulário.
+
+**Testes do próprio código da reserva:** 1.365 unitários, 117 HTTP e2e,
+`oxlint` sem avisos e `tsc` do build.
+
+**Limitações:**
+
+- O deploy pelo Render não foi testado.
+- O teste no navegador foi em HTTP local, com cookie sem `Secure`. O
+  comportamento do cookie atrás da borda HTTPS é o de `35f4713`, já publicado.
+- O CI não roda nesta branch (os workflows rodam em PRs para a integration, e
+  não há PR); os testes acima foram locais.
 
 **`migration:revert`: só depois de medir a perda.** Rode `conferir -Esperado
 after` e leia `REVERSAO_AFETARIA_*`. O revert apaga:
