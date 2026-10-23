@@ -16,12 +16,15 @@ import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { ListaEstabelecimentos } from "@/components/administracao/lista-estabelecimentos";
 import { EstatisticaCard } from "@/components/ui/estatistica-card";
-import { Botao } from "@/components/ui/button";
+import { Botao, LinkBotao } from "@/components/ui/button";
+import { useCapacidades } from "@/lib/administracao/use-acesso-plataforma";
+import { ROTA_NOVO_ESTABELECIMENTO } from "@/lib/administracao/rotas";
 
 const CAMPO =
   "mt-1 min-h-11 w-full min-w-0 rounded-lg border border-border bg-card px-3 text-sm";
 
 export default function EstabelecimentosPage() {
+  const capacidades = useCapacidades();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [planId, setPlanId] = useState("");
@@ -71,14 +74,21 @@ export default function EstabelecimentosPage() {
             Acompanhe os negócios cadastrados, seus responsáveis e planos.
           </p>
         </div>
-        <Botao
-          variante="secundaria"
-          onClick={recarregar}
-          disabled={estado.status === "carregando"}
-          className="min-h-11"
-        >
-          Atualizar
-        </Botao>
+        <div className="flex flex-wrap gap-2">
+          {capacidades.manageEstablishments && (
+            <LinkBotao href={ROTA_NOVO_ESTABELECIMENTO} className="min-h-11">
+              Novo estabelecimento
+            </LinkBotao>
+          )}
+          <Botao
+            variante="secundaria"
+            onClick={recarregar}
+            disabled={estado.status === "carregando"}
+            className="min-h-11"
+          >
+            Atualizar
+          </Botao>
+        </div>
       </header>
       {estado.status === "pronto" && (
         <section

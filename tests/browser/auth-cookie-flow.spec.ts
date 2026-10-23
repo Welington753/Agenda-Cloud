@@ -5,13 +5,13 @@
 // .github/workflows/test-frontend-auth-cookie-flow.yml) e o frontend real
 // compilado (ver playwright.config.ts).
 //
-// O usuário de teste é criado por POST /auth/register direto na API (nunca
-// pela UI, que não tem tela de cadastro neste lote, e nunca uma fixture que
-// grave direto no banco — usar o próprio endpoint real prova que o cadastro
-// funciona de ponta a ponta o suficiente para autenticar depois).
+// O usuário de teste nasce de um convite gravado pela fixture e é ATIVADO
+// pelo endpoint real (`POST /invites/accept`, ver support/contas-de-teste.ts):
+// o cadastro público foi fechado, e a ativação real prova que a conta
+// funciona de ponta a ponta o suficiente para autenticar depois.
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA_TESTE = "senha-de-teste-e2e-123";
 
 interface ContaTeste {
@@ -23,16 +23,13 @@ async function criarContaDeTeste(request: APIRequestContext): Promise<ContaTeste
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `playwright-${sufixo}@example.test`;
 
-  const resposta = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: {
+  await contaPorConvite(request, {
       ownerName: "Maria Teste E2E",
       businessName: `Estúdio Teste ${sufixo}`,
       email,
       phone: "11999998888",
       password: SENHA_TESTE,
-    },
-  });
-  expect(resposta.status(), await resposta.text()).toBe(201);
+    });
 
   return { email, senha: SENHA_TESTE };
 }

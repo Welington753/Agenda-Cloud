@@ -1,8 +1,10 @@
 // Administração da plataforma integrada à área da conta: mesmo menu,
 // cabeçalho, aparência e menu da conta. PostgreSQL descartável real; a
 // promoção de papel é só fixture de teste: não existe rota pública para
-// promover uma conta.
+// promover uma conta. As contas nascem pela fixture de convite
+// (support/contas-de-teste.ts): o cadastro público foi fechado.
 import { expect, test, type Page } from "@playwright/test";
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -27,21 +29,16 @@ async function conectar(): Promise<Client> {
   return db;
 }
 
-async function cadastrar(page: Page, marca: string) {
-  const register = await page.request.post(`${API}/auth/register`, {
-    data: {
-      ownerName: "Responsável Plataforma",
-      businessName: `${marca} Principal`,
-      email: `${marca}@example.test`,
-      phone: "11999998888",
-      password: "senha-administracao-123",
-    },
+/** Responsável com estabelecimento próprio, ativado pelo convite real; a
+ * página fica com a sessão dele. */
+function cadastrar(page: Page, marca: string) {
+  return contaPorConvite(page.request, {
+    ownerName: "Responsável Plataforma",
+    businessName: `${marca} Principal`,
+    email: `${marca}@example.test`,
+    phone: "11999998888",
+    password: "senha-administracao-123",
   });
-  expect(register.status(), await register.text()).toBe(201);
-  return (await register.json()) as {
-    user: { id: string };
-    tenant: { id: string };
-  };
 }
 
 const nav = (page: Page) =>
@@ -204,7 +201,7 @@ test("administração no menu principal: autorização, busca, ficha, contexto e
       page.getByRole("heading", { name: "Responsáveis", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(`${marca}@example.test`, { exact: true }),
+      page.getByText(`${marca}@example.test`, { exact: true }).first(),
     ).toBeVisible();
     await expect(page.getByText("Não definido", { exact: true })).toBeVisible();
     await expect(

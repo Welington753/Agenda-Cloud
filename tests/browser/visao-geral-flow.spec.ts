@@ -21,6 +21,7 @@
 //
 // Orçamento: 2 cadastros e 3 logins (limites reais: 5 de cada por 15 min por
 // IP), em invocação SEPARADA do Playwright (ver test-frontend-auth.yml).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { hojeNoFusoDoTenant, proximoInicioDeHoje, weekdayDe } from "./data-de-teste";
@@ -69,8 +70,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string) {
     phone: "11977773333",
     password: SENHA,
   };
-  const r = await api.post(`${BACKEND_URL}/auth/register`, { data: dados });
-  expect(r.status(), await r.text()).toBe(201);
+  const conta = await contaPorConvite(api, dados);
   const me = await chamar<{
     user: { id: string };
     activeContext: { tenantId: string; trial: { trialStartAt: string } };
@@ -81,6 +81,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string) {
     tenantId: me.corpo.activeContext.tenantId,
     // Instante do cadastro pelo relógio do BACKEND (`new Date()` do controller).
     cadastradoEm: me.corpo.activeContext.trial.trialStartAt,
+    ativadaEm: conta.ativadaEm,
   };
 }
 
@@ -153,7 +154,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     // ------------------------------------------------ estabelecimento A (fixture)
     const a = await cadastrar(request, "A");
     // O backend vê o mesmo "agora" do spec e do navegador.
-    conferirRelogioDoBackend(a.cadastradoEm);
+    conferirRelogioDoBackend(a.ativadaEm);
     const base = `/tenants/${a.tenantId}`;
     const servico = async (name: string, extra: Record<string, unknown> = {}) => {
       const r = await chamar<{ service: { id: string } }>(request, "POST", `${base}/services`, {

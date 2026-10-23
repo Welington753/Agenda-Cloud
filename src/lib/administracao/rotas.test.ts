@@ -43,3 +43,19 @@ describe("rotas da administração", () => {
     ]);
   });
 });
+
+describe("seções da administração", () => {
+  it("abas na ordem pedida, todas dentro da área real", async () => {
+    const { SECOES_ADMINISTRACAO, secaoAtiva } = await import("./rotas");
+    expect(SECOES_ADMINISTRACAO.map((s) => s.rotulo)).toEqual([
+      "Estabelecimentos",
+      "Usuários",
+      "Convites",
+      "Papéis e permissões",
+      "Histórico",
+    ]);
+    expect(SECOES_ADMINISTRACAO.every((s) => s.href.startsWith("/conta/administracao/"))).toBe(true);
+    expect(secaoAtiva("/conta/administracao/usuarios/u1", "/conta/administracao/usuarios")).toBe(true);
+    expect(secaoAtiva("/conta/administracao/usuarios-x", "/conta/administracao/usuarios")).toBe(false);
+  });
+});

@@ -1,236 +1,80 @@
-// Teste de navegador do cadastro REAL (Lote 6C.2) — o requisito do lote é
-// que a conta seja criada PREENCHENDO E ENVIANDO O FORMULÁRIO da tela, nunca
-// por uma fixture que chame a API direto nem que grave no banco. Roda contra
-// o backend real e um PostgreSQL descartável (nunca Neon/produção — ver
-// .github/workflows/test-frontend-auth.yml).
+// Cadastro público FECHADO. Prova, contra o backend real e o PostgreSQL
+// descartável, que ninguém cria conta, estabelecimento ou vínculo por conta
+// própria:
 //
-// Orçamento de POST /auth/register: o rate limit real é de
-// REGISTER_RATE_LIMIT_MAX = 5 por 15 min por IP (ver
-// backend/src/auth/register-rate-limit.ts) e todos os testes saem do mesmo
-// IP. Este arquivo gasta 3 (um cadastro válido, uma tentativa com e-mail
-// duplicado e um cadastro com /auth/me derrubado) e auth-cookie-flow.spec.ts
-// gasta 1 — os testes de envio duplicado e de recuperação de sessão provam
-// justamente que NÃO há POST extra. Somando, 4 de 5: conferir esta conta
-// antes de acrescentar qualquer caso novo que cadastre.
-import { expect, test, type Page } from "@playwright/test";
+// - o site e o login não oferecem mais "Criar conta"; `/cadastro` só explica
+//   que o acesso vem por convite, sem formulário nem chamada à API;
+// - chamar a API direto (`POST /auth/register`) devolve 404, sem cookie, e
+//   nada é gravado no banco;
+// - o login das contas existentes continua igual.
+//
+// A conta usada no login é criada pela fixture de convite
+// (support/contas-de-teste.ts), o caminho real de entrada de contas novas.
+import { expect, test } from "@playwright/test";
+import { conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
 
-const SENHA_TESTE = "senha-de-cadastro-e2e-123";
+const API = "http://localhost:3001";
 
-interface DadosCadastro {
-  nome: string;
-  estabelecimento: string;
-  email: string;
-  telefone: string;
-  senha: string;
-}
+test.describe("cadastro público fechado", () => {
+  test("site, login e /cadastro não oferecem cadastro livre", async ({ page }) => {
+    const chamadasAApi: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().startsWith(API)) chamadasAApi.push(`${req.method()} ${new URL(req.url()).pathname}`);
+    });
 
-function dadosDeCadastro(): DadosCadastro {
-  const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return {
-    nome: "Maria Cadastro E2E",
-    estabelecimento: `Studio Cadastro ${sufixo}`,
-    email: `cadastro-${sufixo}@example.test`,
-    telefone: "(11) 98888-7777",
-    senha: SENHA_TESTE,
-  };
-}
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Criar conta" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Como obter acesso" }).first().click();
+    await expect(page).toHaveURL(/\/cadastro$/);
+    await expect(page.getByRole("heading", { name: "O acesso é liberado pela administração" })).toBeVisible();
+    await expect(page.locator("form")).toHaveCount(0);
+    await expect(page.locator("input")).toHaveCount(0);
+    expect(chamadasAApi.filter((c) => c.includes("register"))).toEqual([]);
 
-async function preencherFormulario(page: Page, dados: DadosCadastro): Promise<void> {
-  await page.getByLabel("Seu nome").fill(dados.nome);
-  await page.getByLabel("Nome do estabelecimento").fill(dados.estabelecimento);
-  await page.getByLabel("E-mail").fill(dados.email);
-  await page.getByLabel("Telefone").fill(dados.telefone);
-  await page.getByLabel("Senha").fill(dados.senha);
-}
-
-test.describe("cadastro real pela tela (POST /auth/register a partir do formulário)", () => {
-  test("o login tem um caminho visível para o cadastro e vice-versa", async ({ page }) => {
     await page.goto("/login");
-    await page.getByRole("link", { name: "Criar conta" }).click();
+    await expect(page.getByRole("link", { name: "Criar conta" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Saiba como obter" }).click();
     await expect(page).toHaveURL(/\/cadastro$/);
-
-    await page.getByRole("link", { name: "Entrar", exact: true }).click();
-    await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("validação de campo acontece no cliente, sem chamar a API", async ({ page }) => {
-    let chamadasDeCadastro = 0;
-    page.on("request", (req) => {
-      if (req.url().endsWith("/auth/register") && req.method() === "POST") chamadasDeCadastro += 1;
-    });
-
-    await page.goto("/cadastro");
-    await page.getByLabel("Seu nome").fill("M");
-    await page.getByLabel("Nome do estabelecimento").fill("Studio Teste");
-    await page.getByLabel("E-mail").fill("nao-e-um-email");
-    await page.getByLabel("Telefone").fill("123");
-    await page.getByLabel("Senha").fill("curta");
-    await page.getByRole("button", { name: "Criar conta" }).click();
-
-    await expect(page.getByText("Informe um e-mail válido.")).toBeVisible();
-    await expect(page.getByText("A senha precisa ter pelo menos 10 caracteres.")).toBeVisible();
-    await expect(page).toHaveURL(/\/cadastro$/);
-    expect(chamadasDeCadastro, "formulário inválido nunca deve chegar na API").toBe(0);
-  });
-
-  test("cadastro pela tela → /conta → reload mantém sessão → logout → login com a conta criada", async ({
-    page,
-    context,
-  }) => {
-    const dados = dadosDeCadastro();
-
-    // Envio duplicado: dois cliques seguidos no mesmo submit não podem gerar
-    // dois POST /auth/register (o segundo criaria um 409 ou, pior, uma
-    // segunda conta). Contado no próprio fluxo feliz, sem gastar mais cota do
-    // rate limit.
-    let chamadasDeCadastro = 0;
-    page.on("request", (req) => {
-      if (req.url().endsWith("/auth/register") && req.method() === "POST") chamadasDeCadastro += 1;
-    });
-
-    // Segura a resposta do cadastro por tempo suficiente para clicar de novo
-    // com a requisição comprovadamente em voo — sem isso o segundo clique
-    // poderia cair depois da navegação e não provar nada. A requisição em si
-    // continua indo para o backend real; nada é simulado aqui. O POST fica
-    // retido por uma condição que o PRÓPRIO teste libera (nunca um tempo
-    // fixo), e a interceptação só sai depois da resposta: remover a rota com
-    // o handler pendente deixa o destino da requisição fora do controle do
-    // teste (ver professional-working-hours-flow.spec.ts).
-    const cadastroInterceptado = Promise.withResolvers<void>();
-    const liberarCadastro = Promise.withResolvers<void>();
-    await page.route("**/auth/register", async (rota) => {
-      cadastroInterceptado.resolve();
-      await liberarCadastro.promise;
-      await rota.continue();
-    });
-
-    await page.goto("/cadastro");
-    await preencherFormulario(page, dados);
-
-    // Localizador pelo `type`, não pelo texto: durante o envio o rótulo muda
-    // para "Criando conta...".
-    const botao = page.locator('form button[type="submit"]');
+  test("POST /auth/register direto na API: 404, sem cookie e sem gravar nada", async ({ request }) => {
+    const email = `cadastro-fechado-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
+    const negocio = `Estúdio Fechado ${Date.now()}`;
+    const db = await conectarBancoDeTeste();
     try {
-      const respostaDoCadastro = page.waitForResponse(
-        (resposta) => resposta.request().method() === "POST" && resposta.url().endsWith("/auth/register"),
-      );
-      try {
-        await botao.click();
-        await cadastroInterceptado.promise;
-        await expect(botao).toBeDisabled();
-        // Segundo clique com a primeira requisição ainda retida: `force`
-        // ignora a checagem de "elemento acionável", então isto testa de fato
-        // que um botão desabilitado não reenvia o cadastro.
-        await botao.click({ force: true });
-      } finally {
-        liberarCadastro.resolve();
+      const antes = await db.query<{ tenants: number }>("SELECT count(*)::int AS tenants FROM tenants");
+      for (let i = 0; i < 6; i++) {
+        const resposta = await request.post(`${API}/auth/register`, {
+          data: { ownerName: "Pessoa Visitante", businessName: negocio, email, phone: "11999998888", password: "senha-qualquer-123" },
+        });
+        expect(resposta.status()).toBe(404);
+        expect(resposta.headers()["set-cookie"]).toBeUndefined();
       }
-      expect((await respostaDoCadastro).ok()).toBe(true);
+      const usuarios = await db.query("SELECT 1 FROM users WHERE email = $1", [email]);
+      const unidades = await db.query("SELECT 1 FROM units WHERE name = $1", [negocio]);
+      const depois = await db.query<{ tenants: number }>("SELECT count(*)::int AS tenants FROM tenants");
+      expect(usuarios.rows).toEqual([]);
+      expect(unidades.rows).toEqual([]);
+      expect(depois.rows[0].tenants).toBe(antes.rows[0].tenants);
     } finally {
-      await page.unroute("**/auth/register");
+      await db.end();
     }
-
-    // A conta criada aparece em /conta com os dados REAIS do cadastro
-    // (nome do dono e do estabelecimento digitados agora), nunca dado demo.
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByRole("heading", { name: "Olá, Maria" })).toBeVisible();
-    await expect(page.getByText(dados.email)).toBeVisible();
-    // O estabelecimento aparece no cabeçalho comum (ativo) e no conteúdo.
-    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(dados.estabelecimento);
-    await expect(page.getByRole("main").getByText(dados.estabelecimento)).toBeVisible();
-    await expect(page.getByText("Dono(a)")).toBeVisible();
-
-    expect(chamadasDeCadastro, "um envio só, mesmo com dois cliques").toBe(1);
-
-    // O cookie de sessão veio do próprio cadastro (o backend emite no 201),
-    // é HttpOnly de verdade e nenhum JavaScript da página o lê.
-    const cookieCadastro = (await context.cookies("http://localhost:3001")).find((c) => c.name === "session_token");
-    expect(cookieCadastro, "cadastro precisa deixar a sessão ativa").toBeTruthy();
-    expect(cookieCadastro?.httpOnly).toBe(true);
-
-    // Nem senha nem token podem ter sido guardados no navegador pelo cadastro.
-    const armazenamento = await page.evaluate(() => ({
-      local: JSON.stringify(window.localStorage),
-      sessao: JSON.stringify(window.sessionStorage),
-    }));
-    expect(armazenamento.local).not.toContain(SENHA_TESTE);
-    expect(armazenamento.sessao).not.toContain(SENHA_TESTE);
-    expect(armazenamento.local).not.toContain("session_token");
-    expect(armazenamento.sessao).not.toContain("session_token");
-
-    await page.reload();
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText(dados.email)).toBeVisible();
-
-    // "Sair" fica no menu da conta.
-
-
-    await page.getByTestId("abrir-menu-conta").click();
-
-
-    await page.getByRole("button", { name: "Sair" }).click();
-    await expect(page).toHaveURL(/\/login$/);
-    expect((await context.cookies("http://localhost:3001")).find((c) => c.name === "session_token")).toBeFalsy();
-
-    // Entrar de novo com a conta que acabou de ser criada pela tela prova que
-    // o cadastro gravou uma credencial utilizável de verdade.
-    await page.getByLabel("E-mail").fill(dados.email);
-    await page.getByLabel("Senha").fill(dados.senha);
-    await page.getByRole("button", { name: "Entrar" }).click();
-    // Login sem `next` vai para a Visão geral (o cadastro, acima, abre Minha conta).
-    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
-    await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(dados.estabelecimento);
-
-    // E-mail duplicado é recusado pelo backend e mostrado como tal — nunca
-    // como "falha de comunicação" e nunca criando uma segunda conta.
-    const outraPagina = await context.browser()!.newPage();
-    await outraPagina.goto("/cadastro");
-    await preencherFormulario(outraPagina, { ...dados, estabelecimento: `${dados.estabelecimento} 2` });
-    await outraPagina.getByRole("button", { name: "Criar conta" }).click();
-    await expect(outraPagina.getByText("Este e-mail já está cadastrado.")).toBeVisible();
-    await expect(outraPagina).toHaveURL(/\/cadastro$/);
-    await outraPagina.close();
   });
 
-  test("cadastro confirmado com /auth/me falhando: a conta é criada e a sessão se recupera sem reenviar o cadastro", async ({
-    page,
-  }) => {
-    const dados = dadosDeCadastro();
-
-    // Derruba só o GET /auth/me DEPOIS do cadastro (o POST /auth/register
-    // vai normalmente até o backend real e cria a conta de verdade). É a
-    // única forma de reproduzir num navegador "conta criada, sessão não
-    // carregada". Antes dele, a leitura da abertura responde normalmente: o
-    // formulário só envia depois de a API responder (ver cadastro/page.tsx).
-    let derrubarSessao = false;
-    let chamadasDeCadastro = 0;
-    page.on("request", (req) => {
-      if (req.url().endsWith("/auth/register") && req.method() === "POST") {
-        chamadasDeCadastro += 1;
-        derrubarSessao = true;
-      }
-    });
-
-    await page.route("**/auth/me", async (rota) => {
-      if (derrubarSessao) await rota.abort("failed");
-      else await rota.continue();
-    });
-
-    await page.goto("/cadastro");
-    await preencherFormulario(page, dados);
-    await page.locator('form button[type="submit"]').click();
-
-    // Nunca pode dizer que o cadastro falhou — a conta existe.
-    await expect(page.getByText("Sua conta foi criada")).toBeVisible();
-    await expect(page).toHaveURL(/\/cadastro$/);
-
-    // A recuperação repete só o /auth/me; o contador prova que nenhum segundo
-    // POST /auth/register foi disparado nem automaticamente nem pelo botão.
-    derrubarSessao = false;
-    await page.getByRole("button", { name: "Recuperar sessão" }).click();
-
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText(dados.email)).toBeVisible();
-    expect(chamadasDeCadastro, "a recuperação nunca reenvia o cadastro").toBe(1);
+  test("conta existente continua entrando pelo login", async ({ page, playwright }) => {
+    const senha = "senha-de-conta-existente-123";
+    const email = `login-existente-${Date.now()}@example.test`;
+    // A fixture ativa a conta num contexto à parte: a página entra pela tela.
+    const outro = await playwright.request.newContext();
+    try {
+      await criarContaDeTeste(outro, { ownerName: "Dona Existente", businessName: `Estúdio Existente ${Date.now()}`, email, password: senha });
+    } finally {
+      await outro.dispose();
+    }
+    await page.goto("/login");
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Senha").fill(senha);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
   });
 });

@@ -1,7 +1,6 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createRegisterRateLimiter } from './register-rate-limit.js';
 import {
   LOGIN_RATE_LIMIT_MAX,
   LOGIN_RATE_LIMIT_WINDOW_MS,
@@ -55,32 +54,5 @@ describe('createLoginRateLimiter', () => {
   it('limite é 5 tentativas em 15 minutos', () => {
     expect(LOGIN_RATE_LIMIT_MAX).toBe(5);
     expect(LOGIN_RATE_LIMIT_WINDOW_MS).toBe(15 * 60 * 1000);
-  });
-
-  it('é uma instância própria, independente do limiter de cadastro (MemoryStore não compartilhado)', async () => {
-    let loginCalls = 0;
-    let registerCalls = 0;
-    const app = express();
-    app.use(express.json());
-    app.post('/auth/login', createLoginRateLimiter(), (_req, res) => {
-      loginCalls++;
-      res.status(200).json({ ok: true });
-    });
-    app.post('/auth/register', createRegisterRateLimiter(), (_req, res) => {
-      registerCalls++;
-      res.status(201).json({ ok: true });
-    });
-
-    for (let i = 0; i < 5; i++) {
-      await request(app).post('/auth/register').send({});
-    }
-    const sixthRegister = await request(app).post('/auth/register').send({});
-    expect(sixthRegister.status).toBe(429);
-
-    // Esgotar o limiter de cadastro nunca afeta o limiter de login.
-    const firstLogin = await request(app).post('/auth/login').send({});
-    expect(firstLogin.status).toBe(200);
-    expect(loginCalls).toBe(1);
-    expect(registerCalls).toBe(5);
   });
 });

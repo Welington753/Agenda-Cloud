@@ -16,8 +16,9 @@
 // o ROMPIMENTO de conexão (`route.abort`) é simulado, porque não há outro
 // jeito de perder uma resposta de propósito.
 //
-// Orçamento de POST /auth/register: 4 de 5 (rate limit real por IP). Roda em
+// Orçamento de POST /invites/accept (fixture de contas): 4 de 10 (rate limit real por IP). Roda em
 // invocação própria do Playwright (`npm run test:browser:clients`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import { Client } from "pg";
 
@@ -60,8 +61,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string) {
     phone: "11977772222",
     password: SENHA,
   };
-  const r = await api.post(`${BACKEND_URL}/auth/register`, { data: dados });
-  expect(r.status(), await r.text()).toBe(201);
+  await contaPorConvite(api, dados);
   const me = await chamar<{ user: { id: string }; activeContext: { tenantId: string } }>(
     api,
     "GET",

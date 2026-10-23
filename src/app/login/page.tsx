@@ -195,7 +195,7 @@ function LoginPageConteudo() {
               <button
                 type="button"
                 onClick={() =>
-                  notificar("Recuperação de senha por e-mail ainda não existe nesta fase.", "info")
+                  notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
                 }
                 className="font-medium text-accent hover:underline"
               >
@@ -209,12 +209,12 @@ function LoginPageConteudo() {
             </Botao>
           </form>
 
-          {/* Cadastro real (Lote 6C.2) — outra conta de verdade, nunca a
-              demonstração abaixo. */}
+          {/* Não há cadastro aberto: o acesso real vem do convite da
+              administração. Nunca a demonstração abaixo. */}
           <p className="text-center text-sm text-ink-soft">
-            Ainda não tem conta?{" "}
+            Ainda não tem acesso?{" "}
             <Link href="/cadastro" className="font-medium text-accent hover:underline">
-              Criar conta
+              Saiba como obter
             </Link>
           </p>
 

@@ -180,6 +180,86 @@ Roteiro detalhado: `docs/runbooks/publicacao-piloto-render.md`, parte F.
 - Conferência só-leitura do piloto (`before-`/`after-accounts-administration`)
   provada contra o banco descartável migrado.
 
+## Parte B: telas e cadastro fechado
+
+PR seguinte ao #64 (que entrou na integration em `c72cc16`).
+
+### Administração (`/conta/administracao`)
+
+Abas dentro da área central, com o mesmo menu da conta:
+
+- **Estabelecimentos**: lista e ficha de antes, mais "Novo estabelecimento"
+  (empresa em teste, plano do catálogo, responsável convidado por e-mail) e,
+  na ficha, "Pessoas com acesso" (vínculos com o acesso efetivo, convites
+  pendentes com reenviar e revogar, e "Convidar como dono(a)").
+- **Usuários**: todas as contas (antigas, pendentes, bloqueadas, sem empresa,
+  administradores), busca por nome ou e-mail, filtros por situação,
+  estabelecimento e papel, contadores do conjunto filtrado e paginação. A
+  ficha mostra dados, verificação do e-mail, sessões abertas, vínculos com o
+  acesso efetivo por área, restrições, papel de plataforma, convites e a
+  última redefinição de senha.
+- **Convites**: todos, com o estado do convite e o do envio separados.
+  O `MASTER_OWNER` também convida administradores da plataforma aqui.
+- **Papéis e permissões**: o que cada papel faz de fato, gerado pelo servidor.
+- **Histórico**: `audit_logs`, com filtro por ação e por conta.
+
+Cada botão só aparece quando o servidor diz que a conta pode usá-lo
+(`allowedActions`, `capabilities`); o servidor confere de novo em toda
+operação. Mudanças sensíveis abrem "Confirme sua senha" e repetem a mesma
+ação uma vez. Formulários de criação levam uma chave: se a resposta se
+perder, a tela diz "não confirmado" e oferece "Consultar resultado" antes de
+deixar tentar de novo.
+
+### Páginas públicas
+
+- `/convite#t=…`: consulta o convite sem consumir. Conta nova cria a senha
+  (com confirmação); conta existente confirma com a senha atual. O token sai
+  da barra de endereço ao abrir e nunca vai para `localStorage`.
+- `/redefinir-senha#t=…`: senha nova; depois disso, as sessões abertas caem.
+- `/cadastro`: explica que o acesso vem por convite. Sem formulário.
+
+O site e o login trocam "Criar conta" por "Como obter acesso". O backend não
+tem mais `POST /auth/register` (404, sem cookie e sem gravação). O login
+das contas existentes não mudou.
+
+### Como criar uma empresa e convidar o responsável
+
+1. Administração → Estabelecimentos → **Novo estabelecimento**.
+2. Nome, segmento, plano do catálogo, nome e e-mail do responsável.
+3. **Criar e convidar**. A tela mostra se o provedor aceitou o e-mail, se
+   recusou ou se o envio não está configurado.
+4. A pessoa abre o link (24 horas), cria a senha e entra já no
+   estabelecimento. Se o envio falhou, use **Reenviar** em Convites ou na
+   ficha da empresa (emite outro link; o anterior deixa de valer).
+
+### Como dar acesso a outra pessoa
+
+- Mais um dono numa empresa existente: ficha da empresa → **Convidar como
+  dono(a)**. E-mail que já tem conta recebe um convite e aceita com a
+  própria senha.
+- Administração da plataforma (só `MASTER_OWNER`): Convites → **Convidar para
+  a administração**, com o papel e a permissão. Para uma conta que já existe:
+  ficha do usuário → **Administração da plataforma** → **Salvar acesso**.
+- Restringir áreas de um dono: ficha do usuário → vínculo → **Restringir neste
+  estabelecimento**. Tirar o acesso a uma empresa: **Desvincular**.
+- Bloquear, reativar e enviar redefinição de senha: ficha do usuário.
+
+### Testes de navegador sem cadastro público
+
+Os testes que criavam conta por `POST /auth/register` passaram a usar
+`tests/browser/support/contas-de-teste.ts`: grava no banco descartável a
+empresa e um convite com token conhecido e ativa a conta pelo
+`POST /invites/accept` real. A suíte `test:browser:contas` usa a caixa de
+e-mail local (`tests/browser/support/caixa-de-email.mjs`), no formato da API
+do Brevo; o backend dos testes aponta para ela. Nenhuma porta de cadastro
+foi mantida para o CI.
+
+### Publicação da parte B
+
+Sem migration nova. **API antes do web**, do mesmo commit: a API nova não
+tem mais o cadastro; o web novo não oferece mais o cadastro e chama as rotas
+de contas, que só existem a partir da parte A (já com a migration aplicada).
+
 ## Fora do escopo
 
 - Troca do e-mail de login (exige verificação do novo endereço).

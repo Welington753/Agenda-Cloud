@@ -1,6 +1,6 @@
-// Auditoria estática do cadastro REAL (Lote 6C.2): a senha e o token de
-// sessão nunca podem ser persistidos no cliente nem vazar para o estado da
-// demonstração. Varre o código-fonte em vez de montar componentes (não há
+// Auditoria estática das telas que recebem SENHA ou TOKEN de conta (aceite de
+// convite, redefinição de senha e a página do antigo cadastro): nada disso
+// pode ser persistido no cliente nem vazar para o estado da demonstração. Varre o código-fonte em vez de montar componentes (não há
 // testing-library nesta suíte — ver vitest.config.ts), mesma disciplina de
 // `src/lib/site/sem-chamadas-backend.test.ts`.
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 
 const ARQUIVOS_ALVO = [
   ...listarArquivos("src/app/cadastro"),
-  "src/lib/auth/cadastro-validacao.ts",
-  "src/lib/auth/cadastro-fluxo.ts",
+  ...listarArquivos("src/app/convite"),
+  ...listarArquivos("src/app/redefinir-senha"),
+  "src/lib/auth/senha.ts",
+  "src/lib/auth/link-do-email.ts",
+  "src/components/administracao/reautenticacao.tsx",
 ];
 
 function listarArquivos(diretorio: string): string[] {
@@ -30,8 +33,8 @@ function codigoSemComentarios(caminho: string): string {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-describe("cadastro real nunca persiste credencial no cliente", () => {
-  it("varreu a tela de cadastro e seus módulos (a lista de alvos não está errada)", () => {
+describe("telas de senha e convite nunca persistem credencial no cliente", () => {
+  it("varreu as telas de convite, redefinição e cadastro (a lista de alvos não está errada)", () => {
     expect(ARQUIVOS_ALVO.length).toBeGreaterThanOrEqual(4);
   });
 

@@ -13,9 +13,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import * as authApi from "@/lib/api/auth-api";
-import type { DadosCadastroReal, ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
+import type { ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
 import { lerComRecuperacao } from "@/lib/api/leitura-com-recuperacao";
-import { decidirFluxoCadastro, type ResultadoFluxoCadastro } from "./cadastro-fluxo";
 import { LIMIAR_RETORNO_MS, aplicarVerificacao, rotaDispensaSessao, type EstadoConexao } from "./conexao";
 import {
   podeAplicarResultado,
@@ -39,12 +38,10 @@ interface RealAuthContextValue {
    * desmonta a tela autenticada. */
   conexao: EstadoConexao;
   login: (email: string, senha: string) => Promise<ResultadoAutenticacaoReal<SessaoRealContexto>>;
-  /** POST /auth/register e, só se ele confirmar, restauração do contexto por
-   * /auth/me. Nunca reenvia o cadastro por conta própria. */
-  cadastrar: (dados: DadosCadastroReal) => Promise<ResultadoFluxoCadastro>;
-  /** Repete SÓ o /auth/me — recuperação do estado `sessao_pendente` sem
-   * reenviar POST /auth/register. */
-  restaurarSessao: () => Promise<ResultadoFluxoCadastro>;
+  /** Relê SÓ o /auth/me, depois de outra rota ter aberto a sessão (aceite de
+   * convite). Devolve a sessão restaurada, ou `null` se ela ainda não veio:
+   * nunca repete o pedido que abriu a sessão. */
+  restaurarSessao: () => Promise<SessaoRealContexto | null>;
   logout: () => Promise<ResultadoLogout>;
   /** "Tentar novamente": refaz a leitura com recuperação. Ignorado com uma
    * leitura já em andamento. */
@@ -94,7 +91,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
   // - `verificacao`: com recuperação, mas com a tela já decidida (volta ao
   //   aplicativo, conexão de volta). Nunca troca a tela por carregamento ou
   //   falha (ver `aplicarVerificacao`);
-  // - `unica`: UMA leitura, sem repetição (logo depois do cadastro).
+  // - `unica`: UMA leitura, sem repetição (logo depois do aceite de convite).
   // Devolve o estado efetivamente aplicado, ou `null` quando a resposta
   // chegou tarde demais (geração mudou ou leitura cancelada) e foi
   // descartada — quem chamou precisa saber a diferença entre "sessão
@@ -214,28 +211,12 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     return resultado;
   }, [cancelarLeitura]);
 
-  // `cadastrar` nunca repete o POST sozinho: uma única tentativa por chamada.
-  // Se o register confirmar (201) mas o /auth/me falhar, o resultado é
-  // `sessao_pendente` — a conta JÁ existe, e a recuperação correta é
-  // `restaurarSessao` (só /auth/me), nunca outro cadastro.
-  const cadastrar = useCallback(
-    async (dados: DadosCadastroReal): Promise<ResultadoFluxoCadastro> => {
-      const resultado = await authApi.cadastrar(dados);
-      if (!resultado.ok) return decidirFluxoCadastro(false, resultado.falha, null);
-
-      // Cadastro confirmado: a partir daqui o cookie de sessão já existe no
-      // navegador, então qualquer /auth/me em voo de antes está obsoleto.
-      geracaoRef.current += 1;
-      const estadoFinal = await carregarSessao("unica");
-      return decidirFluxoCadastro(true, null, estadoFinal);
-    },
-    [carregarSessao],
-  );
-
-  const restaurarSessao = useCallback(async (): Promise<ResultadoFluxoCadastro> => {
+  // O cookie novo já existe no navegador: qualquer /auth/me em voo de antes
+  // está obsoleto (nova geração).
+  const restaurarSessao = useCallback(async (): Promise<SessaoRealContexto | null> => {
     geracaoRef.current += 1;
     const estadoFinal = await carregarSessao("unica");
-    return decidirFluxoCadastro(true, null, estadoFinal);
+    return estadoFinal?.status === "autenticado" ? estadoFinal.sessao : null;
   }, [carregarSessao]);
 
   const logout = useCallback(async (): Promise<ResultadoLogout> => {
@@ -266,7 +247,7 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <RealAuthContext.Provider
-      value={{ estado, conexao, login, cadastrar, restaurarSessao, logout, recarregar, selecionarTenantAtivo }}
+      value={{ estado, conexao, login, restaurarSessao, logout, recarregar, selecionarTenantAtivo }}
     >
       {children}
     </RealAuthContext.Provider>

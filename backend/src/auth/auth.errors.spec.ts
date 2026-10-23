@@ -1,23 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError } from './auth.errors.js';
-
-describe('EmailAlreadyInUseError', () => {
-  it('é uma instância de Error com mensagem própria', () => {
-    const error = new EmailAlreadyInUseError();
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe('EmailAlreadyInUseError');
-    expect(error.message.length).toBeGreaterThan(0);
-  });
-});
-
-describe('PlanUnavailableError', () => {
-  it('é uma instância de Error com mensagem própria', () => {
-    const error = new PlanUnavailableError();
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe('PlanUnavailableError');
-    expect(error.message.length).toBeGreaterThan(0);
-  });
-});
+import { InvalidCredentialsError } from './auth.errors.js';
 
 describe('InvalidCredentialsError', () => {
   it('é uma instância de Error com mensagem própria e genérica', () => {

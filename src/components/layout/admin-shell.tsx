@@ -121,7 +121,7 @@ export function AdminShell({ itens, subtitulo, children }: AdminShellProps) {
         >
           Demonstração: os dados são fictícios e ficam só neste navegador.{" "}
           <Link href="/cadastro" className="font-semibold text-accent hover:underline">
-            Criar uma conta real
+            Como obter uma conta real
           </Link>
         </p>
         {children}

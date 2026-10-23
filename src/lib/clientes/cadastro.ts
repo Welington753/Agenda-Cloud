@@ -5,7 +5,7 @@
 // a autoridade continua sendo o servidor. Os campos são exatamente os do DTO
 // — nome, WhatsApp e e-mail opcional — nenhum inventado.
 import type { DadosCadastroCliente, FalhaClientesReal } from "@/lib/api/consumers-api";
-import { contarDigitos } from "@/lib/auth/cadastro-validacao";
+import { contarDigitos } from "@/lib/auth/senha";
 
 /** Espelha `name: z.string().trim().min(1).max(120)`. */
 const NOME_MAX = 120;

@@ -23,6 +23,7 @@
 //
 // Orçamento: 1 cadastro e 1 login (limites de 5 por IP); 3 pedidos públicos.
 // Invocação própria (`npm run test:browser:aparencia`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { WEEKDAY_DA_DATA, DATA } from "./data-de-teste";
 
@@ -143,10 +144,7 @@ test("aparência: aparelho, escolha salva sem lampejo, demonstração clara, des
   // Nome longo de propósito: não pode empurrar a página para o lado em 360 px.
   const estabelecimento = `Espaço de Bem-Estar e Terapias Integrativas Maria das Graças ${sufixo}`;
   const email = `aparencia-${sufixo}@example.test`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: { ownerName: "Dona Aparência", businessName: estabelecimento, email, phone: "11977770003", password: SENHA },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await contaPorConvite(request, { ownerName: "Dona Aparência", businessName: estabelecimento, email, phone: "11977770003", password: SENHA });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(SENHA);
@@ -313,10 +311,7 @@ test("menu da conta: sino com pendentes reais, notificações deste aparelho, ap
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `menu-${sufixo}@example.test`;
   const estabelecimento = `Studio Menu ${sufixo}`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: { ownerName: "Dona Menu de Teste", businessName: estabelecimento, email, phone: "11977770004", password: SENHA },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await contaPorConvite(request, { ownerName: "Dona Menu de Teste", businessName: estabelecimento, email, phone: "11977770004", password: SENHA });
   // A sessão do cadastro (cookie do `request`) vira a do navegador.
   const contexto = await browser.newContext({ storageState: await request.storageState(), viewport: { width: 1280, height: 800 } });
   // Navegador novo: permissão de notificação ainda não decidida (o Chromium

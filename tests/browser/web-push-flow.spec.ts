@@ -18,6 +18,7 @@
 //
 // Orçamento: 2 cadastros e 3 logins (limites de 5 por IP); 3 pedidos públicos.
 // Invocação própria (`npm run test:browser:push`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, request as novoContextoApi, test, type APIRequestContext, type BrowserContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
@@ -58,8 +59,7 @@ async function cadastrar(api: APIRequestContext, rotulo: string, sufixo: string)
     phone: "11977775555",
     password: SENHA,
   };
-  const r = await api.post(`${BACKEND_URL}/auth/register`, { data: dados });
-  expect(r.status(), await r.text()).toBe(201);
+  await contaPorConvite(api, dados);
   const me = await chamar<{ user: { id: string }; activeContext: { tenantId: string } }>(api, "GET", "/auth/me");
   const base = `/tenants/${me.activeContext.tenantId}`;
   const servico = await chamar<{ service: { id: string } }>(api, "POST", `${base}/services`, {

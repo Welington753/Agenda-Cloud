@@ -1,6 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import { LinkBotao } from "@/components/ui/button";
-import { HREF_CRIAR_CONTA, HREF_DEMONSTRACAO } from "@/lib/site/conteudo-comercial";
+import { HREF_COMO_OBTER_ACESSO, HREF_DEMONSTRACAO } from "@/lib/site/conteudo-comercial";
 
 export function CtaFinal() {
   return (
@@ -11,8 +11,8 @@ export function CtaFinal() {
           Crie sua conta e comece a usar a agenda real, ou veja antes uma demonstração com dados fictícios.
         </p>
         <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkBotao href={HREF_CRIAR_CONTA} tamanho="lg">
-            Criar conta
+          <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="lg">
+            Como obter acesso
           </LinkBotao>
           <LinkBotao href={HREF_DEMONSTRACAO} tamanho="lg" variante="secundaria" className="border-white/40 text-white hover:bg-white/10">
             Ver demonstração

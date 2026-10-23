@@ -17,6 +17,8 @@ import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import { EstadoLeitura } from "./estado-leitura";
+import { AbasAdministracao } from "./abas-administracao";
+import { ReautenticacaoProvider } from "./reautenticacao";
 
 export function LinkAdministracao() {
   const { estado } = useAcessoPlataforma();
@@ -84,10 +86,11 @@ export function PortaoAdministracao({ children }: { children: ReactNode }) {
     conteudo = <EstadoLeitura estado={{ status: "erro", motivo: "permissao" }} recarregar={recarregar} />;
   else
     conteudo = (
-      <>
+      <ReautenticacaoProvider>
         <FaixaAdministracao />
+        <AbasAdministracao />
         {children}
-      </>
+      </ReautenticacaoProvider>
     );
   return <div className="mx-auto w-full max-w-6xl space-y-6">{conteudo}</div>;
 }

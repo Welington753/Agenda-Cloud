@@ -10,12 +10,12 @@
 //  - o login sem destino vai para a Visão geral (o `next` seguro é provado em
 //    visao-geral-flow.spec.ts, que tem o próprio orçamento de login).
 //
-// Orçamento de POST /auth/register: este arquivo gasta 1 e roda na mesma
-// invocação de services-flow.spec.ts (3) — total 4 de 5 (ver
+// Orçamento de POST /invites/accept (fixture de contas): este arquivo gasta 1 e roda na mesma
+// invocação de services-flow.spec.ts (3) — total 4 de 10 (ver
 // test:browser:services no package.json).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Page } from "@playwright/test";
 
-const BACKEND_URL = "http://localhost:3001";
 const SENHA = "senha-de-navegacao-e2e-123";
 const CELULAR = { width: 390, height: 844 };
 
@@ -33,11 +33,11 @@ async function semRolagemHorizontal(page: Page) {
 }
 
 test.describe("entrada e navegação do piloto", () => {
-  test("página inicial: Criar conta, Entrar e a demonstração identificada", async ({ page }) => {
+  test("página inicial: Como obter acesso, Entrar e a demonstração identificada", async ({ page }) => {
     const conteudo = page.getByRole("main");
 
     await page.goto("/");
-    await conteudo.getByRole("link", { name: "Criar conta" }).first().click();
+    await conteudo.getByRole("link", { name: "Como obter acesso" }).first().click();
     await expect(page).toHaveURL(/\/cadastro$/);
 
     await page.goto("/");
@@ -50,14 +50,15 @@ test.describe("entrada e navegação do piloto", () => {
     await expect(page).toHaveURL(/\/onboarding$/);
 
     // Celular: "Entrar" fica visível sem abrir o menu; o menu traz
-    // "Criar conta" e a demonstração com o aviso de dados fictícios.
+    // "Como obter acesso" e a demonstração com o aviso de dados fictícios.
     await page.setViewportSize(CELULAR);
     await page.goto("/");
     const cabecalho = page.getByRole("banner");
     await expect(cabecalho.getByRole("link", { name: "Entrar" })).toBeInViewport();
     await cabecalho.getByRole("button", { name: "Abrir menu" }).click();
     const menu = page.getByRole("navigation", { name: "Navegação principal (celular)" });
-    await expect(menu.getByRole("link", { name: "Criar conta" })).toBeVisible();
+    await expect(menu.getByRole("link", { name: "Como obter acesso" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Criar conta" })).toHaveCount(0);
     await expect(menu.getByRole("link", { name: "Ver demonstração (dados fictícios)" })).toBeVisible();
     await semRolagemHorizontal(page);
   });
@@ -75,16 +76,13 @@ test.describe("entrada e navegação do piloto", () => {
     const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const email = `navegacao-${sufixo}@example.test`;
     const estabelecimento = `Estúdio Navegação ${sufixo}`;
-    const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-      data: {
+    await contaPorConvite(request, {
         ownerName: "Dona Navegação",
         businessName: estabelecimento,
         email,
         phone: "11977775555",
         password: SENHA,
-      },
-    });
-    expect(cadastro.status(), await cadastro.text()).toBe(201);
+      });
 
     // Entrada pelo caminho real da página inicial.
     await page.goto("/");

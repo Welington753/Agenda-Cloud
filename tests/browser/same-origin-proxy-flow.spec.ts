@@ -4,7 +4,7 @@
 // `/agenda_api` chama a API real (NestJS, `NODE_ENV=production`).
 //
 // Prova, sem nenhum recurso externo:
-// - cadastro, login, restauração de sessão, operação autenticada e logout
+// - ativação por convite, login, restauração de sessão, operação autenticada e logout
 //   pelo proxy, sem nenhuma requisição do navegador à porta da API;
 // - cookie de produção (`HttpOnly`, `Secure`, `SameSite=Lax`, sem `Domain`)
 //   gravado na origem do frontend, e removido no logout;
@@ -16,6 +16,7 @@
 //
 // O que só a hospedagem real prova (borda do Render, certificado público,
 // hibernação do plano gratuito) fica no runbook, seção 9.
+import { conectarBancoDeTeste, prepararConviteDeDono } from "./support/contas-de-teste";
 import https from "node:https";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -82,31 +83,41 @@ function sufixo(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function cadastrarPelaPagina(page: Page): Promise<string> {
+/** O cadastro público foi fechado: a conta nasce de um convite gravado pela
+ * fixture no banco descartável e é ATIVADA pela página, pelo proxy da mesma
+ * origem (`/agenda_api/invites/accept`), como faria quem recebe o e-mail. */
+async function ativarPelaPagina(page: Page): Promise<string> {
   const email = `proxy-${sufixo()}@example.test`;
+  const db = await conectarBancoDeTeste();
+  let token: string;
+  try {
+    ({ token } = await prepararConviteDeDono(db, {
+      ownerName: "Maria Proxy E2E",
+      businessName: `Estúdio Proxy ${Date.now()}`,
+      email,
+      phone: "11999998888",
+      password: SENHA,
+    }));
+  } finally {
+    await db.end();
+  }
   const status = await page.evaluate(
-    async ({ email, senha }) => {
-      const r = await fetch("/agenda_api/auth/register", {
+    async ({ token, senha }) => {
+      const r = await fetch("/agenda_api/invites/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ownerName: "Maria Proxy E2E",
-          businessName: `Estúdio Proxy ${Date.now()}`,
-          email,
-          phone: "11999998888",
-          password: senha,
-        }),
+        body: JSON.stringify({ token, password: senha }),
       });
       return r.status;
     },
-    { email, senha: SENHA },
+    { token, senha: SENHA },
   );
-  expect(status).toBe(201);
+  expect(status).toBe(200);
   return email;
 }
 
 test.describe("piloto na mesma origem, em HTTPS isolado", () => {
-  test("cadastro, login, sessão restaurada, operação autenticada e logout, só pelo proxy", async ({
+  test("ativação por convite, login, sessão restaurada, operação autenticada e logout, só pelo proxy", async ({
     page,
     context,
   }) => {
@@ -116,9 +127,9 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     });
 
     await page.goto("/login");
-    const email = await cadastrarPelaPagina(page);
+    const email = await ativarPelaPagina(page);
 
-    // O cadastro já abre sessão; sai para provar o login pela tela.
+    // A ativação já abre sessão; sai para provar o login pela tela.
     await context.clearCookies();
     await page.goto("/login");
     await page.getByLabel("E-mail").fill(email);

@@ -1,7 +1,7 @@
 "use client";
 
 // Navegação do site comercial. Três destinos, sempre com o mesmo nome:
-// "Entrar" e "Criar conta" levam à conta REAL; "Ver demonstração" leva à
+// "Entrar" e "Como obter acesso" levam à conta REAL; "Ver demonstração" leva à
 // demonstração local, com dados fictícios. O site não chama o backend (ver
 // sem-chamadas-backend.test.ts): são só links.
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { Menu, X } from "lucide-react";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { NOME_PRODUTO } from "@/lib/config";
 import {
-  HREF_CRIAR_CONTA,
+  HREF_COMO_OBTER_ACESSO,
   HREF_DEMONSTRACAO,
   HREF_ENTRAR,
   NAV_SITE,
@@ -41,8 +41,8 @@ export function SiteNav() {
           <Link href={HREF_ENTRAR} className="text-sm font-semibold text-ink-soft hover:text-ink">
             Entrar
           </Link>
-          <LinkBotao href={HREF_CRIAR_CONTA} tamanho="sm">
-            Criar conta
+          <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="sm">
+            Como obter acesso
           </LinkBotao>
         </div>
 
@@ -85,8 +85,8 @@ export function SiteNav() {
             ))}
           </ul>
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-            <LinkBotao href={HREF_CRIAR_CONTA} tamanho="sm" onClick={() => setMenuAberto(false)}>
-              Criar conta
+            <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="sm" onClick={() => setMenuAberto(false)}>
+              Como obter acesso
             </LinkBotao>
             <Link
               href={HREF_DEMONSTRACAO}

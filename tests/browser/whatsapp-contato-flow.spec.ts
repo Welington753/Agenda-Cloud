@@ -11,8 +11,9 @@
 // telefone inválido é simulado alterando só o campo `whatsapp` da resposta
 // real da busca (o backend recusa gravar um telefone inválido).
 //
-// Orçamento de POST /auth/register: 1 de 5. Invocação própria
+// Orçamento de POST /invites/accept (fixture de contas): 1 de 10. Invocação própria
 // (`npm run test:browser:whatsapp`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Page } from "@playwright/test";
 import { DATA, WEEKDAY_DA_DATA, instanteLocalDe } from "./data-de-teste";
 
@@ -65,10 +66,7 @@ test("WhatsApp: links certos, texto codificado e nenhuma mudança na reserva", a
   const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `whatsapp-${sufixo}@example.test`;
   const estabelecimento = `Estúdio Ana & Bia ${sufixo}`;
-  const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-    data: { ownerName: "Dona Contato", businessName: estabelecimento, email, phone: "11977770001", password: SENHA },
-  });
-  expect(cadastro.status(), await cadastro.text()).toBe(201);
+  await contaPorConvite(request, { ownerName: "Dona Contato", businessName: estabelecimento, email, phone: "11977770001", password: SENHA });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(SENHA);

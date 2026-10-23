@@ -1,4 +1,4 @@
-// Rate limit de login e cadastro contra cabeçalhos forjados pelo cliente
+// Rate limit de login contra cabeçalhos forjados pelo cliente
 // (ver config/client-ip.ts). Requisições reais por HTTP (supertest): o
 // endereço da conexão é sempre o mesmo, o que muda é só o que o cliente
 // escreve nos cabeçalhos.
@@ -7,11 +7,9 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { ClientIpSource } from '../config/client-ip.js';
 import { LOGIN_RATE_LIMIT_MAX, createLoginRateLimiter } from './login-rate-limit.js';
-import { REGISTER_RATE_LIMIT_MAX, createRegisterRateLimiter } from './register-rate-limit.js';
 
 const LIMITERS = [
   { nome: 'login', rota: '/auth/login', criar: createLoginRateLimiter, max: LOGIN_RATE_LIMIT_MAX },
-  { nome: 'cadastro', rota: '/auth/register', criar: createRegisterRateLimiter, max: REGISTER_RATE_LIMIT_MAX },
 ];
 
 function buildApp(rota: string, limiter: express.RequestHandler) {

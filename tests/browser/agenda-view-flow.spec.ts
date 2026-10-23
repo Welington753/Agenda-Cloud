@@ -9,7 +9,7 @@
 // cancelar) continuam provadas em appointments-flow.spec.ts; aqui o que se
 // prova é o que a pessoa VÊ e que a tela continua falando com a API real.
 //
-// Orçamento de POST /auth/register: este arquivo gasta 1 (o limite real é 5
+// Orçamento de POST /invites/accept (fixture de contas): este arquivo gasta 1 (o limite real é 5
 // por 15 min por IP) e roda em invocação SEPARADA do Playwright, com backend
 // novo (ver .github/workflows/test-frontend-auth.yml). O limite nunca é
 // afrouxado para o teste passar.
@@ -21,6 +21,7 @@
 //
 // Imagens: cada estado é fotografado no computador e no celular, publicadas
 // pelo CI como artefato (`agenda-*.png`).
+import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Page } from "@playwright/test";
 import {
   DATA,
@@ -117,16 +118,13 @@ test.describe("visualização da agenda real", () => {
     // ------------------------------------------------------------- fixture
     const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const email = `agenda-visao-${sufixo}@example.test`;
-    const cadastro = await request.post(`${BACKEND_URL}/auth/register`, {
-      data: {
+    const conta = await contaPorConvite(request, {
         ownerName: "Dona da Agenda",
         businessName: `Estúdio Agenda ${sufixo}`,
         email,
         phone: "11977774444",
         password: SENHA_TESTE,
-      },
-    });
-    expect(cadastro.status(), await cadastro.text()).toBe(201);
+      });
 
     await page.goto("/login");
     await page.getByLabel("E-mail").fill(email);
@@ -138,9 +136,9 @@ test.describe("visualização da agenda real", () => {
       activeContext: { tenantId: string; trial: { trialStartAt: string } };
     }>(page, "/auth/me");
     const tenantId = me.corpo.activeContext.tenantId;
-    // Spec, navegador e backend (`trialStartAt` = `new Date()` do cadastro)
+    // Spec, navegador e backend (instante do aceite = `new Date()` da API)
     // veem o mesmo "agora".
-    conferirRelogioDoBackend(me.corpo.activeContext.trial.trialStartAt);
+    conferirRelogioDoBackend(conta.ativadaEm);
     await conferirRelogioDoNavegador(page);
     const base = `/tenants/${tenantId}`;
 
