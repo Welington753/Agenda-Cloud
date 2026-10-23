@@ -1,14 +1,14 @@
 "use client";
 
 // Moldura da página pública de agendamento: cabeçalho do estabelecimento
-// (iniciais, já que o contrato público não traz logo), rodapé com a
-// aparência e o indicador de etapas. Cores só por tokens (globals.css).
+// (iniciais, já que o contrato público não traz logo), rodapé e o indicador
+// de etapas. Cores só por tokens (globals.css); a aparência é sempre a do
+// aparelho, sem seletor (ver layout.tsx).
 import { forwardRef, type ReactNode } from "react";
 import clsx from "clsx";
 import { ArrowLeft } from "lucide-react";
 import { iniciaisDoEstabelecimento } from "@/lib/agendamento-publico/agendamento-publico";
 import { ETAPAS, type Etapa } from "@/lib/agendamento-publico/fluxo-publico";
-import { SeletorAparencia } from "@/components/aparencia/aparencia";
 import { NOME_PRODUTO } from "@/lib/config";
 
 export function Moldura({
@@ -39,7 +39,6 @@ export function Moldura({
         {children}
       </main>
       <footer className="mx-auto w-full max-w-2xl space-y-3 px-4 pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-        <SeletorAparencia className="max-w-xs" />
         <p className="text-xs text-ink-soft">Agendamento por {NOME_PRODUTO}</p>
       </footer>
     </div>

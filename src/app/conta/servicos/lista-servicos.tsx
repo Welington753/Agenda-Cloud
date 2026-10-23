@@ -11,9 +11,11 @@
 // direta (sem confirmação): reverter uma desativação não é destrutivo, então
 // não exige o mesmo passo extra.
 import clsx from "clsx";
-import { Ban, Clock, MapPin, Pencil, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { Ban, Clock, Globe, MapPin, Pencil, RotateCcw } from "lucide-react";
 import type { ServicoReal } from "@/lib/api/services-api";
 import { formatarPrecoServico } from "@/lib/servicos/dinheiro";
+import type { MotivoForaDoOnline } from "@/lib/servicos/agendamento-online";
 import { formatarDuracao } from "@/lib/format";
 import { Badge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
@@ -26,6 +28,8 @@ const ROTULO_MODALIDADE: Record<ServicoReal["modality"], string> = {
 
 interface ListaServicosProps {
   servicos: ServicoReal[];
+  /** Serviços ativos que o cliente ainda não vê no agendamento online. */
+  motivosForaDoOnline: ReadonlyMap<string, MotivoForaDoOnline>;
   gravando: boolean;
   confirmando: ServicoReal | null;
   /** Id do serviço sendo reativado agora, para trocar só o rótulo daquele
@@ -40,6 +44,7 @@ interface ListaServicosProps {
 
 export function ListaServicos({
   servicos,
+  motivosForaDoOnline,
   gravando,
   confirmando,
   reativandoId,
@@ -95,6 +100,7 @@ export function ListaServicos({
                   <MapPin size={12} aria-hidden="true" />
                   {ROTULO_MODALIDADE[servico.modality]}
                 </p>
+                <AvisoForaDoOnline motivo={motivosForaDoOnline.get(servico.id)} />
               </div>
 
               <div className="border-t border-border px-4 py-3 sm:px-5">
@@ -176,5 +182,33 @@ export function ListaServicos({
         );
       })}
     </ul>
+  );
+}
+
+/** O que falta para o serviço aparecer no agendamento online. Só explica e
+ * aponta o caminho: nada é ligado nem vinculado daqui. */
+function AvisoForaDoOnline({ motivo }: { motivo: MotivoForaDoOnline | undefined }) {
+  if (!motivo) return null;
+  return (
+    <p
+      data-testid="servico-fora-do-online"
+      className="flex items-start gap-2 rounded-[var(--radius-control)] border border-warning bg-warning-soft p-2.5 text-xs text-ink"
+    >
+      <Globe size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+      {motivo === "sem_profissional" ? (
+        <span>
+          <strong>Não aparece no agendamento online:</strong> nenhum profissional ativo realiza este serviço.
+          Marque-o em um profissional, em{" "}
+          <Link href="/conta/profissionais" className="font-semibold underline">
+            Profissionais
+          </Link>
+          .
+        </span>
+      ) : (
+        <span>
+          <strong>Não aparece no agendamento online:</strong> este serviço está desligado no agendamento online.
+        </span>
+      )}
+    </p>
   );
 }

@@ -2,9 +2,12 @@
 // notificações — navegador real, backend real e PostgreSQL descartável.
 //
 // O QUE ESTE TESTE PROVA:
-// - primeira visita segue o aparelho; a escolha manual fica salva neste
-//   navegador, vale para o agendamento público E para a área da conta, e é
-//   aplicada ANTES da primeira pintura (sem lampejo, sem erro de hidratação);
+// - o agendamento público segue SEMPRE o aparelho, sem seletor, mesmo com
+//   uma escolha manual salva pelo dono neste navegador — e acompanha a
+//   mudança do aparelho com a página aberta;
+// - a escolha manual da área privada fica salva, é aplicada ANTES da
+//   primeira pintura (sem lampejo, sem erro de hidratação) e continua intacta
+//   depois de passar pela página pública;
 // - a demonstração não é afetada: continua clara mesmo com "Escuro" salvo;
 // - horário escolhido destacado nos dois temas (fundo de destaque, ícone e
 //   aria-pressed), foco visível e contraste mínimo do texto;
@@ -26,6 +29,8 @@ import { WEEKDAY_DA_DATA, DATA } from "./data-de-teste";
 const BACKEND_URL = "http://localhost:3001";
 const SENHA = "senha-da-aparencia-e2e-123";
 const LARGURAS = [360, 390, 1280] as const;
+/** Mesma chave de lib/aparencia/tema.ts (CHAVE_APARENCIA). */
+const CHAVE_APARENCIA = "agenda-cloud:aparencia";
 const rotuloDoDia = `dom ${DATA.slice(8, 10)}/${DATA.slice(5, 7)}`;
 
 // Cores de fundo (globals.css): papel claro e papel escuro.
@@ -112,6 +117,8 @@ async function escolherAparencia(p: Page, rotulo: "Claro" | "Escuro" | "Seguir a
 /** Serviço → dia → horário (o informado, ou o primeiro livre). */
 async function ateOHorario(p: Page, servico: RegExp, hora?: string) {
   await p.getByTestId("lista-servicos-publicos").getByRole("button", { name: servico }).click();
+  // Profissional único: a etapa aparece com ele pré-selecionado.
+  await p.getByTestId("continuar-profissional").click();
   await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
   const lista = p.getByTestId("lista-horarios-publicos");
   await (hora ? lista.getByRole("button", { name: hora, exact: true }) : lista.getByRole("button").first()).click();
@@ -180,44 +187,51 @@ test("aparência: aparelho, escolha salva sem lampejo, demonstração clara, des
     await expect(v.pagina.getByRole("heading", { level: 1 })).toHaveText(estabelecimento);
     expect(await temaNaPrimeiraPintura(v.pagina)).toBe("sistema");
     expect(await fundo(v.pagina)).toBe(esquema === "dark" ? PAPEL_ESCURO : PAPEL_CLARO);
-    await expect(v.pagina.getByTestId("seletor-aparencia").getByRole("radio", { name: "Seguir aparelho" })).toBeChecked();
+    // Sem seletor de aparência na página do cliente.
+    await expect(v.pagina.getByTestId("seletor-aparencia")).toHaveCount(0);
     expect(erros).toEqual([]);
     await v.contexto.close();
   }
 
-  // ------------------------------------------- escolha manual, salva, sem lampejo
+  // ------------------------------------------- escolha manual do dono não força o público
+  // Mesmo navegador do dono, aparelho CLARO, "Escuro" salvo na área privada
+  // (o mesmo valor que o menu da conta grava).
   const cliente = await visitante(browser, { largura: 390, esquema: "light" });
   const p = cliente.pagina;
   const erros = errosDeHidratacao(p);
-  await p.goto(link);
-  await escolherAparencia(p, "Escuro");
-  expect(await fundo(p)).toBe(PAPEL_ESCURO);
+  await p.goto("/login");
+  await p.evaluate((chave) => localStorage.setItem(chave, "escuro"), CHAVE_APARENCIA);
   await p.reload();
-  await expect(p.getByRole("heading", { level: 1 })).toBeVisible();
-  // O script do <head> aplicou "escuro" antes de o <body> existir.
+  // Área privada: o script do <head> aplicou "escuro" antes de o <body> existir.
   expect(await temaNaPrimeiraPintura(p)).toBe("escuro");
   expect(await fundo(p)).toBe(PAPEL_ESCURO);
-  await expect(p.getByTestId("seletor-aparencia").getByRole("radio", { name: "Escuro" })).toBeChecked();
-  expect(erros, "sem erro de hidratação").toEqual([]);
 
-  // Seguir aparelho acompanha a mudança do aparelho com a página aberta.
-  await escolherAparencia(p, "Seguir aparelho");
+  await p.goto(link);
+  await expect(p.getByRole("heading", { level: 1 })).toBeVisible();
+  // A escolha continua no <html> e no storage, mas o público segue o aparelho.
+  expect(await temaNaPrimeiraPintura(p)).toBe("escuro");
   expect(await fundo(p)).toBe(PAPEL_CLARO);
+  expect(await p.evaluate((chave) => localStorage.getItem(chave), CHAVE_APARENCIA)).toBe("escuro");
+  // Aparelho muda com a página aberta: a página acompanha.
   await p.emulateMedia({ colorScheme: "dark" });
   expect(await fundo(p)).toBe(PAPEL_ESCURO);
   await p.emulateMedia({ colorScheme: "light" });
-  await escolherAparencia(p, "Escuro");
+  expect(await fundo(p)).toBe(PAPEL_CLARO);
+  expect(erros, "sem erro de hidratação").toEqual([]);
+
+  // De volta à área privada, a escolha do dono continua valendo.
+  await p.goto("/login");
+  expect(await fundo(p)).toBe(PAPEL_ESCURO);
+  expect(await p.evaluate((chave) => localStorage.getItem(chave), CHAVE_APARENCIA)).toBe("escuro");
 
   // A demonstração não é afetada pela escolha salva.
   await p.goto("/");
   expect(await fundo(p)).toBe(PAPEL_CLARO);
-  await p.goto(link);
-  expect(await fundo(p)).toBe(PAPEL_ESCURO);
 
-  // ------------------------------------------- destaque, foco e contraste
+  // ------------------------------------------- destaque, foco e contraste (aparelho escuro e claro)
   for (const tema of ["Escuro", "Claro"] as const) {
+    await p.emulateMedia({ colorScheme: tema === "Escuro" ? "dark" : "light" });
     await p.goto(link);
-    await escolherAparencia(p, tema);
     // Foco visível pelo teclado no cartão de serviço.
     const cartao = p.getByTestId("lista-servicos-publicos").getByRole("button").first();
     await cartao.focus();
@@ -251,6 +265,11 @@ test("aparência: aparelho, escolha salva sem lampejo, demonstração clara, des
       await expect(q.getByRole("heading", { level: 1 })).toBeVisible();
       await semRolagemHorizontal(q);
       await q.screenshot({ path: test.info().outputPath(`aparencia-${tema}-${largura}-1-servico.png`), fullPage: true });
+      await q.getByTestId("lista-servicos-publicos").getByRole("button", { name: /Massagem relaxante/ }).click();
+      await expect(q.getByTestId("profissional-unico")).toContainText("Graça Terapeuta");
+      await semRolagemHorizontal(q);
+      await q.screenshot({ path: test.info().outputPath(`aparencia-${tema}-${largura}-1b-profissional.png`), fullPage: true });
+      await q.getByTestId("voltar-etapa").click();
       await ateOHorario(q, /Massagem relaxante/);
       await semRolagemHorizontal(q);
       // A barra presa ao fim não cobre o último horário: rolando até o fim, o
@@ -408,9 +427,17 @@ test("menu da conta: sino com pendentes reais, notificações deste aparelho, ap
   expect(await fundo(page)).toBe(PAPEL_ESCURO);
   expect(await contraste(page, '[data-testid="menu-conta"] [data-testid="menu-pendentes"]')).toBeGreaterThanOrEqual(4.5);
   await page.screenshot({ path: test.info().outputPath("menu-conta-escuro-1280.png") });
+  // O link público, aberto pelo dono com "Escuro" salvo e aparelho claro:
+  // a página do cliente segue o aparelho; a escolha dele fica intacta.
   await page.goto(`/agendar/${corpo.settings.slug}`);
+  await expect(page.getByTestId("lista-servicos-publicos")).toBeVisible();
+  expect(await fundo(page)).toBe(PAPEL_CLARO);
+  await expect(page.getByTestId("seletor-aparencia")).toHaveCount(0);
+  await page.goto("/conta/visao-geral");
   expect(await fundo(page)).toBe(PAPEL_ESCURO);
-  await expect(page.getByTestId("seletor-aparencia").getByRole("radio", { name: "Escuro" })).toBeChecked();
+  await page.getByTestId("abrir-menu-conta").click();
+  await expect(menu.getByTestId("seletor-aparencia").getByRole("radio", { name: "Escuro" })).toBeChecked();
+  await page.keyboard.press("Escape");
 
   // ------------------------------------------- "Gerenciar" leva aos controles que já existiam
   await page.goto("/conta/visao-geral");

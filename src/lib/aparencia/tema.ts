@@ -2,9 +2,10 @@
 // tema.test.ts.
 //
 // ONDE VALE: só nas páginas REAIS que se declaram adaptáveis
-// (<MarcadorAparencia />: agendamento público, /conta, login, cadastro e
-// administração). A demonstração (/painel, /master, /[slug], site) continua
-// sempre clara: as cores dela não foram revisadas para o escuro.
+// (<MarcadorAparencia />: /conta, login, cadastro e administração). O
+// agendamento público (<MarcadorAparelho />) segue sempre o aparelho do
+// cliente e ignora esta escolha. A demonstração (/painel, /master, /[slug],
+// site) continua sempre clara: as cores dela não foram revisadas para o escuro.
 //
 // COMO É APLICADA: o `<html>` carrega `data-tema` = "claro" | "escuro" |
 // "sistema". Em "sistema" é o próprio CSS que segue o aparelho

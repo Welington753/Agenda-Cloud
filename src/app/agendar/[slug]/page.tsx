@@ -57,7 +57,7 @@ import {
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CartaoProfissional } from "./escolhas";
+import { EtapaProfissional } from "./escolhas";
 import { EtapaDados, EtapaHorario, EtapaRevisar, EtapaServico, FalhaDoEnvio } from "./etapas";
 import { CabecalhoEtapa, Moldura, Progresso } from "./moldura";
 import { Recibo } from "./recibo";
@@ -249,7 +249,7 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
         <CabecalhoEtapa
           ref={tituloRef}
           titulo={TITULO_DA_ETAPA[etapa]}
-          aoVoltar={etapa > ETAPA_SERVICO ? () => irPara(etapaAnterior(pagina, escolhas, etapa)) : null}
+          aoVoltar={etapa > ETAPA_SERVICO ? () => irPara(etapaAnterior(etapa)) : null}
           travado={travado}
           servico={etapa > ETAPA_SERVICO && etapa < ETAPA_REVISAR ? (servico?.name ?? null) : null}
           profissional={etapa > ETAPA_PROFISSIONAL ? (profissional?.name ?? null) : null}
@@ -264,34 +264,26 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
             aoBuscar={setBusca}
             escolhido={serviceId}
             aoEscolher={(id) => {
-              const { escolhas: novas, proxima } = escolherServico(pagina, escolhas, id, dias[0]?.date ?? null);
-              alterar(novas);
-              setEtapa(proxima);
+              alterar(escolherServico(pagina, escolhas, id, dias[0]?.date ?? null));
+              setEtapa(ETAPA_PROFISSIONAL);
             }}
           />
         )}
 
         {etapa === ETAPA_PROFISSIONAL && (
-          <section className="space-y-3" aria-label="Profissional">
-            <div className="grid gap-2 sm:grid-cols-2" data-testid="lista-profissionais-publicos">
-              {opcoesProfissional.map((p) => (
-                <CartaoProfissional
-                  key={p.id}
-                  profissional={p}
-                  ativo={professionalId === p.id}
-                  aoEscolher={() => {
-                    alterar(escolherProfissional(escolhas, p.id, dias[0]?.date ?? null));
-                    setEtapa(ETAPA_HORARIO);
-                  }}
-                />
-              ))}
-            </div>
-          </section>
+          <EtapaProfissional
+            opcoes={opcoesProfissional}
+            escolhido={profissional?.id ?? null}
+            aoEscolher={(id) => {
+              alterar(escolherProfissional(escolhas, id, dias[0]?.date ?? null));
+              setEtapa(ETAPA_HORARIO);
+            }}
+            aoContinuar={() => irPara(ETAPA_HORARIO)}
+          />
         )}
 
         {etapa === ETAPA_HORARIO && (
           <EtapaHorario
-            profissionalUnico={opcoesProfissional.length === 1 ? (profissional?.name ?? null) : null}
             fuso={fuso}
             dias={dias}
             escolhas={escolhas}

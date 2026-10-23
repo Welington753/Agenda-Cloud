@@ -35,7 +35,9 @@
 /* Tema escuro — SÓ em página adaptável (MarcadorAparencia, ver
    lib/aparencia/tema.ts): escolha "escuro", ou "sistema" com o aparelho no
    escuro. Os dois blocos são iguais de propósito: o segundo só vale dentro
-   da media query. Mesma identidade (papel quente, tinta, laranja queimado),
+   da media query. Página que segue SEMPRE o aparelho (MarcadorAparelho: o
+   agendamento público) entra só no segundo, qualquer que seja o `data-tema`
+   salvo pelo dono: a escolha dele nunca força o tema do cliente. Mesma identidade (papel quente, tinta, laranja queimado),
    com contraste conferido: texto ≥ 7:1, secundário ≥ 7:1, estados ≥ 6:1,
    bordas de campo ≥ 3:1. */
 html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
@@ -66,7 +68,8 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-tema="sistema"]:has([data-aparencia-adaptavel]) {
+  html[data-tema="sistema"]:has([data-aparencia-adaptavel]),
+  html:has([data-aparencia-aparelho]) {
     color-scheme: dark;
     --color-ink: #f3ede4;
     --color-ink-soft: #c4baab;

@@ -8,8 +8,10 @@
 // - Trocar o serviço mantém o profissional só se ele ainda atende o serviço
 //   novo; o horário escolhido sempre cai (a duração pode ser outra).
 // - Trocar o profissional ou o dia derruba o horário escolhido.
-// - Com UM profissional válido para o serviço, ele já vem escolhido e a
-//   etapa é pulada — o pedido continua levando o id dele.
+// - A etapa "Profissional" é sempre mostrada. Com UM profissional válido
+//   para o serviço, ele já vem escolhido (nome na tela) e a pessoa só
+//   confirma; com nenhum, a etapa avisa e não deixa seguir. Nunca se escolhe
+//   outro profissional por conta própria.
 // - Nenhum horário fica "reservado" aqui: o servidor revalida tudo no envio.
 import type { PaginaPublica } from "@/lib/api/public-booking-api";
 import { nomePlausivel, whatsappPlausivel } from "./agendamento-publico";
@@ -51,26 +53,26 @@ export function profissionaisDoServico(pagina: PaginaPublica, serviceId: string 
   return pagina.professionals.filter((p) => p.serviceIds.includes(serviceId));
 }
 
-/** Escolhe o serviço e diz para qual etapa seguir. Com profissional único,
- * ele já fica escolhido e o dia, se ainda não houver, é `primeiroDia`. */
+/** Escolhe o serviço (a etapa seguinte é sempre "Profissional"). Com
+ * profissional único, ele já fica escolhido e o dia, se ainda não houver, é
+ * `primeiroDia`. */
 export function escolherServico(
   pagina: PaginaPublica,
   atual: Escolhas,
   serviceId: string,
   primeiroDia: string | null,
-): { escolhas: Escolhas; proxima: Etapa } {
+): Escolhas {
   const opcoes = profissionaisDoServico(pagina, serviceId);
   const unico = opcoes.length === 1 ? opcoes[0].id : null;
   const professionalId =
     unico ?? (atual.professionalId && opcoes.some((p) => p.id === atual.professionalId) ? atual.professionalId : null);
-  const escolhas: Escolhas = {
+  return {
     ...atual,
     serviceId,
     professionalId,
     date: unico ? (atual.date ?? primeiroDia) : atual.date,
     slot: atual.serviceId === serviceId && professionalId === atual.professionalId ? atual.slot : null,
   };
-  return { escolhas, proxima: unico ? ETAPA_HORARIO : ETAPA_PROFISSIONAL };
 }
 
 /** Escolhe o profissional; o dia, se ainda não houver, é o primeiro oferecido. */
@@ -109,11 +111,7 @@ export function etapaMaxima(pagina: PaginaPublica, e: Escolhas): Etapa {
   return ETAPA_REVISAR;
 }
 
-/** Etapa anterior ao voltar. Profissional único foi pulado na ida e é
- * pulado na volta também. */
-export function etapaAnterior(pagina: PaginaPublica, e: Escolhas, etapa: Etapa): Etapa {
-  if (etapa === ETAPA_SERVICO) return ETAPA_SERVICO;
-  const anterior = (etapa - 1) as Etapa;
-  if (anterior === ETAPA_PROFISSIONAL && profissionaisDoServico(pagina, e.serviceId).length === 1) return ETAPA_SERVICO;
-  return anterior;
+/** Etapa anterior ao voltar: sempre a imediatamente antes, sem pular nenhuma. */
+export function etapaAnterior(etapa: Etapa): Etapa {
+  return etapa === ETAPA_SERVICO ? ETAPA_SERVICO : ((etapa - 1) as Etapa);
 }

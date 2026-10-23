@@ -4,6 +4,9 @@
 // - MarcadorAparencia: declara a página como ADAPTÁVEL. Só com ele na página
 //   o CSS aplica o tema escuro (globals.css, `:has([data-aparencia-adaptavel])`);
 //   a demonstração não o usa e continua clara.
+// - MarcadorAparelho: a página segue SEMPRE o aparelho (agendamento público).
+//   Não lê nem grava a escolha salva: o `data-tema` do dono fica intacto no
+//   <html> e volta a valer assim que ele entra de novo na área privada.
 // - SeletorAparencia: Claro / Escuro / Seguir aparelho. Rádios nativos, então
 //   setas do teclado, foco e leitor de tela funcionam sem código extra.
 import { useId, useLayoutEffect } from "react";
@@ -15,6 +18,10 @@ import { reaplicarAparenciaSalva, useAparencia } from "@/lib/aparencia/use-apare
 export function MarcadorAparencia() {
   useLayoutEffect(() => reaplicarAparenciaSalva(), []);
   return <span data-aparencia-adaptavel="" hidden />;
+}
+
+export function MarcadorAparelho() {
+  return <span data-aparencia-aparelho="" hidden />;
 }
 
 const ICONE: Record<PreferenciaAparencia, LucideIcon> = { claro: Sun, escuro: Moon, sistema: Monitor };
