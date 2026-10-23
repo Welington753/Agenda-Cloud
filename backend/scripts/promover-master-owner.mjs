@@ -25,6 +25,7 @@ import { TLSSocket, checkServerIdentity, rootCertificates } from "node:tls";
 import { homedir, userInfo } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { MOTIVOS, Parada, classificarEntrada, lerOculto } from "./promover-master-owner-entrada.mjs";
 
 // `pg` do próprio backend (backend/node_modules).
 const require = createRequire(import.meta.url);
@@ -45,7 +46,6 @@ const carimbo = inicio.toISOString().replace(/[:.]/g, "-");
 const pastaExecucao = path.join(PASTA, `master-owner-${carimbo}`);
 
 const log = (linha) => console.log(linha);
-class Parada extends Error {}
 // Só depois das pré-condições (IDs, pg_dump, pasta fora do repositório).
 let podeRegistrar = false;
 const parar = (codigo) => {
@@ -65,39 +65,6 @@ async function encerrar(client) {
   await client.end().catch(() => {});
 }
 
-function lerOculto(rotulo) {
-  return new Promise((resolve, reject) => {
-    const stdin = process.stdin;
-    if (!stdin.isTTY) return reject(new Parada("ERR_TERMINAL_NAO_INTERATIVO"));
-    process.stdout.write(rotulo);
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding("utf8");
-    let valor = "";
-    const aoReceber = (dados) => {
-      for (const ch of dados) {
-        if (ch === "\r" || ch === "\n") {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.off("data", aoReceber);
-          process.stdout.write("\n");
-          return resolve(valor);
-        }
-        if (ch === "\u0003") {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.off("data", aoReceber);
-          process.stdout.write("\n");
-          return reject(new Parada("CANCELADO"));
-        }
-        if (ch === "\u0008" || ch === "\u007f") valor = valor.slice(0, -1);
-        else valor += ch;
-      }
-    };
-    stdin.on("data", aoReceber);
-  });
-}
-
 function lerVisivel(rotulo) {
   return new Promise((resolve) => {
     process.stdout.write(rotulo);
@@ -112,6 +79,8 @@ function lerVisivel(rotulo) {
 
 /** Destino conferido só pela URL, antes de qualquer rede. */
 function conferirDestino(bruta) {
+  const problema = classificarEntrada(bruta);
+  if (problema) parar(problema);
   let url;
   try {
     url = new URL(bruta.trim());
@@ -439,6 +408,7 @@ principal()
   .catch((erro) => {
     const codigo = erro instanceof Parada ? erro.message : "ERR_INESPERADO";
     log(`ERRO: ${codigo}`);
+    if (MOTIVOS[codigo]) log(`MOTIVO: ${MOTIVOS[codigo]}`);
     if (!(erro instanceof Parada)) {
       // Mensagem do driver sem a URL; pg nunca inclui a senha nas mensagens.
       log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 300)}`);

@@ -29,6 +29,10 @@ Atualização de 23/10/2026 (PC do trabalho):
   primeira conexão, antes de ler a conta, do backup, da confirmação e de
   qualquer `UPDATE`; depois o processo caiu com `Unhandled 'error' event`
   (`57P01`). Nada foi gravado. Causa e correção em "Falha de 23/10/2026".
+- Tentativas seguintes, já com a correção de TLS, pararam antes de qualquer
+  conexão: `ERR_ENDPOINT_DIFERENTE_DO_PILOTO` (registrada em
+  `operacoes.jsonl`) e `ERR_URL_INVALIDA`. Lançador e entrada oculta revistos
+  em "Lançador e entrada oculta — 23/10/2026".
 
 ## O que falta
 
@@ -48,28 +52,33 @@ Etapas, todas no próprio script:
 
 1. Pré-condições: `PILOT_ENDPOINT_ID` e `PRODUCTION_ENDPOINT_ID` informados e
    diferentes, `pg_dump.exe` presente e pasta de operações fora do repositório.
-2. Destino pela URL, antes de qualquer rede: endpoint do piloto em
+2. Entrada (`promover-master-owner-entrada.mjs`): lida sem eco; recusada,
+   com a categoria e nunca o conteúdo, se vier vazia, com `Ctrl+V` sem colagem,
+   com caracteres de controle, com mais de uma URL, com texto depois do Enter
+   ou com texto extra (psql, aspas, espaços). Nenhuma URL é escolhida entre
+   várias e nada é removido do meio.
+3. Destino pela URL, antes de qualquer rede: endpoint do piloto em
    `*.neon.tech`, banco `neondb`, sem pooler, sem o endpoint proibido em
    nenhuma parte da URL, sem `sslmode` afrouxado nem `uselibpqcompat`.
-3. TLS com cadeia e hostname verificados (independe do `sslmode` da URL),
+4. TLS com cadeia e hostname verificados (independe do `sslmode` da URL),
    conferido no socket do cliente (`TLSSocket` cifrado e `authorized`,
    TLS 1.2+, `checkServerIdentity` com o host da URL), e
    `current_database() = neondb`. `pg_stat_ssl` só é exibido: no Neon o TLS
    termina no proxy e a sessão interna aparece como `false`. Toda conexão tem
    listener de `error` e é encerrada em qualquer falha.
-4. Leitura somente: exatamente uma conta com o e-mail (o `citext` segue a
+5. Leitura somente: exatamente uma conta com o e-mail (o `citext` segue a
    normalização do login), ativa e com credencial `argon2id`. Não mostra
    senha nem hash. Se já for MASTER_OWNER, termina sem alteração.
-5. Backup: `pg_dump -Fc` no mesmo snapshot das contagens por tabela, com
+6. Backup: `pg_dump -Fc` no mesmo snapshot das contagens por tabela, com
    `manifesto.json` e sha256.
-6. Confirmação digitada: `PROMOVER wwluiz90@gmail.com`. Qualquer outra
+7. Confirmação digitada: `PROMOVER wwluiz90@gmail.com`. Qualquer outra
    resposta aborta sem gravar.
-7. Transação: `SELECT ... FOR UPDATE`, nova conferência, `UPDATE` só de
+8. Transação: `SELECT ... FOR UPDATE`, nova conferência, `UPDATE` só de
    `platform_role`, condicionado ao papel lido antes e exigindo 1 linha.
-8. Conferência após o commit, em nova conexão: papel final, conta ativa,
+9. Conferência após o commit, em nova conexão: papel final, conta ativa,
    demais campos, permissões, credencial, vínculos, MASTER_OWNER +1 e total
    de usuários iguais.
-9. Registro em `operacoes.jsonl` (horário, ID, e-mail, papel anterior/novo,
+10. Registro em `operacoes.jsonl` (horário, ID, e-mail, papel anterior/novo,
    backup e resultado), sem credenciais. O operador fica como "conta Windows
    local via script; sem ator autenticado na aplicação". `audit_logs` não é
    usado porque exige um `actor_user_id` autenticado.
@@ -130,6 +139,21 @@ No PC do trabalho a execução usa um worktree separado,
 `C:\Projetos\Agenda-Cloud-promocao` (branch
 `chore/continuidade-promocao-master-owner`, `backend\node_modules` como junção
 para o do clone principal), para não trocar a branch do clone principal.
+
+Forma recomendada: o lançador `backend/scripts/abrir-promocao-master-owner.ps1`
+por `-File`, aberto explicitamente no Windows Terminal. Ele define
+`IGNORE_DOTENV_FILE`, os Endpoint IDs (sem exibi-los), `PG_BIN` e
+`AGENDA_OPS_DIR`, roda o script e deixa a janela aberta com o código de saída:
+
+```powershell
+wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass `
+  -File C:\Projetos\Agenda-Cloud-promocao\backend\scripts\abrir-promocao-master-owner.ps1 `
+  -PilotEndpointId <ep-...> -ProductionEndpointId <ep-...>
+```
+
+No Windows Terminal, cole com Ctrl+V uma única vez e pressione Enter. No
+console clássico (conhost), Ctrl+V **não cola** enquanto a entrada está
+oculta; ali, use o botão direito.
 
 Saída esperada numa promoção: `TLS_CLIENTE: TLSv1.3 hostname=ok cadeia=...`
 (`TLS_INTERNO_PG_STAT_SSL (informativo): false` é normal no Neon),
@@ -309,6 +333,88 @@ credenciais, vínculos e sessões tiveram hash idêntico antes e depois. O dump 
 promoção foi restaurado: sha256 e contagens das 37 tabelas iguais ao
 manifesto, com a conta-alvo sem papel. Nenhuma senha apareceu nos registros.
 Nada foi testado contra o Neon.
+
+## Lançador e entrada oculta — 23/10/2026
+
+Depois da correção de TLS houve duas tentativas sem conexão:
+`ERR_ENDPOINT_DIFERENTE_DO_PILOTO` (12:25 UTC, registrada em
+`operacoes.jsonl`) e `ERR_URL_INVALIDA`. O registro guarda só o código, então a
+entrada exata dessas tentativas não é conhecida; nenhuma das duas chegou a
+abrir conexão, ler a conta ou fazer backup.
+
+Comprovado:
+
+- O lançador anterior era um `-Command` montado numa string e passado por
+  `Start-Process -ArgumentList`. As aspas duplas eram removidas na linha de
+  comando do Windows, e `(o host da URL ...)` virou uma subexpressão: daí
+  `O termo 'o' não é reconhecido`. Esse lançador também imprimia o Endpoint ID.
+- Na janela aberta por `Start-Process powershell.exe` neste Windows, o
+  console é o Windows Terminal (handoff do terminal padrão; `WT_SESSION` não
+  aparece nesse caso). No Windows Terminal, Ctrl+V entrega a URL intacta ao
+  modo oculto, inteira ou em blocos.
+- No console clássico (conhost), com o stdin em modo raw, Ctrl+V não cola:
+  chega só o caractere `\u0016`. `new URL()` descarta esse controle e falha,
+  o que dava `ERR_URL_INVALIDA`. O botão direito cola normalmente.
+- Antes desta correção, uma entrada vazia, `psql '...'` ou a URL entre aspas
+  davam `ERR_URL_INVALIDA` sem dizer por quê, e duas URLs concatenadas
+  **passavam** na leitura: o host era o da primeira e a segunda ia parar no
+  valor de `channel_binding`. Isso foi corrigido.
+
+Hipóteses para as duas tentativas, sem evidência que as distinga: entrada
+vazia (Enter antes da colagem), texto além da URL (por exemplo o trecho
+`psql` do painel do Neon), Ctrl+V num console clássico ou URL de outro
+endpoint.
+
+Correção:
+
+- Lançador versionado `backend/scripts/abrir-promocao-master-owner.ps1`, por
+  `-File`, sem montar comandos com várias camadas de aspas. Endpoint IDs como
+  parâmetros, conferidos sem repetir o valor e nunca exibidos.
+- Leitura e classificação da entrada em
+  `backend/scripts/promover-master-owner-entrada.mjs`, com
+  `promover-master-owner-entrada.spec.ts` (stdin simulado). O script mostra
+  `ERRO:` e `MOTIVO:` com a categoria (`entrada vazia`, `Ctrl+V chegou como
+  tecla`, `há mais de uma URL`, `chegou texto depois do Enter`, `copie
+  somente a URL`, ...). Nunca imprime nem grava a entrada.
+- Depois do Enter, a leitura espera 250 ms: texto além de espaços nesse
+  intervalo (uma segunda linha colada) é recusado, em vez de ir para a
+  confirmação.
+- TLS, encerramento de conexões, destino, conta, backup, confirmação e
+  transação ficaram como em `d63b8c7`.
+
+Testes (somente URLs fictícias; a área de transferência foi sobrescrita com
+elas e nunca lida):
+
+- Diagnóstico isolado com o módulo real, sem rede, colando de verdade pela área
+  de transferência: Ctrl+V real (`SendKeys`) no Windows Terminal e no conhost,
+  e clique real com o botão direito (`mouse_event`) no conhost.
+
+| Caso | Windows Terminal, Ctrl+V | conhost, Ctrl+V | conhost, botão direito |
+| --- | --- | --- | --- |
+| Colagem única + Enter | aceita, idêntica | `CTRL_V_SEM_COLAGEM` | aceita, idêntica |
+| Colagem em dois blocos | aceita, idêntica | `CTRL_V_SEM_COLAGEM` | aceita, idêntica |
+| Entrada vazia | `URL_VAZIA` | `URL_VAZIA` | `URL_VAZIA` |
+| Duas URLs concatenadas | `URL_MAIS_DE_UMA` | `CTRL_V_SEM_COLAGEM` | `URL_MAIS_DE_UMA` |
+| `psql '...'` | `URL_COM_TEXTO_EXTRA` | `CTRL_V_SEM_COLAGEM` | `URL_COM_TEXTO_EXTRA` |
+| URL entre aspas | `URL_COM_TEXTO_EXTRA` | `CTRL_V_SEM_COLAGEM` | `URL_COM_TEXTO_EXTRA` |
+| Duas linhas coladas | (não testado: o Windows Terminal pede confirmação de colagem de várias linhas) | — | `URL_MAIS_DE_UMA_LINHA` |
+
+  "Idêntica" quer dizer igual, caractere a caractere, à URL fictícia, inclusive
+  a senha `npg_Ab1-x.Y_z~Q9%21`. Digitar a URL pelo teclado simulado também
+  chegou intacto no Windows Terminal; no conhost com teclado ABNT2, o `~`
+  (tecla morta) gerou caracteres de controle e a entrada foi recusada.
+- Lançador real + script real, abertos com `wt.exe` e colados com Ctrl+V real,
+  com IDs fictícios e host `*.exemplo.invalid`, que para antes da rede:
+  colagem única chegou à conferência de destino (`ERR_HOST_NAO_NEON`); vazia
+  `ERR_URL_VAZIA`; duas colagens `ERR_URL_MAIS_DE_UMA`; `psql`
+  `ERR_URL_COM_TEXTO_EXTRA`. A tela, lida por UI Automation, não mostrou a
+  URL nem os IDs; o registro também não. Sem terminal interativo, o lançador
+  imprime o cabeçalho e o script para em `ERR_TERMINAL_NAO_INTERATIVO`.
+- Regressão no PostgreSQL descartável atrás do proxy TLS: abortar, promover
+  (oito `CONFERE_*: true`) e repetir sem alteração; duas URLs recusadas antes
+  da rede; nenhuma sessão restante.
+- `vitest run scripts/` no backend: 227 testes em 15 arquivos; `oxlint` sem
+  avisos.
 
 ## Publicação
 
