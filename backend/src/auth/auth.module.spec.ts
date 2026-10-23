@@ -113,35 +113,12 @@ describe('AuthModule', () => {
     await app.close();
   });
 
-  it('POST /auth/register chama o AuthService e responde 201', async () => {
-    await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(VALID_REGISTER_BODY)
-      .expect(201);
-
-    expect(registerMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('bloqueia a sexta tentativa em POST /auth/register com 429 e não chama o AuthService pela sexta vez', async () => {
-    for (let i = 0; i < 5; i++) {
-      await request(app.getHttpServer()).post('/auth/register').send(VALID_REGISTER_BODY);
+  it('POST /auth/register responde 404 (cadastro fechado) e nunca chama o AuthService, nem na sexta tentativa', async () => {
+    for (let i = 0; i < 7; i++) {
+      const res = await request(app.getHttpServer()).post('/auth/register').send(VALID_REGISTER_BODY);
+      expect(res.status).toBe(404);
+      expect(res.headers['set-cookie']).toBeUndefined();
     }
-    registerMock.mockClear();
-
-    const sixth = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(VALID_REGISTER_BODY);
-
-    expect(sixth.status).toBe(429);
-    expect(registerMock).not.toHaveBeenCalled();
-  });
-
-  it('rejeita payload inválido com 400 antes de chamar o AuthService', async () => {
-    await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ ...VALID_REGISTER_BODY, email: 'nao-e-email' })
-      .expect(400);
-
     expect(registerMock).not.toHaveBeenCalled();
   });
 
@@ -163,15 +140,10 @@ describe('AuthModule', () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
-  it('o limiter de /auth/login é independente do de /auth/register (esgotar um não afeta o outro)', async () => {
-    for (let i = 0; i < 5; i++) {
-      await request(app.getHttpServer()).post('/auth/register').send(VALID_REGISTER_BODY);
+  it('tentativas em /auth/register (404) não consomem o limite de /auth/login', async () => {
+    for (let i = 0; i < 6; i++) {
+      await request(app.getHttpServer()).post('/auth/register').send(VALID_REGISTER_BODY).expect(404);
     }
-    const sixthRegister = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(VALID_REGISTER_BODY);
-    expect(sixthRegister.status).toBe(429);
-
     const firstLogin = await request(app.getHttpServer())
       .post('/auth/login')
       .send(VALID_LOGIN_BODY);

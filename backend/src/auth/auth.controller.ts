@@ -1,17 +1,15 @@
-// POST /auth/register, POST /auth/login, GET /auth/me, POST /auth/logout —
+// POST /auth/login, GET /auth/me, POST /auth/logout —
 // mesma disciplina em todos: cookie só depois do serviço resolver (ou seja,
 // depois do COMMIT da transação, ver auth.service.ts); qualquer erro lançado
 // pelo serviço nunca chega perto de `res.cookie`.
 import {
   Body,
   Controller,
-  ConflictException,
   Get,
   HttpCode,
   Post,
   Req,
   Res,
-  ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -24,10 +22,9 @@ import {
   buildClearSessionCookieOptions,
   buildSessionCookieOptions,
 } from '../config/session-cookie.config.js';
-import { EmailAlreadyInUseError, InvalidCredentialsError, PlanUnavailableError } from './auth.errors.js';
+import { InvalidCredentialsError } from './auth.errors.js';
 import { AuthService } from './auth.service.js';
 import { loginSchema, type LoginDto } from './login.dto.js';
-import { registerSchema, type RegisterDto } from './register.dto.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from './session-context.js';
 import { SessionGuard } from './session.guard.js';
 
@@ -50,42 +47,9 @@ export class AuthController {
     );
   }
 
-  @Post('register')
-  @HttpCode(201)
-  async register(
-    @Body(new ZodValidationPipe(registerSchema)) dto: RegisterDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    let result;
-    try {
-      result = await this.authService.register(dto, {
-        now: new Date(),
-        userAgent: req.get('user-agent'),
-        ipAddress: this.clientIp(req),
-      });
-    } catch (error) {
-      if (error instanceof EmailAlreadyInUseError) {
-        throw new ConflictException('E-mail já cadastrado.');
-      }
-      if (error instanceof PlanUnavailableError) {
-        throw new ServiceUnavailableException('Cadastro temporariamente indisponível.');
-      }
-      throw error;
-    }
-
-    const nodeEnv = this.configService.getOrThrow<string>('NODE_ENV');
-    res.cookie(SESSION_COOKIE_NAME, result.token, buildSessionCookieOptions(nodeEnv));
-
-    return {
-      user: result.user,
-      tenant: result.tenant,
-      unit: result.unit,
-      membership: result.membership,
-      plan: result.plan,
-      trial: result.trial,
-    };
-  }
+  // Versão de reserva: o cadastro público continua FECHADO. Sem rota,
+  // POST /auth/register responde 404 e não grava nada (ver
+  // docs/runbooks/publicacao-contas-piloto.md, "Recuperação").
 
   @Post('login')
   @HttpCode(200)

@@ -1,4 +1,5 @@
-// Módulo de autenticação (Lotes 6B.3-6B.5) — register/login/me/logout. Rate
+// Módulo de autenticação (Lotes 6B.3-6B.5) — login/me/logout; nesta versão de
+// reserva o cadastro público está fechado (sem rota). Rate
 // limit aplicado via middleware Nest (`configure`), cada rota com seu próprio
 // limiter, amarrado só àquela rota — nunca global, nunca em outra rota por
 // engano. GET /auth/me e POST /auth/logout nunca recebem rate limit neste
@@ -14,7 +15,6 @@ import { parseClientIpSource, parseProxySecret } from '../config/client-ip.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createLoginRateLimiter } from './login-rate-limit.js';
-import { createRegisterRateLimiter } from './register-rate-limit.js';
 import { SessionGuard } from './session.guard.js';
 
 // `ConfigModule` (sem opções) garante `ConfigService` resolvível mesmo quando
@@ -39,9 +39,6 @@ export class AuthModule implements NestModule {
     // `socket` sem proxy confiável, o comportamento anterior.
     const clientIpSource = parseClientIpSource(this.configService.get('CLIENT_IP_SOURCE'));
     const proxySecret = parseProxySecret(this.configService.get('API_PROXY_SECRET'));
-    consumer
-      .apply(createRegisterRateLimiter(clientIpSource, proxySecret))
-      .forRoutes({ path: 'auth/register', method: RequestMethod.POST });
     consumer
       .apply(createLoginRateLimiter(clientIpSource, proxySecret))
       .forRoutes({ path: 'auth/login', method: RequestMethod.POST });
