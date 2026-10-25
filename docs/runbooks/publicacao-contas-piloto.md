@@ -33,9 +33,16 @@ para cá.
   `contas-aplicar-2026-10-23T17-59-40-736Z`, com ponto de recuperação
   18:01:11 UTC.
 
-**Ainda não feito:** deploy da API e do web, e configuração de e-mail. A API
-que está no ar (`35f4713`) funciona com o schema novo e ainda aceita o
-cadastro público, como antes.
+**Publicação (atualizado em 25/10/2026).** Esta seção dizia que o deploy não
+tinha sido feito. O histórico de deployment do GitHub mostra os dois serviços
+publicados com sucesso em `26d9d85` às 16:50 UTC (antes da migration) e em
+`f37cbc9` às 18:48 UTC de 23/10/2026. As verificações HTTP de 25/10/2026
+passaram: cadastro `404` direto e pelo proxy, `/auth/me` `401`, `/cadastro`
+sem formulário e `/login` sem "Criar conta". Detalhes, e o que ainda depende
+do painel do Render, em `continuidade-publicacao-contas.md`.
+
+**Ainda não feito:** confirmação do Live e do Auto-Deploy no painel, teste
+autenticado das abas da Administração e configuração de e-mail.
 
 **Recuperação preparada:** a API de reserva com o cadastro fechado,
 `5fe816626b7e891099f0c08ae8b309e1130234f9` (ver "API de reserva").
@@ -219,9 +226,9 @@ anterior.
 
 ### 5. Publicar a API
 
-Antes, tenha à mão a seção "API de reserva": ela é o caminho de volta, e o
-botão **Rollback** do Render **não** deve ser usado na API, porque o deploy
-anterior reabre o cadastro público.
+Antes, tenha à mão a seção "API de reserva" e as regras de Rollback em
+"Recuperação". O Rollback publica o deploy que você escolher; na API, nunca
+escolha um deploy anterior ao PR #65, porque ele reabre o cadastro público.
 
 No Render, serviço `agenda-cloud-piloto-api`:
 
@@ -316,12 +323,17 @@ abaixo exige `migration:revert` nem restaurar o backup por cima do piloto.
 - **Deploy da API falhou antes de ficar Live.** O Render mantém o deploy
   anterior, que funciona com o schema novo. Investigue e publique de novo.
 - **API nova Live com defeito que não dá para corrigir na hora.** Publique a
-  **API de reserva** (seção abaixo), não o deploy anterior. O web novo
-  continua no ar. Depois corrija a API nova e publique de novo pela
-  integration.
-- **Não use o botão Rollback na API.** O deploy anterior é `35f4713`, que
-  aceita `POST /auth/register`, direto e pelo proxy. Esconder o formulário no
-  web não fecha o cadastro.
+  **API de reserva** (seção abaixo). O web novo continua no ar. Depois corrija
+  a API nova e publique de novo pela integration.
+- **Rollback na API: o alvo é escolhido por você** na lista de deploys do
+  serviço; o Render não volta para um deploy fixo.
+  - Só servem deploys de `26d9d85` ou `f37cbc9`. Os dois têm o mesmo runtime
+    (a diferença é só `backend/scripts/` e `docs/`) e o cadastro fechado.
+    Por isso, um Rollback entre eles não corrige defeito do runtime; nesse
+    caso, use a reserva.
+  - **Nunca** escolha `35f4713`, `9847c6a` ou anterior: eles aceitam
+    `POST /auth/register`, direto e pelo proxy. Esconder o formulário no web
+    não fecha o cadastro.
 - **Web novo com defeito.** Rollback só do web, ou deploy de outro commit do
   web. A API nova atende o web antigo, e o formulário de cadastro antigo
   recebe 404.
@@ -335,6 +347,8 @@ abaixo exige `migration:revert` nem restaurar o backup por cima do piloto.
 - **Mudança única:** a rota `POST /auth/register` e o limitador dela foram
   removidos. O cadastro responde `404` direto e pelo proxy, não emite cookie e
   não chama o serviço. O resto é o código de `35f4713`.
+- **Quando usar:** só se o runtime de `f37cbc9` tiver defeito. Rollback para
+  um deploy de `26d9d85` não ajuda nesse caso, porque o runtime é o mesmo.
 - **Variáveis:** as mesmas do serviço. As variáveis de e-mail, se existirem,
   são ignoradas.
 
@@ -347,8 +361,11 @@ abaixo exige `migration:revert` nem restaurar o backup por cima do piloto.
    testado aqui.
 2. **Se o Render não aceitar o SHA:** em **Settings → Build & Deploy →
    Branch**, troque temporariamente para `reserva/api-cadastro-fechado` e
-   faça **Manual Deploy → Deploy latest commit**. O auto-deploy está
-   desligado.
+   faça **Manual Deploy → Deploy latest commit**. Antes, confira o
+   Auto-Deploy no painel: o histórico do GitHub sugere que ele está ligado
+   (deploys 3 a 4 minutos depois dos merges de 23/10/2026). Se estiver, a
+   troca de branch já publica a reserva, e a volta para a integration
+   publica o último commit dela.
 3. Espere ficar **Live** e confira:
    - `POST $API/auth/register` deve dar `404`;
    - `POST $WEB/agenda_api/auth/register` com `Origin: $WEB` deve dar `404`;
