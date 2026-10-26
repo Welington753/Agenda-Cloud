@@ -102,11 +102,30 @@ A migration `AccountsAdministration1792800000000` já está aplicada (7
 migrations, 40/40). O redeploy não aplica migration, e ela não deve ser
 repetida.
 
+### E-mail pelo Brevo (25/10/2026, horário de Brasília)
+
+O envio de e-mail foi configurado com o Brevo nas variáveis do serviço
+`agenda-cloud-piloto-api` (seção "E-mail" do runbook). Nenhuma chave ou
+remetente fica registrado aqui.
+
+O registro de deployment do GitHub mostra um novo deploy da API em
+`f37cbc9`, iniciado às 22:07:32 e concluído (`success`) às 22:08:25,
+compatível com a mudança de variáveis. O web não foi publicado de novo.
+
+**Teste real, feito e confirmado pelo responsável pelo piloto:**
+
+- o convite chegou à caixa de entrada;
+- o link do convite abriu a criação de senha;
+- a conta foi ativada e acessou o estabelecimento.
+
+Isso confirma, no piloto, o envio pelo Brevo, a entrega, o aceite do convite e
+o acesso da conta nova. Nenhum envio adicional foi feito para esta nota.
+
 ### Pendente de confirmação no painel do Render
 
 - Qual deploy está **Live** em `agenda-cloud-piloto-api` e em
-  `agenda-cloud-piloto-web` (esperado: o redeploy de `f37cbc9` de 25/10/2026,
-  21:08, nos dois).
+  `agenda-cloud-piloto-web` (esperado: `f37cbc9` nos dois; na API, o deploy
+  de 25/10/2026, 22:07, e no web, o de 21:08).
 - Se o **Auto-Deploy** está ligado e com qual gatilho. Se estiver, mesclar
   qualquer PR na integration publica os dois serviços, e trocar a branch do
   serviço da API para a reserva também publica na hora.
@@ -114,12 +133,12 @@ repetida.
 ## Pendente
 
 1. **Confirmar no painel** os itens acima.
-2. **Teste autenticado**, com a conta `wwluiz90@gmail.com`: abas da
-   Administração e lista de usuários sem contas bloqueadas (etapa 6 do
-   runbook).
-3. **Configurar o e-mail**, quando decidir (seção "E-mail" do runbook). Sem
-   ele, convites ficam como "envio não configurado".
-4. **PR desta branch para a integration.** É só documentação. Se o
+2. **Teste autenticado da Administração**, com a conta `wwluiz90@gmail.com`:
+   as abas Estabelecimentos, Usuários, Convites, Papéis e permissões e
+   Histórico, e a lista de usuários sem contas bloqueadas (etapa 6 do
+   runbook). O convite do teste de e-mail exercitou parte disso, mas a
+   conferência completa não foi registrada.
+3. **PR desta branch para a integration.** É só documentação. Se o
    auto-deploy estiver ligado, o merge dispara um deploy com o mesmo runtime.
 
 ## Rollback e API de reserva
