@@ -68,7 +68,7 @@ describe("mensagemCombinarOutroHorario", () => {
 
   it("monta a mensagem neutra com primeiro nome, estabelecimento, data e hora locais", () => {
     expect(mensagemCombinarOutroHorario(base)).toBe(
-      "Olá, Maria! Aqui é do Estúdio Ana & Bia. Precisamos combinar outro horário para seu agendamento de " +
+      "Olá, Maria! Aqui é a equipe de Estúdio Ana & Bia. Precisamos combinar outro horário para seu agendamento de " +
         "20/10/2026 às 23:30. Qual dia ou período fica melhor para você? " +
         "Vamos conferir a disponibilidade antes de confirmar a alteração.",
     );
@@ -86,12 +86,12 @@ describe("mensagemCombinarOutroHorario", () => {
   });
 
   it("nome vazio vira só 'Olá!'; sem estabelecimento, a apresentação sai", () => {
-    expect(mensagemCombinarOutroHorario({ ...base, nomeCliente: " " })).toMatch(/^Olá! Aqui é do/);
+    expect(mensagemCombinarOutroHorario({ ...base, nomeCliente: " " })).toMatch(/^Olá! Aqui é a equipe de /);
     expect(mensagemCombinarOutroHorario({ ...base, estabelecimento: "  " })).toMatch(
       /^Olá, Maria! Precisamos combinar/,
     );
     expect(mensagemCombinarOutroHorario({ ...base, estabelecimento: " Ana \n Bia " })).toContain(
-      "Aqui é do Ana Bia.",
+      "Aqui é a equipe de Ana Bia.",
     );
   });
 

@@ -57,20 +57,19 @@ provedor. Nenhum token ou link vai para log.
 
 Arquivo: `src/lib/contato/whatsapp.ts`. Texto novo:
 
-> Olá, Maria! Aqui é do Estúdio Ana & Bia. Precisamos combinar outro horário
-> para seu agendamento de 20/10/2026 às 23:30. Qual dia ou período fica
-> melhor para você? Vamos conferir a disponibilidade antes de confirmar a
-> alteração.
+> Olá, Maria! Aqui é a equipe de Estúdio Ana & Bia. Precisamos combinar outro
+> horário para seu agendamento de 20/10/2026 às 23:30. Qual dia ou período
+> fica melhor para você? Vamos conferir a disponibilidade antes de confirmar
+> a alteração.
 
 - Data e hora no fuso do estabelecimento, como antes. Nenhum dado do serviço.
-- Sem nome: "Olá!". Sem estabelecimento: a frase "Aqui é do ..." sai. Hora
+- Sem nome: "Olá!". Sem estabelecimento: a frase "Aqui é a equipe de ..." sai. Hora
   fora de `HH:MM` ou fuso inválido: sem botão.
 - Continua sendo só um link `wa.me` aberto em outra aba: não chama a API, não
   marca mensagem como enviada e não muda a reserva. A normalização do telefone,
   a codificação do texto e o estado "telefone indisponível" não mudaram.
-- "Aqui é do" segue o texto de referência. Para nomes femininos ("Clínica",
-  "Barbearia") a forma neutra seria "Aqui é a equipe de ..."; fica como
-  decisão de texto.
+- "Aqui é a equipe de" funciona com qualquer nome de estabelecimento
+  ("Clínica", "Barbearia", "Estúdio"), sem concordância de gênero.
 
 ### Verificação
 
@@ -226,13 +225,12 @@ outro.
    de mesclar qualquer PR com runtime.
 2. Marca definitiva (trocar em `email/marca.ts` e `src/lib/config.ts`) e
    endereço de resposta dos e-mails.
-3. Texto "Aqui é do" ou forma neutra no WhatsApp.
-4. Armazenamento, retenção e chave dos backups; ferramenta de monitoramento.
-5. Regra para pedidos sem resposta (lembrete, expiração ou nenhuma).
-6. Provedor de WhatsApp e custo do envio automático.
-7. Financeiro da plataforma: competência, vencimento nos dias 29 a 31,
+3. Armazenamento, retenção e chave dos backups; ferramenta de monitoramento.
+4. Regra para pedidos sem resposta (lembrete, expiração ou nenhuma).
+5. Provedor de WhatsApp e custo do envio automático.
+6. Financeiro da plataforma: competência, vencimento nos dias 29 a 31,
    carência, quem registra pagamento.
-8. Estabelecimento: saldo de estoque pode ficar negativo? Formas de
+7. Estabelecimento: saldo de estoque pode ficar negativo? Formas de
    pagamento aceitas. Regra de consumo de material por serviço.
-9. Privacidade: prazo de guarda dos dados de clientes e o que a exclusão
+8. Privacidade: prazo de guarda dos dados de clientes e o que a exclusão
    apaga ou anonimiza.

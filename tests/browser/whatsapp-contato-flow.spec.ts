@@ -125,7 +125,7 @@ test("WhatsApp: links certos, texto codificado e nenhuma mudança na reserva", a
   const url = new URL(hrefCombinar);
   expect(url.origin + url.pathname).toBe("https://wa.me/5511987654321");
   const esperado =
-    `Olá, José! Aqui é do ${estabelecimento}. Precisamos combinar outro horário para seu agendamento de ` +
+    `Olá, José! Aqui é a equipe de ${estabelecimento}. Precisamos combinar outro horário para seu agendamento de ` +
     `${dataBr(DATA)} às 09:00. Qual dia ou período fica melhor para você? ` +
     "Vamos conferir a disponibilidade antes de confirmar a alteração.";
   expect(url.searchParams.get("text")).toBe(esperado);

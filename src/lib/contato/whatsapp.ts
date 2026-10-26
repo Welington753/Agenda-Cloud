@@ -80,7 +80,7 @@ export function mensagemCombinarOutroHorario(dados: DadosCombinarHorario): strin
   const estabelecimento = dados.estabelecimento.trim().replace(/\s+/g, " ");
   return [
     primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!",
-    ...(estabelecimento ? [`Aqui é do ${estabelecimento}.`] : []),
+    ...(estabelecimento ? [`Aqui é a equipe de ${estabelecimento}.`] : []),
     `Precisamos combinar outro horário para seu agendamento de ${data} às ${dados.horaLocal}.`,
     "Qual dia ou período fica melhor para você?",
     "Vamos conferir a disponibilidade antes de confirmar a alteração.",
