@@ -74,10 +74,39 @@ O `404` com "Cannot POST /auth/register" mostra que a API no ar não tem a rota
 de cadastro, ou seja, não é `35f4713`. A API de reserva também não tem essa
 rota; ela foi excluída pelo histórico do GitHub, que não registra deploy dela.
 
+### Redeploy manual de `f37cbc9` (25/10/2026, horário de Brasília)
+
+O deploy manual de `f37cbc9947806d12d6705cd812e8043fcbcace67` foi feito de
+novo nos dois serviços. Registros de deployment do GitHub, ambos `success`:
+
+| Serviço | Início | Concluído |
+| --- | --- | --- |
+| `agenda-cloud-piloto-api` | 21:08:53 | 21:09:46 |
+| `agenda-cloud-piloto-web` | 21:08:48 | 21:10:33 |
+
+Às 21:17, as mesmas verificações da tabela acima foram repetidas e todas
+passaram, com respostas da aplicação e nenhuma página de erro da borda:
+
+- API acessível (`GET $API/` `200`);
+- sessão sem cookie recusada (`/agenda_api/auth/me` `401`);
+- cadastro público fechado (`POST /auth/register` com `{}` dá `404` "Cannot
+  POST /auth/register" direto e pelo proxy, sem cookie);
+- `/login` sem "Criar conta" e `/cadastro` só com a explicação do acesso por
+  convite, sem formulário.
+
+Evidências: os registros de deployment do GitHub e as respostas observadas.
+Eles mostram que o deploy terminou e que o código no ar se comporta como
+`f37cbc9`, mas não substituem a conferência do Live no painel.
+
+A migration `AccountsAdministration1792800000000` já está aplicada (7
+migrations, 40/40). O redeploy não aplica migration, e ela não deve ser
+repetida.
+
 ### Pendente de confirmação no painel do Render
 
 - Qual deploy está **Live** em `agenda-cloud-piloto-api` e em
-  `agenda-cloud-piloto-web` (esperado: `f37cbc9` nos dois).
+  `agenda-cloud-piloto-web` (esperado: o redeploy de `f37cbc9` de 25/10/2026,
+  21:08, nos dois).
 - Se o **Auto-Deploy** está ligado e com qual gatilho. Se estiver, mesclar
   qualquer PR na integration publica os dois serviços, e trocar a branch do
   serviço da API para a reserva também publica na hora.
@@ -172,8 +201,8 @@ Nenhum passo abaixo precisa de banco nem da pasta de operações.
    ```powershell
    gh api "repos/Welington753/Agenda-Cloud/deployments?per_page=6" --jq '.[] | .environment + \" \" + .sha[0:7] + \" \" + .created_at'
    ```
-3. Siga a seção "Pendente". Não publique de novo se o painel confirmar
-   `f37cbc9` Live nos dois serviços.
+3. Siga a seção "Pendente". Não publique de novo: `f37cbc9` já foi publicado
+   nos dois serviços (último redeploy em 25/10/2026, 21:08).
 4. **Se a API nova falhar:** veja "Rollback e API de reserva" acima.
 
 Para uma conferência só de leitura do banco (fase `conferir`), você precisa de
