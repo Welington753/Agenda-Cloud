@@ -24,6 +24,7 @@ import {
   tenantEffectiveAccess,
 } from './tenant-effective-access.js';
 import { MAX_INVITE_SENDS } from './account-token.js';
+import { STAFF_PERMISSIONS } from '../team/staff-access.js';
 
 const escaparLike = (texto: string) => `%${texto.replace(/[\\%_]/g, '\\$&')}%`;
 
@@ -46,6 +47,8 @@ interface MembershipRow {
   tenantSlug: string;
   tenantStatus: string;
   role: EstablishmentRole;
+  status: string;
+  professional: { id: string; name: string; active: boolean } | null;
   createdAt: string;
   overrides: { permission: Permission; mode: PermissionMode }[];
 }
@@ -56,6 +59,9 @@ function vinculoParaTela(row: MembershipRow) {
     id: row.id,
     tenant: { id: row.tenantId, name: row.tenantName, slug: row.tenantSlug, status: row.tenantStatus },
     role: row.role,
+    /** `SUSPENDED`: o dono suspendeu este acesso; o vínculo não opera. */
+    status: row.status,
+    professional: row.professional,
     roleHasAccess: EFFECTIVE_TENANT_ROLES.includes(row.role),
     createdAt: row.createdAt,
     deniedPermissions: denied.filter((p) => EFFECTIVE_TENANT_PERMISSIONS.includes(p)).sort(),
@@ -63,6 +69,7 @@ function vinculoParaTela(row: MembershipRow) {
      * mostrados, nunca editados aqui. */
     ineffectiveOverrides: row.overrides
       .filter((o) => o.mode !== PermissionMode.DENIED || !EFFECTIVE_TENANT_PERMISSIONS.includes(o.permission))
+      .filter((o) => !(o.mode === PermissionMode.GRANTED && (STAFF_PERMISSIONS as readonly string[]).includes(o.permission)))
       .map((o) => `${o.mode}:${o.permission}`)
       .sort(),
     effectiveAccess: tenantEffectiveAccess(row.role, row.overrides),
@@ -70,7 +77,9 @@ function vinculoParaTela(row: MembershipRow) {
 }
 
 const MEMBERSHIP_COLUMNS = `m.id, m.tenant_id AS "tenantId", ${TENANT_NAME} AS "tenantName",
-    t.slug AS "tenantSlug", t.status AS "tenantStatus", m.role, m.created_at AS "createdAt",
+    t.slug AS "tenantSlug", t.status AS "tenantStatus", m.role, m.status, m.created_at AS "createdAt",
+    (SELECT json_build_object('id', p.id, 'name', p.name, 'active', p.active) FROM professionals p
+      WHERE p.tenant_id = m.tenant_id AND p.id = m.professional_id) AS professional,
     COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode) ORDER BY o.permission)
       FROM membership_permission_overrides o WHERE o.membership_id = m.id AND o.tenant_id = m.tenant_id), '[]'::json)
       AS overrides`;
@@ -176,7 +185,7 @@ export class AccountsDirectoryService {
                 u.created_at AS "createdAt", u.updated_at AS "updatedAt",
                 EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS "hasPassword",
                 COALESCE((SELECT json_agg(json_build_object('tenantId', t.id, 'tenantName', ${TENANT_NAME},
-                    'role', m.role, 'tenantStatus', t.status) ORDER BY m.created_at, m.id)
+                    'role', m.role, 'status', m.status, 'tenantStatus', t.status) ORDER BY m.created_at, m.id)
                   FROM memberships m JOIN tenants t ON t.id = m.tenant_id WHERE m.user_id = u.id), '[]'::json)
                   AS memberships
            FROM users u ${filtro.sql}

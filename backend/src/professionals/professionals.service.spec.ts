@@ -5,7 +5,7 @@
 // test/professionals-postgres.db-e2e-spec.ts) e sim a decisão: quem pode, o
 // que é alcançável, e que nenhuma gravação parcial acontece quando a seleção
 // de serviços tem algo inválido.
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import { FindOperator } from 'typeorm';
@@ -19,6 +19,8 @@ import { Professional } from '../entities/professional.entity.js';
 import { ProfessionalService } from '../entities/professional-service.entity.js';
 import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
+import { Plan } from '../entities/plan.entity.js';
+import { Appointment } from '../entities/appointment.entity.js';
 import { ProfessionalsService } from './professionals.service.js';
 
 interface Registro {
@@ -39,6 +41,9 @@ class FakeManager {
     public services: Registro[],
     public professionals: Registro[],
     public links: Registro[],
+    /** Catálogo de planos: o limite de profissionais vem daqui. */
+    public plans: Registro[] = [{ id: PLANO_TESTE, name: 'Plano de teste', maxProfessionals: 10 }],
+    public appointments: Registro[] = [],
   ) {}
 
   private colecaoDe(entity: unknown): Registro[] {
@@ -48,12 +53,15 @@ class FakeManager {
     if (entity === Service) return this.services;
     if (entity === Professional) return this.professionals;
     if (entity === ProfessionalService) return this.links;
+    if (entity === Plan) return this.plans;
+    if (entity === Appointment) return this.appointments;
     throw new Error('Entidade inesperada no teste');
   }
 
   private casaValor(valor: unknown, esperado: unknown): boolean {
     if (esperado instanceof FindOperator) {
       if (esperado.type === 'in') return (esperado.value as unknown[]).includes(valor);
+      if (esperado.type === 'moreThan') return (valor as Date) > (esperado.value as Date);
       throw new Error(`Operador não suportado no fake: ${esperado.type}`);
     }
     return valor === esperado;
@@ -69,6 +77,15 @@ class FakeManager {
 
   find(entity: unknown, options: { where: Registro }): Promise<Registro[]> {
     return Promise.resolve(this.colecaoDe(entity).filter((l) => this.casa(l, options.where)));
+  }
+
+  count(entity: unknown, options: { where: Registro }): Promise<number> {
+    return Promise.resolve(this.colecaoDe(entity).filter((l) => this.casa(l, options.where)).length);
+  }
+
+  update(entity: unknown, where: Registro, dados: Registro): Promise<void> {
+    for (const linha of this.colecaoDe(entity).filter((l) => this.casa(l, where))) Object.assign(linha, dados);
+    return Promise.resolve();
   }
 
   create(entity: unknown, dados: Registro): Registro {
@@ -127,6 +144,7 @@ class FakeManager {
 }
 
 const USUARIO_DONO = 'user_dono';
+const PLANO_TESTE = 'plan_teste';
 const TENANT_A = 'tenant_a';
 const TENANT_B = 'tenant_b';
 
@@ -164,8 +182,8 @@ function montar(opcoes: {
 } = {}) {
   const manager = new FakeManager(
     [
-      { id: TENANT_A, status: opcoes.statusTenantA ?? TenantStatus.ACTIVE },
-      { id: TENANT_B, status: TenantStatus.ACTIVE },
+      { id: TENANT_A, status: opcoes.statusTenantA ?? TenantStatus.ACTIVE, planId: PLANO_TESTE },
+      { id: TENANT_B, status: TenantStatus.ACTIVE, planId: PLANO_TESTE },
     ],
     opcoes.semMembership
       ? []
@@ -173,6 +191,8 @@ function montar(opcoes: {
           {
             id: 'membership_a',
             userId: USUARIO_DONO,
+
+            status: 'ACTIVE',
             tenantId: TENANT_A,
             role: opcoes.role ?? EstablishmentRole.DONO,
           },
@@ -455,5 +475,51 @@ describe('edição', () => {
     });
     expect(editado.name).toBe('Maria Eduarda Costa');
     expect(editado.avatarInitials).toBe('MC');
+  });
+});
+
+describe('limite de profissionais do plano', () => {
+  it('cria até o limite; no limite, recusa sem gravar nada', async () => {
+    const { manager, profissionais } = montar();
+    manager.plans[0].maxProfessionals = 2;
+    await profissionais.create(USUARIO_DONO, TENANT_A, { name: 'Segunda Pessoa', serviceIds: [] });
+    await expect(
+      profissionais.create(USUARIO_DONO, TENANT_A, { name: 'Terceira Pessoa', serviceIds: [] }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(manager.professionals.filter((p) => p.tenantId === TENANT_A)).toHaveLength(2);
+  });
+
+  it('desativado não conta; reativar no limite é recusado e não muda nada', async () => {
+    const { manager, profissionais } = montar({ professionaisExtra: [profissional('prof_a2', TENANT_A)] });
+    manager.plans[0].maxProfessionals = 2;
+    await profissionais.deactivate(USUARIO_DONO, TENANT_A, 'prof_a1');
+    await profissionais.create(USUARIO_DONO, TENANT_A, { name: 'Nova Pessoa', serviceIds: [] });
+    await expect(profissionais.reactivate(USUARIO_DONO, TENANT_A, 'prof_a1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(manager.professionals.find((p) => p.id === 'prof_a1')?.active).toBe(false);
+  });
+
+  it('quem já passou do limite não perde ninguém: só não cria mais', async () => {
+    const { manager, profissionais } = montar({ professionaisExtra: [profissional('prof_a2', TENANT_A)] });
+    manager.plans[0].maxProfessionals = 1;
+    expect(await profissionais.list(USUARIO_DONO, TENANT_A)).toHaveLength(2);
+    await expect(
+      profissionais.create(USUARIO_DONO, TENANT_A, { name: 'Outra Pessoa', serviceIds: [] }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('desativar informa quantas reservas futuras em aberto continuam na agenda', async () => {
+    const { manager, profissionais } = montar();
+    const futuro = new Date(Date.now() + 86_400_000);
+    manager.appointments.push(
+      { tenantId: TENANT_A, professionalId: 'prof_a1', status: 'CONFIRMED', startAt: futuro },
+      { tenantId: TENANT_A, professionalId: 'prof_a1', status: 'PENDING', startAt: futuro },
+      { tenantId: TENANT_A, professionalId: 'prof_a1', status: 'CANCELED', startAt: futuro },
+      { tenantId: TENANT_A, professionalId: 'prof_a1', status: 'CONFIRMED', startAt: new Date(Date.now() - 86_400_000) },
+    );
+    const desativado = await profissionais.deactivate(USUARIO_DONO, TENANT_A, 'prof_a1');
+    expect(desativado.futureAppointments).toBe(2);
+    expect(manager.appointments).toHaveLength(4);
   });
 });

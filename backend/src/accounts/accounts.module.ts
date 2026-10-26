@@ -20,6 +20,8 @@ import { PublicAccountsController } from './public-accounts.controller.js';
   imports: [ConfigModule, AuthModule],
   controllers: [AccountsAdminController, PublicAccountsController],
   providers: [AccountDelivery, AccountsAdminService, AccountsDirectoryService, InvitesService, PasswordResetsService],
+  // Exportado para o TeamModule: o convite de funcionário usa o MESMO fluxo.
+  exports: [InvitesService],
 })
 export class AccountsModule implements NestModule {
   constructor(private readonly config: ConfigService) {}

@@ -165,7 +165,11 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
       professionals: 0,
       services: 0,
       consumers: 0,
+      units: 1,
+      staffSeats: expect.objectContaining({ activeAccesses: 0, pendingInvites: 0, used: 0 }),
     });
+    // Preço de catálogo continua sendo só catálogo: nada de valor contratado.
+    expect(detail.planOptions.every((p) => !('contractedPriceCents' in p))).toBe(true);
     expect(JSON.stringify(detail)).not.toMatch(
       /tokenHash|passwordHash|platformPermissions/,
     );

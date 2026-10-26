@@ -36,6 +36,8 @@ import type { Professional } from './professional.entity.js';
 import type { Tenant } from './tenant.entity.js';
 import type { User } from './user.entity.js';
 
+export type MembershipStatus = 'ACTIVE' | 'SUSPENDED';
+
 @Entity('memberships')
 @Unique('uq_memberships_user_tenant', ['userId', 'tenantId'])
 @Unique('uq_memberships_tenant_id', ['tenantId', 'id'])
@@ -63,6 +65,13 @@ export class Membership {
   @Index('uq_memberships_professional_id', { unique: true, where: '"professional_id" IS NOT NULL' })
   @Column({ type: 'varchar', length: 30, nullable: true })
   professionalId?: string;
+
+  // `ACTIVE` | `SUSPENDED` (migration TeamAccess1792886400000: varchar com
+  // CHECK, sem enum novo). Só `ACTIVE` dá acesso ao estabelecimento; suspender
+  // preserva o vínculo e a ligação com o profissional. O valor inicial vale
+  // também para objetos montados em memória (testes), como o DEFAULT do banco.
+  @Column({ type: 'varchar', length: 20, default: 'ACTIVE' })
+  status: MembershipStatus = 'ACTIVE';
 
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   createdAt!: Date;

@@ -47,6 +47,16 @@ import { PLATFORM_ACCOUNT_MESSAGE, SELF_MESSAGE, loadActor, requireCapability, t
 import { recordAudit } from './audit.js';
 import { loadInviteView, type InviteView } from './invite-views.js';
 import { avancarVersao } from './user-version.js';
+import {
+  type LockedTenant,
+  expireStaleStaffInvites,
+  isOperational,
+  lockTenantForSeats,
+  seatLimitMessage,
+  staffSeatUsage,
+} from '../team/seats.js';
+import { resolveTeamManager } from '../team/team-authorization.js';
+import type { StaffInviteDto } from '../team/team.dto.js';
 
 export const MAX_SLUG_SAVE_RETRIES = 3;
 
@@ -228,6 +238,86 @@ export class InvitesService {
     }
   }
 
+  /**
+   * Convite de FUNCIONÁRIO feito pelo dono do estabelecimento ("Equipe e
+   * acessos"). Sempre papel PROFISSIONAL, sempre ligado a um profissional
+   * ativo deste estabelecimento que ainda não tem acesso nem convite
+   * pendente, e só com vaga livre no plano. O dono nunca escolhe nem vê a
+   * senha: a pessoa cria a dela pelo link (conta nova) ou aceita com a senha
+   * que já tem (conta existente, nada dela é alterado).
+   */
+  async inviteStaff(actorId: string, tenantId: string, dto: StaffInviteDto, now = new Date()) {
+    const replay = await this.replay(actorId, dto.requestKey);
+    if (replay) return replay;
+    try {
+      const issued = await this.dataSource.transaction(async (manager) => {
+        const gestor = await resolveTeamManager(manager, actorId, tenantId);
+        const tenant = await lockTenantForSeats(manager, gestor.tenantId);
+        const [profissional] = await manager.query<{ id: string; name: string; active: boolean }[]>(
+          'SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+          [tenant.id, dto.professionalId],
+        );
+        if (!profissional) throw new NotFoundException('Profissional não encontrado.');
+        if (!profissional.active) {
+          throw conflito('PROFISSIONAL_INATIVO', 'Este profissional está desativado. Reative-o antes de convidar.');
+        }
+        await this.assertProfessionalFree(manager, tenant.id, profissional.id);
+        await expireStaleStaffInvites(manager, tenant.id, now);
+        const [pendente] = await manager.query<{ id: string }[]>(
+          `SELECT id FROM invites WHERE tenant_id = $1 AND professional_id = $2 AND status = 'PENDING'`,
+          [tenant.id, profissional.id],
+        );
+        if (pendente) {
+          throw new ConflictException({
+            code: 'CONVITE_PENDENTE',
+            message: 'Este profissional já tem um convite pendente. Reenvie ou revogue o convite atual.',
+            inviteId: pendente.id,
+          });
+        }
+        const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now);
+        if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
+        const actor = await loadActor(manager, actorId);
+        const [propria] = await manager.query<unknown[]>('SELECT 1 FROM users WHERE id = $1 AND email = $2', [
+          actorId,
+          dto.email,
+        ]);
+        if (propria) throw conflito('PROPRIA_CONTA', 'Este é o seu e-mail: você já tem acesso a este estabelecimento.');
+        const target = await this.prepareTarget(manager, actor, { name: dto.name, email: dto.email }, now);
+        return this.issueInvite(manager, actor, target, now, {
+          type: 'ESTABLISHMENT',
+          requestKey: dto.requestKey,
+          targetName: dto.name,
+          targetEmail: dto.email,
+          tenant: { id: tenant.id, name: tenant.name },
+          role: 'PROFISSIONAL',
+          professional: { id: profissional.id, name: profissional.name },
+        });
+      });
+      return await this.finish(issued);
+    } catch (error) {
+      if (isUniqueViolation(error, 'uq_invites_pending_professional')) {
+        throw conflito('CONVITE_PENDENTE', 'Este profissional já tem um convite pendente.');
+      }
+      return this.replayOnDuplicate(error, actorId, dto.requestKey);
+    }
+  }
+
+  /** Reenvio e revogação pelo dono: só convites de funcionário DESTE
+   * estabelecimento. Outro id é indistinguível de inexistente. */
+  async resendStaff(actorId: string, tenantId: string, inviteId: string, now = new Date()) {
+    return this.resendWith(actorId, inviteId, now, async (manager) => {
+      const gestor = await resolveTeamManager(manager, actorId, tenantId);
+      return (invite) => this.requireStaffInviteOf(invite, gestor.tenantId);
+    });
+  }
+
+  async revokeStaff(actorId: string, tenantId: string, inviteId: string, now = new Date()): Promise<InviteView> {
+    return this.revokeWith(actorId, inviteId, now, async (manager) => {
+      const gestor = await resolveTeamManager(manager, actorId, tenantId);
+      return (invite) => this.requireStaffInviteOf(invite, gestor.tenantId);
+    });
+  }
+
   /** Resultado de um formulário já enviado, para a tela conferir antes de
    * tentar de novo depois de uma resposta perdida. Só de quem criou. */
   async findByRequestKey(actorId: string, requestKey: string): Promise<InviteCreationResult | null> {
@@ -237,11 +327,36 @@ export class InvitesService {
   // ------------------------------------------------------ reenvio e revogação
 
   async resend(actorId: string, inviteId: string, now = new Date()) {
-    const issued = await this.dataSource.transaction(async (manager) => {
+    return this.resendWith(actorId, inviteId, now, async (manager) => {
       const actor = await loadActor(manager, actorId);
-      const invite = await this.lockInvite(manager, inviteId, actor);
+      return (invite) => this.requirePlatformScope(actor, invite);
+    });
+  }
+
+  async revoke(actorId: string, inviteId: string, now = new Date()): Promise<InviteView> {
+    return this.revokeWith(actorId, inviteId, now, async (manager) => {
+      const actor = await loadActor(manager, actorId);
+      return (invite) => this.requirePlatformScope(actor, invite);
+    });
+  }
+
+  /** Reenvio com a autorização de quem chama (administração ou dono). Convite
+   * de funcionário trava antes o estabelecimento (mesma ordem do aceite) e
+   * confere de novo profissional e vaga: um convite vencido já tinha liberado
+   * a vaga, e reenviá-lo volta a ocupá-la. */
+  private async resendWith(actorId: string, inviteId: string, now: Date, autorizar: Autorizador) {
+    const issued = await this.dataSource.transaction(async (manager) => {
+      const conferir = await autorizar(manager);
+      const tenant = await this.lockTenantOfStaffInvite(manager, inviteId);
+      const invite = await this.lockInvite(manager, inviteId, conferir);
+      const actor = await loadActor(manager, actorId);
       if (invite.status !== 'PENDING') {
-        throw conflito('CONVITE_ENCERRADO', 'Este convite já foi aceito ou revogado.');
+        throw conflito(
+          'CONVITE_ENCERRADO',
+          invite.status === 'EXPIRED'
+            ? 'Este convite expirou e não pode ser reenviado. Crie um convite novo.'
+            : 'Este convite já foi aceito ou revogado.',
+        );
       }
       if (invite.send_count >= MAX_INVITE_SENDS) {
         throw conflito(
@@ -252,6 +367,7 @@ export class InvitesService {
       if (invite.target_status === 'SUSPENDED') {
         throw conflito('CONTA_BLOQUEADA', 'A conta convidada está bloqueada. Reative-a antes de reenviar.');
       }
+      if (invite.professional_id) await this.assertStaffInviteUsable(manager, invite, tenant, now);
       const { token, tokenHash } = generateAccountToken();
       const expiresAt = linkExpiresAt(now);
       await manager.query(
@@ -291,10 +407,13 @@ export class InvitesService {
     return this.finish(issued);
   }
 
-  async revoke(actorId: string, inviteId: string, now = new Date()): Promise<InviteView> {
+  /** Revogar libera a reserva na hora: não ocupa vaga, então não trava o
+   * estabelecimento. */
+  private async revokeWith(actorId: string, inviteId: string, now: Date, autorizar: Autorizador): Promise<InviteView> {
     await this.dataSource.transaction(async (manager) => {
+      const conferir = await autorizar(manager);
+      const invite = await this.lockInvite(manager, inviteId, conferir);
       const actor = await loadActor(manager, actorId);
-      const invite = await this.lockInvite(manager, inviteId, actor);
       if (invite.status !== 'PENDING') {
         throw conflito('CONVITE_ENCERRADO', 'Este convite já foi aceito ou revogado.');
       }
@@ -310,7 +429,7 @@ export class InvitesService {
           tenantId: invite.tenant_id,
           targetUserId: invite.target_user_id,
           summary: `Convite para ${invite.target_email} revogado.`,
-          previousData: { inviteId: invite.id, status: 'PENDING' },
+          previousData: { inviteId: invite.id, status: 'PENDING', professionalId: invite.professional_id },
           newData: { status: 'REVOKED' },
         },
         now,
@@ -342,11 +461,23 @@ export class InvitesService {
     context: { now: Date; userAgent?: string; ipAddress?: string },
   ): Promise<AcceptResult> {
     return this.dataSource.transaction(async (manager) => {
+      // Estabelecimento antes do convite: mesma ordem de quem convida, e o
+      // aceite de funcionário confere a vaga já com o lock.
+      const previa = await this.findByToken(manager, token, false);
+      const tenant = previa?.type === 'ESTABLISHMENT' && previa.tenant_id
+        ? await lockTenantForSeats(manager, previa.tenant_id)
+        : null;
       const invite = await this.findByToken(manager, token, true);
       const status = this.publicStatus(invite, context.now);
       if (status === 'INVALID') throw new NotFoundException({ code: 'CONVITE_INVALIDO', message: 'Convite inválido.' });
       if (status !== 'VALID') throw new GoneException({ code: `CONVITE_${status}`, message: MENSAGEM_ESTADO[status] });
       const alvo = invite!;
+      if (alvo.type === 'ESTABLISHMENT') {
+        if (!tenant || tenant.id !== alvo.tenant_id || !isOperational(tenant.status)) {
+          throw new GoneException({ code: 'CONVITE_UNAVAILABLE', message: MENSAGEM_ESTADO.UNAVAILABLE });
+        }
+        if (alvo.professional_id) await this.assertStaffInviteUsable(manager, alvo, tenant, context.now);
+      }
 
       const [user] = await manager.query<{ id: string; name: string; status: string }[]>(
         'SELECT id, name, status FROM users WHERE id = $1 FOR UPDATE',
@@ -387,17 +518,20 @@ export class InvitesService {
       if (alvo.type === 'ESTABLISHMENT') {
         try {
           await manager.query(
-            `INSERT INTO memberships (id, user_id, tenant_id, role, created_at)
-             VALUES ($1, $2, $3, $4::establishment_role, $5)`,
-            [generateId(), user.id, alvo.tenant_id, alvo.establishment_role, context.now],
+            `INSERT INTO memberships (id, user_id, tenant_id, role, professional_id, created_at)
+             VALUES ($1, $2, $3, $4::establishment_role, $5, $6)`,
+            [generateId(), user.id, alvo.tenant_id, alvo.establishment_role, alvo.professional_id, context.now],
           );
         } catch (error) {
           if (isUniqueViolation(error, 'uq_memberships_user_tenant')) {
             throw conflito('JA_VINCULADO', 'Esta conta já tem vínculo com este estabelecimento.');
           }
+          if (isUniqueViolation(error, 'uq_memberships_professional_id')) {
+            throw conflito('PROFISSIONAL_COM_ACESSO', 'Este profissional já tem um acesso. Fale com o estabelecimento.');
+          }
           throw error;
         }
-        destination = '/conta/visao-geral';
+        destination = alvo.professional_id ? '/conta/minha-agenda' : '/conta/visao-geral';
       } else {
         await manager.query(
           `UPDATE users SET platform_role = $2::platform_role, platform_permissions = $3::platform_permission[],
@@ -424,6 +558,7 @@ export class InvitesService {
             role: alvo.establishment_role,
             platformRole: alvo.platform_role,
             accountActivated: !credential,
+            professionalId: alvo.professional_id,
           },
         },
         context.now,
@@ -538,6 +673,8 @@ export class InvitesService {
       role?: string;
       platformRole?: string;
       platformPermissions?: string[];
+      /** Convite de funcionário: o profissional que ele reserva. */
+      professional?: { id: string; name: string };
     },
   ): Promise<IssuedInvite> {
     const tenantId = data.tenant?.id ?? null;
@@ -575,9 +712,9 @@ export class InvitesService {
       await manager.query(
         `INSERT INTO invites (id, type, target_name, target_email, tenant_id, establishment_role, platform_role,
             platform_permissions, status, token_hash, created_by_user_id, created_at, expires_at, target_user_id,
-            request_key, updated_at)
+            request_key, updated_at, professional_id)
          VALUES ($1, $2::invite_type, $3, $4, $5, $6::establishment_role, $7::platform_role, $8::platform_permission[],
-            'PENDING', $9, $10, $11, $12, $13, $14, $11)`,
+            'PENDING', $9, $10, $11, $12, $13, $14, $11, $15)`,
         [
           id,
           data.type,
@@ -593,6 +730,7 @@ export class InvitesService {
           expiresAt,
           target.id,
           data.requestKey,
+          data.professional?.id ?? null,
         ],
       );
     } catch (error) {
@@ -608,9 +746,11 @@ export class InvitesService {
         actor,
         tenantId,
         targetUserId: target.id,
-        summary: data.tenant
-          ? `Convite de ${data.role} em ${data.tenant.name} para ${targetEmail}.`
-          : `Convite de administração da plataforma para ${targetEmail}.`,
+        summary: data.professional
+          ? `Convite de acesso de funcionário (${data.professional.name}) em ${data.tenant?.name} para ${targetEmail}.`
+          : data.tenant
+            ? `Convite de ${data.role} em ${data.tenant.name} para ${targetEmail}.`
+            : `Convite de administração da plataforma para ${targetEmail}.`,
         newData: {
           inviteId: id,
           type: data.type,
@@ -618,6 +758,7 @@ export class InvitesService {
           platformRole: data.platformRole ?? null,
           platformPermissions: data.platformPermissions ?? null,
           accountExisted: target.existed,
+          professionalId: data.professional?.id ?? null,
         },
       },
       now,
@@ -637,11 +778,72 @@ export class InvitesService {
     };
   }
 
-  private async lockInvite(manager: EntityManager, inviteId: string, actor: Actor) {
+  private async lockInvite(manager: EntityManager, inviteId: string, conferir: (invite: InviteRow) => void) {
     const [invite] = await manager.query<InviteRow[]>(`${INVITE_ROW_SELECT} WHERE i.id = $1 FOR UPDATE OF i`, [inviteId]);
-    if (!invite) throw new NotFoundException('Convite não encontrado.');
-    requireCapability(actor, invite.type === 'PLATFORM' ? 'managePlatformAccess' : 'manageEstablishments');
+    if (!invite) throw new NotFoundException(INVITE_NOT_FOUND_MESSAGE);
+    conferir(invite);
     return invite;
+  }
+
+  private requirePlatformScope(actor: Actor, invite: InviteRow): void {
+    requireCapability(actor, invite.type === 'PLATFORM' ? 'managePlatformAccess' : 'manageEstablishments');
+  }
+
+  /** O dono só alcança convites de funcionário do próprio estabelecimento. */
+  private requireStaffInviteOf(invite: InviteRow, tenantId: string): void {
+    if (invite.tenant_id !== tenantId || !invite.professional_id) throw new NotFoundException(INVITE_NOT_FOUND_MESSAGE);
+  }
+
+  /** Trava o estabelecimento de um convite de funcionário ANTES do convite
+   * (mesma ordem do aceite e da criação). Outros convites: nada a travar. */
+  private async lockTenantOfStaffInvite(manager: EntityManager, inviteId: string): Promise<LockedTenant | null> {
+    const [linha] = await manager.query<{ tenant_id: string | null; professional_id: string | null }[]>(
+      'SELECT tenant_id, professional_id FROM invites WHERE id = $1',
+      [inviteId],
+    );
+    if (!linha?.tenant_id || !linha.professional_id) return null;
+    return lockTenantForSeats(manager, linha.tenant_id);
+  }
+
+  /** O profissional ainda não tem acesso (vínculo em qualquer situação). */
+  private async assertProfessionalFree(manager: EntityManager, tenantId: string, professionalId: string): Promise<void> {
+    const [vinculo] = await manager.query<unknown[]>(
+      'SELECT 1 FROM memberships WHERE tenant_id = $1 AND professional_id = $2',
+      [tenantId, professionalId],
+    );
+    if (vinculo) {
+      throw conflito(
+        'PROFISSIONAL_COM_ACESSO',
+        'Este profissional já tem um acesso. Para trocar a pessoa, remova o acesso atual antes.',
+      );
+    }
+  }
+
+  /**
+   * Um convite de funcionário ainda pode virar acesso (reenvio e aceite):
+   * estabelecimento em operação, profissional ativo e sem acesso, e vaga no
+   * plano sem contar o próprio convite (ele já ocupava a vaga, ou a liberou
+   * ao vencer e volta a ocupá-la agora).
+   */
+  private async assertStaffInviteUsable(
+    manager: EntityManager,
+    invite: InviteRow,
+    tenant: LockedTenant | null,
+    now: Date,
+  ): Promise<void> {
+    if (!tenant || tenant.id !== invite.tenant_id || !isOperational(tenant.status)) {
+      throw conflito('ESTABELECIMENTO_INDISPONIVEL', 'O estabelecimento não está em operação.');
+    }
+    const [profissional] = await manager.query<{ active: boolean }[]>(
+      'SELECT active FROM professionals WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+      [tenant.id, invite.professional_id],
+    );
+    if (!profissional?.active) {
+      throw conflito('PROFISSIONAL_INATIVO', 'O profissional deste convite está desativado no estabelecimento.');
+    }
+    await this.assertProfessionalFree(manager, tenant.id, invite.professional_id!);
+    const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now, invite.id);
+    if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
   }
 
   private async findByToken(manager: EntityManager, token: string, lock: boolean): Promise<InviteRow | null> {
@@ -662,6 +864,10 @@ export class InvitesService {
     return 'VALID';
   }
 }
+
+type Autorizador = (manager: EntityManager) => Promise<(invite: InviteRow) => void>;
+
+const INVITE_NOT_FOUND_MESSAGE = 'Convite não encontrado.';
 
 export type PublicInviteStatus = 'VALID' | 'INVALID' | 'EXPIRED' | 'REVOKED' | 'ACCEPTED' | 'UNAVAILABLE';
 
@@ -689,6 +895,7 @@ interface InviteRow {
   target_status: string | null;
   target_account_name: string | null;
   target_has_credential: boolean;
+  professional_id: string | null;
 }
 
 const INVITE_ROW_SELECT = `SELECT i.id, i.type, i.status, i.target_name, i.target_email, i.tenant_id,
@@ -696,6 +903,6 @@ const INVITE_ROW_SELECT = `SELECT i.id, i.type, i.status, i.target_name, i.targe
        LEFT JOIN units u ON u.tenant_id = t.id AND u.is_primary = true
       WHERE t.id = i.tenant_id ORDER BY u.created_at LIMIT 1) AS tenant_name,
     i.establishment_role, i.platform_role, i.platform_permissions::text[] AS platform_permissions, i.expires_at, i.send_count,
-    i.target_user_id, target.status AS target_status, target.name AS target_account_name,
+    i.professional_id, i.target_user_id, target.status AS target_status, target.name AS target_account_name,
     EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = i.target_user_id) AS target_has_credential
   FROM invites i LEFT JOIN users target ON target.id = i.target_user_id`;

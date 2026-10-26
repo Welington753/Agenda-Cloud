@@ -725,11 +725,31 @@ export class AppointmentsService {
       mensagemProibido: APPOINTMENT_STATUS_FORBIDDEN_MESSAGE,
     });
 
+    const salvo = await this.applyStatusChange(authorized.tenantId, appointmentId, acao, dto, userId);
+    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+    return view;
+  }
+
+  /**
+   * O núcleo de `changeStatus`, sem a autorização: quem chama já provou o
+   * acesso ao estabelecimento. `professionalId` restringe a reserva à agenda
+   * desse profissional (agenda do funcionário, ver team/my-agenda.service.ts):
+   * reserva de outro profissional é indistinguível de inexistente.
+   */
+  async applyStatusChange(
+    tenantId: string,
+    appointmentId: string,
+    acao: AcaoDeStatus,
+    dto: AppointmentStatusActionDto,
+    userId: string,
+    professionalId?: string,
+  ): Promise<Appointment> {
+    const authorized = { tenantId };
     const esperado = new Date(dto.expectedStartAt);
     const destino = DESTINO_DA_ACAO[acao];
 
-    const salvo = await this.dataSource.transaction(async (tx) => {
-      const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId);
+    return this.dataSource.transaction(async (tx) => {
+      const appointment = await this.travarReserva(tx, authorized.tenantId, appointmentId, professionalId);
 
       // Mesmo controle otimista do cancelamento, antes de tudo: a tela que
       // mostrava outro horário não age sobre a reserva movida.
@@ -778,9 +798,6 @@ export class AppointmentsService {
       appointment.status = destino;
       return appointment;
     });
-
-    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
-    return view;
   }
 
   /**
@@ -987,9 +1004,10 @@ export class AppointmentsService {
     tx: EntityManager,
     tenantId: string,
     appointmentId: string,
+    professionalId?: string,
   ): Promise<Appointment> {
     const appointment = await tx.findOne(Appointment, {
-      where: { id: appointmentId, tenantId },
+      where: { id: appointmentId, tenantId, ...(professionalId ? { professionalId } : {}) },
       lock: { mode: 'pessimistic_write' },
     });
     // Id de outro estabelecimento é indistinguível de inexistente.

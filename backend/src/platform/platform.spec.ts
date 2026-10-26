@@ -109,7 +109,12 @@ describe('administração real da plataforma', () => {
     } as unknown as DataSource);
     expect(await service.access('u')).toEqual({
       canViewEstablishments: true,
-      capabilities: { viewDirectory: true, manageEstablishments: true, managePlatformAccess: true },
+      capabilities: {
+        viewDirectory: true,
+        manageEstablishments: true,
+        managePlatformAccess: true,
+        manageEstablishmentLifecycle: true,
+      },
       platformRole: PlatformRole.MASTER_OWNER,
     });
     findOne.mockResolvedValue({

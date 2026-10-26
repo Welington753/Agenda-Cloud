@@ -11,6 +11,7 @@ import { PublicBookingModule } from './public-booking/public-booking.module.js';
 import { PushModule } from './push/push.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { AccountsModule } from './accounts/accounts.module.js';
+import { TeamModule } from './team/team.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -28,6 +29,7 @@ import { AppService } from './app.service.js';
     PushModule,
     PlatformModule,
     AccountsModule,
+    TeamModule,
   ],
   controllers: [AppController],
   providers: [AppService],

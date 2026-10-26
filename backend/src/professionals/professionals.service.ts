@@ -19,9 +19,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { DataSource, In, MoreThan } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import { Appointment } from '../entities/appointment.entity.js';
+import { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
+import { Plan } from '../entities/plan.entity.js';
 import { Professional } from '../entities/professional.entity.js';
+import { Tenant } from '../entities/tenant.entity.js';
 import { ProfessionalService } from '../entities/professional-service.entity.js';
 import { Service } from '../entities/service.entity.js';
 import { deriveAvatar } from './avatar.js';
@@ -36,6 +40,10 @@ const PROFESSIONAL_NOT_FOUND_MESSAGE = 'Profissional não encontrado.';
 const INVALID_SERVICES_MESSAGE =
   'Um ou mais serviços informados não existem, estão inativos ou pertencem a outro estabelecimento.';
 const DUPLICATE_SERVICE_MESSAGE = 'Este serviço já está vinculado ao profissional.';
+
+/** Reservas que continuam na agenda de um profissional desativado e precisam
+ * de tratamento (remarcar com outro profissional, cancelar ou atender). */
+const RESERVAS_EM_ABERTO: readonly AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED];
 
 /** Serviço vinculado, na forma exposta pela API — inclui se o SERVIÇO em si
  * está ativo, para a UI marcar vínculos com serviço desativado sem escondê-los. */
@@ -168,6 +176,29 @@ export class ProfessionalsService {
     }
   }
 
+  /**
+   * Limite de profissionais ATIVOS do plano (`plans.max_professionals`).
+   * Trava o estabelecimento com o mesmo lock das vagas de acesso
+   * (team/seats.ts): duas criações disputando a última vaga ficam em fila, e
+   * uma troca de plano em paralelo conta esta. Quem já passou do limite (plano
+   * trocado antes desta regra) não perde nada: só não cria nem reativa até
+   * caber.
+   */
+  private async exigirVagaDeProfissional(tx: EntityManager, tenantId: string): Promise<void> {
+    const tenant = await tx.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'for_no_key_update' } });
+    const plano = tenant ? await tx.findOne(Plan, { where: { id: tenant.planId } }) : null;
+    if (!tenant || !plano) throw new NotFoundException('Estabelecimento não encontrado.');
+    const ativos = await tx.count(Professional, { where: { tenantId, active: true } });
+    if (ativos >= plano.maxProfessionals) {
+      throw new ConflictException({
+        code: 'LIMITE_DE_PROFISSIONAIS',
+        message:
+          `O plano ${plano.name} permite ${plano.maxProfessionals} profissional(is) ativo(s) e todos estão em uso. ` +
+          'Desative um profissional ou fale com a administração para trocar o plano.',
+      });
+    }
+  }
+
   async list(userId: string, tenantId: string): Promise<ProfessionalView[]> {
     const manager = this.dataSource.manager;
     const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'view');
@@ -193,9 +224,10 @@ export class ProfessionalsService {
     const { avatarInitials, avatarColor } = deriveAvatar(dto.name);
 
     const saved = await this.dataSource.transaction(async (tx) => {
-      // Primeiro statement da transação, e travando os serviços escolhidos:
-      // ver `validateEligibleServiceIds`. Recusa aqui dentro significa
-      // rollback — o profissional nunca chega a existir.
+      // Primeiro o limite do plano (trava o estabelecimento), depois os
+      // serviços escolhidos: ver `validateEligibleServiceIds`. Recusa aqui
+      // dentro significa rollback — o profissional nunca chega a existir.
+      await this.exigirVagaDeProfissional(tx, authorized.tenantId);
       await this.validateEligibleServiceIds(tx, authorized.tenantId, serviceIds);
 
       const professional = await tx.save(
@@ -257,12 +289,19 @@ export class ProfessionalsService {
 
   /** Desativação — NUNCA exclusão física, NUNCA cascade sobre os vínculos de
    * serviço. O registro e todos os `professional_services` continuam
-   * intactos; só a coluna `active` do profissional muda. Idempotente. */
+   * intactos; só a coluna `active` do profissional muda. Idempotente.
+   *
+   * Efeitos: o profissional deixa de receber reservas novas (o motor de
+   * disponibilidade recusa profissional inativo) e um acesso de funcionário
+   * ligado a ele deixa de operar (team/my-agenda.service.ts). As reservas
+   * que já existem ficam: `futureAppointments` diz quantas aguardam
+   * tratamento do dono. */
   async deactivate(
     userId: string,
     tenantId: string,
     professionalId: string,
-  ): Promise<ProfessionalView> {
+    agora: Date = new Date(),
+  ): Promise<ProfessionalView & { futureAppointments: number }> {
     const manager = this.dataSource.manager;
     const authorized = await resolveAuthorizedProfessionalsTenant(manager, userId, tenantId, 'manage');
     const professional = await this.findScopedProfessional(
@@ -276,8 +315,16 @@ export class ProfessionalsService {
       await manager.save(professional);
     }
 
+    const futureAppointments = await manager.count(Appointment, {
+      where: {
+        tenantId: authorized.tenantId,
+        professionalId: professional.id,
+        status: In([...RESERVAS_EM_ABERTO]),
+        startAt: MoreThan(agora),
+      },
+    });
     const [view] = await this.toViews(manager, authorized.tenantId, [professional]);
-    return view;
+    return { ...view, futureAppointments };
   }
 
   /** Reativação — espelho exato de `deactivate`. Nunca recria vínculo nenhum:
@@ -297,8 +344,12 @@ export class ProfessionalsService {
     );
 
     if (!professional.active) {
+      // Reativar volta a ocupar uma vaga de profissional do plano.
+      await this.dataSource.transaction(async (tx) => {
+        await this.exigirVagaDeProfissional(tx, authorized.tenantId);
+        await tx.update(Professional, { id: professional.id, tenantId: authorized.tenantId }, { active: true });
+      });
       professional.active = true;
-      await manager.save(professional);
     }
 
     const [view] = await this.toViews(manager, authorized.tenantId, [professional]);

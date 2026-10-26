@@ -99,7 +99,7 @@ describe('administração da plataforma — HTTP', () => {
       .get('/platform/establishments/tenant_a')
       .expect(403);
   });
-  it('não cria rota de alteração da ficha, promoção pelo acesso ou suporte', async () => {
+  it('a ficha só aceita os dados cadastrais: situação, endereço e papel pelo corpo são recusados', async () => {
     // Criar estabelecimento existe (gestão de contas), mas só com o formulário
     // completo: um corpo forjado nunca chega ao serviço.
     await request(app.getHttpServer())
@@ -110,15 +110,26 @@ describe('administração da plataforma — HTTP', () => {
       .patch('/platform/establishments')
       .send({ status: 'ACTIVE' })
       .expect(404);
-    for (const path of ['/platform/establishments/tenant_a', '/platform/access']) {
-      await request(app.getHttpServer())
-        .post(path)
-        .send({ platformRole: 'MASTER_OWNER' })
-        .expect(404);
-      await request(app.getHttpServer())
-        .patch(path)
-        .send({ status: 'ACTIVE' })
-        .expect(404);
+    // O PATCH da ficha existe, mas a situação muda só pelas ações próprias
+    // (suspender, reativar, arquivar) e o endereço público nunca muda aqui.
+    for (const corpo of [
+      { expectedUpdatedAt: '2026-10-26T12:00:00.000Z', status: 'ACTIVE' },
+      { expectedUpdatedAt: '2026-10-26T12:00:00.000Z', slug: 'outro-endereco' },
+      { expectedUpdatedAt: '2026-10-26T12:00:00.000Z', planId: 'plan_pro' },
+    ]) {
+      await request(app.getHttpServer()).patch('/platform/establishments/tenant_a').send(corpo).expect(400);
     }
+    await request(app.getHttpServer())
+      .post('/platform/establishments/tenant_a')
+      .send({ platformRole: 'MASTER_OWNER' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post('/platform/access')
+      .send({ platformRole: 'MASTER_OWNER' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch('/platform/access')
+      .send({ status: 'ACTIVE' })
+      .expect(404);
   });
 });

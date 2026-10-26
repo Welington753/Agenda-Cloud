@@ -37,7 +37,12 @@ const rotuloDoDia = (data: string) => {
   const semana = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][new Date(`${data}T12:00:00Z`).getUTCDay()];
   return `${semana} ${data.slice(8, 10)}/${data.slice(5, 7)}`;
 };
-const DIA_SEGUINTE = new Date(Date.parse(`${DATA}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+// Um dia SEM jornada (só domingo tem), sempre dentro da lista do link público
+// (DIAS_OFERECIDOS = 14, de hoje a hoje + 13). `DATA` cai entre hoje + 7 e
+// hoje + 13; o dia SEGUINTE a ela saía da lista quando `DATA` era hoje + 13
+// (execução numa segunda-feira). O dia ANTERIOR (sábado) fica entre hoje + 6
+// e hoje + 12.
+const DIA_SEM_JORNADA = new Date(Date.parse(`${DATA}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
 type EstadoDoNavegador = Exclude<BrowserContextOptions["storageState"], string | undefined>;
 
@@ -387,7 +392,7 @@ test.describe("link público de agendamento", () => {
     await expect(p.getByTestId("profissional-unico")).toContainText("Bia Corte");
     await p.getByTestId("continuar-profissional").click();
     await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DATA) }).click();
-    await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DIA_SEGUINTE) }).click();
+    await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia(DIA_SEM_JORNADA) }).click();
     await expect(p.getByTestId("sem-horarios")).toBeVisible();
     liberar();
     await p.clock.runFor(1_000);

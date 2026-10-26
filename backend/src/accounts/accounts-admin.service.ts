@@ -26,7 +26,7 @@ import { recordAudit } from './audit.js';
 import { requireRecentReauth } from './reauth.js';
 import { avancarVersao } from './user-version.js';
 import { linhasDe } from '../notifications/notification-jobs.repository.js';
-import { EFFECTIVE_TENANT_PERMISSIONS, EFFECTIVE_TENANT_ROLES } from './tenant-effective-access.js';
+import { EFFECTIVE_TENANT_PERMISSIONS, RESTRICTABLE_TENANT_ROLES } from './tenant-effective-access.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 
 /** Chave do lock que serializa mudanças capazes de tirar um MASTER_OWNER. */
@@ -244,10 +244,10 @@ export class AccountsAdminService {
       await requireRecentReauth(manager, sessionId, now);
       const actor = await loadActor(manager, actorId);
       const vinculo = await this.lockMembership(manager, actor, membershipId);
-      if (!EFFECTIVE_TENANT_ROLES.includes(vinculo.role)) {
+      if (!RESTRICTABLE_TENANT_ROLES.includes(vinculo.role)) {
         throw conflito(
           'PAPEL_SEM_ACESSO',
-          'Este papel não libera nenhuma área hoje, então restringir permissões não teria efeito.',
+          'Só as áreas de um dono são restringidas por aqui. As de um funcionário são ajustadas pelo dono em Equipe e acessos.',
         );
       }
       const atuais = vinculo.denied.filter((p) => EFFECTIVE_TENANT_PERMISSIONS.includes(p as never)).sort();

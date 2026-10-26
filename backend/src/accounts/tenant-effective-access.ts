@@ -3,12 +3,14 @@
 // autorização por conta própria: se a política de uma rota mudar, a ficha da
 // administração muda junto.
 //
-// Hoje toda rota de estabelecimento libera só o papel DONO, e um override só
-// RESTRINGE (`DENIED`); `GRANTED` não amplia nada. Por isso:
-// - o único papel que a administração atribui é DONO;
-// - as únicas permissões que a administração ajusta são as `DENIED` que
-//   alguma política consulta (`EFFECTIVE_TENANT_PERMISSIONS`);
-// - um vínculo antigo com outro papel aparece com "nenhuma área liberada".
+// As rotas do estabelecimento liberam o papel DONO, e para ele um override só
+// RESTRINGE (`DENIED`). O papel PROFISSIONAL (funcionário, ver
+// team/staff-access.ts) vê só a própria agenda e recebe do dono, uma a uma,
+// as ações sobre os próprios atendimentos (`GRANTED`). Por isso:
+// - a administração convida só DONO; funcionários são convidados pelo dono;
+// - as permissões que a administração restringe são as `DENIED` que alguma
+//   política de dono consulta (`EFFECTIVE_TENANT_PERMISSIONS`);
+// - GERENTE e RECEPCIONISTA aparecem com "nenhuma área liberada".
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import type { PermissionMode } from '../entities/enums/permission-mode.enum.js';
@@ -24,6 +26,7 @@ import { canManageConsumers, canViewConsumers } from '../consumers/consumer-acce
 import { canManageProfessionals, canViewProfessionals } from '../professionals/professional-access.js';
 import { canManagePublicBooking } from '../public-booking/public-booking-access.js';
 import { canManageServices, canViewServices } from '../services/service-access.js';
+import { canManageTeam, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
 
 export interface OverrideLike {
   permission: Permission;
@@ -46,10 +49,31 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
   { key: 'PROFISSIONAIS_VER', label: 'Ver profissionais', policy: canViewProfessionals },
   { key: 'PROFISSIONAIS_GERENCIAR', label: 'Gerenciar profissionais e horários', policy: canManageProfessionals },
   { key: 'AGENDAMENTO_ONLINE', label: 'Configurar o agendamento online', policy: canManagePublicBooking },
+  { key: 'EQUIPE', label: 'Gerenciar equipe e acessos', policy: canManageTeam },
+  { key: 'AGENDA_PROPRIA_VER', label: 'Ver a própria agenda (funcionário)', policy: (role) => canViewOwnAgenda(role) },
+  {
+    key: 'AGENDA_PROPRIA_INICIAR',
+    label: 'Iniciar os próprios atendimentos',
+    policy: (role, o) => staffPermissionGranted(role, o, 'ATENDIMENTO_PROPRIO_INICIAR'),
+  },
+  {
+    key: 'AGENDA_PROPRIA_CONCLUIR',
+    label: 'Concluir os próprios atendimentos',
+    policy: (role, o) => staffPermissionGranted(role, o, 'ATENDIMENTO_PROPRIO_CONCLUIR'),
+  },
+  {
+    key: 'AGENDA_PROPRIA_FALTA',
+    label: 'Marcar falta nos próprios atendimentos',
+    policy: (role, o) => staffPermissionGranted(role, o, 'ATENDIMENTO_PROPRIO_FALTA'),
+  },
 ];
 
 /** Papéis que alguma rota libera hoje. */
-export const EFFECTIVE_TENANT_ROLES: readonly EstablishmentRole[] = [EstablishmentRole.DONO];
+export const EFFECTIVE_TENANT_ROLES: readonly EstablishmentRole[] = [EstablishmentRole.DONO, EstablishmentRole.PROFISSIONAL];
+
+/** Papéis cujas áreas a administração RESTRINGE com `DENIED`. O funcionário
+ * tem as liberações dele ajustadas pelo dono, em "Equipe e acessos". */
+export const RESTRICTABLE_TENANT_ROLES: readonly EstablishmentRole[] = [EstablishmentRole.DONO];
 
 /** Permissões cujo `DENIED` alguma política consulta (restringe de fato). */
 export const EFFECTIVE_TENANT_PERMISSIONS: readonly Permission[] = [
@@ -65,6 +89,7 @@ export const EFFECTIVE_TENANT_PERMISSIONS: readonly Permission[] = [
   Permission.PROFISSIONAIS_VISUALIZAR,
   Permission.PROFISSIONAIS_GERENCIAR,
   Permission.CONFIGURACOES_GERENCIAR,
+  Permission.EQUIPE_GERENCIAR,
 ];
 
 export interface AreaAccess {

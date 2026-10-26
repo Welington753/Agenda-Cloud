@@ -23,6 +23,7 @@ import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, verifyPassword } from './pas
 import type { SessionContextResult, TenantContext } from './session-context.js';
 import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { isTenantUsableForSession } from './tenant-access.js';
+import { isMembershipActive } from '../common/tenant-authorization.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
 
 export interface LoginContext {
@@ -128,6 +129,9 @@ export class AuthService {
     const contexts: TenantContext[] = [];
 
     for (const membership of memberships) {
+      // Acesso suspenso pelo dono: o estabelecimento some da lista desta
+      // conta, sem afetar os demais vínculos dela.
+      if (!isMembershipActive(membership)) continue;
       const tenant = await manager.findOne(Tenant, { where: { id: membership.tenantId } });
       if (!tenant || !isTenantUsableForSession(tenant.status)) {
         continue;

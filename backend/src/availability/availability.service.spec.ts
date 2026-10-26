@@ -114,6 +114,8 @@ function montar(opcoes: Opcoes = {}) {
             {
               id: 'membership_a',
               userId: USUARIO_DONO,
+
+              status: 'ACTIVE',
               tenantId: TENANT_A,
               role: opcoes.role ?? EstablishmentRole.DONO,
             },

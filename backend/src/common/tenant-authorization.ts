@@ -23,6 +23,13 @@ import type { PermissionMode } from '../entities/enums/permission-mode.enum.js';
  * distinguir os dois revelaria a existência de estabelecimentos de terceiros. */
 export const TENANT_NOT_FOUND_MESSAGE = 'Estabelecimento não encontrado.';
 
+export const MEMBERSHIP_SUSPENDED_MESSAGE = 'Seu acesso a este estabelecimento está suspenso.';
+
+/** Só `ACTIVE` opera. Qualquer outro valor (ou ausente) não dá acesso. */
+export function isMembershipActive(membership: { status?: string | null }): boolean {
+  return membership.status === 'ACTIVE';
+}
+
 export interface PermissionOverrideLike {
   permission: Permission;
   mode: PermissionMode;
@@ -59,6 +66,11 @@ export async function resolveAuthorizedTenant(
   const membership = await manager.findOne(Membership, { where: { userId, tenantId } });
   if (!membership) {
     throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
+  }
+  // Acesso suspenso pelo dono: o vínculo existe, mas não opera. Relido a cada
+  // requisição, então vale já na próxima, mesmo com a sessão aberta.
+  if (!isMembershipActive(membership)) {
+    throw new ForbiddenException(MEMBERSHIP_SUSPENDED_MESSAGE);
   }
 
   const tenant = await manager.findOne(Tenant, { where: { id: tenantId } });
