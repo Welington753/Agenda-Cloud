@@ -355,21 +355,21 @@ test.describe("clientes do estabelecimento", () => {
     await buscar(page, clienteDeA);
     await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
 
-    // Troca para B: nada de A sobra na tela, e a falta de permissão é real (403).
+    // Troca para B: nada de A sobra na tela. RECEPCIONISTA não tem área
+    // liberada: o menu fica só com Minha conta, a tela de Clientes aberta pelo
+    // endereço volta para Minha conta, e a falta de permissão é real (403).
     await page.getByRole("link", { name: "Trocar de estabelecimento" }).click();
     await page.getByRole("button", { name: new RegExp(b.businessName) }).click();
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(b.businessName);
     await page.goto("/conta/clientes");
-    await expect(page.getByText("Pesquise para encontrar um cliente")).toBeVisible();
+    await expect(page).toHaveURL(/\/conta$/);
     await expect(page.getByText(clienteDeA)).toHaveCount(0);
-    await expect(page.getByLabel("Buscar cliente")).toHaveValue("");
-    const resposta403 = page.waitForResponse((r) => ehBusca(new URL(r.url())));
-    await buscar(page, clienteDeA);
-    expect((await resposta403).status()).toBe(403);
-    await expect(page.getByTestId("clientes-sem-permissao")).toContainText(
-      "Você não tem permissão para ver os clientes deste estabelecimento.",
+    expect(await nav(page).getByRole("link").allTextContents()).toEqual(["Minha conta"]);
+    await expect(page.getByRole("main")).toContainText("Este papel não tem área liberada neste estabelecimento.");
+    const busca403 = await page.request.get(
+      `http://localhost:3001/tenants/${b.tenantId}/consumers?q=${encodeURIComponent(clienteDeA)}`,
     );
-    await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
+    expect(busca403.status()).toBe(403);
 
     // Volta para A.
     await page.getByRole("link", { name: "Trocar de estabelecimento" }).click();
@@ -384,6 +384,7 @@ test.describe("clientes do estabelecimento", () => {
       "Clientes",
       "Serviços",
       "Profissionais",
+      "Equipe e acessos",
       "Minha conta",
     ]);
     await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);

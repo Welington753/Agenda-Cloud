@@ -86,7 +86,12 @@ const Contexto = createContext<ValorSolicitacoes | undefined>(undefined);
 export function SolicitacoesProvider({ children }: { children: ReactNode }) {
   const { estado: sessao } = useRealAuth();
   const pathname = usePathname();
-  const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
+  // Só o dono vê solicitações: para o funcionário (e papéis sem área) não há
+  // leitura nenhuma, nem periódica — o servidor recusaria todas.
+  const ativo = sessao.status === "autenticado" && sessao.tenantIdAtivo
+    ? sessao.sessao.contexts.find((c) => c.tenantId === sessao.tenantIdAtivo)
+    : undefined;
+  const tenantId = ativo?.role === "DONO" ? ativo.tenantId : null;
   const userId = sessao.status === "autenticado" ? sessao.sessao.user.id : null;
   const chave = tenantId && userId ? `${userId}:${tenantId}` : null;
 

@@ -28,10 +28,19 @@ function UmVinculo({ vinculo, pode, nome, aoMudar }: { vinculo: Vinculo; pode: b
         <Link href={rotaFichaEstabelecimento(vinculo.tenant.id)} className="min-h-11 break-words font-semibold text-accent hover:underline">
           {vinculo.tenant.name}
         </Link>
-        <Badge cor="destaque">{PAPEIS_ESTABELECIMENTO[vinculo.role] ?? vinculo.role}</Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge cor="destaque">{PAPEIS_ESTABELECIMENTO[vinculo.role] ?? vinculo.role}</Badge>
+          {vinculo.status === "SUSPENDED" && <Badge cor="aviso">Acesso suspenso pelo dono</Badge>}
+        </div>
       </div>
+      {vinculo.professional && (
+        <p className="text-sm text-ink-soft">
+          Ligado ao profissional {vinculo.professional.name}
+          {vinculo.professional.active ? "" : " (desativado: o acesso não opera)"}.
+        </p>
+      )}
       {!vinculo.roleHasAccess && (
-        <p className="text-sm text-ink-soft">Este papel não libera nenhuma área hoje: só Dono(a) tem acesso nas rotas atuais.</p>
+        <p className="text-sm text-ink-soft">Este papel não libera nenhuma área hoje: só Dono(a) e Funcionário(a) têm acesso nas rotas atuais.</p>
       )}
       <ul className="grid gap-1 text-sm sm:grid-cols-2" aria-label={`Acesso efetivo em ${vinculo.tenant.name}`}>
         {vinculo.effectiveAccess.map((area) => (
@@ -51,7 +60,12 @@ function UmVinculo({ vinculo, pode, nome, aoMudar }: { vinculo: Vinculo; pode: b
       {vinculo.ineffectiveOverrides.length > 0 && (
         <p className="text-xs text-ink-soft">Ajustes antigos sem efeito nas rotas: {vinculo.ineffectiveOverrides.join(", ")}.</p>
       )}
-      {pode && vinculo.roleHasAccess && (
+      {/* Só as áreas de um dono são restringidas aqui; as do funcionário são
+          liberadas pelo dono, em Equipe e acessos. */}
+      {vinculo.role === "PROFISSIONAL" && (
+        <p className="text-xs text-ink-soft">As ações deste funcionário são liberadas pelo dono, em Equipe e acessos.</p>
+      )}
+      {pode && vinculo.role === "DONO" && (
         <fieldset className="space-y-2 border-t border-border pt-3">
           <legend className="text-sm font-semibold">Restringir neste estabelecimento</legend>
           <div className="grid gap-1 sm:grid-cols-2">

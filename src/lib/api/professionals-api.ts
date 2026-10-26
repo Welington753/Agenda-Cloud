@@ -28,6 +28,9 @@ export interface ProfissionalReal {
   active: boolean;
   createdAt: string;
   services: VinculoServicoReal[];
+  /** Só na resposta da desativação: reservas futuras em aberto que
+   * continuam na agenda deste profissional e pedem tratamento. */
+  futureAppointments?: number;
 }
 
 export interface DadosProfissionalReal {
@@ -54,7 +57,7 @@ export type FalhaProfissionaisReal =
   | { tipo: "dados_invalidos"; mensagem: string | null }
   /** Corrida concorrente vinculando o mesmo serviço ao mesmo tempo — a
    * constraint única do banco recusou (ver professionals.service.ts). */
-  | { tipo: "conflito" }
+  | { tipo: "conflito"; mensagem?: string | null }
   | { tipo: "falha_comunicacao" }
   | { tipo: "indisponivel" };
 
@@ -97,7 +100,9 @@ function falhaPorStatus(status: number, data: unknown): FalhaProfissionaisReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
-  if (status === 409) return { tipo: "conflito" };
+  // 409 também é o limite de profissionais do plano: a mensagem do servidor
+  // diz o que fazer.
+  if (status === 409) return { tipo: "conflito", mensagem: mensagemDeErroDoBackend(data) };
   if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDeErroDoBackend(data) };
   return { tipo: "indisponivel" };
 }

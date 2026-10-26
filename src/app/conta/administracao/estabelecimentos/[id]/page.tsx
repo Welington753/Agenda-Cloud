@@ -6,7 +6,6 @@ import {
   SITUACOES,
   SEGMENTOS,
   dataCadastro,
-  precoCatalogo,
 } from "@/lib/administracao/contratos";
 import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS } from "@/lib/administracao/rotas";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
@@ -14,6 +13,11 @@ import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { PessoasEstabelecimento } from "@/components/administracao/pessoas-estabelecimento";
+import {
+  DadosCadastrais,
+  SituacaoDoEstabelecimento,
+} from "@/components/administracao/ciclo-estabelecimento";
+import { PlanoDoEstabelecimento } from "@/components/administracao/plano-estabelecimento";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -80,30 +84,6 @@ export default function DetalhePage() {
         </Cartao>
         <Cartao>
           <CartaoCorpo>
-            <h2 className="mb-4 font-semibold">Plano</h2>
-            <dl className="grid grid-cols-2 gap-4">
-              <Dado titulo="Plano associado" valor={item.plan.name} />
-              <Dado
-                titulo="Preço do catálogo"
-                valor={precoCatalogo(item.plan.catalogPriceCents)}
-              />
-              <Dado
-                titulo="Limite de profissionais"
-                valor={String(item.plan.maxProfessionals)}
-              />
-              <Dado
-                titulo="Limite de unidades"
-                valor={String(item.plan.maxUnits)}
-              />
-            </dl>
-            <p className="mt-4 text-xs text-ink-soft">
-              O preço do catálogo não comprova o valor contratado nem um
-              pagamento.
-            </p>
-          </CartaoCorpo>
-        </Cartao>
-        <Cartao>
-          <CartaoCorpo>
             <h2 className="mb-4 font-semibold">Responsáveis</h2>
             {item.owners.length === 0 ? (
               <p className="text-sm text-ink-soft">
@@ -130,27 +110,12 @@ export default function DetalhePage() {
             )}
           </CartaoCorpo>
         </Cartao>
-        <Cartao>
-          <CartaoCorpo>
-            <h2 className="mb-4 font-semibold">Uso atual</h2>
-            <dl className="grid grid-cols-2 gap-4">
-              <Dado
-                titulo="Profissionais ativos"
-                valor={String(item.usage.professionals)}
-              />
-              <Dado
-                titulo="Serviços ativos"
-                valor={String(item.usage.services)}
-              />
-              <Dado
-                titulo="Clientes cadastrados"
-                valor={String(item.usage.consumers)}
-              />
-              <Dado titulo="Unidades" valor={String(item.units.length)} />
-            </dl>
-          </CartaoCorpo>
-        </Cartao>
       </div>
+      {/* A versão lida entra na chave: depois de uma ação, os formulários
+          recomeçam com os dados novos do servidor. */}
+      <SituacaoDoEstabelecimento key={`situacao-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <DadosCadastrais key={`dados-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <Cartao>
         <CartaoCorpo>
           <h2 className="mb-3 font-semibold">Unidades</h2>

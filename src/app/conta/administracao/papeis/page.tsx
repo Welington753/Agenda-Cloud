@@ -14,6 +14,7 @@ const CAPACIDADES: Record<keyof Capacidades, string> = {
   viewDirectory: "Consultar",
   manageEstablishments: "Empresas e contas",
   managePlatformAccess: "Papéis da plataforma",
+  manageEstablishmentLifecycle: "Situação e plano dos estabelecimentos",
 };
 
 function Marca({ sim }: { sim: boolean }) {
@@ -56,7 +57,7 @@ export default function PapeisPage() {
                     <dd className="flex flex-wrap gap-x-4">
                       {(Object.keys(CAPACIDADES) as (keyof Capacidades)[]).map((c) => (
                         <span key={c}>
-                          {CAPACIDADES[c]}: <Marca sim={p.withoutPermissions[c]} />
+                          {CAPACIDADES[c]}: <Marca sim={!!p.withoutPermissions[c]} />
                         </span>
                       ))}
                     </dd>
@@ -66,7 +67,7 @@ export default function PapeisPage() {
                     <dd className="flex flex-wrap gap-x-4">
                       {(Object.keys(CAPACIDADES) as (keyof Capacidades)[]).map((c) => (
                         <span key={c}>
-                          {CAPACIDADES[c]}: <Marca sim={p.withEffectivePermissions[c]} />
+                          {CAPACIDADES[c]}: <Marca sim={!!p.withEffectivePermissions[c]} />
                         </span>
                       ))}
                     </dd>

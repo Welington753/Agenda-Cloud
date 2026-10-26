@@ -210,3 +210,58 @@ API → web**.
   contextos de sessão, histórico, reautenticação, administrador delegado
   recusado); edição que preserva o endereço; troca de plano recusada com o
   detalhe do excesso e aceita depois do ajuste.
+
+## Parte B: telas
+
+### Onde cada pessoa trabalha
+
+| Quem | Onde | O que vê |
+| --- | --- | --- |
+| `MASTER_OWNER` | Administração → Estabelecimentos → ficha | Situação (suspender, reativar, arquivar), plano e uso (com o que não cabe em cada plano), dados cadastrais, pessoas com acesso |
+| `MASTER_OWNER` / administrador delegado | Administração → Usuários → ficha | Vínculos com a situação (suspenso pelo dono) e o profissional ligado; donos continuam com "Restringir"; funcionários mostram que as ações são do dono |
+| Dono | **Equipe e acessos** (`/conta/equipe`, menu do estabelecimento; no celular, em "Mais") | Vagas usadas, livres e pendentes; cada profissional com a situação do acesso; convidar, reenviar, revogar, suspender, reativar, remover e as três permissões |
+| Funcionário | **Minha agenda** (`/conta/minha-agenda`) e Minha conta | Os próprios atendimentos do dia (com navegação por data) e só os botões liberados |
+
+- O menu do funcionário tem só "Minha agenda" e "Minha conta" (e
+  "Administração", se a conta também administrar a plataforma). Sem sino,
+  sem solicitações e sem leitura periódica delas.
+- Páginas do dono abertas pelo endereço levam o funcionário à agenda dele
+  antes de montar (nenhuma leitura que o servidor recusaria). O dono que abre
+  a agenda de funcionário vai para a agenda geral. Papéis antigos sem área
+  (GERENTE, RECEPCIONISTA) ficam só com Minha conta.
+- Acesso suspenso ou removido some da sessão; a agenda do funcionário avisa
+  que a conta não tem acesso ativo. Uma ação recusada (permissão retirada)
+  vira mensagem e releitura.
+- Profissionais: o 409 do limite do plano mostra a mensagem do servidor; a
+  desativação avisa quantas reservas futuras ficaram e que o acesso ligado
+  para de funcionar.
+- Minha conta: o funcionário abre a própria agenda; o roteiro de primeiros
+  passos (só do dono) ganhou "Equipe e acessos".
+
+### Verificação da parte B
+
+- Frontend: unitários (`npm test`), `lint`, `lint:types` (só os dois avisos
+  antigos), `tsc --noEmit`, build do Next.
+- Navegador, API e banco reais (PostgreSQL 18.6 descartável com TLS,
+  `IGNORE_DOTENV_FILE=true`, caixa de e-mail local):
+  `npm run test:browser:equipe` (`tests/browser/equipe-acessos-flow.spec.ts`):
+  - convite pela tela, e-mail na caixa local, senha criada pela pessoa e
+    entrada na própria agenda;
+  - só os próprios atendimentos (sem telefone, observação ou o colega), menu
+    reduzido, páginas do dono pelo endereço redirecionadas, API do dono (agenda
+    geral, equipe, solicitações, clientes) recusada, `professionalId` forjado
+    recusado, reserva do colega 403/404, e um segundo funcionário isolado do
+    primeiro;
+  - permissão liberada com a senha do dono e o atendimento iniciado;
+    permissão retirada com a sessão aberta e a próxima ação recusada;
+    suspensão que corta o acesso e reativação que devolve;
+  - administração: uso e vagas, plano menor marcado como "não comporta" e
+    recusado pela API (`PLANO_EXCEDIDO`), suspensão com motivo e
+    reautenticação (operação do dono parada) e reativação; histórico com as
+    ações;
+  - capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
+- O workflow ganhou a invocação `browser_equipe` e o envio das capturas.
+
+### Publicação da parte B
+
+Só o web muda. Publicar depois da migration e da API da parte A.

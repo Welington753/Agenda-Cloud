@@ -6,16 +6,19 @@ import {
   CalendarDays,
   ClipboardList,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   Contact,
   ShieldCheck,
   UserRound,
   Users,
+  CalendarCheck,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
 import type { ItemNavegacaoConta } from "@/lib/conta/navegacao";
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
+import { ROTA_EQUIPE, ROTA_MINHA_AGENDA } from "@/lib/conta/papel";
 
 const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/visao-geral": LayoutDashboard,
@@ -24,6 +27,8 @@ const ICONE_POR_HREF: Record<string, LucideIcon> = {
   "/conta/clientes": Contact,
   "/conta/servicos": ClipboardList,
   "/conta/profissionais": Users,
+  [ROTA_EQUIPE]: KeyRound,
+  [ROTA_MINHA_AGENDA]: CalendarCheck,
   "/conta": UserRound,
   [ROTA_ADMINISTRACAO]: ShieldCheck,
 };

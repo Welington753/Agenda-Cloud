@@ -21,6 +21,7 @@ import { LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
+import { ROTA_MINHA_AGENDA, perfilDoPapel } from "@/lib/conta/papel";
 
 const PRIMEIROS_PASSOS = [
   {
@@ -49,6 +50,13 @@ const PRIMEIROS_PASSOS = [
     href: "/conta/agendamentos",
     rotuloLink: "Ir para a Agenda",
   },
+  {
+    titulo: "Se quiser, dê um login a cada profissional",
+    descricao:
+      "Em Equipe e acessos, convide cada pessoa pelo e-mail. Ela vê só a própria agenda e o que você liberar.",
+    href: "/conta/equipe",
+    rotuloLink: "Ir para Equipe e acessos",
+  },
 ] as const;
 
 export default function ContaPage() {
@@ -66,6 +74,7 @@ export default function ContaPage() {
   if (!sessao || precisaSelecionar) return null;
 
   const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
+  const perfil = perfilDoPapel(contexto?.role);
 
   return (
     <PaginaConta titulo={`Olá, ${sessao.user.name.split(" ")[0]}`} descricao={sessao.user.email}>
@@ -104,19 +113,27 @@ export default function ContaPage() {
                 Período de teste até {formatarData(contexto.trial.trialEndAt)}.
               </p>
               {/* Ação principal: a agenda real do Lote 6D.5 — nunca a agenda
-                  demonstrativa de /painel/agenda. */}
-              <LinkBotao
-                href="/conta/agendamentos"
-                tamanho="lg"
-                className="w-full sm:w-auto"
-                data-testid="abrir-agenda"
-              >
-                <CalendarDays size={18} aria-hidden="true" />
-                Abrir agenda
-              </LinkBotao>
+                  demonstrativa de /painel/agenda. O funcionário abre a dele. */}
+              {perfil !== "sem-area" && (
+                <LinkBotao
+                  href={perfil === "funcionario" ? ROTA_MINHA_AGENDA : "/conta/agendamentos"}
+                  tamanho="lg"
+                  className="w-full sm:w-auto"
+                  data-testid="abrir-agenda"
+                >
+                  <CalendarDays size={18} aria-hidden="true" />
+                  {perfil === "funcionario" ? "Abrir minha agenda" : "Abrir agenda"}
+                </LinkBotao>
+              )}
+              {perfil === "sem-area" && (
+                <p className="text-sm text-ink-soft">
+                  Este papel não tem área liberada neste estabelecimento. Fale com o responsável.
+                </p>
+              )}
             </CartaoCorpo>
           </Cartao>
 
+          {perfil === "dono" && (
           <Cartao>
             <CartaoCorpo className="space-y-3">
               <div>
@@ -150,11 +167,14 @@ export default function ContaPage() {
               </ol>
             </CartaoCorpo>
           </Cartao>
+          )}
 
-          <p className="text-xs text-ink-soft">
-            Equipe, comissões e demais funcionalidades desta conta real ainda não estão conectadas
-            nesta fase — chegam em um próximo lote.
-          </p>
+          {perfil === "dono" && (
+            <p className="text-xs text-ink-soft">
+              Comissões, financeiro e estoque ainda não estão conectados nesta fase — chegam em um
+              próximo lote.
+            </p>
+          )}
         </>
       )}
     </PaginaConta>

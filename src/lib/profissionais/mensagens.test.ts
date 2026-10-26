@@ -34,3 +34,10 @@ describe("mensagemFalhaProfissionais", () => {
     );
   });
 });
+
+describe("limite do plano", () => {
+  it("o 409 com mensagem do servidor (limite de profissionais) é mostrado como veio", () => {
+    const mensagem = "O plano Essencial permite 2 profissional(is) ativo(s) e todos estão em uso.";
+    expect(mensagemFalhaProfissionais({ tipo: "conflito", mensagem })).toBe(mensagem);
+  });
+});

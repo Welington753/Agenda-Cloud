@@ -104,6 +104,7 @@ test.describe("entrada e navegação do piloto", () => {
       "Clientes",
       "Serviços",
       "Profissionais",
+      "Equipe e acessos",
       "Minha conta",
     ]);
     await expect(nav.getByRole("link", { name: "Visão geral" })).toHaveAttribute(
@@ -130,7 +131,7 @@ test.describe("entrada e navegação do piloto", () => {
       "page",
     );
     const passos = page.getByTestId("primeiros-passos").getByRole("listitem");
-    await expect(passos).toHaveCount(4);
+    await expect(passos).toHaveCount(5);
     const destinos = await page
       .getByTestId("primeiros-passos")
       .getByRole("link")
@@ -140,6 +141,7 @@ test.describe("entrada e navegação do piloto", () => {
       "/conta/profissionais",
       "/conta/profissionais",
       "/conta/agendamentos",
+      "/conta/equipe",
     ]);
 
     // Ação principal de Minha conta: abrir a agenda.

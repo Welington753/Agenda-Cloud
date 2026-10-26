@@ -145,11 +145,17 @@ export default function ProfissionaisPage() {
     const resultado = await desativar(profissional.id);
     setConfirmando(null);
 
+    if (!resultado.ok) {
+      notificar(mensagemFalhaProfissionais(resultado.falha), "info");
+      return;
+    }
+    // Desativar não mexe nas reservas: as futuras continuam e o dono decide.
+    const futuras = resultado.dados.futureAppointments ?? 0;
     notificar(
-      resultado.ok
-        ? "Profissional desativado. Os serviços vinculados foram preservados."
-        : mensagemFalhaProfissionais(resultado.falha),
-      resultado.ok ? "sucesso" : "info",
+      futuras > 0
+        ? `Profissional desativado. ${futuras === 1 ? "1 reserva futura continua" : `${futuras} reservas futuras continuam`} na agenda dele: remarque com outra pessoa, cancele ou atenda. O acesso de funcionário ligado a ele parou de funcionar.`
+        : "Profissional desativado. Os serviços vinculados e o histórico foram preservados.",
+      futuras > 0 ? "info" : "sucesso",
     );
   }
 

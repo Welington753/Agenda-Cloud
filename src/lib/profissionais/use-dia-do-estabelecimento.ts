@@ -24,7 +24,7 @@ export interface DiaDoEstabelecimento {
   /** "Hoje" no fuso do estabelecimento (ou do navegador, sem fuso ainda). */
   irParaHoje: () => void;
   /** Chamar a cada agenda recebida (ver o efeito em quem usa). */
-  sincronizar: (agenda: AgendaDoDiaReal) => void;
+  sincronizar: (agenda: Pick<AgendaDoDiaReal, "timezone" | "date">) => void;
 }
 
 export function useDiaDoEstabelecimento(tenantId: string | null): DiaDoEstabelecimento {
@@ -53,7 +53,8 @@ export function useDiaDoEstabelecimento(tenantId: string | null): DiaDoEstabelec
     setDate(hoje ?? comoDataDeCalendario(new Date()));
   }, [timezone]);
 
-  const sincronizar = useCallback((agenda: AgendaDoDiaReal) => {
+  // Só fuso e data: a agenda do funcionário (outra rota) usa a mesma regra.
+  const sincronizar = useCallback((agenda: Pick<AgendaDoDiaReal, "timezone" | "date">) => {
     setTimezone(agenda.timezone);
     if (diaEscolhidoRef.current) return;
     diaEscolhidoRef.current = true;

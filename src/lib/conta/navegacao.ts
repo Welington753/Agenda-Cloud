@@ -5,6 +5,7 @@
 // `/profissional`, que são a demonstração movida por dados locais.
 
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
+import { ROTA_EQUIPE, ROTA_MINHA_AGENDA, type PerfilDaArea } from "./papel";
 
 export interface ItemNavegacaoConta {
   href: string;
@@ -30,7 +31,15 @@ export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
   { href: "/conta/clientes", rotulo: "Clientes", noCelular: "barra" },
   { href: "/conta/servicos", rotulo: "Serviços", noCelular: "barra" },
   { href: "/conta/profissionais", rotulo: "Profissionais", noCelular: "mais" },
+  // Logins da equipe, ligados aos profissionais (só o dono).
+  { href: ROTA_EQUIPE, rotulo: "Equipe e acessos", noCelular: "mais" },
   { href: "/conta", rotulo: "Minha conta", noCelular: "mais" },
+];
+
+/** Menu do funcionário: a própria agenda e Minha conta, nada além. */
+export const ITENS_NAVEGACAO_FUNCIONARIO: readonly ItemNavegacaoConta[] = [
+  { href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda", noCelular: "barra" },
+  { href: "/conta", rotulo: "Minha conta", noCelular: "barra" },
 ];
 
 /** Itens que, no celular, ficam atrás do botão "Mais". */
@@ -51,9 +60,12 @@ export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
 /**
  * Itens do menu para esta sessão.
  *
- * - Com estabelecimento ativo: a operação de sempre e, para quem administra a
- *   plataforma, "Administração" por último. No celular ela fica no "Mais": a
- *   barra continua com quatro áreas legíveis.
+ * - Com estabelecimento ativo, como dono: a operação de sempre e, para quem
+ *   administra a plataforma, "Administração" por último. No celular ela fica
+ *   no "Mais": a barra continua com quatro áreas legíveis.
+ * - Como funcionário: "Minha agenda" e "Minha conta" (e "Administração",
+ *   se for o caso), todos na barra do celular.
+ * - Com um papel sem área (GERENTE, RECEPCIONISTA antigos): só "Minha conta".
  * - Sem estabelecimento: só faz sentido para quem administra a plataforma
  *   (um administrador não precisa de vínculo). A barra tem só Administração e
  *   Minha conta, sem "Mais".
@@ -62,10 +74,22 @@ export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
 export function itensDaNavegacao({
   comEstabelecimento,
   comAdministracao,
+  perfil = "dono",
 }: {
   comEstabelecimento: boolean;
   comAdministracao: boolean;
+  /** Perfil no estabelecimento ativo (ver papel.ts). */
+  perfil?: PerfilDaArea;
 }): readonly ItemNavegacaoConta[] {
+  if (comEstabelecimento && perfil === "funcionario") {
+    return comAdministracao
+      ? [...ITENS_NAVEGACAO_FUNCIONARIO, { ...ITEM_ADMINISTRACAO, noCelular: "barra" }]
+      : ITENS_NAVEGACAO_FUNCIONARIO;
+  }
+  if (comEstabelecimento && perfil === "sem-area") {
+    const minhaConta: ItemNavegacaoConta = { href: "/conta", rotulo: "Minha conta", noCelular: "barra" };
+    return comAdministracao ? [{ ...ITEM_ADMINISTRACAO, noCelular: "barra" }, minhaConta] : [minhaConta];
+  }
   if (comEstabelecimento) {
     return comAdministracao ? [...ITENS_NAVEGACAO_CONTA, ITEM_ADMINISTRACAO] : ITENS_NAVEGACAO_CONTA;
   }

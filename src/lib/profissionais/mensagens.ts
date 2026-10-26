@@ -17,7 +17,10 @@ export function mensagemFalhaProfissionais(falha: FalhaProfissionaisReal): strin
     case "dados_invalidos":
       return falha.mensagem ?? "Alguns dados não foram aceitos. Revise os campos e tente novamente.";
     case "conflito":
-      return "Este serviço já estava sendo vinculado por outra ação. Atualize a lista e tente de novo.";
+      return (
+        falha.mensagem ??
+        "Este serviço já estava sendo vinculado por outra ação. Atualize a lista e tente de novo."
+      );
     case "falha_comunicacao":
       return (
         "A conexão falhou antes de o servidor confirmar. " +
