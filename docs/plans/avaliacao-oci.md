@@ -8,9 +8,12 @@ Brevo.** O piloto no Render continua como está durante todo o ensaio.
 Proposta avaliada: Next.js e NestJS numa VM da OCI, PostgreSQL no Neon,
 e-mail pelo Brevo.
 
-Resumo: a VM Arm do Always Free comporta o sistema com folga, e o código não
-depende de nada específico do Render que não tenha substituto. As incertezas
-reais são de **conta e capacidade**, não de código:
+Resumo: pelas medições em **Windows x64** e pela leitura do código, a VM Arm
+do Always Free deve comportar o sistema, e o código não depende de nada
+específico do Render que não tenha substituto. **Nada disso foi comprovado em
+Linux ARM64**: instalação, build, consumo de memória, `systemd` e `reboot`
+dependem do ensaio numa VM real. Além disso, há incertezas de conta e
+capacidade:
 
 - a criação da VM pode falhar por falta de capacidade;
 - uma VM com o tráfego do piloto tende a cair no critério de **ociosidade**
@@ -113,7 +116,8 @@ código; **VM** = só uma VM real comprova.
 
 Conclusões:
 
-- A **A1 com 12 GB** comporta build e operação com folga.
+- Pelos números em x64, a **A1 com 12 GB** deve comportar build e operação.
+  O consumo em ARM64 com 2 OCPUs não foi medido.
 - A **E2.1.Micro (1 GB)** não comporta o build do Next. Também não comporta
   os dois processos com folga, então não serve.
 - No ensaio, meça na VM: o pico do build com 2 OCPUs e o consumo depois de
