@@ -17,6 +17,7 @@ describe('capacidades da plataforma', () => {
       viewDirectory: true,
       manageEstablishments: true,
       managePlatformAccess: true,
+      manageEstablishmentLifecycle: true,
     });
     expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN, EM)).managePlatformAccess).toBe(false);
   });
@@ -26,12 +27,14 @@ describe('capacidades da plataforma', () => {
       viewDirectory: false,
       manageEstablishments: false,
       managePlatformAccess: false,
+      manageEstablishmentLifecycle: false,
     });
     expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN, EM)).manageEstablishments).toBe(true);
     expect(platformCapabilities(conta(PlatformRole.MASTER_SUPPORT, EM))).toEqual({
       viewDirectory: true,
       manageEstablishments: false,
       managePlatformAccess: false,
+      manageEstablishmentLifecycle: false,
     });
   });
 

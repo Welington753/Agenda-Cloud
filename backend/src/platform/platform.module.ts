@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformService } from './platform.service.js';
+import { EstablishmentAdminService } from './establishment-admin.service.js';
 
 @Module({
   imports: [AuthModule],
   controllers: [PlatformController],
-  providers: [PlatformService],
+  providers: [PlatformService, EstablishmentAdminService],
 })
 export class PlatformModule {}

@@ -12,6 +12,8 @@ import {
   requirePlatformAccess,
 } from './platform-access.js';
 import type { EstablishmentQuery } from './platform.dto.js';
+import { staffSeatUsage } from '../team/seats.js';
+import { planExcess } from './establishment-admin.service.js';
 import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
@@ -65,12 +67,13 @@ export class PlatformService {
    * decide o acesso global; nenhuma sessão de suporte é aberta aqui. */
   private read<T>(
     userId: string,
-    operation: (manager: EntityManager) => Promise<T>,
+    operation: (manager: EntityManager, actor: User | null) => Promise<T>,
   ): Promise<T> {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       await manager.query('SET TRANSACTION READ ONLY');
       await requirePlatformAccess(manager, userId);
-      return operation(manager);
+      const actor = await manager.findOne(User, { where: { id: userId } });
+      return operation(manager, actor);
     });
   }
 
@@ -93,7 +96,8 @@ export class PlatformService {
         `SELECT count(*)::int AS total,
          count(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
          count(*) FILTER (WHERE status = 'TRIAL')::int AS trial,
-         count(*) FILTER (WHERE status IN ('SUSPENDED', 'PAST_DUE', 'CANCELED'))::int AS restricted FROM tenants`,
+         count(*) FILTER (WHERE status::text IN ('SUSPENDED', 'PAST_DUE', 'CANCELED', 'ARCHIVED'))::int AS restricted
+         FROM tenants`,
       );
       const plans = await manager.query<{ id: string; name: string }[]>(
         'SELECT id, name FROM plans ORDER BY name, id',
@@ -109,8 +113,8 @@ export class PlatformService {
     });
   }
 
-  detail(userId: string, tenantId: string) {
-    return this.read(userId, async (manager) => {
+  detail(userId: string, tenantId: string, now = new Date()) {
+    return this.read(userId, async (manager, actor) => {
       const [establishment] = await manager.query<EstablishmentRow[]>(
         `SELECT ${ESTABLISHMENT_COLUMNS} ${ESTABLISHMENT_FROM} WHERE t.id = $1`,
         [tenantId],
@@ -124,17 +128,60 @@ export class PlatformService {
         [tenantId],
       );
       const [usage] = await manager.query<
-        { professionals: number; services: number; consumers: number }[]
+        { professionals: number; services: number; consumers: number; units: number }[]
       >(
         `SELECT (SELECT count(*)::int FROM professionals WHERE tenant_id = $1 AND active = true) AS professionals,
          (SELECT count(*)::int FROM services WHERE tenant_id = $1 AND active = true) AS services,
-         (SELECT count(*)::int FROM consumers WHERE tenant_id = $1) AS consumers`,
+         (SELECT count(*)::int FROM consumers WHERE tenant_id = $1) AS consumers,
+         (SELECT count(*)::int FROM units WHERE tenant_id = $1) AS units`,
         [tenantId],
       );
+      const staffSeats = await staffSeatUsage(manager, tenantId, establishment.plan.maxProfessionals, now);
+      const [extra] = await manager.query<
+        { updatedAt: Date; restoreStatus: string | null; suspensionReason: string | null; taxDocument: string | null }[]
+      >(
+        `SELECT updated_at AS "updatedAt", restore_status AS "restoreStatus", suspension_reason AS "suspensionReason",
+                tax_document AS "taxDocument" FROM tenants WHERE id = $1`,
+        [tenantId],
+      );
+      const caps = platformCapabilities(actor);
+      // Cada plano do catálogo com o que passaria do limite com o uso atual:
+      // a tela mostra antes, o servidor confere de novo na troca.
+      const catalogo = await manager.query<
+        { id: string; code: string; name: string; catalogPriceCents: number | null; max_professionals: number; max_units: number }[]
+      >(
+        `SELECT id, code, name, price_cents AS "catalogPriceCents", max_professionals, max_units FROM plans ORDER BY max_professionals, name, id`,
+      );
+      const planOptions = [];
+      for (const plano of catalogo) {
+        planOptions.push({
+          id: plano.id,
+          code: plano.code,
+          name: plano.name,
+          catalogPriceCents: plano.catalogPriceCents,
+          maxProfessionals: plano.max_professionals,
+          maxUnits: plano.max_units,
+          excess: await planExcess(manager, tenantId, plano, now),
+        });
+      }
+      const status = establishment.status;
+      const operando = status === 'TRIAL' || status === 'ACTIVE';
       return {
         ...establishment,
+        ...extra,
         units,
-        usage,
+        usage: { ...usage, staffSeats },
+        planOptions,
+        /** O que a conta que está olhando pode fazer aqui (o servidor confere
+         * de novo em cada operação). */
+        allowedActions: {
+          edit: caps.manageEstablishments,
+          suspend: caps.manageEstablishmentLifecycle && operando,
+          archive: caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED'),
+          reactivate:
+            caps.manageEstablishmentLifecycle && (status === 'SUSPENDED' || status === 'ARCHIVED') && !!extra.restoreStatus,
+          changePlan: caps.manageEstablishmentLifecycle,
+        },
         trial: {
           ...computeTrialWindow(establishment.createdAt),
           durationDays: TRIAL_DURATION_DAYS,

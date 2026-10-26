@@ -159,7 +159,7 @@ export async function destinatarios(
     await manager.query(
       `SELECT s.id AS subscription_id, m.id AS membership_id, m.role, s.endpoint, s.p256dh, s.auth
          FROM push_subscriptions s
-         JOIN memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id
+         JOIN memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id AND m.status = 'ACTIVE'
          JOIN users u ON u.id = s.user_id AND u.status = 'ACTIVE'
          JOIN sessions se ON se.id = s.session_id AND se.user_id = s.user_id
                          AND se.revoked_at IS NULL AND se.expires_at > $3

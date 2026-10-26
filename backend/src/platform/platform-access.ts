@@ -21,6 +21,9 @@ type PlatformActor = Pick<User, 'status' | 'platformRole' | 'platformPermissions
  *   só consulta, mesmo com a permissão: o papel limita.
  * - `managePlatformAccess`: papéis e permissões da plataforma e as contas que
  *   têm papel de plataforma. Só `MASTER_OWNER`.
+ * - `manageEstablishmentLifecycle`: suspender, reativar e arquivar um
+ *   estabelecimento e trocar o plano dele. Só `MASTER_OWNER`: `PLANS_MANAGE`
+ *   continua sem efeito até uma decisão explícita de delegar isso.
  *
  * Ser DONO de um estabelecimento nunca concede nada aqui: a Membership não é
  * lida. Conta não ativa não tem capacidade nenhuma.
@@ -29,12 +32,14 @@ export interface PlatformCapabilities {
   viewDirectory: boolean;
   manageEstablishments: boolean;
   managePlatformAccess: boolean;
+  manageEstablishmentLifecycle: boolean;
 }
 
 const NENHUMA: PlatformCapabilities = {
   viewDirectory: false,
   manageEstablishments: false,
   managePlatformAccess: false,
+  manageEstablishmentLifecycle: false,
 };
 
 /** Permissões de plataforma com efeito real nesta versão. As demais do enum
@@ -47,14 +52,19 @@ export const EFFECTIVE_PLATFORM_PERMISSIONS: readonly PlatformPermission[] = [
 export function platformCapabilities(user: PlatformActor): PlatformCapabilities {
   if (!user || user.status !== UserStatus.ACTIVE) return NENHUMA;
   if (user.platformRole === PlatformRole.MASTER_OWNER) {
-    return { viewDirectory: true, manageEstablishments: true, managePlatformAccess: true };
+    return {
+      viewDirectory: true,
+      manageEstablishments: true,
+      managePlatformAccess: true,
+      manageEstablishmentLifecycle: true,
+    };
   }
   const gerencia = !!user.platformPermissions?.includes(PlatformPermission.ESTABLISHMENTS_MANAGE);
   if (user.platformRole === PlatformRole.MASTER_ADMIN) {
-    return { viewDirectory: gerencia, manageEstablishments: gerencia, managePlatformAccess: false };
+    return { ...NENHUMA, viewDirectory: gerencia, manageEstablishments: gerencia };
   }
   if (user.platformRole === PlatformRole.MASTER_SUPPORT) {
-    return { viewDirectory: gerencia, manageEstablishments: false, managePlatformAccess: false };
+    return { ...NENHUMA, viewDirectory: gerencia };
   }
   return NENHUMA;
 }

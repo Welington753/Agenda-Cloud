@@ -15,6 +15,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { isTenantUsableForSession } from '../auth/tenant-access.js';
+import { MEMBERSHIP_SUSPENDED_MESSAGE, isMembershipActive } from '../common/tenant-authorization.js';
 import { Membership } from '../entities/membership.entity.js';
 import { MembershipPermissionOverride } from '../entities/membership-permission-override.entity.js';
 import { Service } from '../entities/service.entity.js';
@@ -94,6 +95,10 @@ export class ServicesService {
     const membership = await manager.findOne(Membership, { where: { userId, tenantId } });
     if (!membership) {
       throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
+    }
+    // Acesso suspenso pelo dono: mesma regra de common/tenant-authorization.ts.
+    if (!isMembershipActive(membership)) {
+      throw new ForbiddenException(MEMBERSHIP_SUSPENDED_MESSAGE);
     }
 
     // Tenant inativo (SUSPENDED/PAST_DUE/CANCELED) usa exatamente a mesma

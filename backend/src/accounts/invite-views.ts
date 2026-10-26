@@ -15,6 +15,8 @@ export interface InviteView {
   targetUser: { id: string; status: string; hasCredential: boolean } | null;
   tenant: { id: string; name: string } | null;
   role: string | null;
+  /** Convite de funcionário: o profissional que ele reserva. */
+  professional: { id: string; name: string } | null;
   platformRole: string | null;
   platformPermissions: string[];
   delivery: { status: string; attempts: number; lastAt: string | null; failure: string | null };
@@ -50,6 +52,8 @@ export const INVITE_COLUMNS = `json_build_object(
   'tenant', CASE WHEN t.id IS NULL THEN NULL ELSE json_build_object(
     'id', t.id, 'name', COALESCE(main_unit.name, t.slug::text)) END,
   'role', i.establishment_role,
+  'professional', (SELECT json_build_object('id', p.id, 'name', p.name) FROM professionals p
+    WHERE p.tenant_id = i.tenant_id AND p.id = i.professional_id),
   'platformRole', i.platform_role,
   'platformPermissions', COALESCE(to_json(i.platform_permissions), '[]'::json),
   'delivery', json_build_object('status', i.delivery_status, 'attempts', i.delivery_attempts,
