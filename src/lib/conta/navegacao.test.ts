@@ -16,6 +16,7 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
       "/conta/clientes",
       "/conta/servicos",
       "/conta/profissionais",
+      "/conta/equipe",
       "/conta",
     ]);
     expect(ITENS_NAVEGACAO_CONTA.map((i) => i.rotulo)).toEqual([
@@ -25,6 +26,7 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
       "Clientes",
       "Serviços",
       "Profissionais",
+      "Equipe e acessos",
       "Minha conta",
     ]);
     for (const item of ITENS_NAVEGACAO_CONTA) {
@@ -37,7 +39,12 @@ describe("celular", () => {
   it("a barra inferior tem quatro áreas e o resto fica em Mais", () => {
     const naBarra = ITENS_NAVEGACAO_CONTA.filter((i) => i.noCelular === "barra");
     expect(naBarra.map((i) => i.rotulo)).toEqual(["Visão geral", "Agenda", "Clientes", "Serviços"]);
-    expect(ITENS_MENU_MAIS.map((i) => i.rotulo)).toEqual(["Solicitações", "Profissionais", "Minha conta"]);
+    expect(ITENS_MENU_MAIS.map((i) => i.rotulo)).toEqual([
+      "Solicitações",
+      "Profissionais",
+      "Equipe e acessos",
+      "Minha conta",
+    ]);
   });
 });
 
@@ -114,5 +121,25 @@ describe("rotuloDoSino", () => {
     expect(rotuloDoSino(0)).toBe("Notificações: nenhuma solicitação pendente");
     expect(rotuloDoSino(1)).toBe("Notificações: 1 solicitação pendente");
     expect(rotuloDoSino(7)).toBe("Notificações: 7 solicitações pendentes");
+  });
+});
+
+describe("itensDaNavegacao por perfil", () => {
+  it("funcionário: só Minha agenda e Minha conta, na barra do celular", () => {
+    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "funcionario" });
+    expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
+      ["/conta/minha-agenda", "barra"],
+      ["/conta", "barra"],
+    ]);
+  });
+
+  it("funcionário que também administra a plataforma vê a Administração", () => {
+    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true, perfil: "funcionario" });
+    expect(itens.map((i) => i.rotulo)).toEqual(["Minha agenda", "Minha conta", "Administração"]);
+  });
+
+  it("papel sem área: só Minha conta; nenhuma área do dono", () => {
+    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "sem-area" });
+    expect(itens.map((i) => i.href)).toEqual(["/conta"]);
   });
 });

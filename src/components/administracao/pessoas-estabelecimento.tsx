@@ -58,7 +58,8 @@ function ConvidarResponsavel({ tenantId, aoConvidar }: { tenantId: string; aoCon
         </fieldset>
       </form>
       <p className="text-xs text-ink-soft">
-        Hoje só o papel Dono(a) libera as áreas do estabelecimento; por isso é o único oferecido.
+        A administração convida donos. Funcionários são convidados pelo dono, em Equipe e acessos, ligados a um
+        profissional e limitados pelo plano.
       </p>
       <ResultadoEnvio
         estado={envio.estado}
@@ -116,14 +117,17 @@ export function PessoasEstabelecimento({ tenantId }: { tenantId: string }) {
                         </Link>
                         <div className="flex flex-wrap gap-2">
                           <Badge cor="destaque">{PAPEIS_ESTABELECIMENTO[m.role] ?? m.role}</Badge>
+                          {m.status === "SUSPENDED" && <Badge cor="aviso">Acesso suspenso</Badge>}
                           <Badge cor={corConta(m.user.status)}>{SITUACOES_CONTA[m.user.status as never] ?? m.user.status}</Badge>
                         </div>
                       </div>
                       <p className="break-all text-ink-soft">{m.user.email}</p>
                       <p className="mt-1 text-xs text-ink-soft">
-                        {m.roleHasAccess
-                          ? `${liberadas} de ${m.effectiveAccess.length} áreas liberadas${m.deniedPermissions.length ? `, ${m.deniedPermissions.length} restrição(ões)` : ""}.`
-                          : "Este papel não libera nenhuma área hoje."}
+                        {m.role === "PROFISSIONAL"
+                          ? `Funcionário(a)${m.professional ? ` ligado(a) a ${m.professional.name}` : ""}: vê a própria agenda${liberadas > 1 ? ` e faz ${liberadas - 1} ação(ões) liberada(s) pelo dono` : ""}.`
+                          : m.roleHasAccess
+                            ? `${liberadas} de ${m.effectiveAccess.length} áreas liberadas${m.deniedPermissions.length ? `, ${m.deniedPermissions.length} restrição(ões)` : ""}.`
+                            : "Este papel não libera nenhuma área hoje."}
                       </p>
                     </li>
                   );

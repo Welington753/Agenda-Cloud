@@ -80,15 +80,42 @@ describe("contrato da administração", () => {
     const detail = {
       ...estabelecimento,
       units: [],
-      usage: { professionals: 1, services: 2, consumers: 3 },
+      usage: {
+        professionals: 1,
+        services: 2,
+        consumers: 3,
+        units: 1,
+        staffSeats: { limit: 3, activeAccesses: 1, pendingInvites: 0, suspendedAccesses: 0, used: 1, available: 2 },
+      },
       trial: {
         trialStartAt: "2026-10-01T12:00:00Z",
         trialEndAt: "2026-10-15T12:00:00Z",
         durationDays: 14,
       },
       billing: { available: false },
+      updatedAt: "2026-10-20T12:00:00Z",
+      restoreStatus: null,
+      suspensionReason: null,
+      taxDocument: null,
+      planOptions: [
+        {
+          id: "plan_1",
+          code: "essencial",
+          name: "Essencial",
+          catalogPriceCents: null,
+          maxProfessionals: 1,
+          maxUnits: 1,
+          excess: [{ kind: "PROFESSIONALS", used: 2, limit: 1, action: "Desative 1 profissional." }],
+        },
+      ],
+      allowedActions: { edit: true, suspend: true, archive: true, reactivate: false, changePlan: true },
     };
     expect(ehDetalheEstabelecimento(detail)).toBe(true);
+    expect(ehDetalheEstabelecimento({ ...detail, status: "ARCHIVED" })).toBe(true);
+    expect(ehDetalheEstabelecimento({ ...detail, allowedActions: { edit: true } })).toBe(false);
+    expect(
+      ehDetalheEstabelecimento({ ...detail, usage: { ...detail.usage, staffSeats: { used: 1 } } }),
+    ).toBe(false);
     expect(
       ehDetalheEstabelecimento({ ...detail, billing: { available: true } }),
     ).toBe(false);

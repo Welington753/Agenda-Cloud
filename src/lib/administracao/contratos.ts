@@ -4,6 +4,7 @@ export const SITUACOES = {
   SUSPENDED: "Suspenso",
   PAST_DUE: "Acesso restrito",
   CANCELED: "Cancelado",
+  ARCHIVED: "Arquivado",
 } as const;
 export type SituacaoEstabelecimento = keyof typeof SITUACOES;
 export interface EstabelecimentoAdministrado {
@@ -38,11 +39,49 @@ export interface ListaEstabelecimentos {
   summary: { total: number; active: number; trial: number; restricted: number };
   plans: { id: string; name: string }[];
 }
+export interface ExcessoDoPlano {
+  kind: "PROFESSIONALS" | "STAFF_ACCESSES" | "UNITS";
+  used: number;
+  limit: number;
+  /** O que ajustar para caber, redigido pelo servidor. */
+  action: string;
+}
+export interface OpcaoDePlano {
+  id: string;
+  code: string;
+  name: string;
+  catalogPriceCents: number | null;
+  maxProfessionals: number;
+  maxUnits: number;
+  /** Vazio: o uso atual cabe neste plano. */
+  excess: ExcessoDoPlano[];
+}
 export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
   units: { id: string; name: string; address: string; isPrimary: boolean }[];
-  usage: { professionals: number; services: number; consumers: number };
+  usage: {
+    professionals: number;
+    services: number;
+    consumers: number;
+    units: number;
+    staffSeats: {
+      limit: number;
+      activeAccesses: number;
+      pendingInvites: number;
+      suspendedAccesses: number;
+      used: number;
+      available: number;
+    };
+  };
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
   billing: { available: false };
+  /** Versão que as ações mandam de volta (outra tela mudou: 409). */
+  updatedAt: string;
+  /** Situação para a qual a reativação devolve (TRIAL ou ACTIVE). */
+  restoreStatus: string | null;
+  suspensionReason: string | null;
+  taxDocument: string | null;
+  planOptions: OpcaoDePlano[];
+  allowedActions: { edit: boolean; suspend: boolean; archive: boolean; reactivate: boolean; changePlan: boolean };
 }
 
 function objeto(value: unknown): value is Record<string, unknown> {
@@ -61,6 +100,7 @@ export interface AcessoPlataforma {
     viewDirectory: boolean;
     manageEstablishments: boolean;
     managePlatformAccess: boolean;
+    manageEstablishmentLifecycle?: boolean;
   };
   platformRole?: string | null;
 }
@@ -73,7 +113,8 @@ export function ehAcesso(value: unknown): value is AcessoPlataforma {
     objeto(caps) &&
     typeof caps.viewDirectory === "boolean" &&
     typeof caps.manageEstablishments === "boolean" &&
-    typeof caps.managePlatformAccess === "boolean"
+    typeof caps.managePlatformAccess === "boolean" &&
+    (caps.manageEstablishmentLifecycle === undefined || typeof caps.manageEstablishmentLifecycle === "boolean")
   );
 }
 export function ehEstabelecimento(
@@ -140,10 +181,32 @@ export function ehDetalheEstabelecimento(
   if (!ehEstabelecimento(value)) return false;
   const detail = value as unknown as Record<string, unknown>;
   const usage = detail.usage,
-    trial = detail.trial;
+    trial = detail.trial,
+    acoes = detail.allowedActions;
   return (
     objeto(usage) &&
-    [usage.professionals, usage.services, usage.consumers].every(inteiro) &&
+    [usage.professionals, usage.services, usage.consumers, usage.units].every(inteiro) &&
+    objeto(usage.staffSeats) &&
+    ["limit", "activeAccesses", "pendingInvites", "suspendedAccesses", "used", "available"].every((k) =>
+      inteiro((usage.staffSeats as Record<string, unknown>)[k]),
+    ) &&
+    data(detail.updatedAt) &&
+    (detail.restoreStatus === null || texto(detail.restoreStatus)) &&
+    (detail.suspensionReason === null || texto(detail.suspensionReason)) &&
+    (detail.taxDocument === null || texto(detail.taxDocument)) &&
+    objeto(acoes) &&
+    ["edit", "suspend", "archive", "reactivate", "changePlan"].every((k) => typeof acoes[k] === "boolean") &&
+    Array.isArray(detail.planOptions) &&
+    detail.planOptions.every(
+      (p: unknown) =>
+        objeto(p) &&
+        [p.id, p.code, p.name].every(texto) &&
+        (p.catalogPriceCents === null || inteiro(p.catalogPriceCents)) &&
+        inteiro(p.maxProfessionals) &&
+        inteiro(p.maxUnits) &&
+        Array.isArray(p.excess) &&
+        p.excess.every((e: unknown) => objeto(e) && texto(e.kind) && inteiro(e.used) && inteiro(e.limit) && texto(e.action)),
+    ) &&
     objeto(trial) &&
     data(trial.trialStartAt) &&
     data(trial.trialEndAt) &&

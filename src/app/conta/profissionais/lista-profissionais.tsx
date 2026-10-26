@@ -133,7 +133,9 @@ export function ListaProfissionais({
                     <p className="text-sm text-ink">
                       Desativar <strong>{profissional.name}</strong>? Ele deixa de aparecer para
                       novos agendamentos, mas continua salvo e os serviços vinculados são
-                      preservados.
+                      preservados. Reservas já marcadas com ele continuam na agenda para você
+                      tratar, e um acesso de funcionário ligado a ele deixa de funcionar até a
+                      reativação.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Botao

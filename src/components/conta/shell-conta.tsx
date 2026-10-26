@@ -57,6 +57,7 @@ import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { encerrarNoDispositivo } from "@/lib/push/dispositivo";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 import { emAdministracao } from "@/lib/administracao/rotas";
+import { perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
 
 /** Classe no `<html>` enquanto o shell está montado: sobe as notificações no
  * celular para não cobrirem a barra inferior (ver globals.css). */
@@ -105,14 +106,29 @@ export function ShellConta({ children }: { children: ReactNode }) {
   // "Administração" só entra com o acesso confirmado pelo backend.
   const { estado: estadoAcesso } = useAcessoPlataforma();
 
+  // Papel no estabelecimento ATIVO: o funcionário vê só a agenda dele e Minha
+  // conta; uma página que não é do perfil (aberta pelo endereço) leva à do
+  // perfil ANTES de montar, para não disparar leituras que o servidor recusaria.
+  const contextoAtivo =
+    estado.status === "autenticado" && estado.tenantIdAtivo
+      ? encontrarContextoPorTenantId(estado.sessao, estado.tenantIdAtivo)
+      : null;
+  const perfil = perfilDoPapel(contextoAtivo?.role);
+  const destinoDoPerfil = contextoAtivo ? redirecionamentoDoPerfil(perfil, pathname) : null;
+  useEffect(() => {
+    if (destinoDoPerfil) router.replace(destinoDoPerfil);
+  }, [destinoDoPerfil, router]);
+
   if (estado.status !== "autenticado") return <>{children}</>;
 
   const { sessao, tenantIdAtivo } = estado;
-  const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
+  const contexto = contextoAtivo;
+  const ehDono = perfil === "dono";
   const podeTrocar = sessao.contexts.length > 1;
   const itens = itensDaNavegacao({
     comEstabelecimento: !!contexto,
     comAdministracao: acessoConfirmado(estadoAcesso),
+    perfil,
   });
   const itensMais = itens.filter((item) => item.noCelular === "mais");
   const maisAtivo = itensMais.some((item) => itemAtivo(pathname, item.href));
@@ -143,7 +159,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
           <div className="min-w-0">
           <Link
-            href={contexto ? "/conta/visao-geral" : "/conta"}
+            href={contexto && ehDono ? "/conta/visao-geral" : "/conta"}
             className="font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-white"
           >
             {NOME_PRODUTO}
@@ -187,7 +203,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             </Link>
           )}
           </div>
-          {contexto && <SinoNotificacoes pendentes={pendentes} />}
+          {contexto && ehDono && <SinoNotificacoes pendentes={pendentes} />}
         </div>
 
         {itens.length > 0 && (
@@ -282,8 +298,8 @@ export function ShellConta({ children }: { children: ReactNode }) {
           <MenuConta
             nome={sessao.user.name}
             email={sessao.user.email}
-            tenantId={contexto ? tenantIdAtivo : null}
-            pendentes={pendentes}
+            tenantId={contexto && ehDono ? tenantIdAtivo : null}
+            pendentes={ehDono ? pendentes : null}
             saindo={saindo}
             aoSair={() => void aoSair()}
           />
@@ -297,10 +313,10 @@ export function ShellConta({ children }: { children: ReactNode }) {
           itens.length > 0 ? "pb-28 md:pb-8" : undefined,
         )}
       >
-        {children}
+        {destinoDoPerfil ? null : children}
       </main>
 
-      {contexto && <AvisosNovasSolicitacoes />}
+      {contexto && ehDono && <AvisosNovasSolicitacoes />}
     </div>
   );
 }

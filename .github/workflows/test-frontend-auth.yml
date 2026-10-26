@@ -315,6 +315,25 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/contas
         run: npm run test:browser:contas
 
+      # Invocação SEPARADA (4 aceites de convite, limite por IP): Equipe e
+      # acessos — convite de funcionário pela tela, agenda só do próprio
+      # profissional, páginas e API do dono recusadas, permissões e suspensão
+      # com a sessão aberta, situação e plano do estabelecimento pela
+      # administração; capturas em claro e escuro, 1280, 390 e 360 px.
+      - name: Run real team access flows (staff invite, own agenda, permissions, plan seats)
+        id: browser_equipe
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/equipe
+        run: npm run test:browser:equipe
+
       # Invocação SEPARADA (4 cadastros e 3 logins, limites reais por IP): tela
       # de Clientes — busca e seus estados, cadastro sem envio repetido,
       # duplicidade, resultado incerto, cliente no seletor da agenda,
@@ -650,6 +669,17 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Capturas de Equipe e acessos, da agenda do funcionário e da ficha na
+      # administração. Só os PNG `equipe-*`.
+      - name: Upload team access screenshots
+        if: always() && steps.browser_equipe.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: equipe-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/equipe/**/equipe-*.png
+          retention-days: 7
+          if-no-files-found: error
+
       # Capturas da tela de Clientes no celular (390 e 360 px). Só os PNG
       # `clientes-*`.
       - name: Upload clients screenshots
@@ -734,6 +764,7 @@ jobs:
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_administracao.outcome == 'failure' ||
             steps.browser_contas.outcome == 'failure' ||
+            steps.browser_equipe.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||

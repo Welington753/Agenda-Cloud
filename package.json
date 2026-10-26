@@ -24,6 +24,7 @@
     "test:browser:clients": "playwright test tests/browser/clients-flow.spec.ts",
     "test:browser:administracao": "playwright test tests/browser/administracao-flow.spec.ts",
     "test:browser:contas": "playwright test tests/browser/contas-convites-flow.spec.ts",
+    "test:browser:equipe": "playwright test tests/browser/equipe-acessos-flow.spec.ts",
     "test:browser:whatsapp": "playwright test tests/browser/whatsapp-contato-flow.spec.ts",
     "test:browser:agendamento-publico": "playwright test tests/browser/agendamento-publico-flow.spec.ts",
     "test:browser:avisos-solicitacoes": "playwright test tests/browser/avisos-solicitacoes-flow.spec.ts",

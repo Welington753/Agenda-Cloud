@@ -22,7 +22,7 @@ export const PAPEIS_ESTABELECIMENTO: Record<string, string> = {
   DONO: "Dono(a)",
   GERENTE: "Gerente",
   RECEPCIONISTA: "Recepção",
-  PROFISSIONAL: "Profissional",
+  PROFISSIONAL: "Funcionário(a)",
 };
 
 export const SITUACOES_CONVITE: Record<SituacaoConvite, string> = {
@@ -52,6 +52,7 @@ export const PERMISSOES_ESTABELECIMENTO: Record<string, string> = {
   PROFISSIONAIS_VISUALIZAR: "Ver profissionais",
   PROFISSIONAIS_GERENCIAR: "Gerenciar profissionais e horários",
   CONFIGURACOES_GERENCIAR: "Configurar o agendamento online",
+  EQUIPE_GERENCIAR: "Gerenciar equipe e acessos",
 };
 
 export const ACOES_HISTORICO: Record<string, string> = {
@@ -63,11 +64,18 @@ export const ACOES_HISTORICO: Record<string, string> = {
   USER_UPDATED: "Dados da conta alterados",
   USER_BLOCKED: "Conta bloqueada",
   USER_REACTIVATED: "Conta reativada",
-  USER_PERMISSION_CHANGED: "Restrições de permissão alteradas",
+  USER_PERMISSION_CHANGED: "Permissões alteradas",
   MEMBERSHIP_REMOVED: "Vínculo removido",
   PASSWORD_RESET_REQUESTED: "Redefinição de senha enviada",
   PASSWORD_RESET_COMPLETED: "Senha redefinida pelo link",
   PLATFORM_ACCESS_CHANGED: "Acesso de plataforma alterado",
+  TENANT_UPDATED: "Dados do estabelecimento alterados",
+  TENANT_SUSPENDED: "Estabelecimento suspenso",
+  TENANT_ARCHIVED: "Estabelecimento arquivado",
+  TENANT_REACTIVATED: "Estabelecimento reativado",
+  TENANT_PLAN_CHANGED: "Plano trocado",
+  MEMBERSHIP_SUSPENDED: "Acesso de funcionário suspenso",
+  MEMBERSHIP_REACTIVATED: "Acesso de funcionário reativado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

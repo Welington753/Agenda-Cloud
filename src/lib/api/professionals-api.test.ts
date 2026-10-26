@@ -71,7 +71,8 @@ describe("listarProfissionais", () => {
 
     const resultado = await listarProfissionais("tenant_1");
 
-    expect(resultado).toEqual({ ok: false, falha: { tipo } });
+    // 409 carrega a mensagem do servidor (ex.: limite de profissionais do plano).
+    expect(resultado).toEqual({ ok: false, falha: status === 409 ? { tipo, mensagem: "erro" } : { tipo } });
   });
 
   it("falha de rede é distinta de qualquer resposta HTTP", async () => {
@@ -220,7 +221,10 @@ describe("definirServicosDoProfissional", () => {
 
     expect(
       await definirServicosDoProfissional("tenant_1", "professional_1", { serviceIds: ["service_1"] }),
-    ).toEqual({ ok: false, falha: { tipo: "conflito" } });
+    ).toEqual({
+      ok: false,
+      falha: { tipo: "conflito", mensagem: "Este serviço já está vinculado ao profissional." },
+    });
   });
 
   it("400 de serviço inelegível preserva a mensagem do backend", async () => {

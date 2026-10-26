@@ -11,6 +11,9 @@ export interface Capacidades {
   viewDirectory: boolean;
   manageEstablishments: boolean;
   managePlatformAccess: boolean;
+  /** Suspender, reativar, arquivar e trocar plano (só MASTER_OWNER). Ausente
+   * numa API anterior: conta como não. */
+  manageEstablishmentLifecycle?: boolean;
 }
 
 export interface Convite {
@@ -68,6 +71,9 @@ export interface Vinculo {
   id: string;
   tenant: { id: string; name: string; slug: string; status: string };
   role: string;
+  /** `SUSPENDED`: o dono suspendeu este acesso (API anterior: ausente). */
+  status?: "ACTIVE" | "SUSPENDED";
+  professional?: { id: string; name: string; active: boolean } | null;
   roleHasAccess: boolean;
   createdAt: string;
   deniedPermissions: string[];
