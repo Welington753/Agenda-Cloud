@@ -79,7 +79,7 @@ export class PasswordResetsService {
   async request(actorId: string, userId: string, requestKey: string, now = new Date()) {
     const anterior = await this.findByRequestKey(actorId, requestKey);
     if (anterior) return { created: false, reset: anterior, delivery: null };
-    let issued: { id: string; token: string; tokenHash: string; name: string; email: string };
+    let issued: { id: string; token: string; tokenHash: string; name: string; email: string; validityMs: number };
     try {
       issued = await this.dataSource.transaction(async (manager) => {
         const actor = await loadActor(manager, actorId);
@@ -108,11 +108,12 @@ export class PasswordResetsService {
         );
         const id = generateId();
         const { token, tokenHash } = generateAccountToken();
+        const expiresAt = linkExpiresAt(now);
         await manager.query(
           `INSERT INTO password_resets (id, user_id, requested_by_user_id, token_hash, status, created_at, expires_at,
               request_key)
            VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7)`,
-          [id, target.id, actor.id, tokenHash, now, linkExpiresAt(now), requestKey],
+          [id, target.id, actor.id, tokenHash, now, expiresAt, requestKey],
         );
         await recordAudit(
           manager,
@@ -125,7 +126,14 @@ export class PasswordResetsService {
           },
           now,
         );
-        return { id, token, tokenHash, name: target.name, email: target.email };
+        return {
+          id,
+          token,
+          tokenHash,
+          name: target.name,
+          email: target.email,
+          validityMs: expiresAt.getTime() - now.getTime(),
+        };
       });
     } catch (error) {
       if (isUniqueViolation(error, 'uq_password_resets_requested_by_request_key')) {

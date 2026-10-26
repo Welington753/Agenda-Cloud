@@ -38,6 +38,41 @@ async function linkDoConvite(api: APIRequestContext, email: string, anteriores =
   return link;
 }
 
+interface MensagemDaCaixa {
+  assunto: string;
+  texto: string;
+  html: string;
+}
+
+async function ultimaMensagem(api: APIRequestContext, email: string): Promise<MensagemDaCaixa> {
+  const mensagens = (await (await api.get(`${CAIXA}/mensagens?para=${encodeURIComponent(email)}`)).json()) as MensagemDaCaixa[];
+  return mensagens.at(-1)!;
+}
+
+/** O e-mail como chega: HTML renderizado no computador e no celular, sem
+ * rolagem horizontal, com o botão levando ao mesmo link do texto simples. Sem
+ * JavaScript e sem rede. O endereço por extenso (que leva o token) é coberto
+ * na captura. */
+async function capturarEmail(browser: Browser, mensagem: MensagemDaCaixa, link: string, botao: string, nome: string) {
+  const contexto = await browser.newContext({ javaScriptEnabled: false });
+  const page = await contexto.newPage();
+  await page.route("**/*", (rota) => rota.abort());
+  await page.setContent(mensagem.html);
+  await expect(page.getByRole("link", { name: botao, exact: true })).toHaveAttribute("href", link);
+  const endereco = page.getByRole("link", { name: link, exact: true });
+  await expect(endereco).toHaveAttribute("href", link);
+  for (const width of [1280, 390, 360]) {
+    await page.setViewportSize({ width, height: 844 });
+    await semRolagemHorizontal(page);
+    await page.screenshot({
+      path: test.info().outputPath(`email-${nome}-${width}.png`),
+      fullPage: true,
+      mask: [endereco],
+    });
+  }
+  await contexto.close();
+}
+
 async function semRolagemHorizontal(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
@@ -92,6 +127,12 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
 
     const emailDona = `${marca}-dona@example.test`;
     const link = await linkDoConvite(request, emailDona);
+    const emailDaDona = await ultimaMensagem(request, emailDona);
+    expect(emailDaDona.assunto).toBe(`Convite para acessar ${marca} Barbearia Nova`);
+    expect(emailDaDona.texto).toMatch(/^Olá, Dona!\n/);
+    expect(emailDaDona.texto).toContain(`Ativar meu acesso:\n${link}`);
+    expect(emailDaDona.texto).toContain("O link vale por 24 horas e pode ser usado uma única vez.");
+    await capturarEmail(browser, emailDaDona, link, "Ativar meu acesso", "conta-nova");
     const dona = await novaPagina(browser);
     await dona.page.goto(link);
     await expect(dona.page.getByRole("heading", { name: `Convite para ${marca} Barbearia Nova` })).toBeVisible();
@@ -131,6 +172,12 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await page.getByRole("button", { name: "Convidar como dono(a)" }).click();
     await expect(page.getByTestId("resultado-envio")).toContainText("Convite registrado.");
     const linkExistente = await linkDoConvite(request, `${marca}-existente@example.test`);
+    // O nome é o da conta, não o digitado no convite; nada de criar senha.
+    const emailExistente = await ultimaMensagem(request, `${marca}-existente@example.test`);
+    expect(emailExistente.texto).toMatch(/^Olá, Conta!\n/);
+    expect(emailExistente.texto).toContain("confirme com a senha que você já usa");
+    expect(emailExistente.texto).not.toContain("crie sua senha");
+    await capturarEmail(browser, emailExistente, linkExistente, "Aceitar o convite", "conta-existente");
     await existente.page.goto(linkExistente);
     await existente.page.getByLabel("Senha da sua conta").fill("senha-errada-qualquer");
     await existente.page.getByRole("button", { name: "Aceitar o convite" }).click();
@@ -180,7 +227,11 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await page.getByTestId("lista-convites").getByRole("button", { name: "Reenviar" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Reenviar" }).click();
     await expect(page.getByTestId("lista-convites")).toContainText("E-mail aceito pelo provedor");
-    await linkDoConvite(request, `${marca}-sem-envio@example.test`);
+    const linkReenviado = await linkDoConvite(request, `${marca}-sem-envio@example.test`);
+    const reenvio = await ultimaMensagem(request, `${marca}-sem-envio@example.test`);
+    expect(reenvio.assunto).toBe(`Novo link: convite para acessar ${marca} Barbearia Nova`);
+    expect(reenvio.texto).toContain("Os links enviados antes não funcionam mais.");
+    await capturarEmail(browser, reenvio, linkReenviado, "Ativar meu acesso", "reenvio");
     await capturar(page, "convites");
 
     // ------------------------------------- 4. bloqueio com sessão aberta

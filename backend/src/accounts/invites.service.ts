@@ -34,7 +34,7 @@ import { resolveSlug, slugify } from '../auth/slug.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import type { EmailSendResult } from '../email/email-sender.js';
 import { AccountDelivery } from './account-delivery.js';
-import { emailDeConvite, linkDeConvite } from './account-emails.js';
+import { emailDeConvite, linkDeConvite, type ConviteParaEmail } from './account-emails.js';
 import {
   MAX_INVITE_SENDS,
   generateAccountToken,
@@ -79,7 +79,7 @@ interface IssuedInvite {
   id: string;
   token: string;
   tokenHash: string;
-  email: { targetName: string; targetEmail: string; tenantName: string | null; accountExists: boolean };
+  email: ConviteParaEmail;
 }
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
@@ -253,12 +253,13 @@ export class InvitesService {
         throw conflito('CONTA_BLOQUEADA', 'A conta convidada está bloqueada. Reative-a antes de reenviar.');
       }
       const { token, tokenHash } = generateAccountToken();
+      const expiresAt = linkExpiresAt(now);
       await manager.query(
         `UPDATE invites
             SET token_hash = $2, expires_at = $3, send_count = send_count + 1,
                 delivery_status = 'PENDING', delivery_failure = NULL, updated_at = $4
           WHERE id = $1`,
-        [invite.id, tokenHash, linkExpiresAt(now), now],
+        [invite.id, tokenHash, expiresAt, now],
       );
       await recordAudit(
         manager,
@@ -282,6 +283,8 @@ export class InvitesService {
           targetEmail: invite.target_email,
           tenantName: invite.tenant_name,
           accountExists: invite.target_has_credential,
+          resent: true,
+          validityMs: expiresAt.getTime() - now.getTime(),
         },
       };
     });
@@ -567,6 +570,7 @@ export class InvitesService {
     }
     const id = generateId();
     const { token, tokenHash } = generateAccountToken();
+    const expiresAt = linkExpiresAt(now);
     try {
       await manager.query(
         `INSERT INTO invites (id, type, target_name, target_email, tenant_id, establishment_role, platform_role,
@@ -586,7 +590,7 @@ export class InvitesService {
           tokenHash,
           actor.id,
           now,
-          linkExpiresAt(now),
+          expiresAt,
           target.id,
           data.requestKey,
         ],
@@ -627,6 +631,8 @@ export class InvitesService {
         targetEmail: targetEmail,
         tenantName: data.tenant?.name ?? null,
         accountExists: target.hasCredential,
+        resent: false,
+        validityMs: expiresAt.getTime() - now.getTime(),
       },
     };
   }

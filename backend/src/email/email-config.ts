@@ -4,8 +4,9 @@
 // chave da API nunca sai daqui para resposta, log ou banco.
 import type { ConfigService } from '@nestjs/config';
 import type { EmailConfig, EmailProvider } from './email-sender.js';
+import { MARCA } from './marca.js';
 
-export const NOME_REMETENTE_PADRAO = 'Agenda Cloud';
+export const NOME_REMETENTE_PADRAO = MARCA.nome;
 
 export function lerConfiguracaoDeEmail(config: ConfigService): EmailConfig | null {
   const provider = config.get<string>('EMAIL_PROVIDER') ?? 'none';

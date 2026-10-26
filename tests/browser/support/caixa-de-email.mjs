@@ -4,7 +4,8 @@
 // dos testes (a API recusa `EMAIL_API_BASE_URL` em production).
 //
 //   GET  /saude                  pronto (o Playwright espera por ele)
-//   GET  /mensagens?para=email   mensagens recebidas para o endereço
+//   GET  /mensagens?para=email   mensagens recebidas para o endereço (assunto,
+//                                texto simples e HTML)
 //   POST /controle {"falhar":b}  com `true`, recusa os envios (HTTP 500)
 import { createServer } from "node:http";
 
@@ -47,6 +48,7 @@ createServer(async (req, res) => {
       para: String(dados.to?.[0]?.email ?? "").toLowerCase(),
       assunto: dados.subject,
       texto: dados.textContent,
+      html: dados.htmlContent,
       recebidaEm: new Date().toISOString(),
     });
     return json(res, 201, { messageId: `local-${mensagens.length}` });

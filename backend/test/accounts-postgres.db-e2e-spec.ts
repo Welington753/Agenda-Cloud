@@ -33,6 +33,7 @@ interface Recebido {
   to: string;
   subject: string;
   text: string;
+  html: string;
 }
 
 /** Caixa local no formato da API do Brevo. `falhar` devolve 500. */
@@ -51,8 +52,8 @@ function caixaDeEmail() {
         res.statusCode = 500;
         return res.end();
       }
-      const json = JSON.parse(corpo) as { to: { email: string }[]; subject: string; textContent: string };
-      recebidos.push({ to: json.to[0].email, subject: json.subject, text: json.textContent });
+      const json = JSON.parse(corpo) as { to: { email: string }[]; subject: string; textContent: string; htmlContent: string };
+      recebidos.push({ to: json.to[0].email, subject: json.subject, text: json.textContent, html: json.htmlContent });
       res.statusCode = 201;
       res.end(JSON.stringify({ messageId: id() }));
     });
@@ -61,6 +62,8 @@ function caixaDeEmail() {
 }
 
 const tokenDe = (mensagem: Recebido) => /#t=([0-9a-f]{64})/.exec(mensagem.text)![1];
+/** Link na linha própria do texto simples (logo abaixo do rótulo da ação). */
+const linkDoTexto = (mensagem: Recebido) => /^(https?:\/\/\S+#t=[0-9a-f]{64})$/m.exec(mensagem.text)![1];
 
 describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => {
   let db: DataSource;
@@ -214,6 +217,12 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     expect(total).toBe(1);
 
     const token = tokenDe(ultimaMensagemPara(email('fluxo-dona')));
+    // Conta nova: cria a senha; o botão do HTML leva ao mesmo link do texto.
+    const mensagemDona = ultimaMensagemPara(email('fluxo-dona'));
+    expect(mensagemDona.subject).toBe(`Convite para acessar ${dto.businessName}`);
+    expect(mensagemDona.text).toContain('Para começar, crie sua senha pelo link abaixo.');
+    expect(mensagemDona.text).toContain('O link vale por 24 horas e pode ser usado uma única vez.');
+    expect(mensagemDona.html).toContain(`href="${linkDoTexto(mensagemDona)}"`);
     // Abrir o link não consome nada.
     expect((await invites.preview(token)).status).toBe('VALID');
     expect((await invites.preview(token)).status).toBe('VALID');
@@ -258,6 +267,11 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const [{ total }] = await db.query(`SELECT count(*)::int AS total FROM users WHERE email = $1`, [email('existente-pessoa')]);
     expect(total).toBe(1);
     const token = tokenDe(ultimaMensagemPara(email('existente-pessoa')));
+    // Conta existente: nome da conta (não o digitado) e a senha atual.
+    const mensagemExistente = ultimaMensagemPara(email('existente-pessoa'));
+    expect(mensagemExistente.text).toMatch(/^Olá, Pessoa!\n/);
+    expect(mensagemExistente.text).toContain('confirme com a senha que você já usa');
+    expect(mensagemExistente.text).toContain('Aceitar o convite:');
     await expect(invites.accept(token, 'senha-errada-qualquer', { now: now() })).rejects.toThrow(UnauthorizedException);
     expect(await db.query(`SELECT 1 FROM memberships WHERE user_id = $1 AND tenant_id = $2`, [pessoa.userId, t])).toEqual([]);
     await invites.accept(token, SENHA, { now: now() });
@@ -291,6 +305,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const primeiro = tokenDe(ultimaMensagemPara(email('reenvia')));
     await invites.resend(master.userId, re.invite.id);
     const segundo = tokenDe(ultimaMensagemPara(email('reenvia')));
+    expect(ultimaMensagemPara(email('reenvia')).subject).toMatch(/^Novo link: convite para acessar /);
+    expect(ultimaMensagemPara(email('reenvia')).text).toContain('Os links enviados antes não funcionam mais.');
     expect(segundo).not.toBe(primeiro);
     expect((await invites.preview(primeiro)).status).toBe('INVALID');
     for (let n = 0; n < 3; n++) await invites.resend(master.userId, re.invite.id);
@@ -575,6 +591,12 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const pedido = await resets.request(master.userId, pessoa.userId, requestKey());
     expect(pedido.delivery).toEqual({ status: 'SENT' });
     const token = /#t=([0-9a-f]{64})/.exec(ultimaMensagemPara(email('reset-pessoa')).text)![1];
+    // Pedida pela administração: o texto nunca diz que a pessoa pediu.
+    const mensagemReset = ultimaMensagemPara(email('reset-pessoa'));
+    expect(mensagemReset.subject).toBe('Crie uma nova senha no Agenda Cloud');
+    expect(mensagemReset.text).toContain('A administração do Agenda Cloud enviou este link');
+    expect(mensagemReset.text).toContain(`Criar nova senha:\n${linkDoTexto(mensagemReset)}`);
+    expect(linkDoTexto(mensagemReset)).toMatch(/^http:\/\/localhost:3000\/redefinir-senha#t=[0-9a-f]{64}$/);
     expect((await resets.preview(token)).status).toBe('VALID');
     await resets.complete(token, 'senha-nova-depois-do-link');
     const [linha] = await db.query(
@@ -598,6 +620,10 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
       permissions: ['ESTABLISHMENTS_MANAGE'],
     });
     const token = tokenDe(ultimaMensagemPara(email('plat-nova')));
+    const mensagemPlataforma = ultimaMensagemPara(email('plat-nova'));
+    expect(mensagemPlataforma.subject).toBe('Convite para a administração do Agenda Cloud');
+    expect(mensagemPlataforma.text).toContain('participar da administração da plataforma Agenda Cloud');
+    expect(mensagemPlataforma.text).toContain('Ativar meu acesso:');
     const aceito = await invites.accept(token, 'senha-da-nova-admin', { now: now() });
     expect(aceito.destination).toBe('/conta/administracao');
     const [user] = await db.query(`SELECT platform_role, platform_permissions::text[] AS platform_permissions FROM users WHERE id = $1`, [r.invite.targetUser!.id]);
