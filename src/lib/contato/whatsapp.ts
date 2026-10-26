@@ -69,15 +69,20 @@ export interface DadosCombinarHorario {
  * Mensagem neutra para combinar outro horário. Leva só o primeiro nome, o
  * estabelecimento, a data e a hora — de propósito, nenhum dado do serviço
  * (pode ser sensível: consulta, procedimento, terapia...).
+ *
+ * É um PEDIDO de conversa: o texto nunca diz que a reserva já mudou, e deixa
+ * claro que a disponibilidade é conferida antes de confirmar a alteração.
  */
 export function mensagemCombinarOutroHorario(dados: DadosCombinarHorario): string | null {
   const data = dataNoFuso(dados.startAt, dados.timezone);
-  if (!data) return null;
+  if (!data || !/^\d{2}:\d{2}$/.test(dados.horaLocal)) return null;
   const primeiroNome = dados.nomeCliente.trim().split(/\s+/)[0] ?? "";
-  const saudacao = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
-  return (
-    `${saudacao} Aqui é do ${dados.estabelecimento.trim()}. ` +
-    `Sobre seu agendamento em ${data} às ${dados.horaLocal}, ` +
-    "precisamos combinar outro horário. Podemos conversar?"
-  );
+  const estabelecimento = dados.estabelecimento.trim().replace(/\s+/g, " ");
+  return [
+    primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!",
+    ...(estabelecimento ? [`Aqui é do ${estabelecimento}.`] : []),
+    `Precisamos combinar outro horário para seu agendamento de ${data} às ${dados.horaLocal}.`,
+    "Qual dia ou período fica melhor para você?",
+    "Vamos conferir a disponibilidade antes de confirmar a alteração.",
+  ].join(" ");
 }
