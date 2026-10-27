@@ -41,33 +41,34 @@ const MENSAGEM_DE_LEITURA = {
 } as const;
 
 /** Período inicial: o que veio do Início (`?de=&ate=`) ou o mês corrente. */
-function periodoInicial(): PeriodoLocal {
+function periodoInicial(): PeriodoLocal | "mes-atual" {
   const busca = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
   const de = busca.get("de");
   const ate = busca.get("ate");
   if (de && ate && /^\d{4}-\d{2}-\d{2}$/.test(de) && /^\d{4}-\d{2}-\d{2}$/.test(ate) && de <= ate) return { from: de, to: ate };
-  const agora = new Date();
-  return mesDe(
-    `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`,
-  );
+  // Sem período na URL, o servidor escolhe o mês corrente no fuso do
+  // estabelecimento (nunca pelo relógio do aparelho).
+  return "mes-atual";
 }
 
 export default function RecebimentosPage() {
   const { estado: sessao } = useRealAuth();
   const { notificar } = useToast();
   const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
-  const [periodo, setPeriodo] = useState<PeriodoLocal | null>(null);
+  const [escolha, setEscolha] = useState<PeriodoLocal | "mes-atual" | null>(null);
   const [quitando, setQuitando] = useState<string | null>(null);
-  useEffect(() => setPeriodo(periodoInicial()), []);
+  useEffect(() => setEscolha(periodoInicial()), []);
 
+  const base = tenantId && escolha ? `/tenants/${encodeURIComponent(tenantId)}/payments` : null;
   const { estado, recarregar, anterior } = useLeituraPlataforma(
-    tenantId && periodo ? `/tenants/${encodeURIComponent(tenantId)}/payments?from=${periodo.from}&to=${periodo.to}` : null,
+    base && escolha && escolha !== "mes-atual" ? `${base}?from=${escolha.from}&to=${escolha.to}` : base,
     ehRecebimentos,
   );
   const dados = estado.status === "pronto" ? estado.dados : anterior;
-  if (sessao.status !== "autenticado" || !tenantId || !periodo) return null;
+  if (sessao.status !== "autenticado" || !tenantId || !escolha) return null;
   const estabelecimento: string = tenantId;
-  const hoje = (dados ? hojeNoFuso(dados.timezone, new Date()) : null) ?? periodo.to;
+  const periodo = escolha === "mes-atual" ? (dados?.period ?? null) : escolha;
+  const hoje = (dados ? hojeNoFuso(dados.timezone, new Date()) : null) ?? periodo?.to ?? "";
 
   function mudou(mensagem: string) {
     setQuitando(null);
@@ -89,13 +90,25 @@ export default function RecebimentosPage() {
         }
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Botao type="button" variante="secundaria" aria-label="Mês anterior" onClick={() => setPeriodo(mesDe(deslocar("mes", periodo.from, -1)))}>
+          <Botao
+            type="button"
+            variante="secundaria"
+            aria-label="Mês anterior"
+            disabled={!periodo}
+            onClick={() => periodo && setEscolha(mesDe(deslocar("mes", periodo.from, -1)))}
+          >
             <ChevronLeft size={16} aria-hidden="true" />
           </Botao>
           <p className="min-w-0 text-sm font-semibold text-ink" data-testid="periodo-recebimentos">
-            {rotuloDoPeriodo(periodo)}
+            {periodo ? rotuloDoPeriodo(periodo) : "Mês atual"}
           </p>
-          <Botao type="button" variante="secundaria" aria-label="Próximo mês" onClick={() => setPeriodo(mesDe(deslocar("mes", periodo.from, 1)))}>
+          <Botao
+            type="button"
+            variante="secundaria"
+            aria-label="Próximo mês"
+            disabled={!periodo}
+            onClick={() => periodo && setEscolha(mesDe(deslocar("mes", periodo.from, 1)))}
+          >
             <ChevronRight size={16} aria-hidden="true" />
           </Botao>
         </div>
@@ -116,7 +129,7 @@ export default function RecebimentosPage() {
 
         {dados && (
           <>
-            <section aria-label="Resumo do período" className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="resumo-recebimentos">
+            <section aria-label="Resumo do período" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="resumo-recebimentos">
               <Numero rotulo="Recebido no período" valor={formatarMoeda(dados.summary.receivedCents)} testId="resumo-recebido" />
               <Numero rotulo="Estornado no período" valor={formatarMoeda(dados.summary.refundedCents)} testId="resumo-estornado" />
               <Numero rotulo="Líquido" valor={formatarMoeda(dados.summary.netCents)} testId="resumo-liquido" />
@@ -193,7 +206,7 @@ function Numero({ rotulo, valor, testId }: { rotulo: string; valor: string; test
     <Cartao data-testid={testId}>
       <CartaoCorpo>
         <p className="text-xs font-medium text-ink-soft">{rotulo}</p>
-        <p className="text-xl font-bold text-ink tabular-nums" data-testid={`${testId}-valor`}>
+        <p className="text-xl font-bold break-words text-ink tabular-nums" data-testid={`${testId}-valor`}>
           {valor}
         </p>
       </CartaoCorpo>

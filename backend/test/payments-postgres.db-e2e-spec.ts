@@ -202,6 +202,60 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
       pagamentos.record(staff.userId, est.tenantId, { requestKey: chave(), appointmentId: a, amountCents: 100, method: 'PIX', receivedOn: '2025-09-13' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(painel.summary(staff.userId, est.tenantId, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      pagamentos.list(staff.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const { payment } = await registrar(est, a, 100, '2025-09-13');
+    await db.query(`UPDATE sessions SET reauthenticated_at = now() WHERE id = $1`, [staff.sessionId]);
+    await expect(
+      pagamentos.refund(staff.userId, staff.sessionId, est.tenantId, payment.id, { reason: 'Tentativa do funcionário' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Outro estabelecimento não estorna nem enxerga o recebimento daqui.
+    await db.query(`UPDATE sessions SET reauthenticated_at = now() WHERE id = $1`, [outro.dono.sessionId]);
+    await expect(
+      pagamentos.refund(outro.dono.userId, outro.dono.sessionId, outro.tenantId, payment.id, { reason: 'Outro estabelecimento' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    const [{ refunded_at }] = await db.query(`SELECT refunded_at FROM appointment_payments WHERE id = $1`, [payment.id]);
+    expect(refunded_at).toBeNull();
+
+    // A chave do formulário de um estabelecimento não devolve nada noutro do
+    // mesmo dono: recusa sem criar registro.
+    const segundo = await estabelecimento('recusas-segundo');
+    await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [
+      id(),
+      est.dono.userId,
+      segundo.tenantId,
+    ]);
+    const daqui = await atendimento(segundo, '2025-09-13T16:00:00.000Z');
+    const chaveUsada = chave();
+    await registrar(est, await atendimento(est, '2025-09-13T17:00:00.000Z'), 100, '2025-09-13', chaveUsada);
+    expect(
+      await codigo(
+        pagamentos.record(
+          est.dono.userId,
+          segundo.tenantId,
+          { requestKey: chaveUsada, appointmentId: daqui, amountCents: 100, method: 'PIX', receivedOn: '2025-09-13' },
+          new Date('2025-09-30T15:00:00.000Z'),
+        ),
+      ),
+    ).toBe('CHAVE_EM_USO');
+    const [{ total }] = await db.query(`SELECT count(*)::int AS total FROM appointment_payments WHERE tenant_id = $1`, [segundo.tenantId]);
+    expect(total).toBe(0);
+
+    // Estabelecimento suspenso não registra nem lista.
+    await db.query(`UPDATE tenants SET status = 'SUSPENDED' WHERE id = $1`, [segundo.tenantId]);
+    await expect(
+      pagamentos.list(est.dono.userId, segundo.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      pagamentos.record(est.dono.userId, segundo.tenantId, {
+        requestKey: chave(),
+        appointmentId: daqui,
+        amountCents: 100,
+        method: 'PIX',
+        receivedOn: '2025-09-13',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('estorno integral com motivo: o original fica; não estorna duas vezes; dá para quitar de novo', async () => {
@@ -266,6 +320,12 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
     // Agosto continua com o que entrou em agosto; a média de agosto fica só
     // com o atendimento não estornado (60,00).
     expect(agosto.summary).toMatchObject({ receivedCents: 10000, refundedCents: 0, paidAppointments: 1, averageTicketCents: 6000 });
+
+    // Sem período: o mês corrente no fuso do estabelecimento. 02:00 UTC de
+    // 1º de outubro ainda é 30 de setembro em São Paulo.
+    const padrao = await pagamentos.list(est.dono.userId, est.tenantId, {}, new Date('2025-10-01T02:00:00.000Z'));
+    expect(padrao.period).toEqual({ from: '2025-09-01', to: '2025-09-30' });
+    expect(padrao.summary).toEqual(setembro.summary);
 
     // O Início mostra o mesmo cálculo do período.
     const visao = await painel.summary(est.dono.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' });

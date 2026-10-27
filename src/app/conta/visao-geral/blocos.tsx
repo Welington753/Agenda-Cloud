@@ -147,7 +147,8 @@ export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
   const { finance, period } = painel;
   return (
     <div className="space-y-2" data-testid="financeiro">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Uma coluna no celular: valores em reais não cabem em meia largura. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <EstatisticaCard icone={Wallet} rotulo="Recebido no período" valor={formatarMoeda(finance.receivedCents)} corIcone="success" testId="indicador-recebido" />
         <EstatisticaCard icone={Undo2} rotulo="Estornado no período" valor={formatarMoeda(finance.refundedCents)} corIcone="warning" testId="indicador-estornado" />
         <EstatisticaCard icone={Wallet} rotulo="Líquido no período" valor={formatarMoeda(finance.netCents)} testId="indicador-liquido" />

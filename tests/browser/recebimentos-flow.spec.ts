@@ -136,6 +136,8 @@ test("dono registra e estorna recebimentos; o Início mostra só o que foi regis
     // ------------------------------------------- 3. o Início usa o registro
     await page.goto("/conta/visao-geral");
     await expect(page.getByTestId("indicador-recebido-valor")).toHaveText(/R\$\s42,50/);
+    await expect(page.getByTestId("indicador-ticket-valor")).toHaveText(/R\$\s42,50/);
+    await capturar(page, "inicio");
 
     // ------------------------------------------- 4. estorno
     await page.goto(`/conta/recebimentos?${periodo}`);
@@ -150,6 +152,44 @@ test("dono registra e estorna recebimentos; o Início mostra só o que foi regis
     await expect(page.getByTestId("resumo-ticket-valor")).toHaveText("—");
     await expect(page.getByTestId("atendimento-a-quitar")).toHaveCount(1);
     await capturar(page, "estornado");
+
+    // ------------------------------------------- isolamento entre estabelecimentos
+    // Outro estabelecimento (só no banco, sem conta nova): a sessão do dono
+    // não lê os recebimentos dele nem quita um atendimento dele pelo daqui.
+    const outro = { tenant: id(), unit: id(), professional: id(), consumer: id(), appointment: id() };
+    await db.query(
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status)
+       SELECT $1, $2, 'OTHER', 'America/Sao_Paulo', plan_id, 'ACTIVE' FROM tenants WHERE id = $3`,
+      [outro.tenant, `${marca}-outro`, tenantId],
+    );
+    await db.query(
+      `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, 'Outro', '', 'America/Sao_Paulo', true)`,
+      [outro.unit, outro.tenant],
+    );
+    await db.query(
+      `INSERT INTO professionals (id, tenant_id, name, avatar_initials, avatar_color) VALUES ($1, $2, 'Bia', 'BI', '#000000')`,
+      [outro.professional, outro.tenant],
+    );
+    await db.query(
+      `INSERT INTO consumers (id, tenant_id, name, whatsapp, whatsapp_normalized) VALUES ($1, $2, 'Cliente de Outro', '(11) 97777-6666', $3)`,
+      [outro.consumer, outro.tenant, `5511${Math.floor(Math.random() * 1e9)}`],
+    );
+    await db.query(
+      `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot,
+          professional_id, start_at, end_at, status)
+       VALUES ($1, $2, $3, $4, 'Cliente de Outro', '(11) 97777-6666', $5, $6, $7, 'COMPLETED')`,
+      [outro.appointment, outro.tenant, outro.unit, outro.consumer, outro.professional, inicio, new Date(inicio.getTime() + 30 * 60_000)],
+    );
+    expect((await page.request.get(`${API_DE_TESTE}/tenants/${outro.tenant}/payments`)).status()).toBe(404);
+    const quitarDeOutro = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/payments`, {
+      data: { requestKey: `chave-${id()}`, appointmentId: outro.appointment, amountCents: 100, method: "PIX", receivedOn: dataLocal },
+    });
+    expect(quitarDeOutro.status()).toBe(404);
+    const semRegistro = await db.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM appointment_payments WHERE appointment_id = $1`,
+      [outro.appointment],
+    );
+    expect(semRegistro.rows[0]?.total).toBe(0);
 
     // ------------------------------------------- 5. funcionário não vê dinheiro
     // O mesmo login passa a ser funcionário deste estabelecimento: o servidor

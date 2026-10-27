@@ -25,6 +25,7 @@ import { requireRecentReauth } from '../accounts/reauth.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import { dataLocalDe } from '../availability/time-zone.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
+import { mesDaData } from '../dashboard/dashboard-period.js';
 import { generateId } from '../entities/common/generate-id.js';
 import { linhasDe } from '../notifications/notification-jobs.repository.js';
 import { PAYMENTS_FORBIDDEN_MESSAGE, canManagePayments } from './payment-access.js';
@@ -187,6 +188,9 @@ export class PaymentsService {
       if (isUniqueViolation(error, 'uq_appointment_payments_request_key')) {
         const outro = await this.porChave(this.dataSource.manager, autorizado.tenantId, userId, dto.requestKey);
         if (outro) return { created: false, payment: outro };
+        // A chave é única por quem registrou, em qualquer estabelecimento: a
+        // mesma chave usada noutro não devolve aquele registro daqui.
+        throw conflito('CHAVE_EM_USO', 'Este formulário já foi usado. Atualize a página antes de registrar de novo.');
       }
       throw error;
     }
@@ -235,13 +239,14 @@ export class PaymentsService {
 
   /** Recebimentos do período (pela data do recebimento) e os atendimentos que
    * aguardam quitação; o resumo é o mesmo cálculo do Início. */
-  async list(userId: string, tenantId: string, periodo: PaymentPeriodDto) {
+  async list(userId: string, tenantId: string, query: PaymentPeriodDto, now = new Date()) {
     const manager = this.dataSource.manager;
     const autorizado = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canManagePayments,
       mensagemProibido: PAYMENTS_FORBIDDEN_MESSAGE,
     });
     const timezone = await this.fuso(manager, autorizado.tenantId);
+    const periodo = query.from && query.to ? { from: query.from, to: query.to } : mesDaData(dataLocalDe(now, timezone));
     const recebimentos = linhasDe<PaymentRow>(
       await manager.query(
         `${SELECT_PAGAMENTO}

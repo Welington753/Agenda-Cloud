@@ -172,8 +172,12 @@ enquanto houver conta sem e-mail (nada é apagado nem inventado).
 - db-e2e do backend (`npm run test:db-e2e`, `disposable_pr2` com TLS
   verificado, 9 migrations até `StaffLogin`, sem `appointment_payments`):
   187 passed em 15 arquivos, nenhum falho ou pulado.
-- Ainda pendente antes da integração: bateria inteira do navegador; CI verde
-  no SHA final do PR.
+- CI no SHA final do PR 2 (`dfb9228`, por `workflow_dispatch`, depois do
+  merge do PR 1 em `edc4282`): migration do Lote 6B.2 verde (migration e2e
+  7 passed com o schema completo de 9 migrations e 39 tabelas; o guarda do
+  6B.2 continua recusando a lista) e navegador verde com as 22 invocações
+  executadas, sem falha nem teste pulado (`auth` 7, `contas` 2, `equipe` 1,
+  `acesso-usuario` 1).
 
 ## PR 3 — recebimentos manuais e indicadores financeiros
 
@@ -220,6 +224,14 @@ dinheiro do Início vem só de `appointment_payments`.
   estornados ÷ quantidade desses atendimentos. Um estorno só tira o
   recebimento da média do período dele; estornar algo antigo não mexe na
   média de outro período. Sem atendimento pago, o ticket é `null` ("—").
+  Arredondado ao centavo; somas em centavos inteiros (`bigint` no banco).
+- **Período**: o mesmo do Início (datas locais inclusivas, até 366 dias).
+  Sem período informado, o servidor usa o mês corrente no fuso do
+  estabelecimento, nunca o relógio do aparelho. O estorno é datado com o dia
+  local de hoje no fuso do estabelecimento (nunca antes da data do
+  recebimento).
+- Sem registro no período: recebido, estornado e líquido são zero de verdade
+  (o servidor respondeu zero) e o ticket é "—".
 
 ### Migration `AppointmentPayments1793059200000`
 
@@ -228,7 +240,58 @@ dinheiro do Início vem só de `appointment_payments`.
   `appointment_id`), checagens de valor, forma e estorno tudo-ou-nada,
   índices de recebimento ativo, de chave do formulário e por data.
 
-Só acrescenta. Ordem: depois de `StaffLogin`; backup e conferência; aplicar
-a migration; publicar a API; publicar o web. A API anterior ignora a tabela
-nova. Reverter: `down` apaga a tabela (e os registros feitos nela), então
-só antes de registrar recebimentos reais ou com backup.
+Só acrescenta. A API anterior ignora a tabela nova. Reverter: `down` apaga a
+tabela (e os registros feitos nela), então só antes de registrar
+recebimentos reais ou com backup.
+
+### Ordem futura de publicação (nada disto foi executado no piloto)
+
+O piloto está nas 8 migrations até `TeamAccess`. Os PRs 2 e 3 trazem duas
+migrations novas, que entram nesta ordem, cada passo com autorização
+explícita:
+
+1. Backup e conferência do banco do piloto (procedimento de
+   `docs/runbooks/migrations-production.md`, preparado para cada migration
+   nova como em `publicacao-equipe-piloto.md`).
+2. Aplicar `StaffLogin1792972800000` (9ª). Publicar a API do PR 2 e depois
+   o web do PR 2. Conferir login por e-mail e por usuário.
+3. Backup e conferência de novo. Aplicar
+   `AppointmentPayments1793059200000` (10ª; 40 tabelas no total).
+4. Publicar a API do PR 3 (rotas `/tenants/:id/payments` e `finance` no
+   painel) e só depois o web do PR 3: o web novo exige `finance` na resposta
+   do painel e mostraria erro no Início contra a API anterior.
+5. Conferir no piloto, sem lançar dinheiro de verdade: Início com zero e
+   ticket "—"; Recebimentos abre só para o dono.
+
+As duas migrations podem ser aplicadas na mesma janela, desde que em ordem
+e com a API do PR 2 publicada antes da do PR 3.
+
+### Validação local (banco descartável exclusivo `disposable_pr3`, TLS verificado, 10 migrations, 40 tabelas)
+
+Tudo com `IGNORE_DOTENV_FILE=true`, sem `.env` real e sem envio de
+mensagens. O worktree deste lote tem `node_modules` próprio na raiz (o
+Turbopack recusa `node_modules` como junção para outro worktree).
+
+- db-e2e afetados: `payments-postgres` e `operacao-diaria-postgres`
+  12 passed. Cobrem valor exato e histórico, idempotência, quitação dupla em
+  sequência e em paralelo (um registro só), estorno com motivo e
+  reconfirmação de senha (original preservado, sem estorno duplo, nova
+  quitação depois), cancelar sem mexer no dinheiro, funcionário recusado em
+  listar, registrar e estornar, outro estabelecimento sem ler, quitar nem
+  estornar, chave de formulário de outro estabelecimento recusada
+  (`CHAVE_EM_USO`) sem criar registro, estabelecimento suspenso recusado,
+  mês padrão no fuso do estabelecimento e os cálculos do resumo (iguais no
+  Início).
+- Navegador `recebimentos` 1 passed: Início com zero e "—" antes do
+  registro, registro pela tela com clique duplo virando um POST só, preço
+  do serviço mudando sem alterar o registrado, Início com o valor, estorno
+  com motivo e senha, isolamento pela API com a sessão do dono e o
+  funcionário sem acesso (403 e tela levando à agenda dele). Capturas em
+  claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal. A primeira
+  execução achou rolagem horizontal no Início a 360 px (valores em reais em
+  meia largura); os cartões de dinheiro passaram a uma coluna no celular.
+- Unit e lint: backend 1470 passed e `lint` sem erro; web 840 passed,
+  `lint` e `lint:types` sem erro (só os dois avisos que já existiam).
+- Bateria inteira do navegador, migration e2e com o schema completo
+  (10 migrations, 40 tabelas) e integração do backend completa: no CI do
+  SHA final.
