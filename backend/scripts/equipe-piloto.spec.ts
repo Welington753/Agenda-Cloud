@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Parada } from './entrada-oculta.mjs';
 import {
   FRASE,
+  LOTES,
   OPERACAO,
   avaliarBackupConferido,
   classificarFalha,
@@ -12,6 +13,7 @@ import {
   compararServidores,
   conferirModo,
   destinoDoModo,
+  escolherLote,
   execucaoPendente,
   identificarEstado,
   lerRegistros,
@@ -272,5 +274,70 @@ describe('codigoDeErroConhecido', () => {
     for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT']) expect(codigoDeErroConhecido(erro(code))).toBe('ERR_SEM_CONEXAO');
     expect(codigoDeErroConhecido(erro('28P01'))).toBeNull();
     expect(codigoDeErroConhecido(new Error('x'))).toBeNull();
+  });
+});
+
+describe('lotes', () => {
+  const novo = LOTES['acesso-recebimentos'];
+
+  it('TeamAccess mantém os nomes já usados no piloto', () => {
+    expect(LOTES.equipe.frase).toBe(FRASE);
+    expect(LOTES.equipe.operacao).toBe(OPERACAO);
+    expect(LOTES.equipe.prefixoDasPastas).toBe('equipe-');
+    expect(LOTES.equipe.aplicacaoDaMigration).toBe('agenda-cloud-migration-equipe');
+    expect(LOTES.equipe.aplicacaoDaConferencia).toBe('agenda-cloud-conferencia-equipe');
+  });
+
+  it('StaffLogin e AppointmentPayments: frase, operação e estados próprios', () => {
+    expect(novo.migrations).toEqual(['StaffLogin1792972800000', 'AppointmentPayments1793059200000']);
+    expect(novo.frase).toBe('APLICAR StaffLogin1792972800000 AppointmentPayments1793059200000');
+    expect(novo.operacao).toBe('migration_StaffLogin1792972800000_AppointmentPayments1793059200000');
+    expect([novo.esperadoAntes, novo.esperadoDepois]).toEqual(['before-staff-payments', 'after-staff-payments']);
+    expect(novo.prefixoDasPastas).toBe('acesso-recebimentos-');
+    expect(novo.tabelasAlteradas).toEqual(['users']);
+    for (const chave of ['frase', 'operacao', 'prefixoDasPastas', 'aplicacaoDaMigration', 'esperadoAntes'] as const) {
+      expect(novo[chave]).not.toBe(LOTES.equipe[chave]);
+    }
+  });
+
+  it('escolherLote aceita só o nome exato', () => {
+    expect(escolherLote('acesso-recebimentos')).toBe(novo);
+    expect(escolherLote('equipe')).toBe(LOTES.equipe);
+    for (const nome of [undefined, '', 'Equipe', 'acesso', 'toString', '__proto__', 'constructor']) {
+      expect(codigo(() => escolherLote(nome))).toBe('ERR_LOTE_INVALIDO');
+    }
+  });
+
+  it('um backup ou execução incerta de um lote nunca vale para o outro', () => {
+    const agora = Date.parse('2026-10-27T12:00:00Z');
+    const manifesto = {
+      operacao: LOTES.equipe.operacao,
+      esperado: LOTES.equipe.esperadoAntes,
+      modo: 'piloto',
+      endpoint: PILOTO,
+      commit: 'c'.repeat(40),
+      pontoDeRecuperacao: '2026-10-27T10:00:00Z',
+      backup: { arquivo: 'piloto-neondb.dump', sha256: 'a'.repeat(64) },
+    };
+    const motivos = avaliarBackupConferido({
+      manifesto,
+      conferencia: { resultado: 'restauracao_e_ensaio_ok', ensaioMigration: 'ok', sha256: 'a'.repeat(64), manifestoSha256: 'f'.repeat(64), commit: 'c'.repeat(40) },
+      sha256DoDump: 'a'.repeat(64),
+      sha256DoManifesto: 'f'.repeat(64),
+      commit: 'c'.repeat(40),
+      endpoint: PILOTO,
+      modo: 'piloto',
+      agora,
+      lote: novo,
+    });
+    expect(motivos).toEqual(expect.arrayContaining(['outra operação', 'backup fora do estado before']));
+
+    const incertaDaEquipe = [
+      { operacao: LOTES.equipe.operacao, endpoint: PILOTO, modo: 'piloto', fase: 'aplicar', resultado: 'migration_iniciada', execucao: 'e1', iniciadaEm: 't1' },
+    ];
+    expect(execucaoPendente(incertaDaEquipe, { endpoint: PILOTO, modo: 'piloto', lote: novo })).toBeNull();
+    expect(execucaoPendente(incertaDaEquipe, { endpoint: PILOTO, modo: 'piloto', lote: LOTES.equipe })).not.toBeNull();
+    const incertaDoNovo = [{ ...incertaDaEquipe[0], operacao: novo.operacao }];
+    expect(execucaoPendente(incertaDoNovo, { endpoint: PILOTO, modo: 'piloto', lote: novo })).not.toBeNull();
   });
 });

@@ -1,15 +1,18 @@
 <#
-Abre uma fase da publicacao de TeamAccess1792886400000 num terminal
-interativo. Mesmo formato do lancador de contas (abrir-contas-piloto.ps1): por
+Abre uma fase da publicacao de um lote de migrations num terminal
+interativo. -Lote e obrigatorio:
+  equipe               TeamAccess1792886400000 (publicacao-equipe-piloto.md)
+  acesso-recebimentos  StaffLogin1792972800000 + AppointmentPayments1793059200000
+                       (publicacao-acesso-recebimentos-piloto.md) Mesmo formato do lancador de contas (abrir-contas-piloto.ps1): por
 -File, sem montar comandos com aspas, Endpoint IDs como parametros e nunca
 exibidos. A URL direta e pedida oculta pelo proprio script. Ver
-docs/runbooks/publicacao-equipe-piloto.md.
+docs/runbooks/.
 
 Fases:
-  preparar     so leitura no destino: TLS, before-team-access, limite do plano, backup
+  preparar     so leitura no destino: TLS, before do lote, levantamento, backup
   restauracao  sem conexao com o destino: restaura o backup num PostgreSQL
-               descartavel local, confere e ensaia TeamAccess na copia
-  aplicar      backup novo, frase de confirmacao, so TeamAccess, after
+               descartavel local, confere e ensaia o lote na copia
+  aplicar      backup novo, frase de confirmacao, so as migrations do lote, after
   conferir     so leitura no destino: identifica o estado atual
 
 Modos:
@@ -20,10 +23,11 @@ Modos:
 
 Uso, no Windows Terminal (no console classico Ctrl+V nao cola em modo oculto):
   wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass `
-    -File <clone>\backend\scripts\abrir-equipe-piloto.ps1 -Fase preparar `
-    -PilotEndpointId <ep-...> -ProductionEndpointId <ep-...>
+    -File <clone>\backend\scripts\abrir-equipe-piloto.ps1 -Lote acesso-recebimentos `
+    -Fase preparar -PilotEndpointId <ep-...> -ProductionEndpointId <ep-...>
 #>
 param(
+  [Parameter(Mandatory)] [ValidateSet('equipe', 'acesso-recebimentos')] [string] $Lote,
   [Parameter(Mandatory)] [ValidateSet('preparar', 'restauracao', 'aplicar', 'conferir')] [string] $Fase,
   [string] $PilotEndpointId = '',
   [string] $ProductionEndpointId = '',
@@ -53,7 +57,7 @@ if ($Ensaio -and $precisaDoDestino -and (-not $EnsaioCa -or -not (Test-Path -Lit
   return
 }
 
-$Host.UI.RawUI.WindowTitle = "Agenda-Cloud - TeamAccess - $($modo.ToUpper()) - $Fase"
+$Host.UI.RawUI.WindowTitle = "Agenda-Cloud - $Lote - $($modo.ToUpper()) - $Fase"
 $backend = Split-Path -Parent $PSScriptRoot
 Set-Location $backend
 
@@ -78,6 +82,7 @@ $versaoPgDump = if (Test-Path -LiteralPath $pgDump) { & $pgDump --version } else
 $console = if ($env:WT_SESSION) { 'Windows Terminal' } else { 'console classico (Ctrl+V nao cola; use o botao direito)' }
 
 Write-Host "Modo: $rotuloModo"
+Write-Host "Lote: $Lote"
 Write-Host "Fase: $Fase"
 Write-Host "Commit: $commit"
 Write-Host "Pasta: $backend"
@@ -103,9 +108,9 @@ try {
     Write-Host ''
   }
   if ($Fase -eq 'restauracao') {
-    if ($Pasta) { node scripts/conferir-restauracao-equipe.mjs "--pasta=$Pasta" } else { node scripts/conferir-restauracao-equipe.mjs }
+    if ($Pasta) { node scripts/conferir-restauracao-equipe.mjs "--lote=$Lote" "--pasta=$Pasta" } else { node scripts/conferir-restauracao-equipe.mjs "--lote=$Lote" }
   } else {
-    node scripts/aplicar-equipe-piloto.mjs "--fase=$Fase"
+    node scripts/aplicar-equipe-piloto.mjs "--lote=$Lote" "--fase=$Fase"
   }
   $codigo = $LASTEXITCODE
 } finally {

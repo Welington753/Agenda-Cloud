@@ -46,5 +46,5 @@ const r = await fetch(`${base}/auth/login`, {
 });
 console.log(`LOGIN_DONO: ${r.status}`);
 const erro = log.split("\n").find((l) => /column .* does not exist|QueryFailedError|ERROR/.test(l));
-console.log(`PRIMEIRO_ERRO_NO_LOG: ${erro ? erro.replace(/\x1b\[[0-9;]*m/g, "").trim().slice(0, 160) : "nenhum"}`);
+console.log(`PRIMEIRO_ERRO_NO_LOG: ${erro ? erro.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g"), "").trim().slice(0, 160) : "nenhum"}`);
 api.kill();

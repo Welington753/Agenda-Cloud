@@ -13,6 +13,7 @@
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { MIGRATIONS_ATE_WEB_PUSH, MIGRATION_CONTAS } from './contas-administracao-schema.js';
+import { somenteLeitura, type PublicacaoDoLote } from './publicacao-lote.js';
 
 export const MIGRATIONS_ATE_CONTAS = [...MIGRATIONS_ATE_WEB_PUSH, MIGRATION_CONTAS] as const;
 export const MIGRATION_EQUIPE = 'TeamAccess1792886400000';
@@ -289,3 +290,48 @@ export function descreverExcessoDePlano(excesso: ExcessoDePlano): string[] {
   }
   return linhas;
 }
+
+/** TeamAccess no contrato comum dos scripts de publicação (`--lote=equipe`).
+ * Mesmas conferências de antes; as consultas de "colunas novas vazias" e de
+ * reversão saíram dos scripts para cá sem mudar. */
+export const PUBLICACAO_EQUIPE: PublicacaoDoLote = {
+  migrationsAntes: MIGRATIONS_ATE_CONTAS,
+  pendentes: [MIGRATION_EQUIPE],
+  falhasAntes: async (client) => falhasAntesDeEquipe(await lerEstadoEquipe(client)),
+  falhasDepois: async (client) => falhasDepoisDeEquipe(await lerEstadoEquipe(client)),
+  async levantamento(client) {
+    const excesso = await lerExcessoDePlano(client);
+    return { linhas: descreverExcessoDePlano(excesso), comparavel: excesso };
+  },
+  async novosVazios(client) {
+    const [n] = await somenteLeitura(client, async () =>
+      (
+        await client.query<Record<string, number>>(`SELECT
+          (SELECT count(*)::int FROM memberships) AS vinculos,
+          (SELECT count(*)::int FROM memberships WHERE status = 'ACTIVE' AND status_changed_at IS NULL AND status_changed_by_user_id IS NULL) AS "vinculosAtivosSemMudanca",
+          (SELECT count(*)::int FROM tenants WHERE restore_status IS NOT NULL) AS "tenantsComRestore",
+          (SELECT count(*)::int FROM invites WHERE professional_id IS NOT NULL) AS "convitesComProfissional"`)
+      ).rows,
+    );
+    return {
+      linhas: [
+        `VINCULOS_ATIVOS: ${n.vinculosAtivosSemMudanca}/${n.vinculos}`,
+        `COLUNAS_NOVAS_VAZIAS: ${n.tenantsComRestore === 0 && n.convitesComProfissional === 0}`,
+      ],
+      ok: n.vinculosAtivosSemMudanca === n.vinculos && n.tenantsComRestore === 0 && n.convitesComProfissional === 0,
+    };
+  },
+  async reversao(client) {
+    const [r] = await somenteLeitura(client, async () =>
+      (
+        await client.query<Record<string, number>>(`SELECT
+          (SELECT count(*)::int FROM memberships WHERE status <> 'ACTIVE') AS "vinculosSuspensos",
+          (SELECT count(*)::int FROM tenants WHERE status::text = 'ARCHIVED') AS "estabelecimentosArquivados",
+          (SELECT count(*)::int FROM tenants WHERE restore_status IS NOT NULL) AS "estabelecimentosComSituacaoAnterior",
+          (SELECT count(*)::int FROM invites WHERE professional_id IS NOT NULL) AS "convitesDeFuncionario",
+          (SELECT count(*)::int FROM membership_permission_overrides WHERE permission::text LIKE 'ATENDIMENTO_PROPRIO_%') AS "liberacoesDeFuncionario"`)
+      ).rows,
+    );
+    return Object.entries(r ?? {}).map(([k, v]) => `REVERSAO_AFETARIA_${k}: ${v}`);
+  },
+};

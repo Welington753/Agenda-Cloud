@@ -59,7 +59,7 @@ await db.query(
   [vinculoStaff, staff, tenant, prof],
 );
 const tokenStaff = await sessao(staff); // sessão aberta pela API nova antes do retorno
-const admin = await conta({ email: `${marca}-admin@example.test`, platformRole: "MASTER_OWNER" });
+await conta({ email: `${marca}-admin@example.test`, platformRole: "MASTER_OWNER" });
 // Atendimento confirmado amanhã, já quitado (recebimento ativo).
 const servico = id();
 await db.query(`INSERT INTO services (id, tenant_id, name, short_description, duration_minutes, price_cents) VALUES ($1, $2, 'Corte', '', 30, 5000)`, [servico, tenant]);
@@ -96,7 +96,7 @@ async function chamar(metodo, caminho, { cookie, corpo } = {}) {
   const r = await fetch(`${API}${caminho}`, {
     method: metodo,
     headers: { Origin: ORIGEM, ...(corpo ? { "Content-Type": "application/json" } : {}), ...(cookie ? { Cookie: `session_token=${cookie}` } : {}) },
-    body: corpo ? JSON.stringify(corpo) : undefined,
+    ...(corpo ? { body: JSON.stringify(corpo) } : {}),
   });
   const texto = await r.text();
   let json = null;

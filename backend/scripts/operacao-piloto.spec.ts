@@ -123,3 +123,25 @@ describe('ambienteLibpq', () => {
     expect(local).toMatchObject({ PGHOST: 'localhost', PGHOSTADDR: '127.0.0.1', PGCHANNELBINDING: 'prefer' });
   });
 });
+
+describe('conferirPendentes com várias pendentes (lote numa transação)', () => {
+  const antes = ['A1', 'B2', 'C3'];
+  const conferir = (executadas: string[], carregadas: string[], pendentes?: string[]) =>
+    conferirPendentes({ executadas, carregadas, esperadasAntes: antes, pendentes });
+
+  it('aceita o histórico esperado mais as pendentes, na ordem', () => {
+    expect(conferir(antes, [...antes, 'D4', 'E5'], ['D4', 'E5'])).toBeNull();
+  });
+  it.each([
+    ['uma das pendentes já aplicada', [...antes, 'D4'], [...antes, 'D4', 'E5'], 'ERR_HISTORICO_DE_MIGRATIONS_INESPERADO'],
+    ['pendentes em outra ordem no build', antes, [...antes, 'E5', 'D4'], 'ERR_MIGRATIONS_COMPILADAS_INESPERADAS'],
+    ['só uma das pendentes no build', antes, [...antes, 'D4'], 'ERR_MIGRATIONS_COMPILADAS_INESPERADAS'],
+    ['migration a mais no build', antes, [...antes, 'D4', 'E5', 'F6'], 'ERR_MIGRATIONS_COMPILADAS_INESPERADAS'],
+  ])('recusa %s', (_caso, executadas, carregadas, esperado) => {
+    expect(conferir(executadas, carregadas, ['D4', 'E5'])).toBe(esperado);
+  });
+  it('recusa lista vazia ou sem nenhuma pendente informada', () => {
+    expect(conferir(antes, antes, [])).toBe('ERR_PENDENTES_INVALIDAS');
+    expect(conferir(antes, [...antes, 'D4'])).toBe('ERR_PENDENTES_INVALIDAS');
+  });
+});

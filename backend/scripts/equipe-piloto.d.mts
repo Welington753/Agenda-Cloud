@@ -12,6 +12,27 @@ export const APLICACAO_DA_MIGRATION: string;
 export const VALIDADE_DO_BACKUP_CONFERIDO_MS: number;
 export const TABELAS_ALTERADAS: string[];
 
+export interface Lote {
+  nome: string;
+  rotulo: string;
+  migrations: readonly string[];
+  frase: string;
+  operacao: string;
+  esperadoAntes: string;
+  esperadoDepois: string;
+  prefixoDasPastas: string;
+  aplicacaoDaMigration: string;
+  aplicacaoDaConferencia: string;
+  aplicacaoDoBackup: string;
+  aplicacaoDaRestauracao: string;
+  schema: string;
+  publicacao: string;
+  tabelasAlteradas: readonly string[];
+  jaAplicado: string;
+}
+export const LOTES: Readonly<Record<'equipe' | 'acesso-recebimentos', Lote>>;
+export function escolherLote(nome: unknown): Lote;
+
 export interface AjusteDeEnsaio {
   endereco: string;
   caArquivo: string;
@@ -32,6 +53,7 @@ export function avaliarBackupConferido(args: {
   endpoint: string;
   modo: string;
   agora: number;
+  lote?: Lote;
 }): string[];
 export function compararServidores(conferido: Record<string, any>, novo: Record<string, any>): string[];
 export function classificarFalha(
@@ -40,7 +62,7 @@ export function classificarFalha(
 ): 'nada_aplicado' | 'recusada_pelo_banco' | 'incerto';
 export function execucaoPendente(
   registros: Record<string, any>[],
-  filtro: { endpoint: string; modo: string },
+  filtro: { endpoint: string; modo: string; lote?: Lote },
 ): { execucao: string; iniciadaEm: string } | null;
 export function lerRegistros(texto: string): Record<string, any>[];
 export function identificarEstado(conferencias: {

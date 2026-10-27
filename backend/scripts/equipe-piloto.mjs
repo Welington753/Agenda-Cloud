@@ -1,6 +1,12 @@
-// Regras puras da publicação de TeamAccess1792886400000 no piloto
+// Regras puras da publicação de um lote de migrations no piloto
 // (aplicar-equipe-piloto.mjs e conferir-restauracao-equipe.mjs). Sem banco,
 // rede nem terminal: testadas em equipe-piloto.spec.ts.
+//
+// Lotes (`--lote`, sem padrão nos scripts): `equipe` (TeamAccess, já
+// aplicada no piloto) e `acesso-recebimentos` (StaffLogin e
+// AppointmentPayments, juntas numa transação). Cada lote tem operação, frase,
+// estados esperados, pastas e application_name próprios: um backup, uma
+// conferência ou uma execução incerta de um lote nunca vale para o outro.
 //
 // Modo `piloto` × `ensaio`: o lançador define AGENDA_OPS_MODO. O ensaio roda o
 // MESMO procedimento contra um PostgreSQL descartável que imita o piloto (host
@@ -10,18 +16,74 @@
 // modo nunca vale para o outro.
 import { Parada } from "./entrada-oculta.mjs";
 
-export const MIGRATION = "TeamAccess1792886400000";
-export const FRASE = `APLICAR ${MIGRATION}`;
-export const OPERACAO = `migration_${MIGRATION}`;
-export const ESPERADO_ANTES = "before-team-access";
-export const ESPERADO_DEPOIS = "after-team-access";
 export const PREFIXO_DO_ENSAIO = "ep-ensaio-";
-export const PREFIXO_DAS_PASTAS = "equipe-";
-export const APLICACAO_DA_MIGRATION = "agenda-cloud-migration-equipe";
 export const VALIDADE_DO_BACKUP_CONFERIDO_MS = 24 * 60 * 60 * 1000;
-// Tabelas que ganham colunas: o conteúdo das colunas ANTIGAS é comparado à
-// parte; o md5 da linha inteira muda de propósito.
-export const TABELAS_ALTERADAS = ["tenants", "memberships", "invites"];
+
+function descreverLote({ nome, rotulo, migrations, esperadoAntes, esperadoDepois, publicacao, schema, tabelasAlteradas, jaAplicado }) {
+  return Object.freeze({
+    nome,
+    rotulo,
+    migrations: Object.freeze([...migrations]),
+    frase: `APLICAR ${migrations.join(" ")}`,
+    operacao: `migration_${migrations.join("_")}`,
+    esperadoAntes,
+    esperadoDepois,
+    prefixoDasPastas: `${nome}-`,
+    aplicacaoDaMigration: `agenda-cloud-migration-${nome}`,
+    aplicacaoDaConferencia: `agenda-cloud-conferencia-${nome}`,
+    aplicacaoDoBackup: `agenda-cloud-backup-${nome}`,
+    aplicacaoDaRestauracao: `agenda-cloud-restauracao-${nome}`,
+    // Módulo compilado em dist-scripts/lib e o export com o contrato
+    // PublicacaoDoLote (lib/publicacao-lote.ts).
+    schema,
+    publicacao,
+    // Tabelas que ganham colunas: o conteúdo das colunas ANTIGAS é comparado à
+    // parte; o md5 da linha inteira muda de propósito.
+    tabelasAlteradas: Object.freeze([...tabelasAlteradas]),
+    jaAplicado,
+  });
+}
+
+export const LOTES = Object.freeze({
+  equipe: descreverLote({
+    nome: "equipe",
+    rotulo: "TeamAccess",
+    migrations: ["TeamAccess1792886400000"],
+    esperadoAntes: "before-team-access",
+    esperadoDepois: "after-team-access",
+    schema: "equipe-acessos-schema.js",
+    publicacao: "PUBLICACAO_EQUIPE",
+    tabelasAlteradas: ["tenants", "memberships", "invites"],
+    jaAplicado: "ERR_TEAMACCESS_JA_APLICADA",
+  }),
+  "acesso-recebimentos": descreverLote({
+    nome: "acesso-recebimentos",
+    rotulo: "StaffLogin + AppointmentPayments",
+    migrations: ["StaffLogin1792972800000", "AppointmentPayments1793059200000"],
+    esperadoAntes: "before-staff-payments",
+    esperadoDepois: "after-staff-payments",
+    schema: "acesso-recebimentos-schema.js",
+    publicacao: "PUBLICACAO_ACESSO_RECEBIMENTOS",
+    tabelasAlteradas: ["users"],
+    jaAplicado: "ERR_LOTE_JA_APLICADO",
+  }),
+});
+
+/** Lote pelo nome exato de `--lote`; qualquer outro valor para. */
+export function escolherLote(nome) {
+  if (typeof nome !== "string" || !Object.hasOwn(LOTES, nome)) parar("ERR_LOTE_INVALIDO");
+  return LOTES[nome];
+}
+
+// Nomes da publicação de TeamAccess, mantidos para quem já os usa.
+export const MIGRATION = LOTES.equipe.migrations[0];
+export const FRASE = LOTES.equipe.frase;
+export const OPERACAO = LOTES.equipe.operacao;
+export const ESPERADO_ANTES = LOTES.equipe.esperadoAntes;
+export const ESPERADO_DEPOIS = LOTES.equipe.esperadoDepois;
+export const PREFIXO_DAS_PASTAS = LOTES.equipe.prefixoDasPastas;
+export const APLICACAO_DA_MIGRATION = LOTES.equipe.aplicacaoDaMigration;
+export const TABELAS_ALTERADAS = [...LOTES.equipe.tabelasAlteradas];
 
 const parar = (codigo) => {
   throw new Parada(codigo);
@@ -66,11 +128,11 @@ export function destinoDoModo(destino, ensaio, caPem) {
  * destino, modo e commit desta execução, do estado `before`, com o ensaio da
  * migration feito na cópia, e de até 24 h.
  */
-export function avaliarBackupConferido({ manifesto, conferencia, sha256DoDump, sha256DoManifesto, commit, endpoint, modo, agora }) {
+export function avaliarBackupConferido({ manifesto, conferencia, sha256DoDump, sha256DoManifesto, commit, endpoint, modo, agora, lote = LOTES.equipe }) {
   const motivos = [];
   if (conferencia.manifestoSha256 !== sha256DoManifesto) motivos.push("manifesto alterado depois da conferência");
-  if (manifesto.operacao !== OPERACAO) motivos.push("outra operação");
-  if (manifesto.esperado !== ESPERADO_ANTES) motivos.push("backup fora do estado before");
+  if (manifesto.operacao !== lote.operacao) motivos.push("outra operação");
+  if (manifesto.esperado !== lote.esperadoAntes) motivos.push("backup fora do estado before");
   if (manifesto.modo !== modo) motivos.push(`backup do modo ${manifesto.modo ?? "desconhecido"}`);
   if (manifesto.endpoint !== endpoint) motivos.push("outro endpoint");
   if (manifesto.commit !== commit) motivos.push("backup de outro commit");
@@ -137,10 +199,10 @@ const RESOLVE_A_EXECUCAO = new Set(["nao_aplicada", "aplicada", "aplicada_e_conf
  * (janela fechada, máquina desligada). Só deixa de bloquear quando uma fase
  * `conferir` posterior identificou o estado, sem sessão da migration ativa.
  */
-export function execucaoPendente(registros, { endpoint, modo }) {
+export function execucaoPendente(registros, { endpoint, modo, lote = LOTES.equipe }) {
   let pendente = null;
   for (const r of registros) {
-    if (r?.operacao !== OPERACAO || r.endpoint !== endpoint || r.modo !== modo) continue;
+    if (r?.operacao !== lote.operacao || r.endpoint !== endpoint || r.modo !== modo) continue;
     if (r.fase === "aplicar" && r.resultado === "migration_iniciada") {
       pendente = { execucao: r.execucao, iniciadaEm: r.iniciadaEm };
     } else if (r.fase === "aplicar" && pendente && r.execucao === pendente.execucao && RESOLVE_A_EXECUCAO.has(r.resultado)) {
