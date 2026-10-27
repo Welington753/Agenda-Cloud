@@ -152,6 +152,8 @@ enquanto houver conta sem e-mail (nada é apagado nem inventado).
   shell continuava levando ao Perfil. Agora a verificação adota a sessão
   nova quando `mustChangePassword` muda, e o Perfil só segue para o início
   depois que a sessão relida não pede mais a troca.
-- Ainda pendente antes da integração: unit, lint e lint:types completos;
-  bateria inteira do navegador; testes db-e2e do backend; CI verde no SHA
-  final do PR.
+- Unit e lint completos (IGNORE_DOTENV_FILE=true, sem banco): web `npm test`
+  838 passed (79 arquivos), `lint` e `lint:types` sem erro; backend
+  `npm test` 1470 passed (91 arquivos), `lint` (oxlint) sem erro.
+- Ainda pendente antes da integração: bateria inteira do navegador; testes
+  db-e2e do backend; CI verde no SHA final do PR.
