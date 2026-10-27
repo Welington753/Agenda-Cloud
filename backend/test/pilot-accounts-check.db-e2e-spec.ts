@@ -1,13 +1,17 @@
 // A conferência só-leitura do piloto (scripts/lib/contas-administracao-schema.ts
 // e scripts/lib/equipe-acessos-schema.ts) rodada contra o PostgreSQL
 // DESCARTÁVEL já migrado: prova que as consultas são válidas e que o banco
-// migrado passa no estado "depois" de cada uma.
+// migrado passa no estado "depois" de cada uma. O levantamento do limite do
+// plano grava antes um estabelecimento próprio, com nomes únicos.
+import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { falhasDepoisDeContas, lerEstadoContas, objetosPresentes, TOTAL_OBJETOS_CONTAS } from '../scripts/lib/contas-administracao-schema.js';
 import {
   MIGRATIONS_ATE_CONTAS,
   MIGRATION_EQUIPE,
+  descreverExcessoDePlano,
   falhasAntesDeEquipe,
+  lerExcessoDePlano,
   falhasDepoisDeEquipe,
   lerEstadoEquipe,
   objetosEquipePresentes,
@@ -49,5 +53,74 @@ describe.skipIf(!url)('conferências das migrations do piloto contra PostgreSQL 
       'new_constraints_already_exist',
       'new_indexes_already_exist',
     ]);
+  });
+
+  it('equipe: levantamento do limite do plano com a regra da aplicação, só leitura', async () => {
+    // Estabelecimento próprio no plano essencial (2 profissionais): 3 ativos
+    // e 1 inativo (não conta), 3 vínculos PROFISSIONAL, 1 deles suspenso (não
+    // ocupa vaga), e um convite de funcionário pendente e outro vencido.
+    const id = () => randomUUID().replaceAll('-', '').slice(0, 25);
+    const tenant = id();
+    const profissionais = [id(), id(), id(), id()];
+    const pessoas = [id(), id(), id(), id()];
+    const antes = await comCliente(lerExcessoDePlano);
+    await comCliente(async (client) => {
+      await client.query(
+        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status)
+         VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', 'plan_essencial', 'ACTIVE')`,
+        [tenant, `limite-${tenant}`],
+      );
+      for (const [i, p] of profissionais.entries()) {
+        await client.query(
+          `INSERT INTO professionals (id, tenant_id, name, avatar_initials, avatar_color, active)
+           VALUES ($1, $2, $3, 'PL', '#000000', $4)`,
+          [p, tenant, `Profissional ${i}`, i < 3],
+        );
+      }
+      for (const [i, u] of pessoas.entries()) {
+        await client.query('INSERT INTO users (id, name, email) VALUES ($1, $2, $3)', [u, `Pessoa ${i}`, `${u}@example.test`]);
+      }
+      await client.query(
+        `INSERT INTO memberships (id, user_id, tenant_id, role, professional_id, status) VALUES
+         ($1, $4, $7, 'DONO', NULL, 'ACTIVE'),
+         ($2, $5, $7, 'PROFISSIONAL', $8, 'ACTIVE'),
+         ($3, $6, $7, 'PROFISSIONAL', $9, 'SUSPENDED')`,
+        [id(), id(), id(), pessoas[0], pessoas[1], pessoas[2], tenant, profissionais[0], profissionais[1]],
+      );
+      for (const [expira, status] of [
+        ["now() + interval '1 day'", 'PENDING'],
+        ["now() - interval '1 day'", 'PENDING'],
+      ]) {
+        await client.query(
+          `INSERT INTO invites (id, type, target_name, target_email, tenant_id, establishment_role, status, token_hash,
+                                created_by_user_id, created_at, expires_at, professional_id)
+           VALUES ($1, 'ESTABLISHMENT', 'Convidado', $2, $3, 'PROFISSIONAL', $4, $5, $6, now() - interval '2 days', ${expira}, $7)`,
+          [id(), `${id()}@example.test`, tenant, status, id(), pessoas[0], profissionais[2]],
+        );
+        // Um pendente por profissional: o segundo vai para outro.
+        profissionais[2] = profissionais[3];
+      }
+    });
+    const depois = await comCliente(lerExcessoDePlano);
+
+    expect(depois.estabelecimentos).toBe(antes.estabelecimentos + 1);
+    expect(depois.acimaDoLimite).toBe(antes.acimaDoLimite + 1);
+    expect(depois.emExcesso).toBe(antes.emExcesso + 1);
+    // 1 acesso ativo + 1 convite no prazo = 2 vagas: no limite, não acima.
+    expect(depois.vagasAcimaDoLimite).toBe(antes.vagasAcimaDoLimite);
+    expect(depois.vinculosPorPapel.PROFISSIONAL).toBe((antes.vinculosPorPapel.PROFISSIONAL ?? 0) + 2);
+    const linha = depois.detalhes.find((d) => d.tenantId === tenant);
+    if (linha) {
+      expect(linha).toEqual({
+        tenantId: tenant,
+        slug: `limite-${tenant}`,
+        situacao: 'ACTIVE',
+        plano: 'essencial',
+        limite: 2,
+        profissionaisAtivos: 3,
+        vagasUsadas: 2,
+      });
+    }
+    expect(descreverExcessoDePlano(depois).join('\n')).not.toMatch(/Pessoa|Profissional|example\.test/);
   });
 });

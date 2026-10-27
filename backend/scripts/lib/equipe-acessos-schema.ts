@@ -139,3 +139,153 @@ export const TOTAL_OBJETOS_EQUIPE =
 export function objetosEquipePresentes(estado: EstadoEquipe): number {
   return estado.colunas.length + estado.constraints.length + estado.indices.length + estado.valores.length;
 }
+
+/** Um estabelecimento acima do limite do plano: só identificadores e
+ * contagens, nunca nomes de pessoas, clientes ou contatos. */
+export interface EstabelecimentoAcimaDoLimite {
+  tenantId: string;
+  slug: string;
+  situacao: string;
+  plano: string;
+  limite: number;
+  profissionaisAtivos: number;
+  vagasUsadas: number;
+}
+
+export interface ExcessoDePlano {
+  estabelecimentos: number;
+  /** `profissionais ativos > max_professionals`: continuam operando, mas não
+   * criam nem reativam profissional (LIMITE_DE_PROFISSIONAIS). */
+  acimaDoLimite: number;
+  /** `profissionais ativos = max_professionals`: o próximo é recusado. */
+  noLimite: number;
+  /** Acessos de funcionário ativos + convites de funcionário pendentes acima
+   * do limite: novos convites recusados (LIMITE_DO_PLANO). */
+  vagasAcimaDoLimite: number;
+  vinculosPorPapel: Record<string, number>;
+  /** Vínculos PROFISSIONAL sem profissional ligado: a API nova não lhes dá
+   * agenda (my-agenda.service.ts). */
+  funcionariosSemProfissional: number;
+  /** Estabelecimentos com qualquer um dos dois excessos. */
+  emExcesso: number;
+  detalhes: EstabelecimentoAcimaDoLimite[];
+}
+
+export const MAXIMO_DE_DETALHES = 50;
+
+/**
+ * Levantamento SÓ DE LEITURA do limite de profissionais, com a mesma regra da
+ * aplicação: `plans.max_professionals` (NOT NULL, sem plano "sem limite")
+ * contra `professionals.active = true` (professionals.service.ts) e, para as
+ * vagas de funcionário, vínculos PROFISSIONAL ativos + convites de
+ * PROFISSIONAL pendentes e no prazo (team/seats.ts). Antes da migration, todo
+ * vínculo conta como ativo (é o que ela grava) e não há convite de
+ * funcionário (a conferência `before` recusa). Não altera nada.
+ */
+export async function lerExcessoDePlano(client: PgClientLike): Promise<ExcessoDePlano> {
+  await client.query('BEGIN TRANSACTION READ ONLY');
+  try {
+    const colunas = await client.query<{ nome: string }>(
+      `SELECT table_name || '.' || column_name AS nome FROM information_schema.columns
+        WHERE table_schema = 'public' AND (table_name, column_name) IN (('memberships', 'status'), ('invites', 'professional_id'))`,
+    );
+    const temStatus = colunas.rows.some((r) => r.nome === 'memberships.status');
+    const temConviteDeFuncionario = colunas.rows.some((r) => r.nome === 'invites.professional_id');
+    const linhas = await client.query<{
+      tenant_id: string;
+      slug: string;
+      situacao: string;
+      plano: string;
+      limite: string;
+      ativos: string;
+      vagas: string;
+    }>(
+      `SELECT t.id AS tenant_id, t.slug::text AS slug, t.status::text AS situacao, p.code AS plano,
+              p.max_professionals::text AS limite,
+              (SELECT count(*) FROM professionals pr WHERE pr.tenant_id = t.id AND pr.active = true)::text AS ativos,
+              ((SELECT count(*) FROM memberships m WHERE m.tenant_id = t.id AND m.role = 'PROFISSIONAL'
+                  ${temStatus ? "AND m.status = 'ACTIVE'" : ''})
+               + ${
+                 temConviteDeFuncionario
+                   ? `(SELECT count(*) FROM invites i WHERE i.tenant_id = t.id AND i.establishment_role = 'PROFISSIONAL'
+                        AND i.status = 'PENDING' AND i.expires_at > now())`
+                   : '0'
+               })::text AS vagas
+         FROM tenants t JOIN plans p ON p.id = t.plan_id
+        ORDER BY t.created_at, t.id`,
+    );
+    const papeis = await client.query<{ papel: string; total: string }>(
+      'SELECT role::text AS papel, count(*)::text AS total FROM memberships GROUP BY role ORDER BY role',
+    );
+    const semProfissional = await client.query<{ total: string }>(
+      "SELECT count(*)::text AS total FROM memberships WHERE role = 'PROFISSIONAL' AND professional_id IS NULL",
+    );
+    await client.query('ROLLBACK');
+
+    const numero = (valor: string | undefined, campo: string) => parseNonNegativeInteger(valor, campo);
+    let acimaDoLimite = 0;
+    let noLimite = 0;
+    let vagasAcimaDoLimite = 0;
+    let emExcesso = 0;
+    const detalhes: EstabelecimentoAcimaDoLimite[] = [];
+    for (const linha of linhas.rows) {
+      const limite = numero(linha.limite, 'plan_max_professionals');
+      const profissionaisAtivos = numero(linha.ativos, 'active_professionals');
+      const vagasUsadas = numero(linha.vagas, 'staff_seats');
+      if (profissionaisAtivos > limite) acimaDoLimite += 1;
+      else if (profissionaisAtivos === limite) noLimite += 1;
+      if (vagasUsadas > limite) vagasAcimaDoLimite += 1;
+      if (profissionaisAtivos <= limite && vagasUsadas <= limite) continue;
+      emExcesso += 1;
+      if (detalhes.length < MAXIMO_DE_DETALHES) {
+        detalhes.push({
+          tenantId: linha.tenant_id,
+          slug: linha.slug,
+          situacao: linha.situacao,
+          plano: linha.plano,
+          limite,
+          profissionaisAtivos,
+          vagasUsadas,
+        });
+      }
+    }
+    return {
+      estabelecimentos: linhas.rows.length,
+      acimaDoLimite,
+      noLimite,
+      vagasAcimaDoLimite,
+      vinculosPorPapel: Object.fromEntries(papeis.rows.map((r) => [r.papel, numero(r.total, 'memberships_by_role')])),
+      funcionariosSemProfissional: numero(semProfissional.rows[0]?.total, 'staff_without_professional'),
+      emExcesso,
+      detalhes,
+    };
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // O erro original é o que importa.
+    }
+    throw error;
+  }
+}
+
+/** Linhas fixas `NOME: valor` para a saída dos procedimentos. */
+export function descreverExcessoDePlano(excesso: ExcessoDePlano): string[] {
+  const linhas = [
+    `ESTABELECIMENTOS: ${excesso.estabelecimentos}`,
+    `ACIMA_DO_LIMITE_DE_PROFISSIONAIS: ${excesso.acimaDoLimite}`,
+    `NO_LIMITE_DE_PROFISSIONAIS: ${excesso.noLimite}`,
+    `VAGAS_DE_FUNCIONARIO_ACIMA_DO_LIMITE: ${excesso.vagasAcimaDoLimite}`,
+    `VINCULOS_POR_PAPEL: ${Object.entries(excesso.vinculosPorPapel).map(([papel, n]) => `${papel}=${n}`).join(' ') || 'nenhum'}`,
+    `FUNCIONARIOS_SEM_PROFISSIONAL: ${excesso.funcionariosSemProfissional}`,
+  ];
+  for (const d of excesso.detalhes) {
+    linhas.push(
+      `ACIMA_DO_LIMITE: tenant=${d.tenantId} slug=${d.slug} situacao=${d.situacao} plano=${d.plano} limite=${d.limite} profissionaisAtivos=${d.profissionaisAtivos} vagasUsadas=${d.vagasUsadas}`,
+    );
+  }
+  if (excesso.detalhes.length < excesso.emExcesso) {
+    linhas.push(`ACIMA_DO_LIMITE_NAO_LISTADOS: ${excesso.emExcesso - excesso.detalhes.length}`);
+  }
+  return linhas;
+}

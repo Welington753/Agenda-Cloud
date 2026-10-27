@@ -227,9 +227,11 @@ export function conferirPendentes({ executadas, carregadas, esperadasAntes, pend
  * Aplica, com o runtime compilado (`dist-migrations`, o mesmo do
  * `migration:run:compiled`), somente a migration pendente esperada, numa
  * transação. Pool de uma conexão: o `lock_timeout` vale para a sessão que roda
- * a migration, e o TLS dela é conferido no socket.
+ * a migration, e o TLS dela é conferido no socket. `aoIniciar`, opcional, é
+ * chamado logo antes do primeiro comando da migration: uma falha antes dele
+ * garante que nada foi enviado.
  */
-export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, aplicacao, log }) {
+export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, aplicacao, log, aoIniciar = () => {} }) {
   const { DataSource } = await import("typeorm");
   const { buildMigrationsDataSourceOptions } = await import("../dist-migrations/database/migrations-data-source.js");
   const ds = new DataSource({
@@ -268,6 +270,7 @@ export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendent
         liberar();
       }
     }
+    aoIniciar();
     const aplicadas = await ds.runMigrations({ transaction: "all" });
     const nomes = aplicadas.map((m) => m.name);
     log(`APLICADAS: ${nomes.join(",") || "nenhuma"}`);
