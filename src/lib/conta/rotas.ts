@@ -1,11 +1,16 @@
 // Endereços da área REAL (`/conta/**`). Regras puras, sem React.
 //
 // Organização (ver docs/plans/operacao-diaria-configuracoes.md):
-// - Início, Agenda (com a aba Solicitações), Clientes e Configurações para o
-//   dono;
+// - Início, Agenda (com a aba Solicitações), Clientes, Serviços,
+//   Profissionais e Configurações para o dono;
 // - Minha agenda para o funcionário;
 // - Configurações em subpáginas: as do estabelecimento só para o dono; as
 //   pessoais (Aparência, Perfil e segurança) para todos.
+//
+// Serviços e Profissionais são áreas próprias do menu, fora de
+// Configurações, mas continuam nos endereços de antes
+// (`/conta/configuracoes/servicos` e `.../profissionais`): links já
+// compartilhados e os atalhos das outras telas não mudam.
 //
 // Os endereços antigos continuam funcionando: o next.config.ts encaminha para
 // cá, preservando a busca (as notificações já entregues usam
@@ -59,18 +64,6 @@ export const SECOES_CONFIGURACOES: readonly SecaoDeConfiguracoes[] = [
     alcance: "estabelecimento",
   },
   {
-    href: ROTA_SERVICOS,
-    rotulo: "Serviços",
-    descricao: "O que você atende, com duração e preço.",
-    alcance: "estabelecimento",
-  },
-  {
-    href: ROTA_PROFISSIONAIS,
-    rotulo: "Profissionais",
-    descricao: "Quem atende, os serviços e os horários de cada um.",
-    alcance: "estabelecimento",
-  },
-  {
     href: ROTA_EQUIPE,
     rotulo: "Equipe e acessos",
     descricao: "Logins da equipe, vagas do plano e permissões.",
@@ -103,11 +96,23 @@ export function secoesDisponiveis(ehDonoComEstabelecimento: boolean): readonly S
     : SECOES_CONFIGURACOES.filter((secao) => secao.alcance === "pessoal");
 }
 
-/** A página é uma seção de Configurações só do estabelecimento? */
+/** Áreas do menu do dono que moram sob `/conta/configuracoes` (endereços
+ * mantidos), mas não são seções de Configurações. */
+export const AREAS_SOB_CONFIGURACOES: readonly string[] = [ROTA_SERVICOS, ROTA_PROFISSIONAIS];
+
+const dentroDe = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
+
+/** A página é Serviços ou Profissionais (inclusive subpáginas)? */
+export function emAreaSobConfiguracoes(pathname: string): boolean {
+  return AREAS_SOB_CONFIGURACOES.some((href) => dentroDe(pathname, href));
+}
+
+/** A página é só do dono com estabelecimento: uma seção de Configurações do
+ * estabelecimento, Serviços ou Profissionais? */
 export function emSecaoDoEstabelecimento(pathname: string): boolean {
-  return SECOES_CONFIGURACOES.some(
-    (secao) =>
-      secao.alcance === "estabelecimento" && (pathname === secao.href || pathname.startsWith(`${secao.href}/`)),
+  return (
+    emAreaSobConfiguracoes(pathname) ||
+    SECOES_CONFIGURACOES.some((secao) => secao.alcance === "estabelecimento" && dentroDe(pathname, secao.href))
   );
 }
 

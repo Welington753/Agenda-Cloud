@@ -5,7 +5,12 @@
 // estabelecimento, o sino "Notificações" e o menu da conta (aparência,
 // notificações deste aparelho, Configurações, Administração e "Sair", ver
 // menu-conta.tsx) mais uma barra inferior com no máximo quatro áreas (Início,
-// Agenda, Clientes e Configurações para o dono). Sem rolagem horizontal.
+// Agenda, Clientes e Configurações para o dono). Serviços e Profissionais,
+// que não cabem na barra, ficam no menu da conta no celular. Sem rolagem
+// horizontal.
+//
+// No computador, "Configurações" abre ao lado um submenu com as seções
+// (item-configuracoes.tsx); o texto continua levando ao índice.
 //
 // A navegação, o estabelecimento e o "Sair" existem UMA vez no DOM e só mudam
 // de lugar com CSS: links duplicados (um por tamanho de tela) confundiriam
@@ -41,6 +46,7 @@ import { identificacaoDaConta } from "@/lib/api/auth-api";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { itensDaNavegacao, itemAtivo } from "@/lib/conta/navegacao";
 import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
+import { ItemConfiguracoes } from "@/components/conta/item-configuracoes";
 import { NOME_PRODUTO } from "@/lib/config";
 import {
   contagemVisivel,
@@ -185,28 +191,32 @@ export function ShellConta({ children }: { children: ReactNode }) {
             className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
           >
             <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
-              {itens.map((item) => (
-                <li
-                  key={item.href}
-                  // Itens fora da barra saem do celular com `display: none`
-                  // (fora da árvore de acessibilidade): no celular, a cópia
-                  // fica no menu da conta.
-                  className={clsx("min-w-0", item.noCelular === "menu" && "hidden md:block")}
-                >
-                  {/* No computador, a administração fica num grupo próprio,
-                      separado da operação do estabelecimento. */}
-                  {item.grupo === "plataforma" && contexto && (
-                    <span className="mt-4 hidden border-t border-white/10 px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
-                      Plataforma
-                    </span>
-                  )}
-                  <LinkNavegacao
-                    item={item}
-                    ativo={itemAtivo(pathname, item.href)}
-                    contador={item.href === ROTA_AGENDA && ehDono ? pendentes : undefined}
-                  />
-                </li>
-              ))}
+              {itens.map((item) =>
+                item.href === ROTA_CONFIGURACOES ? (
+                  <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href)} />
+                ) : (
+                  <li
+                    key={item.href}
+                    // Itens fora da barra saem do celular com `display: none`
+                    // (fora da árvore de acessibilidade): no celular, a cópia
+                    // fica no menu da conta.
+                    className={clsx("min-w-0", item.noCelular === "menu" && "hidden md:block")}
+                  >
+                    {/* No computador, a administração fica num grupo próprio,
+                        separado da operação do estabelecimento. */}
+                    {item.grupo === "plataforma" && contexto && (
+                      <span className="mt-4 hidden border-t border-white/10 px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
+                        Plataforma
+                      </span>
+                    )}
+                    <LinkNavegacao
+                      item={item}
+                      ativo={itemAtivo(pathname, item.href)}
+                      contador={item.href === ROTA_AGENDA && ehDono ? pendentes : undefined}
+                    />
+                  </li>
+                ),
+              )}
             </ul>
           </nav>
         )}
@@ -230,6 +240,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             tenantId={contexto && ehDono ? tenantIdAtivo : null}
             pendentes={ehDono ? pendentes : null}
             comAdministracao={comAdministracao}
+            areasNoMenu={itens.filter((item) => item.noCelular === "menu" && item.grupo !== "plataforma")}
             configuracoes={ROTA_CONFIGURACOES}
             saindo={saindo}
             aoSair={() => void sair()}

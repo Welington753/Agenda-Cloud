@@ -372,11 +372,9 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("painel-novo-agendamento")).toHaveCount(0);
 
-    // ------------------------------------------------ serviços e profissionais (Configurações)
-    const secao = (rotulo: string) =>
-      page.getByRole("navigation", { name: "Seções de configurações" }).getByRole("link", { name: rotulo });
-    await nav(page).getByRole("link", { name: "Configurações" }).click();
-    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /^Serviços/ }).click();
+    // ------------------------------------------------ serviços e profissionais (áreas do menu)
+    const secao = (rotulo: string) => nav(page).getByRole("link", { name: rotulo });
+    await secao("Serviços").click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
     const cartaoAvaliacao = page.getByRole("article", { name: "Avaliação" });
     await expect(cartaoAvaliacao).toContainText("Sob consulta");
@@ -403,11 +401,11 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(diegoCartao.getByRole("button", { name: "Reativar Diego Reis" })).toBeVisible();
     await fotografar(page, "profissionais");
 
-    // Subpágina mantém "Configurações" e a seção "Profissionais" marcadas.
+    // Subpágina mantém "Profissionais" marcada (e só ela).
     await carla.getByRole("link", { name: "Horários de Carla Dias" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais\/[^/]+\/horarios$/);
-    await expect(nav(page).getByRole("link", { name: "Configurações" })).toHaveAttribute("aria-current", "page");
     await expect(secao("Profissionais")).toHaveAttribute("aria-current", "page");
+    await expect(nav(page).getByRole("link", { name: "Configurações" })).not.toHaveAttribute("aria-current", "page");
 
     // ------------------------------------------------ troca para B, sem sobra de A
     await page.goto("/conta/visao-geral");

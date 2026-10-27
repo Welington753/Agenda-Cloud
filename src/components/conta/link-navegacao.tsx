@@ -2,16 +2,36 @@
 // cada área, com ícone, marca de página atual e contador de pendentes, e as
 // classes de item ativo e inativo.
 import Link from "next/link";
-import { CalendarCheck, CalendarDays, Contact, Home, Settings, ShieldCheck, type LucideIcon } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarDays,
+  ClipboardList,
+  Contact,
+  Home,
+  Settings,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import clsx from "clsx";
 import type { ItemNavegacaoConta } from "@/lib/conta/navegacao";
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
-import { ROTA_AGENDA, ROTA_CLIENTES, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_MINHA_AGENDA } from "@/lib/conta/rotas";
+import {
+  ROTA_AGENDA,
+  ROTA_CLIENTES,
+  ROTA_CONFIGURACOES,
+  ROTA_INICIO,
+  ROTA_MINHA_AGENDA,
+  ROTA_PROFISSIONAIS,
+  ROTA_SERVICOS,
+} from "@/lib/conta/rotas";
 
-const ICONE_POR_HREF: Record<string, LucideIcon> = {
+export const ICONE_POR_HREF: Record<string, LucideIcon> = {
   [ROTA_INICIO]: Home,
   [ROTA_AGENDA]: CalendarDays,
   [ROTA_CLIENTES]: Contact,
+  [ROTA_SERVICOS]: ClipboardList,
+  [ROTA_PROFISSIONAIS]: Users,
   [ROTA_CONFIGURACOES]: Settings,
   [ROTA_MINHA_AGENDA]: CalendarCheck,
   [ROTA_ADMINISTRACAO]: ShieldCheck,
@@ -65,11 +85,14 @@ export function LinkNavegacao({
   ativo,
   emLista = false,
   contador,
+  className,
 }: {
   item: ItemNavegacaoConta;
   ativo: boolean;
   emLista?: boolean;
   contador?: number | null;
+  /** Classes extras (ex.: espaço para o botão do submenu de Configurações). */
+  className?: string;
 }) {
   const Icone = ICONE_POR_HREF[item.href] ?? Home;
   return (
@@ -79,6 +102,7 @@ export function LinkNavegacao({
       className={clsx(
         emLista ? CLASSE_ITEM_EM_LISTA : clsx(CLASSE_ITEM, "relative"),
         ativo ? (emLista ? "bg-white/10 font-semibold text-white" : CLASSE_ATIVO) : CLASSE_INATIVO,
+        className,
       )}
     >
       <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />

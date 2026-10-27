@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { ENCAMINHAMENTOS_CONTA_ANTIGA, emSecaoDoEstabelecimento, secoesDisponiveis } from "./rotas";
+import {
+  ENCAMINHAMENTOS_CONTA_ANTIGA,
+  emAreaSobConfiguracoes,
+  emSecaoDoEstabelecimento,
+  secoesDisponiveis,
+} from "./rotas";
 
 describe("Configurações", () => {
   it("o dono vê todas as seções; os demais, só as pessoais", () => {
     expect(secoesDisponiveis(true).map((s) => s.rotulo)).toEqual([
       "Estabelecimento",
-      "Serviços",
-      "Profissionais",
       "Equipe e acessos",
       "Notificações",
       "Aparência",
@@ -21,6 +24,15 @@ describe("Configurações", () => {
     expect(emSecaoDoEstabelecimento("/conta/configuracoes/perfil")).toBe(false);
     expect(emSecaoDoEstabelecimento("/conta/configuracoes")).toBe(false);
     expect(emSecaoDoEstabelecimento("/conta/configuracoes/servicos-x")).toBe(false);
+  });
+
+  it("Serviços e Profissionais saem das seções, mas continuam só do dono", () => {
+    expect(secoesDisponiveis(true).map((s) => s.href)).not.toContain("/conta/configuracoes/servicos");
+    expect(emSecaoDoEstabelecimento("/conta/configuracoes/servicos")).toBe(true);
+    expect(emAreaSobConfiguracoes("/conta/configuracoes/servicos")).toBe(true);
+    expect(emAreaSobConfiguracoes("/conta/configuracoes/profissionais/p1/disponibilidade")).toBe(true);
+    expect(emAreaSobConfiguracoes("/conta/configuracoes/equipe")).toBe(false);
+    expect(emAreaSobConfiguracoes("/conta/configuracoes/servicos-x")).toBe(false);
   });
 });
 

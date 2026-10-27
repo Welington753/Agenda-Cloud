@@ -122,9 +122,14 @@ test("dono cria acesso com usuário e senha; troca obrigatória; nova senha temp
     await expect(fp.page.getByTestId("troca-obrigatoria")).toBeVisible();
     await expect(fp.page.getByTestId("perfil-usuario")).toHaveText(usuario);
     await expect(fp.page.getByRole("navigation", { name: "Áreas da conta" })).toHaveCount(0);
+    // Sem retorno ao índice de Configurações nem submenu: a troca é a única tela.
+    await expect(fp.page.getByTestId("voltar-configuracoes")).toHaveCount(0);
+    await expect(fp.page.getByTestId("abrir-submenu-configuracoes")).toHaveCount(0);
     // Outras páginas levam de volta; a API recusa até a troca.
-    await fp.page.goto("/conta/minha-agenda");
-    await expect(fp.page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    for (const caminho of ["/conta/minha-agenda", "/conta/configuracoes", "/conta/configuracoes/aparencia"]) {
+      await fp.page.goto(caminho);
+      await expect(fp.page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    }
     const agenda = await fp.page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/range?from=2031-01-01&to=2031-01-02`);
     expect(agenda.status()).toBe(403);
     expect(((await agenda.json()) as { code?: string }).code).toBe("TROCA_DE_SENHA_OBRIGATORIA");
