@@ -18,7 +18,9 @@
 //   aba Solicitações), contadas sem o teto da lista;
 // - plano e uso: profissionais ativos e vagas de funcionário (team/seats.ts).
 //
-// Nada aqui é financeiro: preço de reserva não é dinheiro recebido.
+// FINANCEIRO: só os recebimentos registrados à mão (payments/), com o mesmo
+// cálculo da tela de Recebimentos (`resumoFinanceiro`). Preço de reserva
+// nunca é dinheiro recebido.
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
@@ -29,6 +31,7 @@ import { linhasDe } from '../notifications/notification-jobs.repository.js';
 import { activeProfessionals, staffSeatUsage } from '../team/seats.js';
 import { contagemPorSituacao, mesDaData, type PeriodoLocal, type Situacao } from './dashboard-period.js';
 import type { DashboardQueryDto } from './dashboard.dto.js';
+import { resumoFinanceiro } from '../payments/payments.service.js';
 
 /** Quantos próximos atendimentos o Início mostra; o resto fica na agenda. */
 export const LIMITE_DE_PROXIMOS = 8;
@@ -62,6 +65,8 @@ export interface DashboardView {
   };
   pendingRequests: number;
   upcoming: ProximoAtendimento[];
+  /** Recebimentos registrados no período (ver `resumoFinanceiro`). */
+  finance: Awaited<ReturnType<typeof resumoFinanceiro>>;
   plan: {
     name: string;
     maxProfessionals: number;
@@ -149,6 +154,7 @@ export class DashboardService {
         ),
       );
 
+      const financeiro = await resumoFinanceiro(manager, tenant, periodo);
       const vagas = await staffSeatUsage(manager, tenant, dadosDoTenant.max_professionals, now);
       const profissionaisAtivos = await activeProfessionals(manager, tenant);
 
@@ -167,6 +173,7 @@ export class DashboardService {
           appointmentsTotal: Object.values(porSituacaoNoPeriodo).reduce((soma, n) => soma + n, 0),
         },
         pendingRequests: pendentes.total,
+        finance: financeiro,
         upcoming: proximos.map((linha) => {
           const inicio = new Date(linha.start_at);
           return {

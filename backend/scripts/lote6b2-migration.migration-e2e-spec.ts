@@ -43,6 +43,7 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'AccountsAdministration1792800000000',
   'TeamAccess1792886400000',
   'StaffLogin1792972800000',
+  'AppointmentPayments1793059200000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -172,8 +173,8 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
 
       // 31 do 6B.2 + notification_jobs + public_booking_settings + public_booking_requests
       // + push_subscriptions + booking_request_alerts + push_deliveries + password_resets
-      // + staff_account_requests (TeamAccess não cria tabela).
-      expect(Number(tables.rows[0]?.n)).toBe(39);
+      // + staff_account_requests (TeamAccess não cria tabela) + appointment_payments.
+      expect(Number(tables.rows[0]?.n)).toBe(40);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
