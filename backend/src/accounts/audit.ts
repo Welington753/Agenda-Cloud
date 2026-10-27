@@ -28,7 +28,9 @@ export type AdminAuditAction =
   | 'MEMBERSHIP_REACTIVATED'
   | 'STAFF_ACCESS_CREATED'
   | 'STAFF_PASSWORD_RESET'
-  | 'PASSWORD_CHANGED';
+  | 'PASSWORD_CHANGED'
+  | 'PAYMENT_RECORDED'
+  | 'PAYMENT_REFUNDED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

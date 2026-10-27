@@ -18,6 +18,8 @@ export const ROTA_SOLICITACOES = `${ROTA_AGENDA}/solicitacoes`;
 export const ROTA_CLIENTES = "/conta/clientes";
 export const ROTA_MINHA_AGENDA = "/conta/minha-agenda";
 export const ROTA_SELECIONAR_ESTABELECIMENTO = "/conta/selecionar-estabelecimento";
+/** Recebimentos manuais (dono), abertos pelo Início. */
+export const ROTA_RECEBIMENTOS = "/conta/recebimentos";
 
 export const ROTA_CONFIGURACOES = "/conta/configuracoes";
 export const ROTA_CONFIG_ESTABELECIMENTO = `${ROTA_CONFIGURACOES}/estabelecimento`;

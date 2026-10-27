@@ -33,6 +33,16 @@ export interface PainelDoEstabelecimento {
   };
   pendingRequests: number;
   upcoming: ProximoAtendimentoDoPainel[];
+  /** Recebimentos registrados no período. `averageTicketCents` é `null`
+   * quando não há atendimento pago (nunca um zero inventado). */
+  finance: {
+    receivedCents: number;
+    refundedCents: number;
+    netCents: number;
+    paidAppointments: number;
+    paidTotalCents: number;
+    averageTicketCents: number | null;
+  };
   plan: {
     name: string;
     maxProfessionals: number;
@@ -84,6 +94,7 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
   const noPeriodo = p.periodSummary as Record<string, unknown> | undefined;
   const plano = p.plan as Record<string, unknown> | undefined;
   const vagas = plano?.staffSeats as Record<string, unknown> | undefined;
+  const financeiro = p.finance as Record<string, unknown> | undefined;
   return (
     texto(p.timezone) &&
     texto(p.today) &&
@@ -109,7 +120,10 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
     numero(vagas.used) &&
     numero(vagas.pending) &&
     numero(vagas.available) &&
-    numero(vagas.limit)
+    numero(vagas.limit) &&
+    !!financeiro &&
+    ["receivedCents", "refundedCents", "netCents", "paidAppointments", "paidTotalCents"].every((k) => numero(financeiro[k])) &&
+    (financeiro.averageTicketCents === null || numero(financeiro.averageTicketCents))
   );
 }
 

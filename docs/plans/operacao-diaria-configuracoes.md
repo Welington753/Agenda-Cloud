@@ -140,3 +140,61 @@ anterior e o `down` desfaz a migration. Depois, voltar a API anterior deixa
 essas contas sem como entrar e telas da administração recebem o nome de
 usuário no lugar do e-mail; o `down` recusa voltar `email` a obrigatório
 enquanto houver conta sem e-mail (nada é apagado nem inventado).
+
+## PR 3 — recebimentos manuais e indicadores financeiros
+
+### Fonte
+
+Antes deste PR não havia fonte confiável de pagamentos: só
+`appointment_items.price_cents_snapshot` (preço da reserva) e as tabelas de
+comissão sem uso. Preço de reserva não é dinheiro recebido; por isso o
+dinheiro do Início vem só de `appointment_payments`.
+
+### Regras
+
+- **Quitação integral**, registrada pelo dono em Recebimentos (aberta pelo
+  Início): valor efetivamente pago (centavos inteiros, sem ponto flutuante),
+  forma (Pix, dinheiro, débito, crédito, transferência, outra), data do
+  recebimento (data local do estabelecimento, nunca no futuro) e quem
+  registrou. O preço da reserva só aparece como sugestão.
+- Só atendimentos confirmados, em andamento, concluídos ou com falta; nunca
+  aguardando confirmação ou cancelados.
+- **Sem duplicidade**: índice único parcial
+  `uq_appointment_payments_active` (um recebimento não estornado por
+  atendimento) e atendimento travado na transação; a chave do formulário é
+  única por quem registrou, então repetir o envio devolve o mesmo registro.
+- **Estorno integral**, com motivo e senha do dono confirmada há pouco. A
+  linha original continua (valor e data intactos), marcada com data,
+  motivo e autor do estorno; o histórico registra as duas ações. Depois do
+  estorno, o atendimento volta a aguardar quitação.
+- Concluir ou cancelar um atendimento não registra nem estorna nada.
+- Mudar o preço do serviço não altera recebimento registrado.
+- Separado das mensalidades da plataforma. Sem cobrança automática, nota
+  fiscal, integração bancária ou estoque. Sem pagamento parcial nesta
+  versão (a tela diz isso).
+- Só o dono (o funcionário não vê dinheiro: 403 na API, e a tela leva à
+  agenda dele).
+
+### Cálculos (servidor, `resumoFinanceiro`, iguais no Início e em Recebimentos)
+
+- **Recebido no período**: soma dos recebimentos com data de recebimento no
+  período, estornados ou não (o dinheiro entrou naquele dia).
+- **Estornado no período**: soma dos estornos com data de estorno no
+  período, mesmo de recebimento antigo (o dinheiro saiu naquele dia).
+- **Líquido**: recebido − estornado.
+- **Ticket médio**: soma dos recebimentos do período que NÃO foram
+  estornados ÷ quantidade desses atendimentos. Um estorno só tira o
+  recebimento da média do período dele; estornar algo antigo não mexe na
+  média de outro período. Sem atendimento pago, o ticket é `null` ("—").
+
+### Migration `AppointmentPayments1793059200000`
+
+- `audit_action` + `PAYMENT_RECORDED`, `PAYMENT_REFUNDED`;
+- tabela `appointment_payments` com FK composta (`tenant_id`,
+  `appointment_id`), checagens de valor, forma e estorno tudo-ou-nada,
+  índices de recebimento ativo, de chave do formulário e por data.
+
+Só acrescenta. Ordem: depois de `StaffLogin`; backup e conferência; aplicar
+a migration; publicar a API; publicar o web. A API anterior ignora a tabela
+nova. Reverter: `down` apaga a tabela (e os registros feitos nela), então
+só antes de registrar recebimentos reais ou com backup.
