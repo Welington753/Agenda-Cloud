@@ -48,4 +48,4 @@ export function identificarEstado(conferencias: {
   after: boolean;
   codigos?: (string | undefined)[];
 }): 'before' | 'after' | 'divergente' | 'nao_identificado';
-export function codigoDeErroTls(erro: unknown): string | null;
+export function codigoDeErroConhecido(erro: unknown): string | null;

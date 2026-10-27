@@ -98,11 +98,14 @@ export function compararServidores(conferido, novo) {
   return motivos;
 }
 
-/** Recusa do certificado pelo Node (CA desconhecida, nome errado, expirado):
- * o TLS não foi comprovado e nada foi lido. */
-export function codigoDeErroTls(erro) {
+/** Nome fixo para as falhas de rede e TLS antes de qualquer leitura: recusa do
+ * certificado pelo Node (CA desconhecida, nome errado, expirado) ou banco
+ * inalcançável. */
+export function codigoDeErroConhecido(erro) {
   const codigo = typeof erro?.code === "string" ? erro.code : "";
-  return /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS|HOSTNAME/.test(codigo) ? "ERR_CERTIFICADO_NAO_CONFIAVEL" : null;
+  if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS|HOSTNAME/.test(codigo)) return "ERR_CERTIFICADO_NAO_CONFIAVEL";
+  if (["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ETIMEDOUT", "ECONNRESET", "EHOSTUNREACH"].includes(codigo)) return "ERR_SEM_CONEXAO";
+  return null;
 }
 
 // SQLSTATE de conexão perdida ou servidor encerrando: a sessão acabou e o

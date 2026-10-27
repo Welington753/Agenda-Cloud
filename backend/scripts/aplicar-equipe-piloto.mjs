@@ -62,7 +62,7 @@ import {
   conferirModo as conferirModoDeExecucao,
   destinoDoModo,
   execucaoPendente,
-  codigoDeErroTls,
+  codigoDeErroConhecido,
   identificarEstado,
   lerRegistros,
 } from "./equipe-piloto.mjs";
@@ -455,7 +455,11 @@ async function principal() {
 
   if (FASE === "conferir") return faseConferir(destino, schema);
 
-  if (!(await conferirEsperado(destino, ESPERADO_ANTES, schema.checkPilotDatabase))) {
+  const antes = await conferirComCodigo(destino, ESPERADO_ANTES, schema.checkPilotDatabase);
+  if (!antes.success) {
+    if (identificarEstado({ before: false, after: false, codigos: [antes.code] }) === "nao_identificado") {
+      parar("ERR_CONFERENCIA_SEM_LEITURA");
+    }
     const jaAplicada = await conferirEsperado(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase).catch(() => false);
     parar(jaAplicada ? "ERR_TEAMACCESS_JA_APLICADA" : "ERR_ESTADO_ANTES_DIVERGENTE");
   }
@@ -483,7 +487,7 @@ async function principal() {
 
 principal()
   .catch((erro) => {
-    const codigo = erro instanceof Parada ? erro.message : (codigoDeErroTls(erro) ?? "ERR_INESPERADO");
+    const codigo = erro instanceof Parada ? erro.message : (codigoDeErroConhecido(erro) ?? "ERR_INESPERADO");
     log(`ERRO: ${codigo}`);
     if (MOTIVOS[codigo]) log(`MOTIVO: ${MOTIVOS[codigo]}`);
     if (!(erro instanceof Parada)) log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 300)}`);

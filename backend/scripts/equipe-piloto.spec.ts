@@ -8,7 +8,7 @@ import {
   OPERACAO,
   avaliarBackupConferido,
   classificarFalha,
-  codigoDeErroTls,
+  codigoDeErroConhecido,
   compararServidores,
   conferirModo,
   destinoDoModo,
@@ -262,12 +262,15 @@ describe('identificarEstado', () => {
   });
 });
 
-describe('codigoDeErroTls', () => {
-  it('nomeia as recusas de certificado do Node; o resto não', () => {
+describe('codigoDeErroConhecido', () => {
+  const erro = (code: string) => Object.assign(new Error('x'), { code });
+
+  it('nomeia as recusas de certificado do Node e o banco inalcançável; o resto não', () => {
     for (const code of ['SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED']) {
-      expect(codigoDeErroTls(Object.assign(new Error('x'), { code }))).toBe('ERR_CERTIFICADO_NAO_CONFIAVEL');
+      expect(codigoDeErroConhecido(erro(code))).toBe('ERR_CERTIFICADO_NAO_CONFIAVEL');
     }
-    expect(codigoDeErroTls(Object.assign(new Error('x'), { code: 'ECONNREFUSED' }))).toBeNull();
-    expect(codigoDeErroTls(new Error('x'))).toBeNull();
+    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT']) expect(codigoDeErroConhecido(erro(code))).toBe('ERR_SEM_CONEXAO');
+    expect(codigoDeErroConhecido(erro('28P01'))).toBeNull();
+    expect(codigoDeErroConhecido(new Error('x'))).toBeNull();
   });
 });
