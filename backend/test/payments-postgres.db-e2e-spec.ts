@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DataSource } from 'typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
+import { PAYMENTS_FORBIDDEN_MESSAGE } from '../src/payments/payment-access.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { DashboardService } from '../src/dashboard/dashboard.service.js';
 
@@ -206,14 +207,20 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
       pagamentos.list(staff.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     const { payment } = await registrar(est, a, 100, '2025-09-13');
-    await db.query(`UPDATE sessions SET reauthenticated_at = now() WHERE id = $1`, [staff.sessionId]);
-    await expect(
-      pagamentos.refund(staff.userId, staff.sessionId, est.tenantId, payment.id, { reason: 'Tentativa do funcionário' }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Senha confirmada no mesmo instante passado ao serviço (o relógio do
+    // banco pode estar à frente do processo; reautenticação "no futuro" não
+    // vale): a recusa vem da permissão, não da falta de reconfirmação.
+    const agora = new Date();
+    await db.query(`UPDATE sessions SET reauthenticated_at = $2 WHERE id = $1`, [staff.sessionId, agora]);
+    const recusaDoFuncionario = await erroDe(
+      pagamentos.refund(staff.userId, staff.sessionId, est.tenantId, payment.id, { reason: 'Tentativa do funcionário' }, agora),
+    );
+    expect(recusaDoFuncionario).toBeInstanceOf(ForbiddenException);
+    expect(recusaDoFuncionario.message).toBe(PAYMENTS_FORBIDDEN_MESSAGE);
     // Outro estabelecimento não estorna nem enxerga o recebimento daqui.
-    await db.query(`UPDATE sessions SET reauthenticated_at = now() WHERE id = $1`, [outro.dono.sessionId]);
+    await db.query(`UPDATE sessions SET reauthenticated_at = $2 WHERE id = $1`, [outro.dono.sessionId, agora]);
     await expect(
-      pagamentos.refund(outro.dono.userId, outro.dono.sessionId, outro.tenantId, payment.id, { reason: 'Outro estabelecimento' }),
+      pagamentos.refund(outro.dono.userId, outro.dono.sessionId, outro.tenantId, payment.id, { reason: 'Outro estabelecimento' }, agora),
     ).rejects.toBeInstanceOf(NotFoundException);
     const [{ refunded_at }] = await db.query(`SELECT refunded_at FROM appointment_payments WHERE id = $1`, [payment.id]);
     expect(refunded_at).toBeNull();
