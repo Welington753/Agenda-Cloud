@@ -27,11 +27,13 @@ export function avaliarBackupConferido(args: {
   manifesto: Record<string, any>;
   conferencia: Record<string, any>;
   sha256DoDump: string;
+  sha256DoManifesto: string;
   commit: string;
   endpoint: string;
   modo: string;
   agora: number;
 }): string[];
+export function compararServidores(conferido: Record<string, any>, novo: Record<string, any>): string[];
 export function classificarFalha(
   erro: unknown,
   opcoes: { iniciou: boolean },

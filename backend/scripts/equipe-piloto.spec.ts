@@ -8,6 +8,7 @@ import {
   OPERACAO,
   avaliarBackupConferido,
   classificarFalha,
+  compararServidores,
   conferirModo,
   destinoDoModo,
   execucaoPendente,
@@ -113,6 +114,7 @@ describe('avaliarBackupConferido', () => {
     resultado: 'restauracao_e_ensaio_ok',
     ensaioMigration: 'ok',
     sha256: 'a'.repeat(64),
+    manifestoSha256: 'f'.repeat(64),
     commit: 'c'.repeat(40),
   };
   const avaliar = (m = {}, c = {}, extra = {}) =>
@@ -120,6 +122,7 @@ describe('avaliarBackupConferido', () => {
       manifesto: { ...manifesto, ...m },
       conferencia: { ...conferencia, ...c },
       sha256DoDump: 'a'.repeat(64),
+      sha256DoManifesto: 'f'.repeat(64),
       commit: 'c'.repeat(40),
       endpoint: PILOTO,
       modo: 'piloto',
@@ -138,6 +141,7 @@ describe('avaliarBackupConferido', () => {
     ['outro endpoint', { endpoint: 'ep-outro-333333' }, {}, {}, 'outro endpoint'],
     ['outro commit no backup', { commit: 'd'.repeat(40) }, {}, {}, 'backup de outro commit'],
     ['dump alterado', {}, {}, { sha256DoDump: 'b'.repeat(64) }, 'dump alterado'],
+    ['manifesto editado (ex.: modo trocado à mão)', {}, {}, { sha256DoManifesto: 'e'.repeat(64) }, 'manifesto alterado depois da conferência'],
     ['restauração sem sucesso', {}, { resultado: 'falhou' }, {}, 'conferência sem sucesso'],
     ['sem ensaio da migration', {}, { ensaioMigration: 'nao_se_aplica' }, {}, 'migration não ensaiada na cópia'],
     ['conferência de outro dump', {}, { sha256: 'b'.repeat(64) }, {}, 'conferência de outro dump'],
@@ -146,6 +150,24 @@ describe('avaliarBackupConferido', () => {
     ['data no futuro', { pontoDeRecuperacao: '2026-10-28T11:00:00Z' }, {}, {}, 'mais de 24 h'],
   ])('recusa %s', (_caso, m, c, extra, motivo) => {
     expect(avaliar(m, c, extra)).toContain(motivo);
+  });
+});
+
+describe('compararServidores', () => {
+  const neon = { tls: { cadeia: ['ep-piloto-111111.c-2.us-east-1.aws.neon.tech', 'R11', 'ISRG Root X1'] }, servidor: '17.5', migrations: ['a', 'b'] };
+
+  it('mesmo servidor: raiz TLS, versão e histórico iguais (intermediária pode mudar)', () => {
+    expect(compararServidores(neon, { ...neon, tls: { cadeia: ['x', 'R10', 'ISRG Root X1'] } })).toEqual([]);
+  });
+
+  it('comprovante de ensaio contra o piloto: outra cadeia', () => {
+    const ensaio = { ...neon, tls: { cadeia: ['ep-piloto-111111.c-2.us-east-1.aws.neon.tech', 'Agenda Cloud Ensaio CA'] } };
+    expect(compararServidores(ensaio, neon)).toContain('certificado de outra cadeia');
+  });
+
+  it('outra versão ou outro histórico', () => {
+    expect(compararServidores(neon, { ...neon, servidor: '18.1' })).toEqual(['outra versão do servidor']);
+    expect(compararServidores(neon, { ...neon, migrations: ['a', 'b', 'c'] })).toEqual(['outro histórico de migrations']);
   });
 });
 

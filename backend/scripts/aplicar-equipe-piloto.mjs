@@ -37,6 +37,7 @@ import {
   compararFotografias,
   conectar,
   conferirDestino,
+  conferirTransporte,
   encerrar,
   encerrarTodas,
   errosDeConexao,
@@ -57,6 +58,7 @@ import {
   PREFIXO_DAS_PASTAS,
   avaliarBackupConferido,
   classificarFalha,
+  compararServidores,
   conferirModo as conferirModoDeExecucao,
   destinoDoModo,
   execucaoPendente,
@@ -138,6 +140,7 @@ async function levantarLimites(destino, schema) {
 async function fazerBackup(destino, pastaExecucao, extras) {
   const leitor = await conectar(destino, { aplicacao: "agenda-cloud-backup-equipe", log });
   try {
+    const { protocolo, cadeia } = conferirTransporte(leitor.connection?.stream, destino.servidorTls);
     await leitor.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const [{ snapshot }] = (await leitor.query("SELECT pg_export_snapshot() AS snapshot")).rows;
     const fotografia = await fotografar(leitor);
@@ -168,6 +171,7 @@ async function fazerBackup(destino, pastaExecucao, extras) {
       pontoDeRecuperacao: new Date().toISOString(),
       servidor: versao,
       migrations,
+      tls: { protocolo, cadeia },
       ...fotografia,
       backup: { arquivo: path.basename(dump), bytes, sha256 },
     };
@@ -194,14 +198,17 @@ function backupConferido(commit) {
     const arqConferencia = path.join(pasta, "restauracao-conferida.json");
     if (!existsSync(arqConferencia)) continue;
     let motivos;
+    let conferido = null;
     try {
       const manifesto = JSON.parse(readFileSync(path.join(pasta, "manifesto.json"), "utf8"));
       const conferencia = JSON.parse(readFileSync(arqConferencia, "utf8"));
       const dump = path.join(pasta, path.basename(String(manifesto.backup?.arquivo ?? "")));
+      conferido = { nome, manifesto };
       motivos = avaliarBackupConferido({
         manifesto,
         conferencia,
         sha256DoDump: existsSync(dump) ? sha256DoArquivo(dump) : "ausente",
+        sha256DoManifesto: sha256DoArquivo(path.join(pasta, "manifesto.json")),
         commit,
         endpoint: ENDPOINT_PILOTO,
         modo: MODO,
@@ -211,7 +218,7 @@ function backupConferido(commit) {
       motivos = ["manifesto ou conferência ilegível"];
     }
     log(`BACKUP_CONFERIDO: ${nome} ${motivos.length === 0 ? "ok" : `recusado (${motivos.join(", ")})`}`);
-    return motivos.length === 0 ? nome : null;
+    return motivos.length === 0 ? conferido : null;
   }
   log("BACKUP_CONFERIDO: nenhum");
   return null;
@@ -440,8 +447,13 @@ async function principal() {
   const pastaExecucao = path.join(PASTA, `${PREFIXO_DAS_PASTAS}${FASE}-${carimbo}`);
   const manifesto = await fazerBackup(destino, pastaExecucao, {
     esperado: ESPERADO_ANTES,
-    ...(conferido ? { backupConferido: conferido } : {}),
+    ...(conferido ? { backupConferido: conferido.nome } : {}),
   });
+  if (conferido) {
+    const motivos = compararServidores(conferido.manifesto, manifesto);
+    log(`MESMO_SERVIDOR_DO_BACKUP_CONFERIDO: ${motivos.length === 0 ? "sim" : `não (${motivos.join(", ")})`}`);
+    if (motivos.length) parar("ERR_BACKUP_CONFERIDO_DE_OUTRO_SERVIDOR");
+  }
 
   if (FASE === "preparar") {
     registrar(REGISTRO, { ...base, resultado: "backup_feito", backup: { pasta: path.basename(pastaExecucao), ...manifesto.backup }, concluidaEm: new Date().toISOString() });

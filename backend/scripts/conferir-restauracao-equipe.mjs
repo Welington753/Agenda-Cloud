@@ -158,7 +158,9 @@ async function principal() {
   const pastaBackup = escolherPasta();
   log(`BACKUP: ${path.basename(pastaBackup)}`);
   let manifesto;
+  let manifestoSha256;
   try {
+    manifestoSha256 = sha256DoArquivo(path.join(pastaBackup, "manifesto.json"));
     manifesto = JSON.parse(readFileSync(path.join(pastaBackup, "manifesto.json"), "utf8"));
   } catch {
     parar("ERR_MANIFESTO_ILEGIVEL");
@@ -352,6 +354,7 @@ async function principal() {
     ...resultado,
     operacao: OPERACAO,
     modoDoBackup: manifesto.modo ?? null,
+    manifestoSha256,
     commit: sha,
     backup: path.basename(pastaBackup),
     concluidaEm: new Date().toISOString(),

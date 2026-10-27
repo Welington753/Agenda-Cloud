@@ -66,8 +66,9 @@ export function destinoDoModo(destino, ensaio, caPem) {
  * destino, modo e commit desta execução, do estado `before`, com o ensaio da
  * migration feito na cópia, e de até 24 h.
  */
-export function avaliarBackupConferido({ manifesto, conferencia, sha256DoDump, commit, endpoint, modo, agora }) {
+export function avaliarBackupConferido({ manifesto, conferencia, sha256DoDump, sha256DoManifesto, commit, endpoint, modo, agora }) {
   const motivos = [];
+  if (conferencia.manifestoSha256 !== sha256DoManifesto) motivos.push("manifesto alterado depois da conferência");
   if (manifesto.operacao !== OPERACAO) motivos.push("outra operação");
   if (manifesto.esperado !== ESPERADO_ANTES) motivos.push("backup fora do estado before");
   if (manifesto.modo !== modo) motivos.push(`backup do modo ${manifesto.modo ?? "desconhecido"}`);
@@ -80,6 +81,20 @@ export function avaliarBackupConferido({ manifesto, conferencia, sha256DoDump, c
   if (conferencia.commit !== commit) motivos.push("restauração conferida com outro commit");
   const idade = agora - Date.parse(manifesto.pontoDeRecuperacao);
   if (!(idade >= 0 && idade <= VALIDADE_DO_BACKUP_CONFERIDO_MS)) motivos.push("mais de 24 h");
+  return motivos;
+}
+
+/**
+ * O backup novo da fase `aplicar` precisa vir do MESMO servidor do backup
+ * conferido: mesma raiz da cadeia TLS (um ensaio usa a CA descartável; o
+ * Neon, uma raiz pública), mesma versão e mesmo histórico de migrations.
+ */
+export function compararServidores(conferido, novo) {
+  const motivos = [];
+  const raiz = (m) => m.tls?.cadeia?.at(-1) ?? "?";
+  if (raiz(conferido) !== raiz(novo)) motivos.push("certificado de outra cadeia");
+  if (conferido.servidor !== novo.servidor) motivos.push("outra versão do servidor");
+  if (JSON.stringify(conferido.migrations) !== JSON.stringify(novo.migrations)) motivos.push("outro histórico de migrations");
   return motivos;
 }
 
