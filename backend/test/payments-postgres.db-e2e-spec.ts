@@ -263,6 +263,33 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
         receivedOn: '2025-09-13',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+
+    // Dono com a agenda restringida pela administração (DENIED): sem
+    // recebimentos nem Início, como na agenda. Nada é gravado.
+    const [{ id: vinculoDoDono }] = await db.query(`SELECT id FROM memberships WHERE tenant_id = $1 AND user_id = $2`, [
+      est.tenantId,
+      est.dono.userId,
+    ]);
+    await db.query(
+      `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
+       VALUES ($1, $2, $3, 'AGENDA_VISUALIZAR', 'DENIED')`,
+      [id(), est.tenantId, vinculoDoDono],
+    );
+    const restrito = await atendimento(est, '2025-09-13T18:00:00.000Z');
+    for (const recusa of [
+      pagamentos.list(est.dono.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
+      registrar(est, restrito, 100, '2025-09-13'),
+      estornar(est, payment.id, '2025-09-20T15:00:00.000Z'),
+      painel.summary(est.dono.userId, est.tenantId, {}),
+    ]) {
+      const erro = await erroDe(recusa);
+      expect(erro).toBeInstanceOf(ForbiddenException);
+    }
+    const [{ total: lancados }] = await db.query(
+      `SELECT count(*)::int AS total FROM appointment_payments WHERE appointment_id = $1 OR (id = $2 AND refunded_at IS NOT NULL)`,
+      [restrito, payment.id],
+    );
+    expect(lancados).toBe(0);
   });
 
   it('estorno integral com motivo: o original fica; não estorna duas vezes; dá para quitar de novo', async () => {

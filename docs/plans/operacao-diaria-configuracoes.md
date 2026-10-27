@@ -211,7 +211,8 @@ dinheiro do Início vem só de `appointment_payments`.
   fiscal, integração bancária ou estoque. Sem pagamento parcial nesta
   versão (a tela diz isso).
 - Só o dono (o funcionário não vê dinheiro: 403 na API, e a tela leva à
-  agenda dele).
+  agenda dele), com a mesma política de ver a agenda: dono com `DENIED` em
+  `AGENDA_VISUALIZAR` também não vê nem lança recebimentos (nem o Início).
 
 ### Cálculos (servidor, `resumoFinanceiro`, iguais no Início e em Recebimentos)
 
