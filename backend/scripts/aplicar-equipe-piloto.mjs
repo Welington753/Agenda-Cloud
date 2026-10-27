@@ -353,6 +353,7 @@ async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
       const comparacao = compararFotografias(manifesto, await fotografar(leitor), {
         ignorarSomas: Object.keys(manifesto.contagens),
         ignorarTabelas: ["typeorm_migrations"],
+        novasPermitidas: [...lote.tabelasNovas],
       });
       await leitor.query("ROLLBACK");
       log(

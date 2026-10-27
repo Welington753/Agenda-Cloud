@@ -315,8 +315,10 @@ async function principal() {
       log(`ENSAIO_AFTER: ${falhasDepois.length === 0 ? "ok" : falhasDepois.join(",")}`);
       if (falhasDepois.length) parar("ERR_ENSAIO_ESTADO_DEPOIS");
 
-      // Tabelas criadas pelo lote nascem vazias e são conferidas por novosVazios.
-      const novasPermitidas = aposMigration ? Object.keys(aposMigration.contagens).filter((t) => !(t in restaurado.contagens)) : [];
+      // Só as tabelas que o lote cria podem aparecer; nascem vazias
+      // (conferidas por novosVazios). Qualquer outra é divergência.
+      const novasPermitidas = [...lote.tabelasNovas];
+      const tabelasNovasCriadas = novasPermitidas.every((t) => aposMigration.contagens[t] === 0);
       const preservado = compararFotografias(restaurado, aposMigration, {
         ignorarSomas: [...lote.tabelasAlteradas],
         ignorarTabelas: ["typeorm_migrations"],
@@ -329,10 +331,10 @@ async function principal() {
       log(`ENSAIO_COLUNAS_ANTIGAS_IGUAIS: ${colunasAntigasIguais} (${lote.tabelasAlteradas.join(",")})`);
       for (const linha of novos.linhas) log(`ENSAIO_${linha}`);
       log(`ENSAIO_DADOS_NOVOS_VAZIOS: ${novos.ok}`);
-      log(`ENSAIO_TABELAS_NOVAS: ${novasPermitidas.join(",") || "nenhuma"}`);
+      log(`ENSAIO_TABELAS_NOVAS_VAZIAS: ${tabelasNovasCriadas} (${novasPermitidas.join(",") || "nenhuma"})`);
       log(`ENSAIO_LEVANTAMENTO_IGUAL: ${levantamentoIgual}`);
       log(`ENSAIO_HISTORICO_MAIS_${lote.migrations.length}: ${historico}`);
-      if (!preservado.iguais || !colunasAntigasIguais || !historico || !novos.ok || !levantamentoIgual) {
+      if (!preservado.iguais || !colunasAntigasIguais || !historico || !novos.ok || !levantamentoIgual || !tabelasNovasCriadas) {
         log(`DIVERGENCIAS: contagem=${preservado.contagensDiferentes.join(",") || "-"} md5=${preservado.somasDiferentes.join(",") || "-"} ausentes=${preservado.ausentes.join(",") || "-"} novas=${preservado.sobrando.join(",") || "-"}`);
         parar("ERR_ENSAIO_ALTEROU_DADOS");
       }

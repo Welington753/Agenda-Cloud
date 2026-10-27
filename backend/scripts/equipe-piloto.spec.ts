@@ -295,6 +295,8 @@ describe('lotes', () => {
     expect([novo.esperadoAntes, novo.esperadoDepois]).toEqual(['before-staff-payments', 'after-staff-payments']);
     expect(novo.prefixoDasPastas).toBe('acesso-recebimentos-');
     expect(novo.tabelasAlteradas).toEqual(['users']);
+    expect(novo.tabelasNovas).toEqual(['staff_account_requests', 'appointment_payments']);
+    expect(LOTES.equipe.tabelasNovas).toEqual([]);
     for (const chave of ['frase', 'operacao', 'prefixoDasPastas', 'aplicacaoDaMigration', 'esperadoAntes'] as const) {
       expect(novo[chave]).not.toBe(LOTES.equipe[chave]);
     }

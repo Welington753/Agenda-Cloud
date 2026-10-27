@@ -19,7 +19,7 @@ import { Parada } from "./entrada-oculta.mjs";
 export const PREFIXO_DO_ENSAIO = "ep-ensaio-";
 export const VALIDADE_DO_BACKUP_CONFERIDO_MS = 24 * 60 * 60 * 1000;
 
-function descreverLote({ nome, rotulo, migrations, esperadoAntes, esperadoDepois, publicacao, schema, tabelasAlteradas, jaAplicado }) {
+function descreverLote({ nome, rotulo, migrations, esperadoAntes, esperadoDepois, publicacao, schema, tabelasAlteradas, tabelasNovas, jaAplicado }) {
   return Object.freeze({
     nome,
     rotulo,
@@ -40,6 +40,8 @@ function descreverLote({ nome, rotulo, migrations, esperadoAntes, esperadoDepois
     // Tabelas que ganham colunas: o conteúdo das colunas ANTIGAS é comparado à
     // parte; o md5 da linha inteira muda de propósito.
     tabelasAlteradas: Object.freeze([...tabelasAlteradas]),
+    // Tabelas criadas pelo lote: as únicas que podem aparecer depois.
+    tabelasNovas: Object.freeze([...tabelasNovas]),
     jaAplicado,
   });
 }
@@ -54,6 +56,7 @@ export const LOTES = Object.freeze({
     schema: "equipe-acessos-schema.js",
     publicacao: "PUBLICACAO_EQUIPE",
     tabelasAlteradas: ["tenants", "memberships", "invites"],
+    tabelasNovas: [],
     jaAplicado: "ERR_TEAMACCESS_JA_APLICADA",
   }),
   "acesso-recebimentos": descreverLote({
@@ -65,6 +68,7 @@ export const LOTES = Object.freeze({
     schema: "acesso-recebimentos-schema.js",
     publicacao: "PUBLICACAO_ACESSO_RECEBIMENTOS",
     tabelasAlteradas: ["users"],
+    tabelasNovas: ["staff_account_requests", "appointment_payments"],
     jaAplicado: "ERR_LOTE_JA_APLICADO",
   }),
 });

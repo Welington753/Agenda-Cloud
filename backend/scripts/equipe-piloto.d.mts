@@ -28,6 +28,7 @@ export interface Lote {
   schema: string;
   publicacao: string;
   tabelasAlteradas: readonly string[];
+  tabelasNovas: readonly string[];
   jaAplicado: string;
 }
 export const LOTES: Readonly<Record<'equipe' | 'acesso-recebimentos', Lote>>;
