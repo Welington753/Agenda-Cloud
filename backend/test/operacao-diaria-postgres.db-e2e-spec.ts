@@ -159,10 +159,12 @@ describe.skipIf(!url)('operação diária contra PostgreSQL descartável', () =>
     it('a busca filtra a mesma listagem por nome ou telefone, com total do filtro', async () => {
       const est = await estabelecimento('busca');
       await cliente(est, 'Maria Souza', '11955554444');
-      await cliente(est, 'Mariana Lima', '11933332222');
+      // Nomes cuja ordem não depende da collation do banco: com espaço no meio
+      // ("Maria Souza" × "Mariana Lima"), en_US.utf8 e C ordenam diferente.
+      await cliente(est, 'Marina Lima', '11933332222');
       await cliente(est, 'João 100%', '11977776666');
       const porNome = await consumers.listPage(est.donoId, est.tenantId, { q: 'mari', limit: 20 });
-      expect(porNome.consumers.map((c) => c.name)).toEqual(['Maria Souza', 'Mariana Lima']);
+      expect(porNome.consumers.map((c) => c.name)).toEqual(['Maria Souza', 'Marina Lima']);
       expect(porNome.total).toBe(2);
       const porTelefone = await consumers.listPage(est.donoId, est.tenantId, { q: '(11) 95555', limit: 20 });
       expect(porTelefone.consumers.map((c) => c.name)).toEqual(['Maria Souza']);
