@@ -155,5 +155,8 @@ enquanto houver conta sem e-mail (nada é apagado nem inventado).
 - Unit e lint completos (IGNORE_DOTENV_FILE=true, sem banco): web `npm test`
   838 passed (79 arquivos), `lint` e `lint:types` sem erro; backend
   `npm test` 1470 passed (91 arquivos), `lint` (oxlint) sem erro.
-- Ainda pendente antes da integração: bateria inteira do navegador; testes
-  db-e2e do backend; CI verde no SHA final do PR.
+- db-e2e do backend (`npm run test:db-e2e`, `disposable_pr2` com TLS
+  verificado, 9 migrations até `StaffLogin`, sem `appointment_payments`):
+  187 passed em 15 arquivos, nenhum falho ou pulado.
+- Ainda pendente antes da integração: bateria inteira do navegador; CI verde
+  no SHA final do PR.
