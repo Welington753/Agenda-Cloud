@@ -197,7 +197,11 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
 
     // Logout: o cookie some e a sessão fica revogada no servidor.
     await page.goto("/conta");
-    // "Sair" fica no menu da conta.
+    // "Sair" fica no menu da conta. O menu fecha a cada troca de rota, então
+    // só abre depois que `/conta` terminou de levar ao Início (senão o
+    // redirecionamento fecha o menu recém-aberto).
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
 
     await page.getByTestId("abrir-menu-conta").click();
 
