@@ -2,10 +2,14 @@
 
 Nota para retomar em qualquer máquina. Atualizada em 27/10/2026.
 
-**Estado:** procedimento e runbook prontos, ensaiados em banco descartável e
-com CI verde (PR #74). O PR aguarda revisão e **não deve ser mesclado**
-enquanto a origem do deploy inesperado (abaixo) não estiver esclarecida.
-Nada foi aplicado, publicado ou alterado no piloto ou no Render nesta rodada.
+**Estado:** `StaffLogin1792972800000` e `AppointmentPayments1793059200000`
+**aplicadas no piloto** em 27/10/2026 (COMMIT às 22:41:52.966Z) pelo
+procedimento do PR #74, no commit `9e6dd53b8ec3deceef7d3616209dcd020a55fab9`.
+**Nunca rode `aplicar` deste lote de novo** (o script para em
+`ERR_LOTE_JA_APLICADO`). API e web estavam Live em `0f7bfd3` antes e depois;
+nenhum deploy, merge ou rollback foi feito nesta rodada. O login foi
+confirmado pelo usuário depois da aplicação. Detalhes em "Aplicação no
+piloto (27/10/2026)".
 
 ## Onde está
 
@@ -26,7 +30,56 @@ Nada foi aplicado, publicado ou alterado no piloto ou no Render nesta rodada.
 - Procedimento e publicação: `docs/runbooks/publicacao-acesso-recebimentos-piloto.md`.
 - Regras dos lotes: `docs/plans/operacao-diaria-configuracoes.md`.
 
-## Situação do piloto e do deploy
+## Aplicação no piloto (27/10/2026)
+
+Separado por tipo de evidência.
+
+- **Painel do Render (capturas do usuário):** `agenda-cloud-piloto-api` e
+  `agenda-cloud-piloto-web` Live em
+  `0f7bfd30a7b9962dac9aba3a24af2aeda8604f0d`. O login mostrava "O servidor
+  não respondeu a tempo".
+- **HTTP público às 22:31 UTC (só GET):** API `GET /` 200 em 0,46 s; web
+  `/agenda_api/auth/me` sem cookie 401 JSON em 0,27 s; web `/` 200.
+- **Leitura do código do web:** essa mensagem só aparece quando a leitura de
+  sessão termina em `network-error` (falha do `fetch`, 502/504 do proxy com o
+  marcador de API indisponível, inclusive o limite de 90 s, ou HTML/502–504
+  sem JSON da hospedagem). Um 500 JSON da API mostraria outra mensagem. A
+  causa do sintoma **não foi comprovada**: nem hibernação, nem a falta das
+  migrations. Não houve leitura de logs do Render.
+- **Conferências de código:** nada em `backend/` mudou entre `095b2e6` (CI
+  verde) e `9e6dd53`; fora de `backend/scripts`, `backend/test` e `docs`, o
+  diff entre `0f7bfd3` e `9e6dd53` é vazio (migrations iguais às da versão
+  Live).
+- **Cópia operacional:** worktree `C:\Projetos\Agenda-Cloud-publicacao-ar`,
+  destacada em `9e6dd53`, `node_modules` próprio (`npm ci`), `-PgBin` do
+  PostgreSQL 17 (servidor do piloto: 17.11). Mantida sem alteração em todas
+  as fases.
+- **`conferir` antes:** `ESTADO: before`, 8 migrations, 0/28, nenhuma sessão
+  de migration ativa.
+- **`preparar`:** `before-staff-payments` SUCCESS; backup
+  `acesso-recebimentos-preparar-2026-10-27T22-35-28-162Z`, 145929 bytes, 38
+  tabelas, sha256 `eec5232340bd0d24c578d3ecc970f9b7d6f9a64fdf60abbd2bcfdfd05c23763d`;
+  manifesto com modo piloto, endpoint do piloto e o commit acima.
+- **`restauracao`:** PostgreSQL 17.11 descartável com TLS verificado;
+  sha256 confere; 38 tabelas e 243 linhas com contagens e md5 iguais;
+  `ENSAIO_BEFORE` ok (3 contas, 15 atendimentos, 17 sessões abertas); as duas
+  migrations numa transação; `ENSAIO_AFTER` ok; dados e colunas antigas de
+  `users` preservados; dados e tabelas novos vazios; levantamento igual;
+  histórico +2; descartável apagado.
+- **`aplicar`** (execução `2026-10-27T22-40-32-410Z`): backup novo
+  `acesso-recebimentos-aplicar-2026-10-27T22-40-32-410Z`, 145929 bytes,
+  sha256 `a74be77baf663a67ce4141078277f07e0e52e2edf8e0c6a6cf709ab4d9703cb8`;
+  frase digitada pelo usuário; COMMIT às 22:41:52.966Z; `after-staff-payments`
+  SUCCESS (10 migrations, 28/28, `BASELINE_FAILURES: none`); contagens iguais
+  ao backup; código 0. `operacoes.jsonl`: `migration_iniciada`, `aplicada`,
+  `aplicada_e_conferida` (22:42:03.715Z), sem execução pendente.
+- **`conferir` depois:** `ESTADO: after`, 10 migrations, 28/28, nenhuma
+  sessão de migration ativa.
+- **Login:** o usuário confirmou que entrou no sistema depois da aplicação.
+- Backups e registros ficam em `%USERPROFILE%\AgendaCloud-operacoes`, fora do
+  Git, neste PC.
+
+## Situação anterior do deploy (histórico)
 
 Separado por tipo de evidência:
 
@@ -84,10 +137,13 @@ Limitações: ver "Limitações" no runbook.
 
 ## Onde parou e próximo passo
 
-1. Aguardar o usuário esclarecer, no painel do Render, o commit Live e a
-   origem do deploy de 18:19 UTC.
-2. Só então: revisão e merge normal do PR na integration, e o runbook no
-   SHA do merge.
+1. Banco do piloto concluído: não repetir `preparar`, `aplicar` nem
+   `restauracao` deste lote.
+2. Pendente: a origem do deploy de `824463c` às 18:19 UTC e de quem levou os
+   serviços a `0f7bfd3` (Auto-Deploy declarado Off).
+3. Pendente: o teste manual completo do runbook (recebimento, estorno,
+   acesso por usuário, troca de senha). Só o login de dono foi confirmado.
+4. Revisão e merge normal do PR #74 na integration.
 
 ## Fora do Git (necessário só neste PC; recriar em outro)
 
