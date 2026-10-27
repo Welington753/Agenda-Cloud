@@ -178,8 +178,10 @@ profissional (que fariam a migration falhar no meio).
 
 ## Publicação (não executada)
 
-Ordem: **backup → `before-team-access` → migration → `after-team-access` →
-API → web**.
+Procedimento e ensaio: `docs/runbooks/publicacao-equipe-piloto.md`.
+
+Ordem: **backup e restauração conferidos → `before-team-access` → migration →
+`after-team-access` → API → web**.
 
 - Migration antes da API: a API atual não lê as colunas novas (todas com
   padrão ou nulas) e continua funcionando. A API nova sem a migration falharia
@@ -187,10 +189,13 @@ API → web**.
 - API antes do web: o web novo chama rotas que só a API nova tem.
 - Antes de publicar, conferir (só leitura) quantos estabelecimentos já têm
   mais profissionais ativos que o plano: eles continuam operando, mas não
-  criam nem reativam profissionais até caber.
-- O procedimento protegido de `aplicar-contas-piloto.mjs` é específico de
-  AccountsAdministration; aplicar TeamAccess no piloto pede um roteiro próprio
-  (mesmas fases: preparar, aplicar, conferir), ainda não escrito.
+  criam nem reativam profissionais até caber. As fases do procedimento mostram
+  esse levantamento.
+- Procedimento próprio, no molde do de contas: `abrir-equipe-piloto.ps1` com
+  as fases `preparar`, `restauracao`, `aplicar` e `conferir`.
+- Voltar a API para `f37cbc9` funciona com o schema novo, mas reabre acessos
+  suspensos (sem dados), tira o limite do plano e transforma convites de
+  funcionário em vínculos sem profissional. Ver "Recuperação" no runbook.
 
 ## Verificação da parte A
 
