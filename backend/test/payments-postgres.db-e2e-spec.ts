@@ -276,13 +276,14 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
       [id(), est.tenantId, vinculoDoDono],
     );
     const restrito = await atendimento(est, '2025-09-13T18:00:00.000Z');
+    // Uma chamada por vez: cada recusa é aguardada assim que começa.
     for (const recusa of [
-      pagamentos.list(est.dono.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
-      registrar(est, restrito, 100, '2025-09-13'),
-      estornar(est, payment.id, '2025-09-20T15:00:00.000Z'),
-      painel.summary(est.dono.userId, est.tenantId, {}),
+      () => pagamentos.list(est.dono.userId, est.tenantId, { from: '2025-09-01', to: '2025-09-30' }),
+      () => registrar(est, restrito, 100, '2025-09-13'),
+      () => estornar(est, payment.id, '2025-09-20T15:00:00.000Z'),
+      () => painel.summary(est.dono.userId, est.tenantId, {}),
     ]) {
-      const erro = await erroDe(recusa);
+      const erro = await erroDe(recusa());
       expect(erro).toBeInstanceOf(ForbiddenException);
     }
     const [{ total: lancados }] = await db.query(
