@@ -5,6 +5,11 @@ Este runbook leva o piloto das sete migrations atuais até
 migration) e #69 (telas). Regras do lote em
 `docs/plans/equipe-acessos-e-plano.md`.
 
+> **Depois de 27/10/2026:** TeamAccess já está aplicada no piloto. O
+> lançador passou a exigir `-Lote`; para repetir uma fase deste runbook (só
+> `conferir` faz sentido agora), acrescente `-Lote equipe`. O próximo lote é
+> `publicacao-acesso-recebimentos-piloto.md`.
+
 ## Estado em 27/10/2026
 
 **Preparação concluída** (neste repositório, sem tocar no piloto):

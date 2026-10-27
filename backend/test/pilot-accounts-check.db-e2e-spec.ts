@@ -1,5 +1,6 @@
-// A conferência só-leitura do piloto (scripts/lib/contas-administracao-schema.ts
-// e scripts/lib/equipe-acessos-schema.ts) rodada contra o PostgreSQL
+// A conferência só-leitura do piloto (scripts/lib/contas-administracao-schema.ts,
+// scripts/lib/equipe-acessos-schema.ts e scripts/lib/acesso-recebimentos-schema.ts)
+// rodada contra o PostgreSQL
 // DESCARTÁVEL já migrado: prova que as consultas são válidas e que o banco
 // migrado passa no estado "depois" de cada uma. O levantamento do limite do
 // plano grava antes um estabelecimento próprio, com nomes únicos.
@@ -17,6 +18,16 @@ import {
   objetosEquipePresentes,
   TOTAL_OBJETOS_EQUIPE,
 } from '../scripts/lib/equipe-acessos-schema.js';
+import {
+  MIGRATIONS_ACESSO_RECEBIMENTOS,
+  PUBLICACAO_ACESSO_RECEBIMENTOS,
+  TOTAL_OBJETOS_ACESSO_RECEBIMENTOS,
+  falhasAntesDeAcessoRecebimentos,
+  falhasDepoisDeAcessoRecebimentos,
+  lerDadosNovos,
+  lerEstadoAcessoRecebimentos,
+  objetosAcessoRecebimentosPresentes,
+} from '../scripts/lib/acesso-recebimentos-schema.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -126,5 +137,40 @@ describe.skipIf(!url)('conferências das migrations do piloto contra PostgreSQL 
       });
     }
     expect(descreverExcessoDePlano(depois).join('\n')).not.toMatch(/Pessoa|Profissional|example\.test/);
+  });
+
+  it('acesso e recebimentos: banco com as dez migrations passa no "depois" e é recusado no "antes"', async () => {
+    const estado = await comCliente(lerEstadoAcessoRecebimentos);
+    expect(estado.migrationNames.slice(8)).toEqual([...MIGRATIONS_ACESSO_RECEBIMENTOS]);
+    expect(falhasDepoisDeAcessoRecebimentos(estado)).toEqual([]);
+    expect(objetosAcessoRecebimentosPresentes(estado)).toBe(TOTAL_OBJETOS_ACESSO_RECEBIMENTOS);
+    expect(falhasAntesDeAcessoRecebimentos(estado)).toEqual([
+      'migration_history',
+      'new_columns_already_exist',
+      'new_tables_already_exist',
+      'new_constraints_already_exist',
+      'new_indexes_already_exist',
+      'users_email_already_optional',
+    ]);
+  });
+
+  it('acesso e recebimentos: dados novos, levantamento e reversão leem o banco real, só leitura', async () => {
+    const id = () => randomUUID().replaceAll('-', '').slice(0, 25);
+    const conta = id();
+    const antes = await comCliente(lerDadosNovos);
+    await comCliente((client) =>
+      client.query(
+        `INSERT INTO users (id, name, email, username, must_change_password) VALUES ($1, 'Conta sem e-mail', NULL, $2, true)`,
+        [conta, `func.${conta.slice(0, 12)}`],
+      ),
+    );
+    const depois = await comCliente(lerDadosNovos);
+    expect(depois.contasSemEmail).toBe(antes.contasSemEmail + 1);
+    expect(depois.contasComUsuario).toBe(antes.contasComUsuario + 1);
+    expect(depois.trocaDeSenhaPendente).toBe(antes.trocaDeSenhaPendente + 1);
+    const levantamento = await comCliente((client) => PUBLICACAO_ACESSO_RECEBIMENTOS.levantamento(client));
+    expect(levantamento.linhas.join('\n')).not.toMatch(/Conta sem e-mail|func\./);
+    const reversao = await comCliente((client) => PUBLICACAO_ACESSO_RECEBIMENTOS.reversao(client));
+    expect(reversao).toContain(`REVERSAO_AFETARIA_contasSemEmail: ${depois.contasSemEmail}`);
   });
 });

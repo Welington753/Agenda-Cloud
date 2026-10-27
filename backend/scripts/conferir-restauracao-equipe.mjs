@@ -1,27 +1,28 @@
-// Conferência de um backup da publicação de TeamAccess1792886400000, SEM
-// conexão com o piloto (ver docs/runbooks/publicacao-equipe-piloto.md). Mesmo
+// Conferência de um backup da publicação de um lote de migrations (`--lote`,
+// ver equipe-piloto.mjs), SEM conexão com o piloto (runbooks
+// publicacao-equipe-piloto.md e publicacao-acesso-recebimentos-piloto.md). Mesmo
 // molde de conferir-restauracao-piloto.mjs: tudo acontece num PostgreSQL
 // descartável criado aqui, só em 127.0.0.1, com TLS verificado (certificado
 // gerado na hora) e senha aleatória.
 //
-//   1. o backup é desta operação, do estado `before-team-access` e do MESMO
-//      commit desta pasta (o ensaio usa a migration compilada que a fase
-//      `aplicar` vai usar); sha256 do dump igual ao do manifesto;
+//   1. o backup é desta operação (lote), do estado `before` do lote e do
+//      MESMO commit desta pasta (o ensaio usa as migrations compiladas que a
+//      fase `aplicar` vai usar); sha256 do dump igual ao do manifesto;
 //   2. pg_restore completo, numa transação, parando no primeiro erro;
 //   3. contagem e md5 de cada tabela iguais aos do manifesto;
-//   4. `before-team-access` e levantamento do limite do plano na cópia;
-//   5. TeamAccess aplicada na cópia pelo mesmo código da fase `aplicar` (só a
-//      pendente), `after-team-access`, e nada antigo perdido: as tabelas que
-//      não ganham colunas com md5 igual; em tenants, memberships e invites, o
-//      md5 das colunas antigas igual; todo vínculo ACTIVE; colunas novas
-//      vazias; o levantamento igual ao de antes;
+//   4. `before` do lote e levantamento do lote na cópia;
+//   5. as migrations do lote aplicadas na cópia pelo mesmo código da fase
+//      `aplicar` (só as pendentes, numa transação), `after` do lote, e nada
+//      antigo perdido: as tabelas que não ganham colunas com md5 igual; nas
+//      que ganham, o md5 das colunas antigas igual; dados novos vazios
+//      (PublicacaoDoLote.novosVazios); o levantamento igual ao de antes;
 //   6. grava `restauracao-conferida.json` (com o commit) na pasta do backup.
 //
 // O servidor e a pasta temporária são apagados no fim, com sucesso ou falha.
 //
 // Uso, na pasta backend, depois dos dois builds (o lançador faz):
-//   node scripts/conferir-restauracao-equipe.mjs [--pasta=<nome em AGENDA_OPS_DIR>]
-// Sem --pasta, usa o backup `equipe-*` mais recente.
+//   node scripts/conferir-restauracao-equipe.mjs --lote=<lote> [--pasta=<nome em AGENDA_OPS_DIR>]
+// Sem --pasta, usa o backup `<lote>-*` mais recente.
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
@@ -44,16 +45,18 @@ import {
   rodar,
   sha256DoArquivo,
 } from "./operacao-piloto.mjs";
-import { ESPERADO_ANTES, MIGRATION, OPERACAO, PREFIXO_DAS_PASTAS, TABELAS_ALTERADAS } from "./equipe-piloto.mjs";
+import { escolherLote } from "./equipe-piloto.mjs";
 
 const PG_BIN = process.env.PG_BIN ?? "C:/Program Files/PostgreSQL/18/bin";
 const OPENSSL = process.env.OPENSSL ?? "C:/Program Files/Git/usr/bin/openssl.exe";
 const PASTA = process.env.AGENDA_OPS_DIR ?? path.join(homedir(), "AgendaCloud-operacoes");
 const REGISTRO = path.join(PASTA, "operacoes.jsonl");
-const PREFIXO_TEMP = "agenda-cloud-restauracao-equipe-";
+const prefixoTemp = () => `agenda-cloud-restauracao-${lote.nome}-`;
 
 const log = (linha) => console.log(linha);
 const argumento = process.argv.slice(2).find((a) => a.startsWith("--pasta="))?.slice("--pasta=".length);
+const nomeDoLote = process.argv.slice(2).find((a) => a.startsWith("--lote="))?.slice("--lote=".length);
+let lote = null;
 const bin = (nome) => path.join(PG_BIN, `${nome}.exe`);
 
 function portaLivre() {
@@ -76,7 +79,7 @@ function descartarJa(pasta) {
 }
 
 function limparSobras() {
-  const sobras = readdirSync(tmpdir()).filter((n) => n.startsWith(PREFIXO_TEMP));
+  const sobras = readdirSync(tmpdir()).filter((n) => n.startsWith(prefixoTemp()));
   for (const nome of sobras) descartarJa(path.join(tmpdir(), nome));
   log(`SOBRAS_REMOVIDAS: ${sobras.length}`);
 }
@@ -92,7 +95,7 @@ async function exigir(executavel, args, env, codigoErro, opcoes) {
 
 function escolherPasta() {
   if (argumento) return path.isAbsolute(argumento) ? argumento : path.join(PASTA, argumento);
-  const padrao = new RegExp(`^${PREFIXO_DAS_PASTAS}(preparar|aplicar)-`);
+  const padrao = new RegExp(`^${lote.prefixoDasPastas}(preparar|aplicar)-`);
   const candidatas = existsSync(PASTA)
     ? readdirSync(PASTA)
         .filter((n) => padrao.test(n) && existsSync(path.join(PASTA, n, "manifesto.json")))
@@ -138,7 +141,9 @@ async function somaDasColunas(client, tabela, colunas) {
 }
 
 async function principal() {
-  log(`Conferência de backup da publicação de ${MIGRATION} em PostgreSQL descartável local (sem conexão com o piloto)`);
+  lote = escolherLote(nomeDoLote);
+  log(`Conferência de backup da publicação de ${lote.rotulo} em PostgreSQL descartável local (sem conexão com o piloto)`);
+  log(`LOTE: ${lote.nome}`);
   for (const nome of ["initdb", "pg_ctl", "pg_restore"]) if (!existsSync(bin(nome))) parar("ERR_BINARIO_POSTGRES_AUSENTE");
   if (!existsSync(OPENSSL)) parar("ERR_OPENSSL_AUSENTE");
   if (!pastaForaDoRepositorio(PASTA)) parar("ERR_PASTA_DE_OPERACOES_DENTRO_DO_REPOSITORIO");
@@ -146,14 +151,14 @@ async function principal() {
   const { sha, sujo } = commitAtual();
   log(`COMMIT: ${sha}${sujo ? " (backend com alterações locais)" : ""}`);
   if (sujo) parar("ERR_BACKEND_COM_ALTERACOES_LOCAIS");
-  let schema;
+  let publicacao;
   try {
-    schema = await import("../dist-scripts/lib/equipe-acessos-schema.js");
+    publicacao = (await import(`../dist-scripts/lib/${lote.schema}`))[lote.publicacao];
     await import("../dist-migrations/database/migrations-data-source.js");
   } catch {
     parar("ERR_BUILD_AUSENTE");
   }
-  if (schema.MIGRATION_EQUIPE !== MIGRATION) parar("ERR_BUILD_DESATUALIZADO");
+  if (JSON.stringify(publicacao?.pendentes) !== JSON.stringify(lote.migrations)) parar("ERR_BUILD_DESATUALIZADO");
 
   const pastaBackup = escolherPasta();
   log(`BACKUP: ${path.basename(pastaBackup)}`);
@@ -166,7 +171,7 @@ async function principal() {
     parar("ERR_MANIFESTO_ILEGIVEL");
   }
   log(`MODO_DO_BACKUP: ${manifesto.modo === "ensaio" ? "ENSAIO" : manifesto.modo === "piloto" ? "PILOTO" : "desconhecido"}`);
-  if (manifesto.operacao !== OPERACAO) parar("ERR_BACKUP_DE_OUTRA_OPERACAO");
+  if (manifesto.operacao !== lote.operacao) parar("ERR_BACKUP_DE_OUTRA_OPERACAO");
   if (manifesto.commit !== sha) parar("ERR_BACKUP_DE_OUTRO_COMMIT");
   const dump = path.join(pastaBackup, path.basename(String(manifesto.backup?.arquivo ?? "")));
   if (!existsSync(dump)) parar("ERR_DUMP_AUSENTE");
@@ -176,7 +181,7 @@ async function principal() {
   log(`PONTO_DE_RECUPERACAO: ${manifesto.pontoDeRecuperacao}  SERVIDOR_ORIGEM: ${manifesto.servidor}`);
 
   limparSobras();
-  const temp = mkdtempSync(path.join(tmpdir(), PREFIXO_TEMP));
+  const temp = mkdtempSync(path.join(tmpdir(), prefixoTemp()));
   const dados = path.join(temp, "dados");
   process.once("SIGINT", () => {
     log("CANCELADO: removendo o servidor descartável e a cópia restaurada");
@@ -223,7 +228,7 @@ async function principal() {
       database,
       ca: readFileSync(crt, "utf8"),
     });
-    const admin = await conectar(local("postgres"), { aplicacao: "agenda-cloud-restauracao-equipe", log });
+    const admin = await conectar(local("postgres"), { aplicacao: lote.aplicacaoDaRestauracao, log });
     const [{ versaoLocal }] = (await admin.query("SELECT current_setting('server_version') AS \"versaoLocal\"")).rows;
     await admin.query("CREATE DATABASE neondb TEMPLATE template0 ENCODING 'UTF8'");
     await encerrar(admin);
@@ -234,13 +239,13 @@ async function principal() {
     await exigir(
       bin("pg_restore"),
       ["-d", "neondb", "--no-owner", "--no-privileges", "--exit-on-error", "--single-transaction", dump],
-      ambienteLibpq(destino, crt, "agenda-cloud-restauracao-equipe"),
+      ambienteLibpq(destino, crt, lote.aplicacaoDaRestauracao),
       "ERR_PG_RESTORE",
     );
     log("RESTAURACAO: ok");
 
     let restaurado;
-    const leitor = await conectar(destino, { aplicacao: "agenda-cloud-restauracao-equipe", log });
+    const leitor = await conectar(destino, { aplicacao: lote.aplicacaoDaRestauracao, log });
     try {
       await leitor.query("BEGIN TRANSACTION READ ONLY");
       restaurado = await fotografar(leitor);
@@ -259,20 +264,20 @@ async function principal() {
     }
     Object.assign(resultado, { tabelas: Object.keys(restaurado.contagens).length, versaoLocal, contagensIguais: true, conteudoIgualMd5: true });
 
-    if (manifesto.esperado !== ESPERADO_ANTES) {
+    if (manifesto.esperado !== lote.esperadoAntes) {
       log(`ENSAIO_MIGRATION: não se aplica (backup do estado ${manifesto.esperado ?? "desconhecido"})`);
       resultado.ensaioMigration = "nao_se_aplica";
     } else {
       // Antes: conferência, levantamento e o conteúdo das colunas antigas.
-      const antes = await conectar(destino, { aplicacao: "agenda-cloud-restauracao-equipe", log });
+      const antes = await conectar(destino, { aplicacao: lote.aplicacaoDaRestauracao, log });
       let falhasAntes;
-      let limiteAntes;
+      let levantamentoAntes;
       const colunasAntigas = {};
       const somasAntigas = {};
       try {
-        falhasAntes = schema.falhasAntesDeEquipe(await schema.lerEstadoEquipe(antes));
-        limiteAntes = await schema.lerExcessoDePlano(antes);
-        for (const tabela of TABELAS_ALTERADAS) {
+        falhasAntes = await publicacao.falhasAntes(antes);
+        levantamentoAntes = await publicacao.levantamento(antes);
+        for (const tabela of lote.tabelasAlteradas) {
           colunasAntigas[tabela] = await colunasDe(antes, tabela);
           somasAntigas[tabela] = await somaDasColunas(antes, tabela, colunasAntigas[tabela]);
         }
@@ -281,34 +286,28 @@ async function principal() {
       }
       log(`ENSAIO_BEFORE: ${falhasAntes.length === 0 ? "ok" : falhasAntes.join(",")}`);
       if (falhasAntes.length) parar("ERR_ENSAIO_ESTADO_ANTES");
-      for (const linha of schema.descreverExcessoDePlano(limiteAntes)) log(`ANTES_${linha}`);
+      for (const linha of levantamentoAntes.linhas) log(`ANTES_${linha}`);
 
       await aplicarSomenteAPendente(destino, {
-        esperadasAntes: [...schema.MIGRATIONS_ATE_CONTAS],
-        pendente: MIGRATION,
-        aplicacao: "agenda-cloud-restauracao-equipe",
+        esperadasAntes: [...publicacao.migrationsAntes],
+        pendentes: [...publicacao.pendentes],
+        aplicacao: lote.aplicacaoDaRestauracao,
         log,
       });
 
-      const depois = await conectar(destino, { aplicacao: "agenda-cloud-restauracao-equipe", log });
+      const depois = await conectar(destino, { aplicacao: lote.aplicacaoDaRestauracao, log });
       let falhasDepois;
       let aposMigration;
-      let limiteDepois;
-      let novas;
+      let levantamentoDepois;
+      let novos;
       const somasDepois = {};
       try {
-        falhasDepois = schema.falhasDepoisDeEquipe(await schema.lerEstadoEquipe(depois));
-        limiteDepois = await schema.lerExcessoDePlano(depois);
-        for (const tabela of TABELAS_ALTERADAS) somasDepois[tabela] = await somaDasColunas(depois, tabela, colunasAntigas[tabela]);
+        falhasDepois = await publicacao.falhasDepois(depois);
+        levantamentoDepois = await publicacao.levantamento(depois);
+        novos = await publicacao.novosVazios(depois);
+        for (const tabela of lote.tabelasAlteradas) somasDepois[tabela] = await somaDasColunas(depois, tabela, colunasAntigas[tabela]);
         await depois.query("BEGIN TRANSACTION READ ONLY");
         aposMigration = await fotografar(depois);
-        [novas] = (
-          await depois.query(`SELECT
-            (SELECT count(*)::int FROM memberships) AS vinculos,
-            (SELECT count(*)::int FROM memberships WHERE status = 'ACTIVE' AND status_changed_at IS NULL AND status_changed_by_user_id IS NULL) AS "vinculosAtivosSemMudanca",
-            (SELECT count(*)::int FROM tenants WHERE restore_status IS NOT NULL) AS "tenantsComRestore",
-            (SELECT count(*)::int FROM invites WHERE professional_id IS NOT NULL) AS "convitesComProfissional"`)
-        ).rows;
         await depois.query("ROLLBACK");
       } finally {
         await encerrar(depois);
@@ -316,31 +315,30 @@ async function principal() {
       log(`ENSAIO_AFTER: ${falhasDepois.length === 0 ? "ok" : falhasDepois.join(",")}`);
       if (falhasDepois.length) parar("ERR_ENSAIO_ESTADO_DEPOIS");
 
+      // Só as tabelas que o lote cria podem aparecer; nascem vazias
+      // (conferidas por novosVazios). Qualquer outra é divergência.
+      const novasPermitidas = [...lote.tabelasNovas];
+      const tabelasNovasCriadas = novasPermitidas.every((t) => aposMigration.contagens[t] === 0);
       const preservado = compararFotografias(restaurado, aposMigration, {
-        ignorarSomas: TABELAS_ALTERADAS,
+        ignorarSomas: [...lote.tabelasAlteradas],
         ignorarTabelas: ["typeorm_migrations"],
+        novasPermitidas,
       });
-      const colunasAntigasIguais = TABELAS_ALTERADAS.every((t) => somasAntigas[t] === somasDepois[t]);
-      const historico = aposMigration.contagens.typeorm_migrations === restaurado.contagens.typeorm_migrations + 1;
-      const vinculosAtivos = novas.vinculos === restaurado.contagens.memberships && novas.vinculosAtivosSemMudanca === novas.vinculos;
-      const colunasNovasVazias = novas.tenantsComRestore === 0 && novas.convitesComProfissional === 0;
-      const limiteIgual = JSON.stringify(limiteAntes) === JSON.stringify(limiteDepois);
+      const colunasAntigasIguais = lote.tabelasAlteradas.every((t) => somasAntigas[t] === somasDepois[t]);
+      const historico = aposMigration.contagens.typeorm_migrations === restaurado.contagens.typeorm_migrations + lote.migrations.length;
+      const levantamentoIgual = JSON.stringify(levantamentoAntes.comparavel) === JSON.stringify(levantamentoDepois.comparavel);
       log(`ENSAIO_DADOS_PRESERVADOS: ${preservado.iguais}`);
-      log(`ENSAIO_COLUNAS_ANTIGAS_IGUAIS: ${colunasAntigasIguais} (${TABELAS_ALTERADAS.join(",")})`);
-      log(`ENSAIO_VINCULOS_ATIVOS: ${novas.vinculosAtivosSemMudanca}/${novas.vinculos}`);
-      log(`ENSAIO_COLUNAS_NOVAS_VAZIAS: ${colunasNovasVazias}`);
-      log(`ENSAIO_LEVANTAMENTO_IGUAL: ${limiteIgual}`);
-      log(`ENSAIO_HISTORICO_MAIS_UMA: ${historico}`);
-      if (!preservado.iguais || !colunasAntigasIguais || !historico || !vinculosAtivos || !colunasNovasVazias || !limiteIgual) {
+      log(`ENSAIO_COLUNAS_ANTIGAS_IGUAIS: ${colunasAntigasIguais} (${lote.tabelasAlteradas.join(",")})`);
+      for (const linha of novos.linhas) log(`ENSAIO_${linha}`);
+      log(`ENSAIO_DADOS_NOVOS_VAZIOS: ${novos.ok}`);
+      log(`ENSAIO_TABELAS_NOVAS_VAZIAS: ${tabelasNovasCriadas} (${novasPermitidas.join(",") || "nenhuma"})`);
+      log(`ENSAIO_LEVANTAMENTO_IGUAL: ${levantamentoIgual}`);
+      log(`ENSAIO_HISTORICO_MAIS_${lote.migrations.length}: ${historico}`);
+      if (!preservado.iguais || !colunasAntigasIguais || !historico || !novos.ok || !levantamentoIgual || !tabelasNovasCriadas) {
         log(`DIVERGENCIAS: contagem=${preservado.contagensDiferentes.join(",") || "-"} md5=${preservado.somasDiferentes.join(",") || "-"} ausentes=${preservado.ausentes.join(",") || "-"} novas=${preservado.sobrando.join(",") || "-"}`);
         parar("ERR_ENSAIO_ALTEROU_DADOS");
       }
-      Object.assign(resultado, {
-        ensaioMigration: "ok",
-        vinculos: novas.vinculos,
-        acimaDoLimite: limiteDepois.acimaDoLimite,
-        vagasAcimaDoLimite: limiteDepois.vagasAcimaDoLimite,
-      });
+      Object.assign(resultado, { ensaioMigration: "ok", levantamento: levantamentoDepois.comparavel });
     }
     resultado.resultado = "restauracao_e_ensaio_ok";
   } finally {
@@ -352,7 +350,8 @@ async function principal() {
 
   const conferencia = {
     ...resultado,
-    operacao: OPERACAO,
+    operacao: lote.operacao,
+    lote: lote.nome,
     modoDoBackup: manifesto.modo ?? null,
     manifestoSha256,
     commit: sha,
@@ -363,10 +362,10 @@ async function principal() {
   mkdirSync(PASTA, { recursive: true });
   registrar(REGISTRO, {
     ...conferencia,
-    operacao: "conferir_restauracao_equipe",
+    operacao: `conferir_restauracao_${lote.nome}`,
     operador: `conta Windows local '${userInfo().username}'`,
   });
-  log("RESULTADO: restauração conferida" + (resultado.ensaioMigration === "ok" ? ` e ${MIGRATION} ensaiada na cópia` : ""));
+  log("RESULTADO: restauração conferida" + (resultado.ensaioMigration === "ok" ? ` e ${lote.rotulo} ensaiada na cópia` : ""));
 }
 
 principal()
@@ -375,7 +374,7 @@ principal()
     log(`ERRO: ${codigo}`);
     if (!(erro instanceof Parada)) log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 400)}`);
     try {
-      registrar(REGISTRO, { operacao: "conferir_restauracao_equipe", resultado: "falhou", codigo, concluidaEm: new Date().toISOString() });
+      registrar(REGISTRO, { operacao: `conferir_restauracao_${lote?.nome ?? "lote_invalido"}`, resultado: "falhou", codigo, concluidaEm: new Date().toISOString() });
     } catch {
       // O erro original é o que importa.
     }

@@ -1,21 +1,23 @@
-// Publicação de TeamAccess1792886400000 no banco do piloto, em fases
-// executadas à mão (ver docs/runbooks/publicacao-equipe-piloto.md). Não é rota
-// nem parte do deploy. A URL direta é digitada oculta e nunca vem de variável,
+// Publicação de um lote de migrations no banco do piloto, em fases executadas
+// à mão. `--lote` é obrigatório (equipe-piloto.mjs, LOTES):
+//   equipe               TeamAccess1792886400000 (docs/runbooks/publicacao-equipe-piloto.md)
+//   acesso-recebimentos  StaffLogin1792972800000 + AppointmentPayments1793059200000,
+//                        numa transação (docs/runbooks/publicacao-acesso-recebimentos-piloto.md)
+// Não é rota nem parte do deploy. A URL direta é digitada oculta e nunca vem de variável,
 // arquivo ou argumento. Mesmo molde de aplicar-contas-piloto.mjs, com as
 // peças comuns de operacao-piloto.mjs.
 //
-//   --fase=preparar  só leitura: destino, TLS, `before-team-access`,
-//                    levantamento do limite do plano e backup (pg_dump -Fc no
-//                    mesmo snapshot das contagens e md5 por tabela).
+//   --fase=preparar  só leitura: destino, TLS, `before` do lote, levantamento
+//                    do lote e backup (pg_dump -Fc no mesmo snapshot das
+//                    contagens e md5 por tabela).
 //   --fase=aplicar   exige um backup da fase `preparar` com a restauração
 //                    conferida (conferir-restauracao-equipe.mjs) do mesmo
-//                    destino, modo e commit. Repete destino, TLS e `before`, faz
-//                    um backup novo, pede a frase, aplica SÓ TeamAccess e roda
-//                    `after`.
+//                    lote, destino, modo e commit. Repete destino, TLS e
+//                    `before`, faz um backup novo, pede a frase, aplica SÓ as
+//                    migrations do lote e roda `after`.
 //   --fase=conferir  só leitura: identifica o estado (before, after ou
 //                    divergente), sessões da migration ainda ativas, o
-//                    levantamento do limite e, em `after`, o que uma reversão
-//                    afetaria.
+//                    levantamento e, em `after`, o que uma reversão afetaria.
 //
 // Ambiente (o lançador abrir-equipe-piloto.ps1 define): AGENDA_OPS_MODO
 // (piloto|ensaio), PILOT_ENDPOINT_ID, PRODUCTION_ENDPOINT_ID, PG_BIN e
@@ -49,18 +51,12 @@ import {
   sha256DoArquivo,
 } from "./operacao-piloto.mjs";
 import {
-  APLICACAO_DA_MIGRATION,
-  ESPERADO_ANTES,
-  ESPERADO_DEPOIS,
-  FRASE,
-  MIGRATION,
-  OPERACAO,
-  PREFIXO_DAS_PASTAS,
   avaliarBackupConferido,
   classificarFalha,
   compararServidores,
   conferirModo as conferirModoDeExecucao,
   destinoDoModo,
+  escolherLote,
   execucaoPendente,
   codigoDeErroConhecido,
   identificarEstado,
@@ -88,6 +84,7 @@ const log = (linha) => console.log(linha);
 let podeRegistrar = false;
 let base = {};
 let ensaio = null;
+let lote = null;
 
 function commitAtual() {
   const git = (args) => execFileSync("git", args, { cwd: RAIZ_DO_REPOSITORIO, encoding: "utf8" }).trim();
@@ -100,15 +97,15 @@ function commitAtual() {
 async function carregarConferencia() {
   try {
     const conferencia = await import("../dist-scripts/lib/pilot-database-check.js");
-    const schema = await import("../dist-scripts/lib/equipe-acessos-schema.js");
+    const schema = await import(`../dist-scripts/lib/${lote.schema}`);
     await import("../dist-migrations/database/migrations-data-source.js");
-    return { checkPilotDatabase: conferencia.checkPilotDatabase, ...schema };
+    return { checkPilotDatabase: conferencia.checkPilotDatabase, publicacao: schema[lote.publicacao] };
   } catch {
     return parar("ERR_BUILD_AUSENTE");
   }
 }
 
-/** `before-team-access` / `after-team-access`, a mesma conferência do
+/** `before` / `after` do lote, a mesma conferência do
  * `npm run pilot:check-database`, com o TLS do socket conferido. */
 async function conferirEsperado(destino, esperado, checkPilotDatabase) {
   return (await conferirComCodigo(destino, esperado, checkPilotDatabase)).success;
@@ -123,19 +120,19 @@ async function conferirComCodigo(destino, esperado, checkPilotDatabase) {
       PILOT_ENDPOINT_ID: ENDPOINT_PILOTO,
       PRODUCTION_ENDPOINT_ID: ENDPOINT_PROIBIDO,
     },
-    createClient: async () => clienteConferido(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log }),
+    createClient: async () => clienteConferido(destino, { aplicacao: lote.aplicacaoDaConferencia, log }),
     log,
   });
   log(`RESULT: ${resultado.success ? "SUCCESS" : "FAILURE"}${resultado.code ? ` (${resultado.code})` : ""}`);
   return resultado;
 }
 
-/** Levantamento só-leitura do limite do plano (equipe-acessos-schema.ts). */
+/** Levantamento só-leitura do lote (PublicacaoDoLote.levantamento). */
 async function levantarLimites(destino, schema) {
-  const client = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
+  const client = await conectar(destino, { aplicacao: lote.aplicacaoDaConferencia, log });
   try {
-    log("--- Limite de profissionais do plano (só leitura; nada é alterado)");
-    for (const linha of schema.descreverExcessoDePlano(await schema.lerExcessoDePlano(client))) log(linha);
+    log("--- Levantamento do lote (só leitura; nada é alterado)");
+    for (const linha of (await schema.publicacao.levantamento(client)).linhas) log(linha);
   } finally {
     await encerrar(client);
   }
@@ -143,7 +140,7 @@ async function levantarLimites(destino, schema) {
 
 /** Backup no mesmo snapshot da fotografia (contagens e md5 por tabela). */
 async function fazerBackup(destino, pastaExecucao, extras) {
-  const leitor = await conectar(destino, { aplicacao: "agenda-cloud-backup-equipe", log });
+  const leitor = await conectar(destino, { aplicacao: lote.aplicacaoDoBackup, log });
   try {
     const { protocolo, cadeia } = conferirTransporte(leitor.connection?.stream, destino.servidorTls);
     await leitor.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -161,7 +158,7 @@ async function fazerBackup(destino, pastaExecucao, extras) {
     const { codigo, stderr } = await rodar(
       path.join(PG_BIN, "pg_dump.exe"),
       ["-Fc", "--no-password", `--snapshot=${snapshot}`, "-f", dump],
-      ambienteLibpq(destino, raizes, "agenda-cloud-backup-equipe"),
+      ambienteLibpq(destino, raizes, lote.aplicacaoDoBackup),
     );
     if (codigo !== 0) {
       log(`DETALHE: pg_dump saiu com ${codigo}: ${stderr.slice(0, 400)}`);
@@ -194,7 +191,7 @@ async function fazerBackup(destino, pastaExecucao, extras) {
 function backupConferido(commit) {
   const pastas = existsSync(PASTA)
     ? readdirSync(PASTA)
-        .filter((n) => n.startsWith(`${PREFIXO_DAS_PASTAS}preparar-`))
+        .filter((n) => n.startsWith(`${lote.prefixoDasPastas}preparar-`))
         .sort()
         .reverse()
     : [];
@@ -218,6 +215,7 @@ function backupConferido(commit) {
         endpoint: ENDPOINT_PILOTO,
         modo: MODO,
         agora: Date.now(),
+        lote,
       });
     } catch {
       motivos = ["manifesto ou conferência ilegível"];
@@ -237,12 +235,12 @@ function registrosAnteriores() {
  * primeira conexão da fase `conferir`: se ela falhar, nenhum estado é
  * concluído. */
 async function contarSessoesDaMigration(destino) {
-  const client = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
+  const client = await conectar(destino, { aplicacao: lote.aplicacaoDaConferencia, log });
   try {
     const [{ sessoes }] = (
       await client.query(
         "SELECT count(*)::int AS sessoes FROM pg_stat_activity WHERE application_name = $1 AND pid <> pg_backend_pid()",
-        [APLICACAO_DA_MIGRATION],
+        [lote.aplicacaoDaMigration],
       )
     ).rows;
     log(`SESSOES_DA_MIGRATION_ATIVAS: ${sessoes}`);
@@ -253,24 +251,12 @@ async function contarSessoesDaMigration(destino) {
 }
 
 /** Só leitura: o que um `migration:revert` apagaria ou deixaria de valer. */
-async function avaliarReversao(destino) {
-  const client = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
+async function avaliarReversao(destino, schema) {
+  const client = await conectar(destino, { aplicacao: lote.aplicacaoDaConferencia, log });
   try {
-    await client.query("BEGIN TRANSACTION READ ONLY");
-    {
-      const [r] = (
-        await client.query(`SELECT
-          (SELECT count(*)::int FROM memberships WHERE status <> 'ACTIVE') AS "vinculosSuspensos",
-          (SELECT count(*)::int FROM tenants WHERE status::text = 'ARCHIVED') AS "estabelecimentosArquivados",
-          (SELECT count(*)::int FROM tenants WHERE restore_status IS NOT NULL) AS "estabelecimentosComSituacaoAnterior",
-          (SELECT count(*)::int FROM invites WHERE professional_id IS NOT NULL) AS "convitesDeFuncionario",
-          (SELECT count(*)::int FROM membership_permission_overrides WHERE permission::text LIKE 'ATENDIMENTO_PROPRIO_%') AS "liberacoesDeFuncionario"`)
-      ).rows;
-      log("--- O que migration:revert apagaria ou deixaria de valer (só leitura):");
-      for (const [k, v] of Object.entries(r)) log(`REVERSAO_AFETARIA_${k}: ${v}`);
-      log("REVERSAO_NOTA: não use revert; ver a seção Recuperação do runbook.");
-    }
-    await client.query("ROLLBACK");
+    log("--- O que migration:revert apagaria ou deixaria de valer (só leitura):");
+    for (const linha of await schema.publicacao.reversao(client)) log(linha);
+    log("REVERSAO_NOTA: não use revert; ver a seção Recuperação do runbook.");
   } finally {
     await encerrar(client);
   }
@@ -278,20 +264,20 @@ async function avaliarReversao(destino) {
 
 async function faseConferir(destino, schema) {
   const sessoes = await contarSessoesDaMigration(destino);
-  const before = await conferirComCodigo(destino, ESPERADO_ANTES, schema.checkPilotDatabase);
-  const after = await conferirComCodigo(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase);
+  const before = await conferirComCodigo(destino, lote.esperadoAntes, schema.checkPilotDatabase);
+  const after = await conferirComCodigo(destino, lote.esperadoDepois, schema.checkPilotDatabase);
   const estado = identificarEstado({ before: before.success, after: after.success, codigos: [before.code, after.code] });
   log(`ESTADO: ${estado}`);
   if (estado === "nao_identificado") parar("ERR_CONFERENCIA_SEM_LEITURA");
-  if (estado === "after") await avaliarReversao(destino);
+  if (estado === "after") await avaliarReversao(destino, schema);
   await levantarLimites(destino, schema);
   registrar(REGISTRO, { ...base, estado, sessoesDaMigration: sessoes, concluidaEm: new Date().toISOString() });
   if (sessoes > 0) {
     log("RESULTADO: há uma sessão da migration ainda ativa no banco; espere alguns minutos e rode conferir de novo");
   } else if (estado === "before") {
-    log(`RESULTADO: estado before, ${MIGRATION} NÃO aplicada`);
+    log(`RESULTADO: estado before, ${lote.rotulo} NÃO aplicada`);
   } else if (estado === "after") {
-    log(`RESULTADO: estado after, ${MIGRATION} aplicada e conferida`);
+    log(`RESULTADO: estado after, ${lote.rotulo} aplicada e conferida`);
   } else {
     log("RESULTADO: estado divergente (nem before nem after); não aplique nem publique; investigar");
   }
@@ -301,7 +287,7 @@ async function faseConferir(destino, schema) {
 async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
   let motivo = null;
   try {
-    motivo = conferirConfirmacao(await lerConfirmacao(`Para aplicar, digite exatamente "${FRASE}": `), FRASE);
+    motivo = conferirConfirmacao(await lerConfirmacao(`Para aplicar, digite exatamente "${lote.frase}": `), lote.frase);
   } catch (erro) {
     if (!(erro instanceof Parada && erro.message === "ERR_CONFIRMACAO_MAIS_DE_UMA_LINHA")) throw erro;
     motivo = erro.message;
@@ -319,9 +305,9 @@ async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
   let iniciou = false;
   try {
     await aplicarSomenteAPendente(destino, {
-      esperadasAntes: [...schema.MIGRATIONS_ATE_CONTAS],
-      pendente: MIGRATION,
-      aplicacao: APLICACAO_DA_MIGRATION,
+      esperadasAntes: [...schema.publicacao.migrationsAntes],
+      pendentes: [...schema.publicacao.pendentes],
+      aplicacao: lote.aplicacaoDaMigration,
       log,
       aoIniciar: () => {
         iniciou = true;
@@ -339,7 +325,7 @@ async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
     if (tipo === "recusada_pelo_banco") {
       // O servidor recusou um comando numa sessão viva: a transação abortou.
       // Ainda assim confere em vez de supor.
-      const intacto = await conferirEsperado(destino, ESPERADO_ANTES, schema.checkPilotDatabase).catch(() => false);
+      const intacto = await conferirEsperado(destino, lote.esperadoAntes, schema.checkPilotDatabase).catch(() => false);
       if (intacto) {
         log("ESTADO_APOS_FALHA: before intacto; o banco recusou e desfez a transação (nada aplicado)");
         registrar(REGISTRO, { ...base, resultado: "nao_aplicada", motivo: erro?.code ?? null, concluidaEm: new Date().toISOString() });
@@ -356,17 +342,18 @@ async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
   const aplicadaEm = new Date().toISOString();
   registrar(REGISTRO, { ...base, resultado: "aplicada", aplicadaEm });
   log("COMMIT: ok");
-  log(`MIGRATION_APLICADA: ${MIGRATION} em ${aplicadaEm}`);
+  log(`MIGRATION_APLICADA: ${lote.migrations.join(",")} em ${aplicadaEm}`);
   let depoisOk = false;
   try {
-    depoisOk = await conferirEsperado(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase);
+    depoisOk = await conferirEsperado(destino, lote.esperadoDepois, schema.checkPilotDatabase);
     // Informativo: a API atual continua no ar e pode gravar durante a operação.
-    const leitor = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
+    const leitor = await conectar(destino, { aplicacao: lote.aplicacaoDaConferencia, log });
     try {
       await leitor.query("BEGIN TRANSACTION READ ONLY");
       const comparacao = compararFotografias(manifesto, await fotografar(leitor), {
         ignorarSomas: Object.keys(manifesto.contagens),
         ignorarTabelas: ["typeorm_migrations"],
+        novasPermitidas: [...lote.tabelasNovas],
       });
       await leitor.query("ROLLBACK");
       log(
@@ -391,16 +378,18 @@ async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
     concluidaEm: new Date().toISOString(),
   });
   if (depoisOk) {
-    log(`RESULTADO: ${MIGRATION} aplicada e conferida`);
+    log(`RESULTADO: ${lote.rotulo} aplicada e conferida`);
   } else {
-    log(`RESULTADO: ${MIGRATION} FOI APLICADA (COMMIT confirmado), mas a conferência posterior falhou`);
+    log(`RESULTADO: ${lote.rotulo} FOI APLICADA (COMMIT confirmado), mas a conferência posterior falhou`);
     log("NAO_REPITA: não rode aplicar de novo; rode a fase conferir e não publique a API antes de ver ESTADO: after");
     process.exitCode = 2;
   }
 }
 
 async function principal() {
-  log(`Publicação de ${MIGRATION} no piloto Agenda-Cloud`);
+  lote = escolherLote(argumentos.lote);
+  log(`Publicação de ${lote.rotulo} (${lote.migrations.join(", ")}) no piloto Agenda-Cloud`);
+  log(`LOTE: ${lote.nome}`);
   if (!["preparar", "aplicar", "conferir"].includes(FASE)) parar("ERR_FASE_INVALIDA");
   if (!FORMATO_ENDPOINT_ID.test(ENDPOINT_PILOTO) || !FORMATO_ENDPOINT_ID.test(ENDPOINT_PROIBIDO)) parar("ERR_ENDPOINT_IDS_AUSENTES");
   if (ENDPOINT_PILOTO === ENDPOINT_PROIBIDO) parar("ERR_PILOTO_IGUAL_AO_PROIBIDO");
@@ -415,11 +404,12 @@ async function principal() {
   log(`COMMIT: ${sha}${sujo ? " (backend com alterações locais)" : ""}`);
   if (sujo && FASE !== "conferir") parar("ERR_BACKEND_COM_ALTERACOES_LOCAIS");
   const schema = await carregarConferencia();
-  if (schema.MIGRATION_EQUIPE !== MIGRATION) parar("ERR_BUILD_DESATUALIZADO");
+  if (JSON.stringify(schema.publicacao?.pendentes) !== JSON.stringify(lote.migrations)) parar("ERR_BUILD_DESATUALIZADO");
   podeRegistrar = true;
   mkdirSync(PASTA, { recursive: true });
   base = {
-    operacao: OPERACAO,
+    operacao: lote.operacao,
+    lote: lote.nome,
     fase: FASE,
     modo: MODO,
     execucao: carimbo,
@@ -432,7 +422,7 @@ async function principal() {
 
   let conferido = null;
   if (FASE === "aplicar") {
-    const pendente = execucaoPendente(registrosAnteriores(), { endpoint: ENDPOINT_PILOTO, modo: MODO });
+    const pendente = execucaoPendente(registrosAnteriores(), { endpoint: ENDPOINT_PILOTO, modo: MODO, lote });
     if (pendente) {
       log(`EXECUCAO_SEM_DESFECHO: ${pendente.execucao} (iniciada em ${pendente.iniciadaEm})`);
       parar("ERR_RESULTADO_ANTERIOR_INCERTO");
@@ -455,19 +445,19 @@ async function principal() {
 
   if (FASE === "conferir") return faseConferir(destino, schema);
 
-  const antes = await conferirComCodigo(destino, ESPERADO_ANTES, schema.checkPilotDatabase);
+  const antes = await conferirComCodigo(destino, lote.esperadoAntes, schema.checkPilotDatabase);
   if (!antes.success) {
     if (identificarEstado({ before: false, after: false, codigos: [antes.code] }) === "nao_identificado") {
       parar("ERR_CONFERENCIA_SEM_LEITURA");
     }
-    const jaAplicada = await conferirEsperado(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase).catch(() => false);
-    parar(jaAplicada ? "ERR_TEAMACCESS_JA_APLICADA" : "ERR_ESTADO_ANTES_DIVERGENTE");
+    const jaAplicada = await conferirEsperado(destino, lote.esperadoDepois, schema.checkPilotDatabase).catch(() => false);
+    parar(jaAplicada ? lote.jaAplicado : "ERR_ESTADO_ANTES_DIVERGENTE");
   }
   await levantarLimites(destino, schema);
 
-  const pastaExecucao = path.join(PASTA, `${PREFIXO_DAS_PASTAS}${FASE}-${carimbo}`);
+  const pastaExecucao = path.join(PASTA, `${lote.prefixoDasPastas}${FASE}-${carimbo}`);
   const manifesto = await fazerBackup(destino, pastaExecucao, {
-    esperado: ESPERADO_ANTES,
+    esperado: lote.esperadoAntes,
     ...(conferido ? { backupConferido: conferido.nome } : {}),
   });
   if (conferido) {

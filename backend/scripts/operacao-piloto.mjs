@@ -212,26 +212,28 @@ export function compararFotografias(antes, depois, { ignorarSomas = [], ignorarT
 }
 
 /**
- * Só a migration pendente esperada: o histórico precisa ser EXATAMENTE
- * `esperadasAntes` e as migrations compiladas, exatamente essas mais a
- * pendente. Devolve o código do problema ou null.
+ * Só as migrations pendentes esperadas: o histórico precisa ser EXATAMENTE
+ * `esperadasAntes` e as migrations compiladas, exatamente essas mais as
+ * pendentes, na ordem. `pendente` (uma) ou `pendentes` (lista). Devolve o
+ * código do problema ou null.
  */
-export function conferirPendentes({ executadas, carregadas, esperadasAntes, pendente }) {
+export function conferirPendentes({ executadas, carregadas, esperadasAntes, pendente, pendentes = [pendente] }) {
   const igual = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  if (pendentes.length === 0 || pendentes.some((p) => typeof p !== "string" || p === "")) return "ERR_PENDENTES_INVALIDAS";
   if (!igual(executadas, esperadasAntes)) return "ERR_HISTORICO_DE_MIGRATIONS_INESPERADO";
-  if (!igual(carregadas, [...esperadasAntes, pendente])) return "ERR_MIGRATIONS_COMPILADAS_INESPERADAS";
+  if (!igual(carregadas, [...esperadasAntes, ...pendentes])) return "ERR_MIGRATIONS_COMPILADAS_INESPERADAS";
   return null;
 }
 
 /**
  * Aplica, com o runtime compilado (`dist-migrations`, o mesmo do
- * `migration:run:compiled`), somente a migration pendente esperada, numa
- * transação. Pool de uma conexão: o `lock_timeout` vale para a sessão que roda
+ * `migration:run:compiled`), somente as migrations pendentes esperadas, todas
+ * numa única transação (todas ou nenhuma). Pool de uma conexão: o `lock_timeout` vale para a sessão que roda
  * a migration, e o TLS dela é conferido no socket. `aoIniciar`, opcional, é
  * chamado logo antes do primeiro comando da migration: uma falha antes dele
  * garante que nada foi enviado.
  */
-export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, aplicacao, log, aoIniciar = () => {} }) {
+export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, pendentes = [pendente], aplicacao, log, aoIniciar = () => {} }) {
   const { DataSource } = await import("typeorm");
   const { buildMigrationsDataSourceOptions } = await import("../dist-migrations/database/migrations-data-source.js");
   const ds = new DataSource({
@@ -263,9 +265,9 @@ export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendent
         const carregadas = ds.migrations.map((m) => m.name ?? m.constructor.name);
         log(`MIGRATIONS_NO_HISTORICO: ${executadas.length}`);
         log(`MIGRATIONS_COMPILADAS: ${carregadas.length}`);
-        const problema = conferirPendentes({ executadas, carregadas, esperadasAntes, pendente });
+        const problema = conferirPendentes({ executadas, carregadas, esperadasAntes, pendentes });
         if (problema) parar(problema);
-        log(`PENDENTE: ${pendente}`);
+        log(`${pendentes.length === 1 ? "PENDENTE" : "PENDENTES"}: ${pendentes.join(",")}`);
       } finally {
         liberar();
       }
@@ -283,7 +285,7 @@ export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendent
     } finally {
       liberar();
     }
-    if (nomes.length !== 1 || nomes[0] !== pendente) parar("ERR_APLICADAS_DIFERENTES_DA_PENDENTE");
+    if (nomes.length !== pendentes.length || nomes.some((n, i) => n !== pendentes[i])) parar("ERR_APLICADAS_DIFERENTES_DA_PENDENTE");
     return nomes;
   } finally {
     await ds.destroy().catch(() => {});
