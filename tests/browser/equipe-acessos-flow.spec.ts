@@ -286,6 +286,9 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await fp.getByRole("button", { name: "Atualizar" }).click();
     await expect(fp.getByRole("main").getByRole("alert")).toContainText("não está disponível agora");
     await fp.reload();
+    // Sem estabelecimento ativo, a funcionária fica nas configurações
+    // pessoais, com o aviso.
+    await expect(fp).toHaveURL(/\/conta\/configuracoes$/);
     await expect(fp.getByRole("main")).toContainText("não tem acesso ativo a um estabelecimento");
 
     await ana.getByRole("button", { name: "Reativar acesso" }).click();

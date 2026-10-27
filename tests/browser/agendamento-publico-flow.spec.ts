@@ -174,9 +174,9 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   );
 
   // ------------------------------------------- dono ativa e copia o link
-  await page.goto("/conta/agendamentos/solicitacoes");
+  // O agendamento online fica em Configurações → Estabelecimento.
+  await page.goto("/conta/configuracoes/estabelecimento");
   await expect(page.getByTestId("agendamento-online-estado")).toContainText("Página desativada");
-  await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
   await page.getByTestId("alternar-agendamento-online").click();
   await expect(page.getByTestId("agendamento-online-estado")).toHaveText("Página ativa");
   const link = await page.getByTestId("link-publico").inputValue();
@@ -184,6 +184,8 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByTestId("copiar-link").click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+  await page.goto("/conta/agendamentos/solicitacoes");
+  await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
 
   // ------------------------------------------- cliente agenda no celular
   const p = anonimo.pagina;
@@ -429,6 +431,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await page.screenshot({ path: test.info().outputPath("solicitacoes-computador.png"), fullPage: true });
 
   // ------------------------------------------- desativar esconde de novo
+  await page.goto("/conta/configuracoes/estabelecimento");
   await page.getByTestId("alternar-agendamento-online").click();
   await expect(page.getByTestId("agendamento-online-estado")).toContainText("Página desativada");
   await outro.pagina.goto(link);

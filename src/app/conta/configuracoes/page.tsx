@@ -36,6 +36,14 @@ export default function ConfiguracoesPage() {
           : "Ajustes da sua conta. As configurações do estabelecimento ficam com o responsável."
       }
     >
+      {sessao.contexts.length === 0 && (
+        <p
+          className="rounded-[var(--radius-card)] border border-border bg-card p-4 text-sm text-ink-soft"
+          data-testid="sem-estabelecimento"
+        >
+          Sua conta não tem acesso ativo a um estabelecimento agora. Se você trabalha em um, fale com o responsável.
+        </p>
+      )}
       {contexto && perfil === "sem-area" && (
         <p className="rounded-[var(--radius-card)] border border-border bg-card p-4 text-sm text-ink-soft" data-testid="papel-sem-area">
           Este papel não tem área liberada neste estabelecimento. Fale com o responsável.
