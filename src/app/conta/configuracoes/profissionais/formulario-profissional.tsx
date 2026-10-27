@@ -95,7 +95,7 @@ export function FormularioProfissional({
         <p className="rounded-[var(--radius-control)] border border-dashed border-border p-3 text-sm text-ink-soft">
           Este estabelecimento ainda não tem serviços cadastrados. Você pode cadastrar o profissional
           sem vincular serviços agora, ou{" "}
-          <Link href="/conta/servicos" className="font-medium text-accent hover:underline">
+          <Link href="/conta/configuracoes/servicos" className="font-medium text-accent hover:underline">
             cadastrar serviços primeiro
           </Link>
           .
@@ -106,7 +106,7 @@ export function FormularioProfissional({
         <p className="rounded-[var(--radius-control)] border border-dashed border-border p-3 text-sm text-ink-soft">
           Não há serviço ativo disponível para vincular agora. Você pode cadastrar o profissional sem
           serviço, ou{" "}
-          <Link href="/conta/servicos" className="font-medium text-accent hover:underline">
+          <Link href="/conta/configuracoes/servicos" className="font-medium text-accent hover:underline">
             reativar ou cadastrar um serviço
           </Link>
           .

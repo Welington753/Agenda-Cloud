@@ -83,7 +83,7 @@ export type CreateAppointmentDto = z.infer<typeof createAppointmentSchema>;
  * basta (`2026-02-30` casa com o regex e não é dia nenhum), então a data é
  * remontada e conferida, nunca aceitando o "rolo" do construtor `Date`.
  */
-const dateSchema = z
+export const dateSchema = z
   .string()
   .trim()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data no formato YYYY-MM-DD.')
@@ -169,3 +169,49 @@ export type RescheduleAppointmentDto = z.infer<typeof rescheduleAppointmentSchem
 export const rescheduleOptionsSchema = z.object({ date: dateSchema }).strict();
 
 export type RescheduleOptionsDto = z.infer<typeof rescheduleOptionsSchema>;
+
+/** Maior período da agenda em calendário: seis semanas (a grade de um mês
+ * começa na semana do dia 1 e pode avançar até a sexta semana). */
+export const MAIOR_PERIODO_EM_DIAS = 42;
+
+function diaUtc(data: string): number {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  return Date.UTC(ano, mes - 1, dia) / 86_400_000;
+}
+
+function conferirPeriodo(valor: { from: string; to: string }, ctx: z.RefinementCtx): void {
+  const dias = diaUtc(valor.to) - diaUtc(valor.from) + 1;
+  if (dias < 1) {
+    ctx.addIssue({ code: 'custom', path: ['to'], message: 'O fim do período vem antes do início.' });
+  } else if (dias > MAIOR_PERIODO_EM_DIAS) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['to'],
+      message: `O período pode ter no máximo ${MAIOR_PERIODO_EM_DIAS} dias.`,
+    });
+  }
+}
+
+/**
+ * Período da agenda em calendário (mês, semana ou dia), em datas LOCAIS do
+ * estabelecimento, `from` e `to` inclusivos. O teto mantém a rota longe de
+ * "liste a agenda inteira".
+ */
+export const appointmentPeriodSchema = z
+  .object({
+    from: dateSchema,
+    to: dateSchema,
+    professionalId: idSchema.optional(),
+  })
+  .strict()
+  .superRefine(conferirPeriodo);
+
+export type AppointmentPeriodDto = z.infer<typeof appointmentPeriodSchema>;
+
+/** Agenda do funcionário por período: sem profissional (vem do vínculo). */
+export const ownAgendaPeriodSchema = z
+  .object({ from: dateSchema, to: dateSchema })
+  .strict()
+  .superRefine(conferirPeriodo);
+
+export type OwnAgendaPeriodDto = z.infer<typeof ownAgendaPeriodSchema>;

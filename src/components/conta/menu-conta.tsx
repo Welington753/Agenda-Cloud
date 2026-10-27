@@ -2,12 +2,14 @@
 
 // Cabeçalho da área real: o sino "Notificações" e o menu da conta.
 //
-// - SINO: leva à análise das solicitações (/conta/solicitacoes). O número é
+// - SINO: atalho para a aba Solicitações da Agenda
+//   (/conta/agendamentos/solicitacoes). O número é
 //   o do SolicitacoesProvider — a mesma lista do menu lateral, sem consulta
 //   própria. Abrir o sino não confirma, recusa nem remarca nada.
 // - MENU DA CONTA: quem está conectado, "Notificações" (pendentes, situação
-//   neste aparelho e acesso aos controles que já existem na tela de
-//   Solicitações), Aparência, Minha conta e Sair.
+//   neste aparelho e o atalho para Configurações → Notificações), Aparência,
+//   Configurações, Perfil e segurança, a Administração da plataforma (no
+//   celular, onde ela não cabe na barra) e Sair.
 //   A situação do push é verificada UMA vez a cada abertura do menu
 //   (lib/push/use-notificacoes-do-dispositivo.ts, o mesmo do cartão); nada
 //   aqui pede permissão ao navegador nem ativa/desativa sozinho.
@@ -18,13 +20,25 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { Bell, ChevronRight, LogOut, Settings2, UserRound, Volume2, VolumeX } from "lucide-react";
+import {
+  Bell,
+  ChevronRight,
+  LogOut,
+  Settings,
+  Settings2,
+  ShieldCheck,
+  UserRound,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { rotuloDoSino } from "@/lib/conta/navegacao";
 import { textoPendentes } from "@/lib/agendamento-publico/solicitacoes";
 import { lerPreferenciaDeSom } from "@/lib/agendamento-publico/som-dos-avisos";
 import { useNotificacoesDoDispositivo } from "@/lib/push/use-notificacoes-do-dispositivo";
 import { resumoDoPush } from "@/lib/push/suporte";
 import { SeletorAparencia } from "@/components/aparencia/aparencia";
+import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
+import { ROTA_NOTIFICACOES, ROTA_PERFIL, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
 
 const FOCO_NO_ESCURO = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
 
@@ -38,7 +52,7 @@ function iniciais(nome: string): string {
 export function SinoNotificacoes({ pendentes }: { pendentes: number | null }) {
   return (
     <Link
-      href="/conta/solicitacoes"
+      href={ROTA_SOLICITACOES}
       aria-label={rotuloDoSino(pendentes)}
       data-testid="sino-notificacoes"
       className={clsx(
@@ -89,6 +103,8 @@ export function MenuConta({
   email,
   tenantId,
   pendentes,
+  comAdministracao = false,
+  configuracoes,
   saindo,
   aoSair,
 }: {
@@ -97,6 +113,11 @@ export function MenuConta({
   /** Sem estabelecimento ativo (tela de escolha), não há notificações. */
   tenantId: string | null;
   pendentes: number | null;
+  /** Acesso à administração da plataforma confirmado pelo servidor. */
+  comAdministracao?: boolean;
+  /** Entrada de Configurações (sempre a mesma; parâmetro para o menu não
+   * depender do módulo de rotas da área). */
+  configuracoes: string;
   saindo: boolean;
   aoSair: () => void;
 }) {
@@ -175,7 +196,7 @@ export function MenuConta({
 
           {tenantId && (
             <section aria-label="Notificações" className="space-y-2 border-t border-border pt-3">
-              <Link href="/conta/solicitacoes" className={CLASSE_LINHA} data-testid="menu-notificacoes">
+              <Link href={ROTA_SOLICITACOES} className={CLASSE_LINHA} data-testid="menu-notificacoes">
                 <Bell size={18} aria-hidden="true" className="shrink-0 text-accent" />
                 <span className="min-w-0 flex-1">
                   <span className="block">Notificações</span>
@@ -189,7 +210,7 @@ export function MenuConta({
                 <SituacaoDoAparelho tenantId={tenantId} />
               </div>
               <Link
-                href="/conta/solicitacoes#notificacoes"
+                href={ROTA_NOTIFICACOES}
                 className={clsx(CLASSE_LINHA, "text-[color:var(--color-accent-hover)]")}
                 data-testid="menu-gerenciar-notificacoes"
               >
@@ -203,10 +224,26 @@ export function MenuConta({
           </div>
 
           <div className="space-y-1 border-t border-border pt-2">
-            <Link href="/conta" className={CLASSE_LINHA}>
-              <UserRound size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
-              Minha conta
+            <Link href={configuracoes} className={CLASSE_LINHA} data-testid="menu-configuracoes">
+              <Settings size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
+              Configurações
             </Link>
+            <Link href={ROTA_PERFIL} className={CLASSE_LINHA} data-testid="menu-perfil">
+              <UserRound size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
+              Perfil e segurança
+            </Link>
+            {/* No computador a Administração já está no menu lateral, num
+                grupo próprio; aqui ela só aparece no celular. */}
+            {comAdministracao && (
+              <Link
+                href={ROTA_ADMINISTRACAO}
+                className={clsx(CLASSE_LINHA, "md:hidden")}
+                data-testid="menu-administracao"
+              >
+                <ShieldCheck size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
+                Administração da plataforma
+              </Link>
+            )}
             <button
               type="button"
               disabled={saindo}

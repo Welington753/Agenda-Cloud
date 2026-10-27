@@ -105,7 +105,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   expect(await servicosPublicos(p)).toEqual(["Barba", "Corte"]);
 
   // ------------------------------------------- dono cadastra dois serviços pela tela, depois da ativação
-  await page.goto("/conta/servicos");
+  await page.goto("/conta/configuracoes/servicos");
   for (const nome of ["Sobrancelha", "Lavagem"]) {
     await page.getByRole("button", { name: "Novo serviço" }).click();
     await page.getByLabel("Nome do serviço").fill(nome);
@@ -131,7 +131,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
     const aviso = cartaoDoServico(page, nome).getByTestId("servico-fora-do-online");
     await expect(aviso).toContainText("Não aparece no agendamento online");
     await expect(aviso).toContainText("nenhum profissional ativo realiza este serviço");
-    await expect(aviso.getByRole("link", { name: /Profissionais/ })).toHaveAttribute("href", "/conta/profissionais");
+    await expect(aviso.getByRole("link", { name: /Profissionais/ })).toHaveAttribute("href", "/conta/configuracoes/profissionais");
   }
   await expect(cartaoDoServico(page, "Corte").getByTestId("servico-fora-do-online")).toHaveCount(0);
   // Capturas do aviso nos dois temas da área privada e em três larguras.
@@ -153,7 +153,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   expect(servicosDepois.corpo.services).toHaveLength(4);
 
   // ------------------------------------------- vínculo pela tela de Profissionais: agora aparecem
-  await page.goto("/conta/profissionais");
+  await page.goto("/conta/configuracoes/profissionais");
   await page.getByRole("button", { name: "Editar Rafa Barbeiro" }).click();
   await page.getByLabel("Sobrancelha").check();
   await page.getByLabel("Lavagem").check();
@@ -161,7 +161,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toHaveCount(0);
   await p.reload();
   expect(await servicosPublicos(p)).toEqual(["Barba", "Corte", "Lavagem", "Sobrancelha"]);
-  await page.goto("/conta/servicos");
+  await page.goto("/conta/configuracoes/servicos");
   await expect(page.getByTestId("servico-fora-do-online")).toHaveCount(0);
 
   // ------------------------------------------- continuam fora: desligado do online, inativo, só com profissional inativo
@@ -231,7 +231,7 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   expect((await api(page, `${base}/professionals/${dudaId}/deactivate`, "POST")).status).toBeLessThan(300);
   await p.reload();
   expect(await servicosPublicos(p)).toEqual(["Barba", "Corte", "Lavagem", "Sobrancelha"]);
-  await page.goto("/conta/servicos");
+  await page.goto("/conta/configuracoes/servicos");
   await expect(cartaoDoServico(page, "Pigmentação").getByTestId("servico-fora-do-online")).toContainText(
     "nenhum profissional ativo realiza este serviço",
   );

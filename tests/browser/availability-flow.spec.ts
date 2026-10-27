@@ -154,9 +154,9 @@ test.describe("consulta real de disponibilidade", () => {
     const profissionalId = await criarProfissional(page, tenantId, "Ana Souza", [servicoId]);
 
     // Sem jornada nenhuma: a tela precisa dizer POR QUE está vazio.
-    await page.goto("/conta/profissionais");
+    await page.goto("/conta/configuracoes/profissionais");
     await page.getByRole("link", { name: "Disponibilidade de Ana Souza" }).click();
-    await expect(page).toHaveURL(/\/conta\/profissionais\/[^/]+\/disponibilidade$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais\/[^/]+\/disponibilidade$/);
 
     // A tela afirma que consultar não reserva.
     await expect(page.getByText("não reserva horário")).toBeVisible();
@@ -256,7 +256,7 @@ test.describe("consulta real de disponibilidade", () => {
     ]);
 
     // A consulta pela tela funciona para o dono.
-    await paginaA.goto(`/conta/profissionais/${profissionalDeA}/disponibilidade`);
+    await paginaA.goto(`/conta/configuracoes/profissionais/${profissionalDeA}/disponibilidade`);
     await paginaA.getByLabel("Data").fill(DATA);
     await paginaA.getByRole("button", { name: "Consultar horários" }).click();
     await expect(paginaA.getByTestId("horarios")).toBeVisible();

@@ -109,7 +109,7 @@ export function ListaProfissionais({
                     atende: o profissional desativado não tem agenda a oferecer. */}
                 <div className="flex gap-2">
                   <Link
-                    href={`/conta/profissionais/${profissional.id}/horarios`}
+                    href={`/conta/configuracoes/profissionais/${profissional.id}/horarios`}
                     aria-label={`Horários de ${profissional.name}`}
                     className={CLASSE_LINK_SECUNDARIO}
                   >
@@ -118,7 +118,7 @@ export function ListaProfissionais({
                   </Link>
                   {profissional.active && (
                     <Link
-                      href={`/conta/profissionais/${profissional.id}/disponibilidade`}
+                      href={`/conta/configuracoes/profissionais/${profissional.id}/disponibilidade`}
                       aria-label={`Disponibilidade de ${profissional.name}`}
                       className={CLASSE_LINK_SECUNDARIO}
                     >

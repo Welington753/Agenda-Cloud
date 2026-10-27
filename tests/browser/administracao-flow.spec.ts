@@ -215,16 +215,14 @@ test("administração no menu principal: autorização, busca, ficha, contexto e
     ).toBeVisible();
     await capturar(page, "ficha", (f) => testInfo.outputPath(f));
 
-    // No celular, a entrada fica no "Mais", sem apertar a barra.
+    // No celular, a entrada fica no menu da conta, separada das quatro
+    // áreas da barra (que não fica apertada).
     await page.setViewportSize({ width: 360, height: 844 });
-    const mais = nav(page).getByRole("button", { name: /Mais/ });
-    await mais.click();
-    const menuMais = page.locator("#menu-mais");
-    await expect(
-      menuMais.getByRole("link", { name: "Administração" }),
-    ).toBeVisible();
-    await expect(nav(page).locator(":scope > ul:not(#menu-mais) > li:visible")).toHaveCount(5);
-    await menuMais.getByRole("link", { name: "Administração" }).click();
+    await expect(nav(page).getByRole("button", { name: /Mais/ })).toHaveCount(0);
+    await expect(nav(page).locator(":scope > ul > li:visible")).toHaveCount(4);
+    await page.getByTestId("abrir-menu-conta").click();
+    await expect(page.getByTestId("menu-administracao")).toBeVisible();
+    await page.getByTestId("menu-administracao").click();
     await expect(page).toHaveURL(LISTA);
     await page.setViewportSize({ width: 1280, height: 844 });
 
@@ -290,12 +288,19 @@ test("administrador sem estabelecimento usa a administração; suporte sem permi
     );
     const main = page.getByRole("main");
 
+    // Sem estabelecimento, "/conta" leva direto à administração; o menu tem
+    // Administração e as configurações pessoais.
     await page.goto("/conta");
-    await expect(nav(page).getByRole("link")).toHaveText([
-      "Administração",
-      "Minha conta",
-    ]);
+    await expect(page).toHaveURL(LISTA);
+    await expect(nav(page).getByRole("link")).toHaveText(["Administração", "Configurações"]);
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveCount(0);
+    await nav(page).getByRole("link", { name: "Configurações" }).click();
+    expect(
+      await page.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
+    ).toEqual(["/conta/configuracoes/aparencia", "/conta/configuracoes/perfil"]);
+    // Configurações do estabelecimento abertas pelo endereço levam às pessoais.
+    await page.goto("/conta/configuracoes/equipe");
+    await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await nav(page).getByRole("link", { name: "Administração" }).click();
     await expect(page).toHaveURL(LISTA);
     await expect(page.getByTestId("modo-administracao")).toBeVisible();
@@ -321,9 +326,8 @@ test("administrador sem estabelecimento usa a administração; suporte sem permi
       [account.user.id],
     );
     await page.goto("/conta");
-    await expect(
-      page.getByRole("heading", { name: /^Olá/ }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/conta\/configuracoes$/);
+    await expect(page.getByRole("heading", { name: "Configurações" })).toBeVisible();
     await expect(nav(page)).toHaveCount(0);
     await page.goto(LISTA);
     await expect(main.getByRole("alert")).toHaveText(SEM_ACESSO);

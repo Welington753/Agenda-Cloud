@@ -109,7 +109,7 @@ export function PainelNovaReserva({
               <p className="text-sm text-ink">
                 Cadastre um profissional ativo antes de agendar.{" "}
                 <Link
-                  href="/conta/profissionais"
+                  href="/conta/configuracoes/profissionais"
                   className="font-semibold text-[color:var(--color-accent-hover)] underline"
                 >
                   Ir para Profissionais

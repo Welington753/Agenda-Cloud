@@ -16,7 +16,10 @@
 // e Atualizar no topo (barra-agenda.tsx). A nova reserva abre sob demanda num
 // painel (painel-nova-reserva.tsx) com o formulário de sempre. A lista do dia
 // pode ser vista como "Lista" (inicial) ou "Por profissional"
-// (alternar-visualizacao.tsx) — mesma consulta, só a apresentação muda.
+// (alternar-visualizacao.tsx) — mesma consulta, só a apresentação muda. O
+// "Calendário" (mês, semana ou dia) lê o período inteiro
+// (GET .../appointments/range, calculado no servidor) e abre cada
+// atendimento na lista do dia, onde ficam as ações de sempre.
 //
 // Fuso: a tela EXIBE as horas locais que o backend devolve
 // (`localStart`/`localServiceEnd`) e nunca converte nada com o relógio do
@@ -55,6 +58,8 @@ import { BarraAgenda } from "./barra-agenda";
 import { PainelNovaReserva } from "./painel-nova-reserva";
 import { ReservaCriada } from "./reserva-criada";
 import { useAcoesDaAgenda } from "./use-acoes-da-agenda";
+import { AbasDaAgenda } from "@/components/conta/abas-da-agenda";
+import { CalendarioDoDono } from "./calendario-do-dono";
 
 export default function AgendamentosPage() {
   const { estado: estadoSessao } = useRealAuth();
@@ -69,6 +74,8 @@ export default function AgendamentosPage() {
   const { date, timezone, mudarData, irParaHoje, sincronizar } = dia;
   const [filtroProfissionalId, setFiltroProfissionalId] = useState(TODOS_OS_PROFISSIONAIS);
   const [visualizacao, setVisualizacao] = useState<VisualizacaoAgenda>("lista");
+  // A reserva aberta pelo Calendário fica marcada na lista do dia.
+  const [abertaNoCalendario, setAbertaNoCalendario] = useState<string | null>(null);
   const [painelAberto, setPainelAberto] = useState(false);
   const [erroReserva, setErroReserva] = useState<string | null>(null);
   const [ultimaReserva, setUltimaReserva] = useState<{
@@ -97,6 +104,7 @@ export default function AgendamentosPage() {
     setErroAcao(null);
     setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS);
     setPainelAberto(false);
+    setAbertaNoCalendario(null);
   }, [tenantIdAtivo, setErroAcao]);
 
   // Atalho "Novo agendamento" da Visão geral: abre o painel uma vez e limpa o
@@ -133,6 +141,8 @@ export default function AgendamentosPage() {
     () => opcoesDeProfissional(catalogo, agenda?.appointments ?? []),
     [catalogo, agenda],
   );
+
+  const noCalendario = visualizacao === "calendario";
 
   if (!sessao || precisaSelecionar) return null;
 
@@ -200,22 +210,25 @@ export default function AgendamentosPage() {
 
   return (
     <PaginaConta titulo="Agenda" descricao="Quem será atendido, quando, por quem e qual serviço.">
-      <BarraAgenda
-        date={date}
-        timezone={timezone}
-        ehHoje={!!timezone && hojeNoFuso(timezone, new Date()) === date}
-        resumo={agenda?.completa ? rotuloDoResumo(resumoDoDia(visiveis)) : null}
-        carregando={estado.status === "carregando"}
-        profissionais={opcoesFiltro}
-        filtroProfissionalId={filtroProfissionalId}
-        aoMudarData={mudarData}
-        aoAnterior={() => mudarData(deslocarData(date, -1))}
-        aoProximo={() => mudarData(deslocarData(date, 1))}
-        aoHoje={irParaHoje}
-        aoFiltrar={setFiltroProfissionalId}
-        aoAtualizar={recarregar}
-        aoNovoAgendamento={abrirPainel}
-      />
+      <AbasDaAgenda />
+      {!noCalendario && (
+        <BarraAgenda
+          date={date}
+          timezone={timezone}
+          ehHoje={!!timezone && hojeNoFuso(timezone, new Date()) === date}
+          resumo={agenda?.completa ? rotuloDoResumo(resumoDoDia(visiveis)) : null}
+          carregando={estado.status === "carregando"}
+          profissionais={opcoesFiltro}
+          filtroProfissionalId={filtroProfissionalId}
+          aoMudarData={mudarData}
+          aoAnterior={() => mudarData(deslocarData(date, -1))}
+          aoProximo={() => mudarData(deslocarData(date, 1))}
+          aoHoje={irParaHoje}
+          aoFiltrar={setFiltroProfissionalId}
+          aoAtualizar={recarregar}
+          aoNovoAgendamento={abrirPainel}
+        />
+      )}
 
       {ultimaReserva && (
         <ReservaCriada
@@ -225,7 +238,7 @@ export default function AgendamentosPage() {
         />
       )}
 
-      {agenda && !agenda.completa && (
+      {!noCalendario && agenda && !agenda.completa && (
         <p
           role="note"
           data-testid="agenda-incompleta"
@@ -239,23 +252,44 @@ export default function AgendamentosPage() {
 
       <AlternarVisualizacao valor={visualizacao} aoMudar={setVisualizacao} />
 
-      <AgendaDoDia
-        tenantId={tenantIdAtivo}
-        estabelecimento={contexto.tenantName}
-        estado={estado}
-        agenda={agenda}
-        gravando={gravando}
-        erroAcao={erroAcao}
-        filtroProfissionalId={filtroProfissionalId}
-        visualizacao={visualizacao}
-        profissionais={catalogo}
-        recemCriadaId={ultimaReserva?.reserva.id ?? null}
-        aoLimparFiltro={() => setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS)}
-        recarregar={recarregar}
-        aoCancelar={aoCancelar}
-        aoAlterarStatus={aoAlterarStatus}
-        aoRemarcar={aoRemarcar}
-      />
+      {noCalendario && (
+        <CalendarioDoDono
+          key={tenantIdAtivo}
+          tenantId={tenantIdAtivo}
+          dataInicial={date}
+          timezone={timezone}
+          filtroProfissionalId={filtroProfissionalId}
+          profissionais={opcoesFiltro}
+          aoFiltrar={setFiltroProfissionalId}
+          aoNovoAgendamento={abrirPainel}
+          aoAbrir={(item) => {
+            setAbertaNoCalendario(item.id);
+            mudarData(item.localDate);
+            setVisualizacao("lista");
+          }}
+        />
+      )}
+
+      {!noCalendario && (
+        <AgendaDoDia
+          tenantId={tenantIdAtivo}
+          estabelecimento={contexto.tenantName}
+          estado={estado}
+          agenda={agenda}
+          gravando={gravando}
+          erroAcao={erroAcao}
+          filtroProfissionalId={filtroProfissionalId}
+          visualizacao={visualizacao}
+          profissionais={catalogo}
+          recemCriadaId={ultimaReserva?.reserva.id ?? null}
+          destacadaId={abertaNoCalendario}
+          aoLimparFiltro={() => setFiltroProfissionalId(TODOS_OS_PROFISSIONAIS)}
+          recarregar={recarregar}
+          aoCancelar={aoCancelar}
+          aoAlterarStatus={aoAlterarStatus}
+          aoRemarcar={aoRemarcar}
+        />
+      )}
 
       <PainelNovaReserva
         aberto={painelAberto}

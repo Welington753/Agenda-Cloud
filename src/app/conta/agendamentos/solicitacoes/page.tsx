@@ -1,7 +1,9 @@
 "use client";
 
-// Solicitações da área REAL: ligar o agendamento online, copiar o link
-// público e responder às reservas aguardando confirmação.
+// Aba "Solicitações" da Agenda: responder às reservas aguardando
+// confirmação. Ligar o agendamento online e copiar o link público ficam em
+// Configurações → Estabelecimento; as notificações deste aparelho e o som, em
+// Configurações → Notificações.
 //
 // A LISTA vem do banco (GET /tenants/:id/booking-requests): continua igual
 // depois de recarregar, e só muda quando a pessoa CONFIRMA ou RECUSA. Abrir a
@@ -44,9 +46,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { AgendamentoOnline } from "./agendamento-online";
-import { PreferenciasDeAviso } from "./preferencias-de-aviso";
-import { NotificacoesDoDispositivo } from "./notificacoes-do-dispositivo";
+import { AbasDaAgenda } from "@/components/conta/abas-da-agenda";
 import { MENSAGEM_DO_DESTINO, useDestinoDaNotificacao } from "@/lib/push/use-destino-da-notificacao";
 
 export default function SolicitacoesPage() {
@@ -83,7 +83,7 @@ export default function SolicitacoesPage() {
 
   return (
     <PaginaConta
-      titulo="Solicitações"
+      titulo="Agenda"
       descricao="Pedidos do agendamento online e reservas aguardando sua confirmação."
       acoes={
         <Botao variante="secundaria" onClick={recarregar} data-testid="recarregar-solicitacoes">
@@ -91,6 +91,7 @@ export default function SolicitacoesPage() {
         </Botao>
       }
     >
+      <AbasDaAgenda />
       {destino.aviso && (
         <Cartao data-testid="aviso-destino-notificacao">
           <CartaoCorpo className="flex items-start gap-3">
@@ -152,17 +153,6 @@ export default function SolicitacoesPage() {
         )}
       </section>
 
-      {/* Destino de "Notificações" no menu da conta: os controles que já
-          existiam (push neste aparelho e som), logo depois da lista. */}
-      <section id="notificacoes" className="scroll-mt-24 space-y-3" aria-labelledby="titulo-notificacoes">
-        <h2 id="titulo-notificacoes" className="text-lg font-semibold text-ink">
-          Notificações
-        </h2>
-        <NotificacoesDoDispositivo tenantId={tenantId} />
-        <PreferenciasDeAviso />
-      </section>
-
-      <AgendamentoOnline tenantId={tenantId} />
     </PaginaConta>
   );
 }

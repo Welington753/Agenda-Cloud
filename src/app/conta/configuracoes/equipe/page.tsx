@@ -119,7 +119,7 @@ export default function EquipePage() {
                   <p className="font-semibold text-ink">Nenhum profissional cadastrado</p>
                   <p className="text-ink-soft">
                     Cada acesso fica ligado a um profissional. Cadastre primeiro em{" "}
-                    <Link href="/conta/profissionais" className="font-medium text-accent hover:underline">
+                    <Link href="/conta/configuracoes/profissionais" className="font-medium text-accent hover:underline">
                       Profissionais
                     </Link>
                     .
@@ -142,7 +142,7 @@ export default function EquipePage() {
             )}
             <p className="text-xs text-ink-soft">
               Para cadastrar, editar ou desativar profissionais, use{" "}
-              <Link href="/conta/profissionais" className="font-medium text-accent hover:underline">
+              <Link href="/conta/configuracoes/profissionais" className="font-medium text-accent hover:underline">
                 Profissionais
               </Link>
               . Desativar um profissional interrompe o acesso ligado a ele e preserva as reservas.

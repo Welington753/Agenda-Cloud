@@ -139,7 +139,7 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     }
 
     // ------------------------------------------- 1. convite pela equipe
-    await page.goto("/conta/equipe");
+    await page.goto("/conta/configuracoes/equipe");
     await expect(main.getByRole("heading", { name: "Equipe e acessos" })).toBeVisible();
     await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 em uso (0 ativos, 0 convites pendentes)");
     const ana = page.getByTestId("membro-equipe").filter({ hasText: "Ana Lima" });
@@ -173,19 +173,40 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await expect(fp.getByRole("main")).not.toContainText("98888");
     await expect(lista.getByRole("button")).toHaveCount(0);
     const navFuncionaria = fp.getByRole("navigation", { name: "Áreas da conta" });
-    await expect(navFuncionaria.getByRole("link")).toHaveText(["Minha agenda", "Minha conta"]);
+    await expect(navFuncionaria.getByRole("link")).toHaveText(["Minha agenda", "Configurações"]);
     await expect(fp.getByTestId("sino-notificacoes")).toHaveCount(0);
     await capturar(fp, "minha-agenda");
-    for (const caminho of ["/conta/agendamentos", "/conta/clientes", "/conta/equipe", "/conta/visao-geral"]) {
+    for (const caminho of ["/conta/agendamentos", "/conta/agendamentos/solicitacoes", "/conta/clientes", "/conta/visao-geral"]) {
       await fp.goto(caminho);
       await expect(fp).toHaveURL(/\/conta\/minha-agenda$/);
     }
+    // Configurações do estabelecimento levam às pessoais; só Aparência e
+    // Perfil e segurança aparecem para o funcionário.
+    for (const caminho of ["/conta/configuracoes/equipe", "/conta/configuracoes/servicos", "/conta/configuracoes/notificacoes"]) {
+      await fp.goto(caminho);
+      await expect(fp).toHaveURL(/\/conta\/configuracoes$/);
+    }
+    expect(
+      await fp.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
+    ).toEqual(["/conta/configuracoes/aparencia", "/conta/configuracoes/perfil"]);
+    await fp.goto("/conta/minha-agenda");
     const data = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(inicio);
     const api = fp.request;
     expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/appointments?date=${data}`)).status()).toBe(403);
     expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(403);
     expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/booking-requests`)).status()).toBe(403);
     expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/consumers?q=Cliente`)).status()).toBeGreaterThanOrEqual(400);
+    // Rotas novas da operação do dono também recusam o funcionário; o
+    // calendário dele traz só os próprios atendimentos.
+    expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/consumers/page`)).status()).toBe(403);
+    expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/dashboard`)).status()).toBe(403);
+    expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/appointments/range?from=${data}&to=${data}`)).status()).toBe(
+      403,
+    );
+    const periodoProprio = await api.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/range?from=${data}&to=${data}`);
+    expect(periodoProprio.status()).toBe(200);
+    const corpoProprio = (await periodoProprio.json()) as { appointments: { consumer: { name: string } }[] };
+    expect(corpoProprio.appointments.map((a) => a.consumer.name)).toEqual(["Cliente da Ana"]);
     expect(
       (
         await api.get(
@@ -225,7 +246,7 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await bruno.contexto.close();
 
     // ------------------- 3. permissão liberada, retirada e acesso suspenso
-    await page.goto("/conta/equipe");
+    await page.goto("/conta/configuracoes/equipe");
     await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (2 ativos, 0 convites pendentes)");
     await expect(ana).toContainText("Acesso ativo");
     await ana.getByLabel("Iniciar os próprios atendimentos").check();
@@ -265,6 +286,9 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await fp.getByRole("button", { name: "Atualizar" }).click();
     await expect(fp.getByRole("main").getByRole("alert")).toContainText("não está disponível agora");
     await fp.reload();
+    // Sem estabelecimento ativo, a funcionária fica nas configurações
+    // pessoais, com o aviso.
+    await expect(fp).toHaveURL(/\/conta\/configuracoes$/);
     await expect(fp.getByRole("main")).toContainText("não tem acesso ativo a um estabelecimento");
 
     await ana.getByRole("button", { name: "Reativar acesso" }).click();

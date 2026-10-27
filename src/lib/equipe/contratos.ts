@@ -83,6 +83,16 @@ export interface MinhaAgenda {
   complete: boolean;
 }
 
+/** Calendário do funcionário (GET /tenants/:id/my-agenda/range). */
+export interface MinhaAgendaDoPeriodo {
+  professional: { id: string; name: string };
+  timezone: string;
+  from: string;
+  to: string;
+  appointments: AtendimentoProprio[];
+  complete: boolean;
+}
+
 // ---------------------------------------------------------------- validação
 
 const objeto = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
@@ -155,6 +165,21 @@ export function ehMinhaAgenda(v: unknown): v is MinhaAgenda {
     texto(v.date) &&
     objeto(v.permissions) &&
     ACOES.every((a) => typeof (v.permissions as Record<string, unknown>)[a] === "boolean") &&
+    lista(v.appointments) &&
+    v.appointments.every(ehAtendimento) &&
+    typeof v.complete === "boolean"
+  );
+}
+
+export function ehMinhaAgendaDoPeriodo(v: unknown): v is MinhaAgendaDoPeriodo {
+  return (
+    objeto(v) &&
+    objeto(v.professional) &&
+    texto(v.professional.id) &&
+    texto(v.professional.name) &&
+    texto(v.timezone) &&
+    texto(v.from) &&
+    texto(v.to) &&
     lista(v.appointments) &&
     v.appointments.every(ehAtendimento) &&
     typeof v.complete === "boolean"

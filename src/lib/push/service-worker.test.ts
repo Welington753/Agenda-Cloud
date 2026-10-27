@@ -80,7 +80,7 @@ describe("service worker (public/sw.js)", () => {
     expect(opcoes.tag).toBe("solicitacao-apptxyz789");
     expect(JSON.stringify({ titulo, opcoes })).not.toMatch(/Joana|11999990000/);
     expect(opcoes.data).toEqual({
-      destino: "/conta/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789",
+      destino: "/conta/agendamentos/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789",
     });
   });
 
@@ -89,12 +89,12 @@ describe("service worker (public/sw.js)", () => {
       const sw = carregarServiceWorker();
       await sw.push(dados);
       expect(sw.notificacoes).toHaveLength(1);
-      expect((sw.notificacoes[0].opcoes.data as { destino: string }).destino).toBe("/conta/solicitacoes");
+      expect((sw.notificacoes[0].opcoes.data as { destino: string }).destino).toBe("/conta/agendamentos/solicitacoes");
     }
   });
 
   it("toque abre a solicitação na própria origem; reaproveita janela aberta", async () => {
-    const destino = "/conta/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
+    const destino = "/conta/agendamentos/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
     const semJanela = carregarServiceWorker();
     await semJanela.tocar({ destino });
     expect(semJanela.abertas).toEqual([`https://agenda.example.test${destino}`]);
@@ -114,11 +114,25 @@ describe("service worker (public/sw.js)", () => {
     expect(comJanela.abertas).toEqual([]);
   });
 
+  it("notificação entregue antes da mudança abre o endereço antigo, que o site encaminha", async () => {
+    const destino = "/conta/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
+    const sw = carregarServiceWorker();
+    await sw.tocar({ destino });
+    expect(sw.abertas).toEqual([`https://agenda.example.test${destino}`]);
+  });
+
   it("destino adulterado na notificação nunca sai da origem nem da lista", async () => {
-    for (const destino of ["https://evil.example/x", "//evil.example/x", "/login", 42]) {
+    for (const destino of [
+      "https://evil.example/x",
+      "//evil.example/x",
+      "/login",
+      "/conta/solicitacoes-falsa",
+      "/conta/agendamentos/solicitacoesx",
+      42,
+    ]) {
       const sw = carregarServiceWorker();
       await sw.tocar({ destino });
-      expect(sw.abertas).toEqual(["https://agenda.example.test/conta/solicitacoes"]);
+      expect(sw.abertas).toEqual(["https://agenda.example.test/conta/agendamentos/solicitacoes"]);
     }
   });
 });

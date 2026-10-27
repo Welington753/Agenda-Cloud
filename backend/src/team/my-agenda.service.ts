@@ -14,7 +14,12 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
-import { AppointmentsService } from '../appointments/appointments.service.js';
+import {
+  AppointmentsService,
+  LIMITE_DO_PERIODO,
+  dataLocalDaString,
+} from '../appointments/appointments.service.js';
+import type { OwnAgendaPeriodDto } from '../appointments/appointment.dto.js';
 import { transicaoPermitida } from '../appointments/appointment-status-transitions.js';
 import { dataLocalDe, horaLocalDe, janelaDeCarregamento } from '../availability/time-zone.js';
 import { MEMBERSHIP_SUSPENDED_MESSAGE, TENANT_NOT_FOUND_MESSAGE } from '../common/tenant-authorization.js';
@@ -151,6 +156,44 @@ export class MyAgendaService {
         permissions: acesso.allowed,
         appointments: doDia.map((l) => this.toView(l, acesso, now)),
         complete: linhas.length < LIMITE_DO_DIA,
+      };
+    });
+  }
+
+  /** Calendário do funcionário: o mesmo recorte e a mesma forma do dia, por
+   * um período (no máximo 42 dias, ver `ownAgendaPeriodSchema`). Só do
+   * profissional do vínculo, nunca de colegas. */
+  async range(userId: string, tenantId: string, query: OwnAgendaPeriodDto, now = new Date()) {
+    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+      await manager.query('SET TRANSACTION READ ONLY');
+      const acesso = await this.resolveStaffAccess(manager, userId, tenantId);
+      const inicio = janelaDeCarregamento(dataLocalDaString(query.from)).inicio;
+      const fim = janelaDeCarregamento(dataLocalDaString(query.to)).fim;
+      const linhas = await manager.query<OwnAppointmentRow[]>(
+        `SELECT a.id, a.start_at, a.status, a.consumer_name_snapshot AS consumer_name,
+                s.name AS service_name, i.duration_minutes_snapshot AS duration_minutes
+           FROM appointments a
+           LEFT JOIN LATERAL (
+             SELECT service_id, duration_minutes_snapshot FROM appointment_items
+              WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
+           ) i ON true
+           LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+          WHERE a.tenant_id = $1 AND a.professional_id = $2 AND a.start_at < $3 AND a.end_at > $4
+          ORDER BY a.start_at, a.id LIMIT ${LIMITE_DO_PERIODO}`,
+        [acesso.tenantId, acesso.professional.id, fim, inicio],
+      );
+      const doPeriodo = linhas.filter((l) => {
+        const data = dataLocalDe(new Date(l.start_at), acesso.timezone);
+        return data >= query.from && data <= query.to;
+      });
+      return {
+        professional: acesso.professional,
+        timezone: acesso.timezone,
+        from: query.from,
+        to: query.to,
+        permissions: acesso.allowed,
+        appointments: doPeriodo.map((l) => this.toView(l, acesso, now)),
+        complete: linhas.length < LIMITE_DO_PERIODO,
       };
     });
   }

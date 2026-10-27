@@ -1,182 +1,51 @@
 "use client";
 
-// Minha conta — dados da pessoa e do estabelecimento ativo, e o roteiro de
-// primeiros passos. É o destino logo depois do cadastro; quem ENTRA sem um
-// destino específico vai para a Visão geral (ver lib/auth/safe-redirect.ts).
-// Nunca carrega agenda, equipe ou comissões demonstrativas.
+// `/conta` não é mais uma página própria ("Minha conta" deixou de existir):
+// ela só leva cada pessoa ao início do seu perfil. Identificação, senha e
+// "Sair" ficam em Configurações → Perfil e segurança; o roteiro de primeiros
+// passos, em Configurações → Estabelecimento.
 //
-// A ação principal é abrir a agenda; os demais atalhos ficam na navegação
-// comum (components/conta/shell-conta.tsx). O "Primeiros passos" é um roteiro INFORMATIVO:
-// não consulta nada nem marca etapa como concluída — mostrar "feito" sem
-// conferir o servidor seria afirmar algo que a tela não sabe.
+// - dono: Início;
+// - funcionário: Minha agenda;
+// - sem área no estabelecimento ou sem estabelecimento: Administração, se o
+//   servidor confirmar o acesso à plataforma; senão, Configurações.
+//
+// Continua sendo o destino depois do cadastro e de links antigos, por isso
+// existe (sem conteúdo) em vez de um encaminhamento fixo no servidor, que não
+// conhece o perfil.
 import { useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
-import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
-import { formatarData } from "@/lib/format";
-import { LinkBotao } from "@/components/ui/button";
-import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { PaginaConta } from "@/components/conta/pagina-conta";
-import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
-import { ROTA_MINHA_AGENDA, perfilDoPapel } from "@/lib/conta/papel";
-
-const PRIMEIROS_PASSOS = [
-  {
-    titulo: "Cadastre um serviço",
-    descricao: "Nome, duração e preço do que você atende.",
-    href: "/conta/servicos",
-    rotuloLink: "Ir para Serviços",
-  },
-  {
-    titulo: "Cadastre um profissional e vincule os serviços dele",
-    descricao: "Pode ser você mesmo. Marque os serviços que essa pessoa atende.",
-    href: "/conta/profissionais",
-    rotuloLink: "Ir para Profissionais",
-  },
-  {
-    titulo: "Configure os horários desse profissional",
-    descricao:
-      "Na lista de profissionais, use o botão “Horários” e informe os dias e turnos de trabalho.",
-    href: "/conta/profissionais",
-    rotuloLink: "Abrir a lista de profissionais",
-  },
-  {
-    titulo: "Crie o primeiro agendamento",
-    descricao:
-      "Na agenda, escolha o dia, o profissional e o serviço, veja os horários livres e marque.",
-    href: "/conta/agendamentos",
-    rotuloLink: "Ir para a Agenda",
-  },
-  {
-    titulo: "Se quiser, dê um login a cada profissional",
-    descricao:
-      "Em Equipe e acessos, convide cada pessoa pelo e-mail. Ela vê só a própria agenda e o que você liberar.",
-    href: "/conta/equipe",
-    rotuloLink: "Ir para Equipe e acessos",
-  },
-] as const;
+import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
+import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
+import { inicioDoPerfil, perfilDoPapel } from "@/lib/conta/papel";
+import { ROTA_SELECIONAR_ESTABELECIMENTO } from "@/lib/conta/rotas";
 
 export default function ContaPage() {
   const { estado } = useRealAuth();
+  const { estado: acesso } = useAcessoPlataforma();
   const router = useRouter();
 
-  const sessao = estado.status === "autenticado" ? estado.sessao : null;
-  const tenantIdAtivo = estado.status === "autenticado" ? estado.tenantIdAtivo : null;
-  const precisaSelecionar = !!sessao && sessao.requiresTenantSelection && !tenantIdAtivo;
+  const destino = (() => {
+    if (estado.status !== "autenticado") return null;
+    const { sessao, tenantIdAtivo } = estado;
+    if (sessao.requiresTenantSelection && !tenantIdAtivo) return ROTA_SELECIONAR_ESTABELECIMENTO;
+    const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
+    const perfil = perfilDoPapel(contexto?.role);
+    if (contexto && perfil !== "sem-area") return inicioDoPerfil(perfil);
+    // Sem área: espera a resposta do acesso à plataforma antes de escolher.
+    if (acesso.status === "carregando") return null;
+    return acessoConfirmado(acesso) ? ROTA_ADMINISTRACAO : inicioDoPerfil("sem-area");
+  })();
 
   useEffect(() => {
-    if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
-  }, [precisaSelecionar, router]);
-
-  if (!sessao || precisaSelecionar) return null;
-
-  const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
-  const perfil = perfilDoPapel(contexto?.role);
+    if (destino) router.replace(destino);
+  }, [destino, router]);
 
   return (
-    <PaginaConta titulo={`Olá, ${sessao.user.name.split(" ")[0]}`} descricao={sessao.user.email}>
-      <LinkAdministracao />
-      {!sessao.hasEstablishmentAccess && (
-        <Cartao>
-          <CartaoCorpo className="flex items-start gap-3">
-            <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
-            <div>
-              <p className="text-sm font-semibold text-ink">
-                Sua conta ainda não está vinculada a um estabelecimento
-              </p>
-              <p className="mt-1 text-sm text-ink-soft">
-                O cadastro completo de estabelecimento para contas reais ainda não está disponível
-                nesta fase.
-              </p>
-            </div>
-          </CartaoCorpo>
-        </Cartao>
-      )}
-
-      {contexto && (
-        <>
-          <Cartao>
-            <CartaoCorpo className="space-y-4">
-              <div className="flex items-start gap-3">
-                <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
-                <div>
-                  <p className="text-sm font-semibold text-ink">{contexto.tenantName}</p>
-                  <p className="text-xs text-ink-soft">
-                    {ROTULO_PAPEL_ESTABELECIMENTO_REAL[contexto.role]} · Plano {contexto.planName}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-ink-soft">
-                Período de teste até {formatarData(contexto.trial.trialEndAt)}.
-              </p>
-              {/* Ação principal: a agenda real do Lote 6D.5 — nunca a agenda
-                  demonstrativa de /painel/agenda. O funcionário abre a dele. */}
-              {perfil !== "sem-area" && (
-                <LinkBotao
-                  href={perfil === "funcionario" ? ROTA_MINHA_AGENDA : "/conta/agendamentos"}
-                  tamanho="lg"
-                  className="w-full sm:w-auto"
-                  data-testid="abrir-agenda"
-                >
-                  <CalendarDays size={18} aria-hidden="true" />
-                  {perfil === "funcionario" ? "Abrir minha agenda" : "Abrir agenda"}
-                </LinkBotao>
-              )}
-              {perfil === "sem-area" && (
-                <p className="text-sm text-ink-soft">
-                  Este papel não tem área liberada neste estabelecimento. Fale com o responsável.
-                </p>
-              )}
-            </CartaoCorpo>
-          </Cartao>
-
-          {perfil === "dono" && (
-          <Cartao>
-            <CartaoCorpo className="space-y-3">
-              <div>
-                <h2 className="text-base font-semibold text-ink">Primeiros passos</h2>
-                <p className="text-xs text-ink-soft">
-                  Um roteiro para deixar a agenda pronta. Ele não confere o que já foi feito — siga
-                  na ordem.
-                </p>
-              </div>
-              <ol className="space-y-3" data-testid="primeiros-passos">
-                {PRIMEIROS_PASSOS.map((passo, indice) => (
-                  <li key={passo.titulo} className="flex gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-[color:var(--color-accent-hover)]"
-                    >
-                      {indice + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-ink">{passo.titulo}</p>
-                      <p className="text-sm text-ink-soft">{passo.descricao}</p>
-                      <Link
-                        href={passo.href}
-                        className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
-                      >
-                        {passo.rotuloLink}
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </CartaoCorpo>
-          </Cartao>
-          )}
-
-          {perfil === "dono" && (
-            <p className="text-xs text-ink-soft">
-              Comissões, financeiro e estoque ainda não estão conectados nesta fase — chegam em um
-              próximo lote.
-            </p>
-          )}
-        </>
-      )}
-    </PaginaConta>
+    <p role="status" className="sr-only">
+      Abrindo sua área…
+    </p>
   );
 }

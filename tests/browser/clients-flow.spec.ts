@@ -92,7 +92,10 @@ async function buscar(page: Page, termo: string) {
   await page.getByRole("search").getByRole("button", { name: "Buscar" }).click();
 }
 
-const ehBusca = (url: URL) => /\/tenants\/[^/]+\/consumers$/.test(url.pathname) && url.searchParams.has("q");
+/** Leitura da listagem da tela de Clientes (com ou sem filtro). */
+const ehBusca = (url: URL) => /\/tenants\/[^/]+\/consumers\/page$/.test(url.pathname);
+/** Busca do seletor de cliente da Agenda (rota de busca, no máximo 20). */
+const ehBuscaDoSeletor = (url: URL) => /consumers$/.test(url.pathname) && url.searchParams.has("q");
 const ehCadastro = (route: Route) =>
   route.request().method() === "POST" && /\/tenants\/[^/]+\/consumers$/.test(new URL(route.request().url()).pathname);
 
@@ -118,14 +121,18 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page).toHaveURL(/\/conta\/clientes$/);
     await expect(nav(page).getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
 
-    // Orientação antes de pesquisar — nunca uma "lista de todos".
-    await expect(page.getByText("Pesquise para encontrar um cliente")).toBeVisible();
-    await expect(page.getByText(/A lista completa não é exibida/)).toBeVisible();
+    // Ao abrir, a listagem carrega sozinha: sem clientes, diz que não há
+    // nenhum cadastrado (diferente de "nenhum resultado" de uma busca).
+    await expect(page.getByTestId("clientes-vazio")).toContainText("Nenhum cliente cadastrado ainda");
+    // Um caractere ainda não filtra.
+    await page.getByLabel("Buscar cliente").fill("M");
     await expect(page.getByRole("search").getByRole("button", { name: "Buscar" })).toBeDisabled();
 
     // Nenhum resultado.
     await buscar(page, "Ninguém Existe");
     await expect(page.getByTestId("clientes-nenhum")).toContainText("Nenhum cliente encontrado");
+    await page.getByTestId("clientes-limpar-busca").click();
+    await expect(page.getByTestId("clientes-vazio")).toBeVisible();
 
     // ------------------------------------------------ validação no cliente
     let posts = 0;
@@ -174,7 +181,9 @@ test.describe("clientes do estabelecimento", () => {
 
     // ------------------------------------------------ persistido: recarregar e pesquisar
     await page.reload();
-    await expect(page.getByText("Pesquise para encontrar um cliente")).toBeVisible();
+    // A primeira página mostra o cliente sem busca nenhuma.
+    await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
+    await expect(page.getByTestId("clientes-total")).toHaveText("1 cliente cadastrado");
     await buscar(page, `Teste ${marca}`);
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(1);
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
@@ -262,7 +271,7 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeJoao);
     await expect(page.getByTestId("lista-clientes")).not.toContainText(nomeMaria);
 
-    // ------------------------------------------------ teto da busca é anunciado
+    // ------------------------------------------------ paginação no servidor
     const prefixo = `Lote ${marca}`;
     for (let i = 0; i < 21; i += 1) {
       const r = await chamar(request, "POST", `/tenants/${a.tenantId}/consumers`, {
@@ -273,8 +282,18 @@ test.describe("clientes do estabelecimento", () => {
     }
     await buscar(page, prefixo);
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(20);
-    await expect(page.getByTestId("clientes-limite")).toContainText("Mostrando os primeiros 20");
-    await expect(page.getByText("20 clientes encontrados")).toBeVisible();
+    await expect(page.getByTestId("clientes-total")).toHaveText(`21 clientes encontrados para “${prefixo}”`);
+    await expect(page.getByTestId("clientes-mostrando")).toHaveText("Mostrando 20 de 21, em ordem alfabética.");
+    await page.getByTestId("clientes-carregar-mais").click();
+    await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(21);
+    await expect(page.getByTestId("clientes-carregar-mais")).toHaveCount(0);
+    // Ordem estável: a segunda página continua de onde a primeira parou.
+    const nomes = await page.getByTestId("lista-clientes").getByRole("listitem").locator("p.font-semibold").allTextContents();
+    expect(nomes).toEqual(Array.from({ length: 21 }, (_, i) => `${prefixo} ${String(i).padStart(2, "0")}`));
+    // Sem filtro, todos os clientes do estabelecimento, também paginados.
+    await page.getByTestId("clientes-limpar-busca").click();
+    await expect(page.getByTestId("clientes-total")).toHaveText("23 clientes cadastrados");
+    await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(20);
 
     // ------------------------------------------------ o cliente aparece no seletor da agenda
     const servico = await chamar<{ service: { id: string } }>(request, "POST", `/tenants/${a.tenantId}/services`, {
@@ -356,16 +375,22 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
 
     // Troca para B: nada de A sobra na tela. RECEPCIONISTA não tem área
-    // liberada: o menu fica só com Minha conta, a tela de Clientes aberta pelo
-    // endereço volta para Minha conta, e a falta de permissão é real (403).
+    // liberada: o menu fica só com Configurações (as pessoais), a tela de
+    // Clientes aberta pelo endereço leva a elas, e a falta de permissão é real
+    // (403).
     await page.getByRole("link", { name: "Trocar de estabelecimento" }).click();
     await page.getByRole("button", { name: new RegExp(b.businessName) }).click();
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(b.businessName);
     await page.goto("/conta/clientes");
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await expect(page.getByText(clienteDeA)).toHaveCount(0);
-    expect(await nav(page).getByRole("link").allTextContents()).toEqual(["Minha conta"]);
+    expect(await nav(page).getByRole("link").allTextContents()).toEqual(["Configurações"]);
     await expect(page.getByRole("main")).toContainText("Este papel não tem área liberada neste estabelecimento.");
+    expect(
+      await page.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
+    ).toEqual(["/conta/configuracoes/aparencia", "/conta/configuracoes/perfil"]);
+    const lista403 = await page.request.get(`http://localhost:3001/tenants/${b.tenantId}/consumers/page`);
+    expect(lista403.status()).toBe(403);
     const busca403 = await page.request.get(
       `http://localhost:3001/tenants/${b.tenantId}/consumers?q=${encodeURIComponent(clienteDeA)}`,
     );
@@ -377,16 +402,7 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);
 
     // ------------------------------------------------ navegação: computador
-    expect(await nav(page).getByRole("link").allTextContents()).toEqual([
-      "Visão geral",
-      "Agenda",
-      "Solicitações",
-      "Clientes",
-      "Serviços",
-      "Profissionais",
-      "Equipe e acessos",
-      "Minha conta",
-    ]);
+    expect(await nav(page).getByRole("link").allTextContents()).toEqual(["Início", "Agenda", "Clientes", "Configurações"]);
     await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
 
     // ------------------------------------------------ navegação: celular
@@ -395,7 +411,7 @@ test.describe("clientes do estabelecimento", () => {
       await page.goto("/conta/clientes");
       await buscar(page, clienteDeA);
       await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
-      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Serviços"]) {
+      for (const rotulo of ["Início", "Agenda", "Clientes", "Configurações"]) {
         const link = nav(page).getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = (await link.boundingBox())!;
@@ -404,18 +420,12 @@ test.describe("clientes do estabelecimento", () => {
         // Rótulo inteiro, sem reticências.
         expect(await link.locator("span").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
-      await expect(nav(page).getByRole("link", { name: "Profissionais" })).toHaveCount(0);
-      const mais = nav(page).getByRole("button", { name: "Mais" });
-      await expect(mais).toHaveAttribute("aria-expanded", "false");
-      await mais.click();
-      await expect(mais).toHaveAttribute("aria-expanded", "true");
-      await expect(nav(page).getByRole("link", { name: "Profissionais" })).toBeInViewport();
-      await page.keyboard.press("Escape");
-      await expect(nav(page).getByRole("link", { name: "Profissionais" })).toHaveCount(0);
-      await mais.click();
-      await nav(page).getByRole("link", { name: "Minha conta" }).click();
-      await expect(page).toHaveURL(/\/conta$/);
-      await expect(nav(page).getByRole("link", { name: "Minha conta" })).toHaveCount(0);
+      await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
+      await nav(page).getByRole("link", { name: "Configurações" }).click();
+      await expect(page).toHaveURL(/\/conta\/configuracoes$/);
+      await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /Profissionais/ }).click();
+      await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
+      await semRolagemHorizontal(page);
       await page.goto("/conta/clientes");
       await page.getByRole("button", { name: "Novo cliente" }).click();
       await expect(page.getByLabel("Nome do cliente")).toBeVisible();
@@ -480,7 +490,7 @@ test.describe("clientes do estabelecimento", () => {
       const liberar = Promise.withResolvers<void>();
       const concluida = Promise.withResolvers<void>();
       await page.route(
-        (url) => ehBusca(url) && url.searchParams.get("q") === termo,
+        (url) => ehBuscaDoSeletor(url) && url.searchParams.get("q") === termo,
         async (rota) => {
           retida.resolve();
           try {

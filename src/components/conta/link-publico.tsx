@@ -95,10 +95,10 @@ export function AtalhoLinkPublico({ tenantId }: { tenantId: string }) {
               </p>
             ) : (
               <Link
-                href="/conta/solicitacoes"
+                href="/conta/configuracoes/estabelecimento"
                 className="text-sm font-medium text-[color:var(--color-accent-hover)] hover:underline"
               >
-                Ativar em Solicitações
+                Ativar em Configurações
               </Link>
             )}
             {erro && (

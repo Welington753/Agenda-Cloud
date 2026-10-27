@@ -6,7 +6,9 @@
 // - A notificação é discreta e fixa ("Nova solicitação de agendamento. Toque
 //   para analisar."): nada do cliente aparece na tela bloqueada. O conteúdo
 //   que chega cifrado traz só os ids do estabelecimento e da solicitação.
-// - Tocar abre /conta/solicitacoes com esses ids. A PÁGINA confere a sessão,
+// - Tocar abre a aba Solicitações da Agenda (/conta/agendamentos/solicitacoes)
+//   com esses ids. Notificações entregues antes da mudança guardam o endereço
+//   antigo (/conta/solicitacoes), que o site encaminha para o novo. A PÁGINA confere a sessão,
 //   o vínculo com o estabelecimento e a permissão antes de mostrar qualquer
 //   dado; sem sessão, o login preserva o destino. Abrir nunca confirma nada.
 // - Reenvio do mesmo aviso (depois de uma falha) usa a mesma etiqueta: o
@@ -16,7 +18,8 @@
 const TITULO = "Nova solicitação de agendamento";
 const TEXTO = "Toque para analisar.";
 const ID_VALIDO = /^[A-Za-z0-9_-]{1,30}$/;
-const LISTA = "/conta/solicitacoes";
+const LISTA = "/conta/agendamentos/solicitacoes";
+const LISTA_ANTIGA = "/conta/solicitacoes";
 
 function destinoDaNotificacao(dados) {
   if (!dados || typeof dados !== "object") return LISTA;
@@ -62,7 +65,10 @@ self.addEventListener("push", (evento) => {
 self.addEventListener("notificationclick", (evento) => {
   evento.notification.close();
   const salvo = evento.notification.data && evento.notification.data.destino;
-  const destino = typeof salvo === "string" && salvo.startsWith(LISTA) ? salvo : LISTA;
+  const destino =
+    typeof salvo === "string" && (salvo.startsWith(`${LISTA}?`) || salvo === LISTA || salvo.startsWith(`${LISTA_ANTIGA}?`) || salvo === LISTA_ANTIGA)
+      ? salvo
+      : LISTA;
   const url = new URL(destino, self.location.origin).href;
   evento.waitUntil(
     (async () => {

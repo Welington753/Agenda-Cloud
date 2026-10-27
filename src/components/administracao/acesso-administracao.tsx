@@ -1,7 +1,7 @@
 "use client";
 
 // Peças da administração da plataforma dentro da área real (`/conta`): o
-// atalho em Minha conta, o portão das páginas e a faixa que deixa claro que
+// atalho em Perfil e segurança, o portão das páginas e a faixa que deixa claro que
 // a pessoa está administrando a PLATAFORMA, não operando o próprio
 // estabelecimento.
 //

@@ -1,6 +1,6 @@
 "use client";
 
-// Cartão "Agendamento online" da tela de Solicitações: ligar/desligar a
+// Cartão "Agendamento online" de Configurações → Estabelecimento: ligar/desligar a
 // página pública (só DONO, conferido no servidor), copiar e abrir o link
 // (BotoesDoLinkPublico, o mesmo do atalho da Visão geral). Ninguém
 // fica exposto sem este clique: sem a configuração gravada, a página não

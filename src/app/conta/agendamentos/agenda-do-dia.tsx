@@ -64,6 +64,8 @@ interface AgendaDoDiaProps {
   profissionais: readonly ProfissionalReal[];
   /** Id da reserva criada por esta tela, para marcar e rolar até ela. */
   recemCriadaId: string | null;
+  /** Id da reserva aberta pelo Calendário, para marcar e rolar até ela. */
+  destacadaId?: string | null;
   aoLimparFiltro: () => void;
   recarregar: () => void;
   aoCancelar: (appointmentId: string, expectedStartAt: string) => Promise<boolean>;
@@ -89,6 +91,7 @@ export function AgendaDoDia({
   visualizacao,
   profissionais,
   recemCriadaId,
+  destacadaId = null,
   aoLimparFiltro,
   recarregar,
   aoCancelar,
@@ -160,15 +163,15 @@ export function AgendaDoDia({
     [agenda, visualizacao, visiveis, profissionais, filtroProfissionalId],
   );
 
-  // A reserva recém-criada entra na vista quando a agenda que a contém chega.
+  // A reserva recém-criada (ou aberta pelo Calendário) entra na vista quando
+  // a agenda que a contém chega.
   const listaRef = useRef<HTMLDivElement>(null);
+  const alvoId = recemCriadaId ?? destacadaId;
   useEffect(() => {
-    if (!recemCriadaId || !listaRef.current) return;
-    const alvo = listaRef.current.querySelector<HTMLElement>(
-      `[data-reserva-id="${CSS.escape(recemCriadaId)}"]`,
-    );
+    if (!alvoId || !listaRef.current) return;
+    const alvo = listaRef.current.querySelector<HTMLElement>(`[data-reserva-id="${CSS.escape(alvoId)}"]`);
     alvo?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [recemCriadaId, visiveis, visualizacao]);
+  }, [alvoId, visiveis, visualizacao]);
 
   function renderizarReserva(agendamento: AgendamentoReal) {
     const acoes = acoesDaReserva(agendamento, agora);
@@ -178,6 +181,7 @@ export function AgendaDoDia({
         agendamento={agendamento}
         noHorario={estaNoHorario(agendamento, agora)}
         recemCriada={agendamento.id === recemCriadaId}
+        destacada={agendamento.id === destacadaId}
       >
         <div className="space-y-3">
           {/* Contato pelo WhatsApp: links para o wa.me, sem efeito nenhum na

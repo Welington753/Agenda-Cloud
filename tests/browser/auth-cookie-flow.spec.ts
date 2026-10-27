@@ -60,16 +60,18 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await page.getByLabel("Senha").fill(conta.senha);
     await page.getByRole("button", { name: "Entrar" }).click();
 
-    // Sem `next`, quem entra vai para a Visão geral; "Minha conta" fica no menu.
+    // Sem `next`, quem entra vai para o Início; o perfil fica em
+    // Configurações → Perfil e segurança (também pelo menu da conta).
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
-    await expect(page.getByRole("heading", { name: "Visão geral" })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Áreas da conta" })
-      .getByRole("link", { name: "Minha conta" })
-      .click();
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes$/);
+    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /Estabelecimento/ }).click();
     await expect(page.getByText("Plano Gestão")).toBeVisible();
+    await page.getByTestId("abrir-menu-conta").click();
+    await page.getByTestId("menu-perfil").click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
 
     // Cookie de sessão é HttpOnly de verdade — o navegador o guarda, mas
     // nenhum JavaScript da página o expõe (ver real-auth-context.tsx: o
@@ -83,8 +85,8 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     // login (a identidade é restaurada via /auth/me antes de decidir o
     // acesso).
     await page.reload();
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
 
     // Acesso direto a uma rota protegida SEM sessão nenhuma (contexto de
     // navegador novo, sem os cookies do contexto atual) precisa cair no
@@ -94,13 +96,8 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await expect(paginaSemSessao).toHaveURL(/\/login\?next=%2Fconta$/);
     await paginaSemSessao.close();
 
-    // "Sair" fica no menu da conta.
-
-
-    await page.getByTestId("abrir-menu-conta").click();
-
-
-    await page.getByRole("button", { name: "Sair" }).click();
+    // "Sair" fica em Perfil e segurança (e no menu da conta).
+    await page.getByTestId("perfil-sair").click();
     await expect(page).toHaveURL(/\/login$/);
 
     const cookiesDepoisDoLogout = await context.cookies("http://localhost:3001");

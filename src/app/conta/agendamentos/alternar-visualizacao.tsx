@@ -1,15 +1,18 @@
 "use client";
 
-// Alternância "Lista" / "Por profissional" da agenda do dia. Só troca a
-// apresentação: a agenda já carregada, o filtro e as ações continuam os
-// mesmos (ver agenda-do-dia.tsx).
+// Alternância "Lista" / "Por profissional" / "Calendário" da agenda. As duas
+// primeiras só trocam a apresentação do dia já carregado (ver
+// agenda-do-dia.tsx); o Calendário mostra mês, semana ou dia
+// (components/conta/calendario-agenda.tsx) e abre cada atendimento na lista
+// do dia, onde ficam as ações.
 import clsx from "clsx";
-import { List, Users } from "lucide-react";
+import { CalendarRange, List, Users } from "lucide-react";
 import type { VisualizacaoAgenda } from "@/lib/profissionais/agenda-visual";
 
 const OPCOES: { valor: VisualizacaoAgenda; rotulo: string; icone: typeof List }[] = [
   { valor: "lista", rotulo: "Lista", icone: List },
   { valor: "profissional", rotulo: "Por profissional", icone: Users },
+  { valor: "calendario", rotulo: "Calendário", icone: CalendarRange },
 ];
 
 interface AlternarVisualizacaoProps {
@@ -33,13 +36,13 @@ export function AlternarVisualizacao({ valor, aoMudar }: AlternarVisualizacaoPro
             aria-pressed={ativa}
             onClick={() => aoMudar(opcao)}
             className={clsx(
-              "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-4 text-sm font-medium sm:flex-none",
+              "inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--radius-control)-2px)] px-2 text-sm font-medium sm:flex-none sm:gap-2 sm:px-4",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
               ativa ? "bg-ink text-paper" : "text-ink-soft hover:bg-paper-muted hover:text-ink",
             )}
           >
-            <Icone size={16} aria-hidden="true" />
-            {rotulo}
+            <Icone size={16} aria-hidden="true" className="hidden shrink-0 min-[400px]:block" />
+            <span className="truncate">{rotulo}</span>
           </button>
         );
       })}

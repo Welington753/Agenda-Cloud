@@ -260,7 +260,7 @@ test("avisos de novas solicitações: chegam sem recarregar, sem repetir, pausam
     if (r.url().startsWith(BACKEND_URL) && r.method() !== "GET") escritas.push(`${r.method()} ${r.url()}`);
   });
   await aviso("Caio Oculto").getByTestId("ver-solicitacao").click();
-  await expect(page).toHaveURL(/\/conta\/solicitacoes#solicitacao-/);
+  await expect(page).toHaveURL(/\/conta\/agendamentos\/solicitacoes#solicitacao-/);
   const cartaoCaio = page.getByTestId("lista-solicitacoes").getByTestId("solicitacao").filter({ hasText: "Caio Oculto" });
   await expect(cartaoCaio).toHaveAttribute("data-destacada", "true");
   await expect(cartaoCaio).toBeFocused();
@@ -322,6 +322,11 @@ test("avisos de novas solicitações: chegam sem recarregar, sem repetir, pausam
     }
     w.AudioContext = AudioFalso;
   });
+  // O controle de som fica em Configurações → Notificações; a navegação é
+  // pelo menu (sem recarregar), e os avisos continuam chegando lá.
+  await page.getByTestId("abrir-menu-conta").click();
+  await page.getByTestId("menu-gerenciar-notificacoes").click();
+  await expect(page).toHaveURL(/\/conta\/configuracoes\/notificacoes$/);
   await page.getByTestId("som-dos-avisos").check();
   const bipes = () => page.evaluate(() => (window as unknown as Record<string, number>).__bipes);
   expect(await bipes(), "bipe de amostra ao ligar").toBe(1);
@@ -335,6 +340,10 @@ test("avisos de novas solicitações: chegam sem recarregar, sem repetir, pausam
   await proximaConsulta(page, consultas);
   await expect(aviso("Fábio Mudo")).toHaveCount(1);
   expect(await bipes()).toBe(2);
+
+  // De volta à aba Solicitações pelo sino.
+  await page.getByTestId("sino-notificacoes").click();
+  await expect(page).toHaveURL(/\/conta\/agendamentos\/solicitacoes$/);
 
   // ------------------------------------------------ trocar de estabelecimento
   await page.getByRole("link", { name: "Trocar de estabelecimento" }).click();
@@ -362,7 +371,7 @@ test("avisos de novas solicitações: chegam sem recarregar, sem repetir, pausam
   await pedir("Hugo Celular", "15:00");
   await proximaConsulta(page, consultas);
   await expect(aviso("Hugo Celular")).toBeVisible();
-  await expect(page.getByTestId("contador-mais")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Áreas da conta" }).getByTestId("contador-solicitacoes")).toBeVisible();
   const caixa = await aviso("Hugo Celular").boundingBox();
   expect(caixa).not.toBeNull();
   expect(caixa!.x).toBeGreaterThanOrEqual(0);

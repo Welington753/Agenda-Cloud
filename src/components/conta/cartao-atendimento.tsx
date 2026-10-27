@@ -50,6 +50,8 @@ interface CartaoAtendimentoProps {
   noHorario: boolean;
   /** A reserva que acabou de ser criada por esta tela. */
   recemCriada: boolean;
+  /** A reserva aberta a partir do Calendário. */
+  destacada?: boolean;
   children?: ReactNode;
 }
 
@@ -57,6 +59,7 @@ export function CartaoAtendimento({
   agendamento,
   noHorario,
   recemCriada,
+  destacada = false,
   children,
 }: CartaoAtendimentoProps) {
   const emAtendimento = agendamento.status === "IN_PROGRESS";
@@ -69,6 +72,7 @@ export function CartaoAtendimento({
     <article
       data-em-atendimento={emAtendimento || undefined}
       data-recem-criada={recemCriada || undefined}
+      data-destacada={destacada || undefined}
       aria-label={`${agendamento.localStart} ${agendamento.consumer.name}`}
       className={clsx(
         "overflow-hidden rounded-[var(--radius-card)] border border-border",
@@ -82,6 +86,7 @@ export function CartaoAtendimento({
             ? "shadow-[inset_5px_0_0_var(--color-info)]"
             : "shadow-[var(--shadow-soft)]",
         recemCriada && "ring-2 ring-[color:var(--color-success)]",
+        destacada && !recemCriada && "ring-2 ring-[color:var(--color-accent)]",
       )}
     >
       <div className="flex gap-3 p-4 sm:gap-5 sm:p-5">

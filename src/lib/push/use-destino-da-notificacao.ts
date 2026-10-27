@@ -1,6 +1,6 @@
 "use client";
 
-// Chegada pela notificação: /conta/solicitacoes?estabelecimento=…&solicitacao=…
+// Chegada pela notificação: /conta/agendamentos/solicitacoes?estabelecimento=…&solicitacao=…
 //
 // A URL é só um DESTINO. Antes de qualquer dado aparecer:
 // - a sessão já foi confirmada (RequireRealSession; sem sessão, o login
