@@ -2,8 +2,8 @@
 
 Nota para retomar em qualquer máquina. Atualizada em 27/10/2026.
 
-**Estado:** procedimento e runbook prontos e ensaiados em banco descartável.
-O PR com o procedimento aguarda CI e revisão e **não deve ser mesclado**
+**Estado:** procedimento e runbook prontos, ensaiados em banco descartável e
+com CI verde (PR #74). O PR aguarda revisão e **não deve ser mesclado**
 enquanto a origem do deploy inesperado (abaixo) não estiver esclarecida.
 Nada foi aplicado, publicado ou alterado no piloto ou no Render nesta rodada.
 
@@ -72,17 +72,21 @@ Separado por tipo de evidência:
 - Ensaio completo do procedimento em modo ensaio (tabela no runbook), nos
   commits `a7f7d6d` e `a58d600`.
 - Retorno para `c77c313` com dados novos (tabela no runbook).
-- CI deste PR: ver o PR. Ainda não verificado no momento desta nota.
+- `pilot-accounts-check.db-e2e-spec.ts` com o lote novo: 5/5 contra o
+  PostgreSQL descartável com dez migrations.
+- CI do PR #74 em `095b2e6a636184fc82fb93ffcf3f2927e46fcff7`: migration
+  workflow verde; frontend verde na segunda tentativa. A primeira parou por
+  tempo em `visao-geral-flow.spec.ts:379` (clique em Serviços em
+  Configurações), área que este PR não muda; a mesma árvore da app passou em
+  `3f46cbf`. Os commits depois de `095b2e6` mudam só esta nota.
 
 Limitações: ver "Limitações" no runbook.
 
 ## Onde parou e próximo passo
 
-1. Conferir o CI do PR da branch operacional (os dois workflows por
-   `workflow_dispatch`, se o PR não os disparar).
-2. Aguardar o usuário esclarecer, no painel do Render, o commit Live e a
+1. Aguardar o usuário esclarecer, no painel do Render, o commit Live e a
    origem do deploy de 18:19 UTC.
-3. Só então: revisão e merge normal do PR na integration, e o runbook no
+2. Só então: revisão e merge normal do PR na integration, e o runbook no
    SHA do merge.
 
 ## Fora do Git (necessário só neste PC; recriar em outro)
