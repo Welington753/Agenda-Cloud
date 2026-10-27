@@ -33,7 +33,7 @@ async function conta({ email = null, username = null, mustChange = false, platfo
   return u;
 }
 async function sessao(userId) {
-  const token = randomBytes(32).toString("base64url");
+  const token = randomBytes(32).toString("hex");
   await db.query(
     `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, reauthenticated_at) VALUES ($1, $2, $3, now(), now() + interval '1 day', now())`,
     [id(), userId, createHash("sha256").update(token).digest("hex")],
@@ -84,7 +84,7 @@ await db.query(
   [pagamento, tenant, atendimento, dono, `chave-${id()}`],
 );
 await db.query(
-  `INSERT INTO audit_logs (id, action, actor_user_id, actor_name, tenant_id, summary, created_at)
+  `INSERT INTO audit_logs (id, action, actor_user_id, actor_name, tenant_id, summary, occurred_at)
    VALUES ($1, 'PAYMENT_RECORDED', $2, 'Dono', $3, 'Recebimento de 42.50 registrado.', now()),
           ($4, 'STAFF_ACCESS_CREATED', $2, 'Dono', $3, 'Acesso de funcionário criado.', now())`,
   [id(), dono, tenant, id()],

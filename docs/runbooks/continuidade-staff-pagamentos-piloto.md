@@ -63,7 +63,7 @@ aplicadas e conferidas.**
   API antiga no ar contra um banco com o schema final, cria dados que só a
   API nova grava (funcionário sem e-mail com troca obrigatória e sessão
   aberta, recebimento ativo, auditoria nova) e confere dono, funcionário e
-  administração. **Escrito, ainda não executado.**
+  administração. Executado; resultados abaixo.
 
 Os dois scripts são de ensaio local: leem `DB_URL` do ambiente, exigem TLS
 verificado (`rejectUnauthorized: true`) e só criam dados fictícios.
@@ -76,16 +76,34 @@ verificado (`rejectUnauthorized: true`) e só criam dados fictícios.
   migrations; não indicam defeito de runtime.
 - Código final (`3f46cbf`), db-e2e sobre o banco com dados mistos: 192/192.
 - Aplicar migrations no ensaio (8 → 9 → 10) só executou as pendentes.
-- Ainda **não comprovado:** recuperação para a API antiga depois de existirem
-  funcionários sem e-mail, senhas temporárias e recebimentos
-  (`retorno-api-antiga.mjs`); compatibilidade de `824463c` (só StaffLogin)
-  com o schema final.
+- `824463c` contra o schema final (dez migrations): `GET /` 200, login de
+  dono 200, sem erro no log (`sonda-login.mjs`).
+- Retorno para a API antiga com dados novos (`retorno-api-antiga.mjs`,
+  API `c77c313` contra `disposable_ensaio`, dez migrations):
+  - dono: login, `me`, equipe (lista o funcionário sem e-mail), agenda: 200;
+  - cancelar atendimento já quitado: 201, recebimento intacto (a API nova
+    faz o mesmo: cancelar nunca mexe no recebimento);
+  - administração: login, usuários, ficha do funcionário sem e-mail
+    (`email=null`), histórico com as ações novas, membros, ficha do
+    estabelecimento, reautenticação: 200/204;
+  - **funcionário sem e-mail não consegue entrar** (400: a API antiga só
+    aceita e-mail). Perde o acesso até a API nova voltar; nada se perde;
+  - **sessão já aberta com senha temporária continua válida e com acesso
+    total** (`me` e `my-agenda` 200). A API antiga não conhece
+    `must_change_password`. Na recuperação, revogar essas sessões antes de
+    voltar a API;
+  - redefinição de senha pela administração para conta sem e-mail: 200 e
+    um link gravado que não tem para onde ir (`NOT_CONFIGURED` no ensaio;
+    com e-mail configurado, falha de entrega). Não usar durante o retorno.
+- `StaffLogin.down` recoloca `email NOT NULL`: falha assim que existir conta
+  sem e-mail. Recuperação é voltar o código, nunca reverter a migration.
+- Limitação: o web antigo (`c77c313`) com conta sem e-mail foi avaliado só
+  por leitura de código (nenhuma operação de texto sobre `email` nas telas
+  de equipe e administração), não em navegador.
 
 ## Onde parou e próximo passo
 
-1. Rodar `retorno-api-antiga.mjs` com a API `c77c313` (worktree
-   `C:\Projetos\Agenda-Cloud-ensaio`) contra `disposable_ensaio` (dez
-   migrations, dados mistos).
+1. ~~Ensaio de retorno~~ feito (acima).
 2. Escrever o procedimento protegido das duas migrations, reaproveitando
    `entrada-oculta.mjs`, `operacao-piloto.mjs`, `equipe-piloto.mjs` e o
    lançador `abrir-equipe-piloto.ps1`: fases `preparar`, `restauracao`,
