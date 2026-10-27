@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import { erroDeApiUrlDePublicacao } from "./src/lib/publicacao/api-url";
 import { ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA } from "./src/lib/administracao/rotas";
+import { ENCAMINHAMENTOS_CONTA_ANTIGA } from "./src/lib/conta/rotas";
 
 // No build da hospedagem, `NEXT_PUBLIC_API_URL` é obrigatório: ele é
 // embutido no JavaScript do navegador e não muda depois do build (ver
@@ -28,9 +29,10 @@ const nextConfig: NextConfig = {
     ];
   },
   // A administração da plataforma passou a morar na área da conta, com o
-  // mesmo menu (ver src/lib/administracao/rotas.ts).
+  // mesmo menu (ver src/lib/administracao/rotas.ts). Solicitações, Serviços,
+  // Profissionais e Equipe mudaram de endereço (src/lib/conta/rotas.ts).
   async redirects() {
-    return [...ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA];
+    return [...ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA, ...ENCAMINHAMENTOS_CONTA_ANTIGA];
   },
 };
 

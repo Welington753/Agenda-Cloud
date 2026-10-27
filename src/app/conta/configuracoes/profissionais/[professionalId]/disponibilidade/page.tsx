@@ -80,7 +80,7 @@ export default function DisponibilidadeDoProfissionalPage() {
     return (
       <PaginaConta
         titulo="Consultar disponibilidade"
-        voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+        voltar={{ href: "/conta/configuracoes/profissionais", rotulo: "Voltar para profissionais" }}
       >
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
@@ -114,7 +114,7 @@ export default function DisponibilidadeDoProfissionalPage() {
     <PaginaConta
       titulo="Consultar disponibilidade"
       descricao={profissional?.name}
-      voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+      voltar={{ href: "/conta/configuracoes/profissionais", rotulo: "Voltar para profissionais" }}
     >
       <Cartao>
         <CartaoCorpo className="flex items-start gap-3">
@@ -206,7 +206,7 @@ export default function DisponibilidadeDoProfissionalPage() {
               type="button"
               variante="secundaria"
               disabled={consultando}
-              onClick={() => router.push("/conta/profissionais")}
+              onClick={() => router.push("/conta/configuracoes/profissionais")}
             >
               Voltar para profissionais
             </Botao>

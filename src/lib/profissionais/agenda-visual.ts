@@ -158,7 +158,7 @@ export function mensagemFalhaAgenda(falha: FalhaAgendamentoReal): string {
   return mensagemFalhaAgendamento(falha);
 }
 
-export type VisualizacaoAgenda = "lista" | "profissional";
+export type VisualizacaoAgenda = "lista" | "profissional" | "calendario";
 
 export interface GrupoDeProfissional {
   professionalId: string;

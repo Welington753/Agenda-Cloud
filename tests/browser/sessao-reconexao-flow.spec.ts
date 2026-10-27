@@ -91,16 +91,16 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
     await page.clock.install();
     const registro = await simularBordaAcordando(page, () => registro.leituras <= 2);
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     await expect.poll(() => registro.leituras).toBe(1);
     // Falha temporária ainda é carregamento: nem tela de erro, nem login.
     await expect(page.getByText("Não foi possível conectar ao servidor")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
 
     await avancarAteLeitura(page, registro, 3);
 
-    await expect(page.getByText("Dono(a)")).toBeVisible();
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
     expect(registro.leituras).toBe(3);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
     await page.context().close();
@@ -114,7 +114,7 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
     let apiFora = true;
     const registro = await simularBordaAcordando(page, () => apiFora);
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     // Prazo total da recuperação (lib/api/leitura-com-recuperacao.ts): o
     // relógio anda até a tela de falha aparecer.
     const falha = page.getByRole("heading", { name: "Não foi possível conectar ao servidor" });
@@ -128,7 +128,7 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
       )
       .toBe(1);
     const leiturasNaFalha = registro.leituras;
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
     await expect(page.getByText("E-mail ou senha inválidos.")).toHaveCount(0);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
 
@@ -140,8 +140,8 @@ test.describe("leitura de sessão enquanto a hospedagem acorda", () => {
     apiFora = false;
     await page.getByRole("button", { name: "Tentar novamente" }).click();
 
-    await expect(page.getByText("Dono(a)")).toBeVisible();
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
     expect(registro.leituras).toBe(leiturasNaFalha + 1);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
     await page.context().close();

@@ -91,11 +91,10 @@ test.describe("gestão real de profissionais", () => {
     const tenantId = await tenantDe(page);
     const servico = await criarServico(page, tenantId, "Corte");
 
-    await page
-      .getByRole("navigation", { name: "Áreas da conta" })
-      .getByRole("link", { name: "Profissionais" })
-      .click();
-    await expect(page).toHaveURL(/\/conta\/profissionais$/);
+    // Profissionais fica em Configurações.
+    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
+    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: new RegExp("^Profissionais") }).click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
 
     await expect(page.getByText("Nenhum profissional cadastrado")).toBeVisible();
 
@@ -241,12 +240,12 @@ test.describe("gestão real de profissionais", () => {
     const conta = await criarConta(request, "sem-servico");
     await entrar(page, conta);
 
-    await page.goto("/conta/profissionais");
+    await page.goto("/conta/configuracoes/profissionais");
     await page.getByRole("button", { name: "Cadastrar profissional" }).click();
     await expect(page.getByText(/ainda não tem serviços cadastrados/)).toBeVisible();
     await expect(page.getByRole("link", { name: "cadastrar serviços primeiro" })).toHaveAttribute(
       "href",
-      "/conta/servicos",
+      "/conta/configuracoes/servicos",
     );
 
     await page.getByLabel("Nome do profissional").fill("Sem Serviços");
@@ -277,7 +276,7 @@ test.describe("gestão real de profissionais", () => {
 
     const servicoDeA = await criarServico(paginaA, tenantA, "Serviço exclusivo do A");
 
-    await paginaA.goto("/conta/profissionais");
+    await paginaA.goto("/conta/configuracoes/profissionais");
     await paginaA.getByRole("button", { name: "Cadastrar profissional" }).click();
     await paginaA.getByLabel("Nome do profissional").fill("Profissional exclusivo do A");
     await paginaA.getByLabel("Serviço exclusivo do A").check();

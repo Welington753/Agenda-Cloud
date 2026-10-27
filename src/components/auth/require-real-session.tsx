@@ -26,7 +26,7 @@ export function RequireRealSession({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (estado.status !== "nao_autenticado") return;
-    // Caminho E busca: a notificação abre /conta/solicitacoes?… e, depois do
+    // Caminho E busca: a notificação abre /conta/agendamentos/solicitacoes?… e, depois do
     // login, a pessoa volta exatamente para ela (sanitizado no login).
     const atual = pathname ? `${pathname}${window.location.search}` : null;
     const destino = atual ? `/login?next=${encodeURIComponent(atual)}` : "/login";

@@ -1,7 +1,8 @@
 // Cliente tipado da tela de Clientes (`/conta/clientes`) — espelha
-// backend/src/consumers/consumers.controller.ts e consumer.dto.ts. Só as duas
-// rotas que existem: BUSCA por termo (mínimo 2 caracteres, no máximo 20
-// linhas) e CADASTRO. Não há listagem completa, edição nem exclusão.
+// backend/src/consumers/consumers.controller.ts e consumer.dto.ts: BUSCA por
+// termo (mínimo 2 caracteres, no máximo 20 linhas, usada no seletor da
+// Agenda), LISTAGEM paginada da tela de Clientes e CADASTRO. Sem edição nem
+// exclusão.
 //
 // O formato do cliente (`ClienteReal`) é o mesmo que o seletor da Agenda já
 // usa (appointments-api.ts) — um cliente cadastrado aqui aparece lá sem
@@ -109,4 +110,46 @@ export async function cadastrarCliente(
   const corpo = resultado.data as { consumer?: unknown };
   if (!ehCliente(corpo?.consumer)) return { ok: false, falha: { tipo: "indisponivel" } };
   return { ok: true, dados: corpo.consumer };
+}
+
+/** Uma página da listagem de Clientes (`GET .../consumers/page`). `total`
+ * conta todos os que passam no filtro, no servidor. */
+export interface PaginaDeClientes {
+  clientes: ClienteReal[];
+  proximoCursor: string | null;
+  total: number;
+}
+
+/** Espelha o padrão de `consumerPageSchema` no backend. */
+export const TAMANHO_PAGINA_CLIENTES = 20;
+
+export async function listarPaginaDeClientes(
+  tenantId: string,
+  opcoes: { termo?: string; cursor?: string | null },
+  signal?: AbortSignal,
+): Promise<ResultadoClientesReal<PaginaDeClientes>> {
+  const busca = new URLSearchParams({ limit: String(TAMANHO_PAGINA_CLIENTES) });
+  const termo = opcoes.termo?.trim();
+  if (termo && termo.length >= TERMO_MINIMO_BUSCA) busca.set("q", termo);
+  if (opcoes.cursor) busca.set("cursor", opcoes.cursor);
+  const resultado = await apiRequest<unknown>(`${caminhoClientes(tenantId)}/page?${busca.toString()}`, {
+    method: "GET",
+    signal,
+  });
+
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    return { ok: false, falha: falhaPorStatus(resultado.status, resultado.data) };
+  }
+
+  const corpo = resultado.data as { consumers?: unknown; nextCursor?: unknown; total?: unknown };
+  if (
+    !Array.isArray(corpo?.consumers) ||
+    !corpo.consumers.every(ehCliente) ||
+    !(corpo.nextCursor === null || typeof corpo.nextCursor === "string") ||
+    typeof corpo.total !== "number"
+  ) {
+    return { ok: false, falha: { tipo: "indisponivel" } };
+  }
+  return { ok: true, dados: { clientes: corpo.consumers, proximoCursor: corpo.nextCursor, total: corpo.total } };
 }

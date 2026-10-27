@@ -10,6 +10,10 @@ import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { idSchema } from '../accounts/accounts.dto.js';
 import { InvitesService } from '../accounts/invites.service.js';
+import {
+  ownAgendaPeriodSchema,
+  type OwnAgendaPeriodDto,
+} from '../appointments/appointment.dto.js';
 import { MyAgendaService } from './my-agenda.service.js';
 import { TeamService } from './team.service.js';
 import {
@@ -124,6 +128,16 @@ export class MyAgendaController {
     @Query(new ZodValidationPipe(myAgendaQuerySchema)) query: MyAgendaQuery,
   ) {
     return this.agenda.day(req.auth.userId, tenantId, query);
+  }
+
+  @Get('range')
+  @Header('Cache-Control', 'private, no-store')
+  range(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId', id) tenantId: string,
+    @Query(new ZodValidationPipe(ownAgendaPeriodSchema)) query: OwnAgendaPeriodDto,
+  ) {
+    return this.agenda.range(req.auth.userId, tenantId, query);
   }
 
   @Post(':appointmentId/start')

@@ -34,7 +34,7 @@ function PendentesDaVisaoGeral() {
           <Inbox size={20} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
           {textoPendentes(total)}
         </p>
-        <LinkBotao href="/conta/solicitacoes" variante="secundaria">
+        <LinkBotao href="/conta/agendamentos/solicitacoes" variante="secundaria">
           Ver solicitações
         </LinkBotao>
       </CartaoCorpo>

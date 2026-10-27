@@ -434,11 +434,13 @@ test("menu da conta: sino com pendentes reais, notificações deste aparelho, ap
   await expect(menu.getByTestId("seletor-aparencia").getByRole("radio", { name: "Escuro" })).toBeChecked();
   await page.keyboard.press("Escape");
 
-  // ------------------------------------------- "Gerenciar" leva aos controles que já existiam
+  // ------------------------------------------- "Gerenciar" leva a Configurações → Notificações
   await page.goto("/conta/visao-geral");
   await page.getByTestId("abrir-menu-conta").click();
   await menu.getByTestId("menu-gerenciar-notificacoes").click();
-  await expect(page).toHaveURL(/\/conta\/solicitacoes#notificacoes$/);
+  await expect(page).toHaveURL(/\/conta\/configuracoes\/notificacoes$/);
+  // Abrir a página não pede permissão ao navegador: só o toque em "Ativar".
+  expect(await page.evaluate(() => (window as Window & { __pedidosDePermissao?: number }).__pedidosDePermissao)).toBe(0);
   await expect(page.locator("#notificacoes").getByTestId("notificacoes-dispositivo")).toBeVisible();
   await expect(page.locator("#notificacoes").getByTestId("preferencias-de-aviso")).toBeVisible();
   await expect(page.getByTestId("ativar-push")).toBeVisible();
@@ -453,12 +455,16 @@ test("menu da conta: sino com pendentes reais, notificações deste aparelho, ap
   await page.keyboard.press("Escape");
   escritas.length = 0;
   await sino.click();
-  await expect(page).toHaveURL(/\/conta\/solicitacoes$/);
+  await expect(page).toHaveURL(/\/conta\/agendamentos\/solicitacoes$/);
   await expect(page.getByTestId("lista-solicitacoes").getByTestId("solicitacao")).toHaveCount(1);
-  // A lista vem antes dos controles de notificação.
-  const lista = await page.getByTestId("lista-solicitacoes").boundingBox();
-  const controles = await page.locator("#notificacoes").boundingBox();
-  expect(lista!.y).toBeLessThan(controles!.y);
+  // A aba Solicitações da Agenda, com o contador real; os controles de
+  // notificação ficam em Configurações.
+  await expect(page.getByTestId("abas-da-agenda").getByRole("link", { name: /Solicitações/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByTestId("contador-aba-solicitacoes")).toContainText("1");
+  await expect(page.locator("#notificacoes")).toHaveCount(0);
   expect(escritas, "abrir pelo sino não confirma, recusa nem remarca").toEqual([]);
 
   // ------------------------------------------- celular: tudo na tela, sem rolar para o lado

@@ -174,7 +174,7 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   );
 
   // ------------------------------------------- dono ativa e copia o link
-  await page.goto("/conta/solicitacoes");
+  await page.goto("/conta/agendamentos/solicitacoes");
   await expect(page.getByTestId("agendamento-online-estado")).toContainText("Página desativada");
   await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
   await page.getByTestId("alternar-agendamento-online").click();
@@ -409,10 +409,10 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
 
   // ------------------------------------------- dono recusa, no celular
   await page.setViewportSize(CELULAR);
-  await page.goto("/conta/solicitacoes");
+  await page.goto("/conta/agendamentos/solicitacoes");
   const cartoes = page.getByTestId("lista-solicitacoes").getByTestId("solicitacao");
   await expect(cartoes).toHaveCount(2);
-  await expect(page.getByTestId("contador-mais")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Áreas da conta" }).getByTestId("contador-solicitacoes")).toBeVisible();
   await semRolagemHorizontal(page);
   await page.screenshot({ path: test.info().outputPath("solicitacoes-celular.png"), fullPage: true });
   const daCarla = cartoes.filter({ hasText: "Carla Rápida" });

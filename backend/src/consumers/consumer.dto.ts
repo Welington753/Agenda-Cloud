@@ -25,6 +25,29 @@ export const consumerSearchSchema = z
 
 export type ConsumerSearchDto = z.infer<typeof consumerSearchSchema>;
 
+/** Maior página da listagem: a tela pede a próxima quando a pessoa quer. */
+export const MAIOR_PAGINA_DE_CLIENTES = 50;
+
+/**
+ * Listagem paginada (tela de Clientes). Sem `q`, a primeira página de todos
+ * os clientes do estabelecimento; com `q`, a mesma regra da busca. `cursor` é
+ * opaco: vem da resposta anterior, nunca é montado pelo navegador.
+ */
+export const consumerPageSchema = z
+  .object({
+    // Vazio é "sem filtro"; um caractere só ainda não filtra (mesma regra da
+    // busca: 2 no mínimo).
+    q: z
+      .union([z.literal(''), z.string().trim().min(2).max(120)])
+      .transform((valor) => (valor === '' ? undefined : valor))
+      .optional(),
+    cursor: z.string().trim().min(1).max(400).optional(),
+    limit: z.coerce.number().int().min(1).max(MAIOR_PAGINA_DE_CLIENTES).default(20),
+  })
+  .strict();
+
+export type ConsumerPageDto = z.infer<typeof consumerPageSchema>;
+
 export const createConsumerSchema = z
   .object({
     name: z.string().trim().min(1).max(120),

@@ -164,18 +164,18 @@ test.describe("sessão (/conta e login)", () => {
     const requisicoes = contarRequisicoes(page, ehAuthMe);
     const api = await apiDormindo(page, (n) => (n === 1 ? "pendurar" : n <= 3 ? "502" : undefined));
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     await expect.poll(() => api.leituras).toBe(1);
     // Ainda sem falha nenhuma: só demora. Depois de 3 s a tela já explica.
     await page.clock.runFor(3_000);
     await expect(page.getByTestId("conexao-acordando")).toContainText("Conectando ao servidor");
     await expect(page.getByText("Não foi possível conectar ao servidor")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
 
     // A tentativa pendurada é cancelada no limite (30 s) e as seguintes
     // continuam, uma por vez.
     await avancarAte(page, () => api.leituras >= 4);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
     await expect(page.getByTestId("conexao-acordando")).toHaveCount(0);
     expect(api.leituras).toBe(4);
     expect(requisicoes.maxEmVoo).toBe(1);
@@ -193,7 +193,7 @@ test.describe("sessão (/conta e login)", () => {
     let apiFora = true;
     const api = await apiDormindo(page, () => (apiFora ? "502" : undefined));
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     const inicio = await page.evaluate(() => Date.now());
     const falha = page.getByRole("heading", { name: "Não foi possível conectar ao servidor" });
     await avancarAte(page, async () => (await falha.count()) > 0, 5_000);
@@ -205,7 +205,7 @@ test.describe("sessão (/conta e login)", () => {
     const leiturasNaFalha = api.leituras;
     expect(leiturasNaFalha).toBeGreaterThanOrEqual(5);
     expect(leiturasNaFalha).toBeLessThanOrEqual(10);
-    await expect(page).toHaveURL(/\/conta$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
 
     // Terminou: o tempo passa e nada mais é consultado sozinho.
     await page.clock.runFor(10 * 60_000);
@@ -213,7 +213,7 @@ test.describe("sessão (/conta e login)", () => {
 
     apiFora = false;
     await page.getByRole("button", { name: "Tentar novamente" }).click();
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
     expect(api.leituras).toBe(leiturasNaFalha + 1);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);
     await contexto.close();
@@ -230,12 +230,12 @@ test.describe("sessão (/conta e login)", () => {
         leituras += 1;
         return rota.fulfill({ status, contentType: "application/json", body: JSON.stringify({ statusCode: status }) });
       });
-      await page.goto("/conta");
+      await page.goto("/conta/configuracoes/perfil");
       await expect(page.getByTestId("motivo-falha-sessao")).toContainText("O servidor respondeu com um erro");
       await page.clock.runFor(5 * 60_000);
       expect(leituras).toBe(1);
       await expect(page.getByTestId("conexao-acordando")).toHaveCount(0);
-      await expect(page).toHaveURL(/\/conta$/);
+      await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
       await contexto.close();
     });
   }
@@ -247,7 +247,7 @@ test.describe("sessão (/conta e login)", () => {
     const api = await apiDormindo(page, (n) => (n === 1 ? "502" : undefined));
     const requisicoes = contarRequisicoes(page, ehAuthMe);
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     await expect.poll(() => api.leituras).toBe(1);
     await contexto.setOffline(true);
     await avancarAte(page, async () => (await page.getByTestId("conexao-sem-internet").count()) > 0);
@@ -257,7 +257,7 @@ test.describe("sessão (/conta e login)", () => {
     await expect(page.getByText("Não foi possível conectar ao servidor")).toHaveCount(0);
 
     await contexto.setOffline(false);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
     expect(api.leituras).toBe(2);
     await contexto.close();
   });
@@ -528,10 +528,10 @@ test.describe("API hibernada que o proxy não acorda", () => {
       if (r.method() !== "GET") escritas.push(`${r.method()} ${r.url()}`);
     });
 
-    await page.goto("/conta");
+    await page.goto("/conta/configuracoes/perfil");
     await expect.poll(() => api.partidas.length).toBe(1);
     await avancarAte(page, () => api.acordada);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
     expect(api.partidas).toEqual([{ metodo: "GET", origem: undefined, cookie: undefined }]);
     expect(escritas).toEqual([]);
     expect(await cookieDeSessao(page)).toBe(cookieAntes);

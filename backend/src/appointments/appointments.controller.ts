@@ -13,12 +13,14 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
 import { SessionGuard } from '../auth/session.guard.js';
 import {
+  appointmentPeriodSchema,
   appointmentStatusActionSchema,
   cancelAppointmentSchema,
   createAppointmentSchema,
   listAppointmentsSchema,
   rescheduleAppointmentSchema,
   rescheduleOptionsSchema,
+  type AppointmentPeriodDto,
   type AppointmentStatusActionDto,
   type CancelAppointmentDto,
   type CreateAppointmentDto,
@@ -47,6 +49,17 @@ export class AppointmentsController {
     @Req() req: Request,
   ) {
     return this.appointmentsService.list(identityOf(req).userId, tenantId, query);
+  }
+
+  /** Agenda em calendário (mês, semana ou dia). Declarada antes de
+   * `:appointmentId` para "range" nunca ser lido como id de reserva. */
+  @Get('range')
+  async range(
+    @Param('tenantId') tenantId: string,
+    @Query(new ZodValidationPipe(appointmentPeriodSchema)) query: AppointmentPeriodDto,
+    @Req() req: Request,
+  ) {
+    return this.appointmentsService.listRange(identityOf(req).userId, tenantId, query);
   }
 
   @Get(':appointmentId')

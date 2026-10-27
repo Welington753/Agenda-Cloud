@@ -136,8 +136,8 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     await page.getByLabel("Senha").fill(SENHA);
     await page.getByRole("button", { name: "Entrar" }).click();
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
-    await page.goto("/conta");
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await page.goto("/conta/configuracoes/perfil");
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
 
     // Cookie de produção, na origem do frontend, e em nenhum outro lugar.
     const cookies = await context.cookies();
@@ -157,8 +157,8 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
 
     // Restauração de sessão.
     await page.reload();
-    await expect(page).toHaveURL(/\/conta$/);
-    await expect(page.getByText("Dono(a)")).toBeVisible();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    await expect(page.getByTestId("perfil-acessos")).toContainText("Dono(a)");
 
     // Operação autenticada (escrita) pelo proxy, e a tela mostrando o
     // resultado lido de volta pelo proxy.
@@ -184,7 +184,7 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
       return { status: r.status, cacheControl: r.headers.get("cache-control") };
     }, nomeServico);
     expect(criacao).toEqual({ status: 201, cacheControl: "no-store" });
-    await page.goto("/conta/servicos");
+    await page.goto("/conta/configuracoes/servicos");
     await expect(page.getByText(nomeServico)).toBeVisible();
 
     // Erro da API chega com o mesmo status e corpo.

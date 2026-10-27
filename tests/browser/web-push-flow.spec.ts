@@ -218,7 +218,8 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
   await entrar(page, a.email);
   await expect(page).toHaveURL(/\/conta\/selecionar-estabelecimento$/);
   await page.getByRole("button", { name: new RegExp(a.businessName) }).click();
-  await page.goto("/conta/solicitacoes");
+  // Os controles ficam em Configurações → Notificações.
+  await page.goto("/conta/configuracoes/notificacoes");
   await expect(estadoPush(page)).toHaveAttribute("data-estado", "desativado");
   expect((await contadores(page)).pedidos, "abrir a tela não pede permissão").toBe(0);
 
@@ -253,15 +254,17 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
       escritas.push(`${r.method()} ${r.url()}`);
     }
   });
+  // Endereço antigo, como nas notificações entregues antes da mudança: o
+  // site encaminha para a aba Solicitações da Agenda com os mesmos dados.
   await page.goto(`/conta/solicitacoes?estabelecimento=${a.tenantId}&solicitacao=${pedidoA}`);
   const cartaoA = page.locator(`[data-testid="solicitacao"][data-appointment-id="${pedidoA}"]`);
   await expect(cartaoA).toHaveAttribute("data-destacada", "true");
   await expect(cartaoA).toBeFocused();
   await expect(cartaoA).toContainText("Cliente Sigilosa");
-  await expect(page).toHaveURL(/\/conta\/solicitacoes$/);
+  await expect(page).toHaveURL(/\/conta\/agendamentos\/solicitacoes$/);
 
   // Outro estabelecimento da mesma conta: troca para ele, revalidado pela API.
-  await page.goto(`/conta/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
+  await page.goto(`/conta/agendamentos/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
   await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(b.businessName);
   await expect(page.locator(`[data-testid="solicitacao"][data-appointment-id="${pedidoB}"]`)).toHaveAttribute("data-destacada", "true");
   expect(escritas, "abrir a notificação não grava nada").toEqual([]);
@@ -272,12 +275,12 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
   await chamar(apiB, "POST", `/tenants/${b.tenantId}/appointments/${pedidoB}/confirm`, {
     expectedStartAt: instanteLocalDe("10:00"),
   });
-  await page.goto(`/conta/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
+  await page.goto(`/conta/agendamentos/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
   await expect(page.getByTestId("aviso-destino-notificacao")).toContainText("não está mais aguardando confirmação");
 
   // Vínculo removido: o estabelecimento some da sessão e nada dele abre.
   await noBanco(`DELETE FROM memberships WHERE id = $1`, [vinculoB]);
-  await page.goto(`/conta/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
+  await page.goto(`/conta/agendamentos/solicitacoes?estabelecimento=${b.tenantId}&solicitacao=${pedidoB}`);
   await expect(page.getByTestId("aviso-destino-notificacao")).toContainText("não acessa mais");
   await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);
   await expect(page.locator(`[data-appointment-id="${pedidoB}"]`)).toHaveCount(0);
@@ -293,7 +296,7 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
     const c = await browser.newContext({ storageState: sessao, ...opcoes });
     await preparar(c);
     const p = await c.newPage();
-    await p.goto("/conta/solicitacoes");
+    await p.goto("/conta/configuracoes/notificacoes");
     return { c, p };
   }
   const bloqueado = await aparelho({}, (c) => simularPush(c, { permissao: "denied" }));
@@ -321,7 +324,7 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
 
   // Celular Android (permissão concedida, ativado): tela sem rolagem lateral.
   await page.setViewportSize(CELULAR);
-  await page.goto("/conta/solicitacoes");
+  await page.goto("/conta/configuracoes/notificacoes");
   await expect(estadoPush(page)).toHaveAttribute("data-estado", "ativado");
   await semRolagemHorizontal(page);
   await estadoPush(page).scrollIntoViewIfNeeded();
@@ -329,9 +332,7 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
 
   // ------------------------------------------------ sair desliga este aparelho
   // "Sair" fica no menu da conta.
-
   await page.getByTestId("abrir-menu-conta").click();
-
   await page.getByRole("button", { name: "Sair" }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect((await contadores(page)).cancelamentos).toBeGreaterThanOrEqual(1);
@@ -342,11 +343,13 @@ test("Web Push: PWA, ativar neste dispositivo, estados, abrir a solicitação ce
   expect(depoisDeSair.status === "REVOKED" || depoisDeSair.revoked_at !== null).toBe(true);
 
   // ------------------------------------------------ sem sessão: o destino sobrevive ao login
-  await page.goto(`/conta/solicitacoes?estabelecimento=${a.tenantId}&solicitacao=${pedidoA}`);
+  await page.goto(`/conta/agendamentos/solicitacoes?estabelecimento=${a.tenantId}&solicitacao=${pedidoA}`);
   await expect(page).toHaveURL(/\/login\?next=/);
   await entrar(page, a.email);
   await expect(page.locator(`[data-testid="solicitacao"][data-appointment-id="${pedidoA}"]`)).toHaveAttribute("data-destacada", "true");
+  await expect(page).toHaveURL(/\/conta\/agendamentos\/solicitacoes$/);
   // Nova sessão não herda a ativação anterior.
+  await page.goto("/conta/configuracoes/notificacoes");
   await expect(estadoPush(page)).toHaveAttribute("data-estado", "desativado");
 
   // Nenhuma tentativa de envio aconteceu (nenhum serviço externo chamado).

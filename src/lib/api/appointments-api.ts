@@ -132,7 +132,7 @@ function mensagemDeErroDoBackend(data: unknown): string | null {
   return typeof mensagem === "string" ? mensagem : null;
 }
 
-function falhaPorStatus(status: number, data: unknown): FalhaAgendamentoReal {
+export function falhaPorStatus(status: number, data: unknown): FalhaAgendamentoReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
@@ -141,7 +141,7 @@ function falhaPorStatus(status: number, data: unknown): FalhaAgendamentoReal {
   return { tipo: "indisponivel" };
 }
 
-function ehAgendamento(valor: unknown): valor is AgendamentoReal {
+export function ehAgendamento(valor: unknown): valor is AgendamentoReal {
   if (typeof valor !== "object" || valor === null) return false;
   const v = valor as Record<string, unknown>;
   const pessoa = (x: unknown) =>
@@ -198,7 +198,7 @@ function ehCliente(valor: unknown): valor is ClienteReal {
   );
 }
 
-const caminhoAgendamentos = (tenantId: string) =>
+export const caminhoAgendamentos = (tenantId: string) =>
   `/tenants/${encodeURIComponent(tenantId)}/appointments`;
 const caminhoClientes = (tenantId: string) =>
   `/tenants/${encodeURIComponent(tenantId)}/consumers`;

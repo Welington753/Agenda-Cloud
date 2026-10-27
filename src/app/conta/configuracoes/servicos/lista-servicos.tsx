@@ -199,7 +199,7 @@ function AvisoForaDoOnline({ motivo }: { motivo: MotivoForaDoOnline | undefined 
         <span>
           <strong>Não aparece no agendamento online:</strong> nenhum profissional ativo realiza este serviço.
           Marque-o em um profissional, em{" "}
-          <Link href="/conta/profissionais" className="font-semibold underline">
+          <Link href="/conta/configuracoes/profissionais" className="font-semibold underline">
             Profissionais
           </Link>
           .

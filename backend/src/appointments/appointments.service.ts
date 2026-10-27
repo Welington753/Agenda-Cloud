@@ -104,6 +104,7 @@ import {
   type AcaoDeStatus,
 } from './appointment-status-transitions.js';
 import type {
+  AppointmentPeriodDto,
   AppointmentStatusActionDto,
   CancelAppointmentDto,
   CreateAppointmentDto,
@@ -119,6 +120,16 @@ export const OVERLAP_CONSTRAINT = 'appointments_no_overlap_excl';
 /** Teto duro da listagem de um dia. Existe para a rota nunca virar um dump
  * da agenda — um dia real de um estabelecimento não chega perto disto. */
 export const LIMITE_DO_DIA = 200;
+
+/** Teto da agenda por período (até 42 dias): ainda longe de um dump, e acima
+ * do que um mês cheio de um estabelecimento pequeno produz. */
+export const LIMITE_DO_PERIODO = 2000;
+
+/** `YYYY-MM-DD` já validado pelo DTO. */
+export function dataLocalDaString(data: string): DataLocal {
+  const [year, month, day] = data.split('-').map(Number);
+  return { year, month, day };
+}
 
 /** Teto da lista de solicitações pendentes. Mesma razão de `LIMITE_DO_DIA`. */
 export const LIMITE_DE_PENDENTES = 100;
@@ -591,6 +602,65 @@ export class AppointmentsService {
       // estar incompleta — quem soma (a Visão geral) não deve produzir totais
       // com ela. Teto exato também conta como incompleto: não há como saber.
       complete: encontrados.length < LIMITE_DO_DIA,
+    };
+  }
+
+  /**
+   * Agenda por período (Calendário: mês, semana ou dia), com a mesma
+   * autorização e a mesma forma de cada reserva da listagem do dia, mais a
+   * data local (`localDate`) para a tela agrupar sem converter fuso no
+   * navegador.
+   *
+   * Mesma estratégia de `list`: janela folgada no SQL (do início do primeiro
+   * dia ao fim do último, com a folga de fuso) e recorte exato pela data
+   * local de cada início. `complete: false` quando bateu no teto.
+   */
+  async listRange(
+    userId: string,
+    tenantId: string,
+    query: AppointmentPeriodDto,
+  ): Promise<{
+    timezone: string;
+    from: string;
+    to: string;
+    appointments: (AppointmentView & { localDate: string })[];
+    complete: boolean;
+  }> {
+    const manager = this.dataSource.manager;
+    const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
+      permitido: canViewAppointments,
+      mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+    });
+
+    const timezone = await this.timezoneDoTenant(manager, authorized.tenantId);
+    const inicio = janelaDeCarregamento(dataLocalDaString(query.from)).inicio;
+    const fim = janelaDeCarregamento(dataLocalDaString(query.to)).fim;
+    const encontrados = await manager.find(Appointment, {
+      where: {
+        tenantId: authorized.tenantId,
+        ...(query.professionalId ? { professionalId: query.professionalId } : {}),
+        startAt: LessThan(fim),
+        endAt: MoreThan(inicio),
+      },
+      order: { startAt: 'ASC', id: 'ASC' },
+      take: LIMITE_DO_PERIODO,
+    });
+
+    const doPeriodo = encontrados
+      .map((appointment) => ({ appointment, localDate: dataLocalDe(appointment.startAt, timezone) }))
+      .filter(({ localDate }) => localDate >= query.from && localDate <= query.to);
+    const views = await this.toViews(
+      manager,
+      authorized.tenantId,
+      doPeriodo.map(({ appointment }) => appointment),
+    );
+
+    return {
+      timezone,
+      from: query.from,
+      to: query.to,
+      appointments: views.map((view, indice) => ({ ...view, localDate: doPeriodo[indice].localDate })),
+      complete: encontrados.length < LIMITE_DO_PERIODO,
     };
   }
 

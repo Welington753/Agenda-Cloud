@@ -62,7 +62,7 @@ export function AvisosNovasSolicitacoes() {
               </button>
             </div>
             <LinkBotao
-              href={`/conta/solicitacoes#solicitacao-${s.id}`}
+              href={`/conta/agendamentos/solicitacoes#solicitacao-${s.id}`}
               onClick={() => abrirSolicitacao(s.id)}
               data-testid="ver-solicitacao"
               className="mt-3 min-h-11"
@@ -75,7 +75,7 @@ export function AvisosNovasSolicitacoes() {
       })}
       {ocultos > 0 && (
         <Link
-          href="/conta/solicitacoes"
+          href="/conta/agendamentos/solicitacoes"
           data-testid="avisos-ocultos"
           className="pointer-events-auto rounded-[var(--radius-control)] border border-border bg-card px-4 py-2 text-sm font-medium text-ink shadow-lg hover:bg-paper-muted"
         >

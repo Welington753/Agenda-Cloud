@@ -3,17 +3,19 @@
 // o `userId` provado pelo guard adiante; o controller nunca decide
 // autorização sozinho.
 //
-// Só BUSCA e CADASTRO: é o mínimo para a primeira reserva existir. Não há
-// listagem completa (seria enumeração da base), edição, desativação nem
-// histórico neste lote.
+// BUSCA, CADASTRO e a LISTAGEM PAGINADA da tela de Clientes (no máximo 50
+// por página, sempre do tenant provado). Sem edição, desativação nem
+// histórico.
 import { Body, Controller, Get, Post, Param, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
 import { SessionGuard } from '../auth/session.guard.js';
 import {
+  consumerPageSchema,
   consumerSearchSchema,
   createConsumerSchema,
+  type ConsumerPageDto,
   type ConsumerSearchDto,
   type CreateConsumerDto,
 } from './consumer.dto.js';
@@ -42,6 +44,17 @@ export class ConsumersController {
       query.q,
     );
     return { consumers };
+  }
+
+  /** Listagem paginada da tela de Clientes (primeira página ao abrir; a
+   * busca filtra a mesma lista). Mesma autorização da busca. */
+  @Get('page')
+  async page(
+    @Param('tenantId') tenantId: string,
+    @Query(new ZodValidationPipe(consumerPageSchema)) query: ConsumerPageDto,
+    @Req() req: Request,
+  ) {
+    return this.consumersService.listPage(identityOf(req).userId, tenantId, query);
   }
 
   @Post()

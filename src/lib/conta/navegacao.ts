@@ -5,47 +5,38 @@
 // `/profissional`, que são a demonstração movida por dados locais.
 
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
-import { ROTA_EQUIPE, ROTA_MINHA_AGENDA, type PerfilDaArea } from "./papel";
+import { ROTA_AGENDA, ROTA_CLIENTES, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_MINHA_AGENDA } from "./rotas";
+import type { PerfilDaArea } from "./papel";
 
 export interface ItemNavegacaoConta {
   href: string;
   rotulo: string;
-  /** No celular, a barra inferior só comporta quatro áreas com rótulo legível
-   * e área de toque confortável; as demais ficam no menu "Mais". No
-   * computador todas aparecem no menu lateral. */
-  noCelular: "barra" | "mais";
+  /** "barra": na barra inferior do celular (no máximo quatro áreas, para o
+   * rótulo continuar legível e o toque confortável). "menu": fora da barra;
+   * no celular fica no menu da conta (canto superior). No computador todas
+   * aparecem no menu lateral. */
+  noCelular: "barra" | "menu";
   /** "plataforma" separa a administração da plataforma da operação do
    * estabelecimento no menu (rótulo próprio no computador). */
   grupo?: "plataforma";
 }
 
-/** Ordem pensada para o dia a dia: o resumo do dia, depois a agenda, que é o
- * que se abre mais vezes, e os clientes, procurados na hora de agendar.
- * "Minha conta" fica por último. */
+/** Operação do dono, na ordem do dia a dia: o resumo, a agenda (que também
+ * reúne as solicitações), os clientes e as configurações. */
 export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
-  { href: "/conta/visao-geral", rotulo: "Visão geral", noCelular: "barra" },
-  { href: "/conta/agendamentos", rotulo: "Agenda", noCelular: "barra" },
-  // Pedidos do agendamento online e reservas aguardando confirmação. No
-  // celular fica no "Mais", que mostra o contador de pendentes.
-  { href: "/conta/solicitacoes", rotulo: "Solicitações", noCelular: "mais" },
-  { href: "/conta/clientes", rotulo: "Clientes", noCelular: "barra" },
-  { href: "/conta/servicos", rotulo: "Serviços", noCelular: "barra" },
-  { href: "/conta/profissionais", rotulo: "Profissionais", noCelular: "mais" },
-  // Logins da equipe, ligados aos profissionais (só o dono).
-  { href: ROTA_EQUIPE, rotulo: "Equipe e acessos", noCelular: "mais" },
-  { href: "/conta", rotulo: "Minha conta", noCelular: "mais" },
+  { href: ROTA_INICIO, rotulo: "Início", noCelular: "barra" },
+  { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
+  { href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" },
+  { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" },
 ];
 
-/** Menu do funcionário: a própria agenda e Minha conta, nada além. */
+const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" };
+
+/** Menu do funcionário: a própria agenda e as configurações pessoais. */
 export const ITENS_NAVEGACAO_FUNCIONARIO: readonly ItemNavegacaoConta[] = [
   { href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda", noCelular: "barra" },
-  { href: "/conta", rotulo: "Minha conta", noCelular: "barra" },
+  ITEM_CONFIGURACOES,
 ];
-
-/** Itens que, no celular, ficam atrás do botão "Mais". */
-export const ITENS_MENU_MAIS: readonly ItemNavegacaoConta[] = ITENS_NAVEGACAO_CONTA.filter(
-  (item) => item.noCelular === "mais",
-);
 
 /** Administração da plataforma. Só entra no menu quando o backend confirmou
  * o acesso (`GET /platform/access`); esconder o item não substitui a
@@ -53,23 +44,23 @@ export const ITENS_MENU_MAIS: readonly ItemNavegacaoConta[] = ITENS_NAVEGACAO_CO
 export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
   href: ROTA_ADMINISTRACAO,
   rotulo: "Administração",
-  noCelular: "mais",
+  noCelular: "menu",
   grupo: "plataforma",
 };
 
 /**
  * Itens do menu para esta sessão.
  *
- * - Com estabelecimento ativo, como dono: a operação de sempre e, para quem
- *   administra a plataforma, "Administração" por último. No celular ela fica
- *   no "Mais": a barra continua com quatro áreas legíveis.
- * - Como funcionário: "Minha agenda" e "Minha conta" (e "Administração",
- *   se for o caso), todos na barra do celular.
- * - Com um papel sem área (GERENTE, RECEPCIONISTA antigos): só "Minha conta".
- * - Sem estabelecimento: só faz sentido para quem administra a plataforma
- *   (um administrador não precisa de vínculo). A barra tem só Administração e
- *   Minha conta, sem "Mais".
- * - Sem nenhum dos dois: sem menu (as páginas não teriam o que mostrar).
+ * - Dono com estabelecimento ativo: Início, Agenda, Clientes e
+ *   Configurações; quem administra a plataforma ganha "Administração" num
+ *   grupo próprio (no celular, pelo menu da conta, para a barra continuar com
+ *   quatro áreas).
+ * - Funcionário: "Minha agenda" e "Configurações" (e "Administração" na
+ *   barra, se for o caso).
+ * - Papel sem área (GERENTE, RECEPCIONISTA antigos): só "Configurações".
+ * - Sem estabelecimento: só para quem administra a plataforma (um
+ *   administrador não precisa de vínculo): Administração e Configurações.
+ * - Sem nenhum dos dois: sem menu.
  */
 export function itensDaNavegacao({
   comEstabelecimento,
@@ -81,31 +72,24 @@ export function itensDaNavegacao({
   /** Perfil no estabelecimento ativo (ver papel.ts). */
   perfil?: PerfilDaArea;
 }): readonly ItemNavegacaoConta[] {
+  const administracaoNaBarra: ItemNavegacaoConta = { ...ITEM_ADMINISTRACAO, noCelular: "barra" };
   if (comEstabelecimento && perfil === "funcionario") {
-    return comAdministracao
-      ? [...ITENS_NAVEGACAO_FUNCIONARIO, { ...ITEM_ADMINISTRACAO, noCelular: "barra" }]
-      : ITENS_NAVEGACAO_FUNCIONARIO;
+    return comAdministracao ? [...ITENS_NAVEGACAO_FUNCIONARIO, administracaoNaBarra] : ITENS_NAVEGACAO_FUNCIONARIO;
   }
   if (comEstabelecimento && perfil === "sem-area") {
-    const minhaConta: ItemNavegacaoConta = { href: "/conta", rotulo: "Minha conta", noCelular: "barra" };
-    return comAdministracao ? [{ ...ITEM_ADMINISTRACAO, noCelular: "barra" }, minhaConta] : [minhaConta];
+    return comAdministracao ? [administracaoNaBarra, ITEM_CONFIGURACOES] : [ITEM_CONFIGURACOES];
   }
   if (comEstabelecimento) {
     return comAdministracao ? [...ITENS_NAVEGACAO_CONTA, ITEM_ADMINISTRACAO] : ITENS_NAVEGACAO_CONTA;
   }
   if (!comAdministracao) return [];
-  return [
-    { ...ITEM_ADMINISTRACAO, noCelular: "barra" },
-    { href: "/conta", rotulo: "Minha conta", noCelular: "barra" },
-  ];
+  return [administracaoNaBarra, ITEM_CONFIGURACOES];
 }
 
 /**
- * O item corresponde à página atual?
- *
- * "Minha conta" (`/conta`) só é ativo na própria página — senão ficaria
- * marcado em toda a área. Os demais também valem para as subpáginas
- * (`/conta/profissionais/{id}/horarios` continua em "Profissionais").
+ * O item corresponde à página atual? Vale também para as subpáginas
+ * (`/conta/agendamentos/solicitacoes` continua em "Agenda";
+ * `/conta/configuracoes/profissionais/{id}/horarios`, em "Configurações").
  */
 export function itemAtivo(pathname: string | null, href: string): boolean {
   if (!pathname) return false;

@@ -71,11 +71,10 @@ test.describe("gestão real de serviços", () => {
     const conta = await criarConta(request, "fluxo");
     await entrar(page, conta);
 
-    await page
-      .getByRole("navigation", { name: "Áreas da conta" })
-      .getByRole("link", { name: "Serviços" })
-      .click();
-    await expect(page).toHaveURL(/\/conta\/servicos$/);
+    // Serviços fica em Configurações.
+    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
+    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: new RegExp("^Serviços") }).click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
 
     // Estado vazio com ação de cadastro — nunca uma lista demo.
     await expect(page.getByText("Nenhum serviço cadastrado")).toBeVisible();
@@ -254,7 +253,7 @@ test.describe("gestão real de serviços", () => {
     expect(tenantA).not.toBe(tenantB);
 
     // A cria um serviço pela tela.
-    await paginaA.goto("/conta/servicos");
+    await paginaA.goto("/conta/configuracoes/servicos");
     await paginaA.getByRole("button", { name: "Cadastrar serviço" }).click();
     await paginaA.getByLabel("Nome do serviço").fill("Serviço exclusivo do A");
     await paginaA.getByLabel("Duração (minutos)").fill("30");
@@ -330,7 +329,7 @@ test.describe("gestão real de serviços", () => {
     await expect(paginaA.getByText("Forjado")).toHaveCount(0);
 
     // E B continua sem serviço nenhum — a lista dele nunca misturou.
-    await paginaB.goto("/conta/servicos");
+    await paginaB.goto("/conta/configuracoes/servicos");
     await expect(paginaB.getByText("Nenhum serviço cadastrado")).toBeVisible();
 
     // Sem sessão nenhuma, a API recusa antes de qualquer consulta.

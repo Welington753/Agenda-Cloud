@@ -1,8 +1,10 @@
 "use client";
 
-// Clientes do estabelecimento ativo: pesquisar e cadastrar. Usa só as duas
-// rotas que existem (GET ?q= e POST em /tenants/:tenantId/consumers) — não há
-// listagem completa, edição, exclusão nem histórico neste lote.
+// Clientes do estabelecimento ativo: a primeira página aparece ao abrir
+// (GET /tenants/:tenantId/consumers/page, paginada e ordenada no servidor), a
+// busca filtra essa mesma listagem e o cadastro usa POST .../consumers. Sem
+// edição, exclusão nem histórico. O funcionário não chega aqui (o shell o
+// leva à agenda dele) e o servidor recusa a rota a ele de qualquer forma.
 //
 // Vive sob `/conta`, área REAL: nada da demonstração é importado (ver
 // lib/servicos/sem-dados-demo.test.ts). O cliente cadastrado aqui é o mesmo
@@ -11,7 +13,7 @@
 //
 // Cadastro, os três desfechos que importam:
 //  - CONFIRMADO: o aviso de sucesso fica na tela e a busca pelo WhatsApp roda
-//    em seguida. Se só essa leitura falhar, o aviso continua e "Tentar
+//    em seguida (a lista filtrada mostra o cliente novo). Se só essa leitura falhar, o aviso continua e "Tentar
 //    novamente" repete só a leitura, nunca o POST.
 //  - DUPLICADO (409): nada é sobrescrito; o formulário continua preenchido e
 //    oferece pesquisar o WhatsApp.
@@ -30,7 +32,8 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { FormularioCliente } from "./formulario-cliente";
-import { ResultadoBusca } from "./resultado-busca";
+import { ListaClientes } from "./lista-clientes";
+import { ROTA_AGENDA } from "@/lib/conta/rotas";
 
 /** Falha do cadastro com o WhatsApp tentado, para oferecer a pesquisa. */
 interface ErroCadastro {
@@ -46,7 +49,7 @@ export default function ClientesPage() {
   const tenantIdAtivo = estadoSessao.status === "autenticado" ? estadoSessao.tenantIdAtivo : null;
   const precisaSelecionar = !!sessao && sessao.requiresTenantSelection && !tenantIdAtivo;
 
-  const { busca, gravando, pesquisar, repetirBusca, cadastrar } = useClientesReais(tenantIdAtivo);
+  const { lista, gravando, listar, carregarMais, repetir, cadastrar } = useClientesReais(tenantIdAtivo);
   const [termo, setTermo] = useState("");
   const [formularioAberto, setFormularioAberto] = useState(false);
   const [erroCadastro, setErroCadastro] = useState<ErroCadastro | null>(null);
@@ -80,7 +83,7 @@ export default function ClientesPage() {
               </p>
               <p className="mt-1 text-sm text-ink-soft">
                 Clientes pertencem a um estabelecimento — quando sua conta tiver um vínculo ativo,
-                você poderá pesquisá-los aqui.
+                você poderá consultá-los aqui.
               </p>
             </div>
           </CartaoCorpo>
@@ -91,12 +94,17 @@ export default function ClientesPage() {
 
   function aoPesquisar(evento: FormEvent) {
     evento.preventDefault();
-    pesquisar(termo);
+    listar(termo);
   }
 
   function pesquisarWhatsapp(whatsapp: string) {
     setTermo(whatsapp);
-    pesquisar(whatsapp);
+    listar(whatsapp);
+  }
+
+  function limparBusca() {
+    setTermo("");
+    listar(null);
   }
 
   function abrirFormulario() {
@@ -124,12 +132,16 @@ export default function ClientesPage() {
     pesquisarWhatsapp(resultado.dados.whatsapp);
   }
 
-  const buscaBloqueada = busca.status === "falha" && busca.falha.tipo === "sem_permissao";
+  const buscaBloqueada = lista.status === "falha" && lista.falha.tipo === "sem_permissao";
+  const termoDigitado = termo.trim();
+  // Um caractere ainda não filtra (mesma regra do servidor); vazio volta a
+  // mostrar todos.
+  const termoIncompleto = termoDigitado.length > 0 && termoDigitado.length < TERMO_MINIMO_BUSCA;
 
   return (
     <PaginaConta
       titulo="Clientes"
-      descricao="Pesquise pelo nome ou WhatsApp e cadastre novos clientes do estabelecimento."
+      descricao="Todos os clientes do estabelecimento, em ordem alfabética. Filtre pelo nome ou WhatsApp."
       acoes={
         !formularioAberto ? (
           <Botao type="button" onClick={abrirFormulario}>
@@ -150,7 +162,7 @@ export default function ClientesPage() {
             <p className="font-semibold text-ink">Cliente {cadastrado.name} cadastrado.</p>
             <p className="mt-1 text-ink-soft">
               Para agendar, abra a{" "}
-              <Link href="/conta/agendamentos" className="font-medium text-[color:var(--color-accent-hover)] underline">
+              <Link href={ROTA_AGENDA} className="font-medium text-[color:var(--color-accent-hover)] underline">
                 Agenda
               </Link>{" "}
               e use “Buscar cliente” em Novo agendamento.
@@ -216,22 +228,27 @@ export default function ClientesPage() {
                 className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
             </div>
-            <Botao
-              type="submit"
-              disabled={buscaBloqueada || termo.trim().length < TERMO_MINIMO_BUSCA}
-              aria-busy={busca.status === "buscando"}
-            >
-              <Search size={16} aria-hidden="true" />
-              Buscar
-            </Botao>
+            <div className="flex gap-2">
+              <Botao type="submit" disabled={buscaBloqueada || termoIncompleto} aria-busy={lista.status === "carregando"}>
+                <Search size={16} aria-hidden="true" />
+                Buscar
+              </Botao>
+              {lista.status !== "carregando" && lista.termo && (
+                <Botao type="button" variante="secundaria" onClick={limparBusca} data-testid="clientes-limpar-busca">
+                  Limpar
+                </Botao>
+              )}
+            </div>
           </form>
         </CartaoCorpo>
       </Cartao>
 
-      <ResultadoBusca
-        busca={busca}
+      <ListaClientes
+        lista={lista}
         destacadoId={cadastrado?.id ?? null}
-        aoRepetir={repetirBusca}
+        aoRepetir={repetir}
+        aoCarregarMais={carregarMais}
+        aoLimparBusca={limparBusca}
         aoCadastrar={formularioAberto ? null : abrirFormulario}
       />
     </PaginaConta>

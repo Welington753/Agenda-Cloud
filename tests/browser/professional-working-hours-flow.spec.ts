@@ -82,9 +82,9 @@ test.describe("horários semanais reais", () => {
     const tenantId = await tenantDe(page);
     await criarProfissional(page, tenantId, "Ana Souza");
 
-    await page.goto("/conta/profissionais");
+    await page.goto("/conta/configuracoes/profissionais");
     await page.getByRole("link", { name: "Horários de Ana Souza" }).click();
-    await expect(page).toHaveURL(/\/conta\/profissionais\/[^/]+\/horarios$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais\/[^/]+\/horarios$/);
 
     // Estado inicial sem configuração: todo dia aparece como "não atende",
     // nunca como disponível.
@@ -212,7 +212,7 @@ test.describe("horários semanais reais", () => {
     const profissionalDeA = await criarProfissional(paginaA, tenantA, "Profissional de A");
 
     // A configura a semana pela tela.
-    await paginaA.goto(`/conta/profissionais/${profissionalDeA}/horarios`);
+    await paginaA.goto(`/conta/configuracoes/profissionais/${profissionalDeA}/horarios`);
     await paginaA.getByRole("button", { name: "Adicionar intervalo em Sexta-feira" }).click();
     await paginaA.getByLabel("Início 1 — Sexta-feira").fill("08:00");
     await paginaA.getByLabel("Fim 1 — Sexta-feira").fill("17:00");

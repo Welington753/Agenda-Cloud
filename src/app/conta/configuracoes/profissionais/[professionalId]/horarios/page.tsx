@@ -76,7 +76,7 @@ export default function HorariosDoProfissionalPage() {
     return (
       <PaginaConta
         titulo="Horários de trabalho"
-        voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+        voltar={{ href: "/conta/configuracoes/profissionais", rotulo: "Voltar para profissionais" }}
       >
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
@@ -127,7 +127,7 @@ export default function HorariosDoProfissionalPage() {
     <PaginaConta
       titulo="Horários de trabalho"
       descricao={profissional?.name}
-      voltar={{ href: "/conta/profissionais", rotulo: "Voltar para profissionais" }}
+      voltar={{ href: "/conta/configuracoes/profissionais", rotulo: "Voltar para profissionais" }}
     >
       {estado.status === "carregando" && (
         <div className="space-y-3" aria-busy="true">
@@ -195,7 +195,7 @@ export default function HorariosDoProfissionalPage() {
                 type="button"
                 variante="secundaria"
                 disabled={gravando}
-                onClick={() => router.push("/conta/profissionais")}
+                onClick={() => router.push("/conta/configuracoes/profissionais")}
               >
                 Voltar para profissionais
               </Botao>

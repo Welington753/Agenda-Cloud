@@ -58,7 +58,7 @@ const ehListaDoDia = (url: URL) =>
   url.pathname.endsWith("/appointments") && url.searchParams.has("date");
 const campoDia = (p: Page) => p.getByLabel("Dia", { exact: true });
 const filtro = (p: Page) => p.getByLabel("Filtrar por profissional");
-const alternar = (p: Page, rotulo: "Lista" | "Por profissional") =>
+const alternar = (p: Page, rotulo: "Lista" | "Por profissional" | "Calendário") =>
   p.getByRole("group", { name: "Visualização da agenda" }).getByRole("button", { name: rotulo });
 const grupos = (p: Page) => p.getByTestId("grupo-profissional");
 const grupo = (p: Page, nome: string) =>
@@ -337,4 +337,102 @@ test("agenda por profissional: grupos, ordem, alternância, filtro, estados e a�
   await gabi.getByTestId("iniciar-atendimento").click();
   await expect(gabi.getByTestId("status-agendado")).toHaveText("Em atendimento");
   await expect(grupo(page, "Ana Souza").locator("[data-em-atendimento]")).toContainText("Gabi Agora");
+
+  // ------------------------------------------------------------- calendário
+  // Mês, semana e dia, lidos do servidor pelo período inteiro; o filtro de
+  // profissional é o mesmo da lista; tocar num atendimento abre a lista do
+  // dia com ele marcado (as ações são as de sempre).
+  let leiturasDoPeriodo = 0;
+  page.on("request", (r) => {
+    if (r.method() === "GET" && new URL(r.url()).pathname.endsWith("/appointments/range")) leiturasDoPeriodo += 1;
+  });
+  await alternar(page, "Lista").click();
+  await campoDia(page).fill(DATA);
+  await filtro(page).selectOption({ label: "Todos os profissionais" });
+  await alternar(page, "Calendário").click();
+  const calendario = page.getByTestId("calendario");
+  await expect(calendario).toHaveAttribute("data-visao", "mes");
+  await expect.poll(() => leiturasDoPeriodo).toBeGreaterThan(0);
+  const celula = calendario.locator(`[data-testid="calendario-dia"][data-dia="${DATA}"]`);
+  // Seis atendimentos no dia: três aparecem na célula e o resto em "+3 mais".
+  await expect(celula.getByTestId("calendario-item")).toHaveCount(3);
+  await expect(celula.getByRole("button", { name: "+3 mais" })).toBeVisible();
+  await expect(celula.getByTestId("calendario-item").first()).toContainText("09:00");
+  // A situação aparece em texto, não só na cor.
+  await expect(celula.getByTestId("calendario-item").first()).toContainText(/Confirmado|Aguardando/);
+  await fotografarCalendario(page, "mes");
+
+  await celula.getByRole("button", { name: "+3 mais" }).click();
+  await expect(calendario).toHaveAttribute("data-visao", "dia");
+  const doDia = calendario.getByTestId("calendario-lista-do-dia").getByTestId("calendario-item");
+  await expect(doDia).toHaveCount(6);
+  await expect(doDia.filter({ hasText: "Bia Onze" })).toContainText("Cancelado");
+  await expect(doDia.filter({ hasText: "Bia Onze" })).toHaveAttribute("data-situacao", "CANCELED");
+
+  // Filtro de profissional vale no calendário.
+  await page.getByLabel("Profissional", { exact: true }).selectOption({ label: "Bruno Lima" });
+  await expect(doDia).toHaveCount(3);
+  expect(await doDia.allTextContents()).toEqual([
+    expect.stringContaining("Bia Nove"),
+    expect.stringContaining("Bia Onze"),
+    expect.stringContaining("Caco Novo"),
+  ]);
+
+  // Semana: o mesmo dia, com os mesmos atendimentos.
+  await calendario.getByRole("group", { name: "Período do calendário" }).getByRole("button", { name: "Semana" }).click();
+  await expect(calendario).toHaveAttribute("data-visao", "semana");
+  await expect(celula.getByTestId("calendario-item")).toHaveCount(3);
+  await fotografarCalendario(page, "semana");
+  // Anterior e próximo andam uma semana; "Hoje" volta.
+  const titulo = calendario.getByTestId("calendario-titulo");
+  const tituloDaSemana = await titulo.textContent();
+  await calendario.getByRole("button", { name: "Próximo período" }).click();
+  await expect(titulo).not.toHaveText(tituloDaSemana ?? "");
+  await calendario.getByRole("button", { name: "Período anterior" }).click();
+  await expect(titulo).toHaveText(tituloDaSemana ?? "");
+
+  // Tocar no atendimento abre a lista do dia, com ele marcado e as ações.
+  await celula.getByTestId("calendario-item").filter({ hasText: "Caco Novo" }).click();
+  await expect(alternar(page, "Lista")).toHaveAttribute("aria-pressed", "true");
+  await expect(campoDia(page)).toHaveValue(DATA);
+  await expect(page.locator("[data-destacada]")).toContainText("Caco Novo");
+
+  // Celular (360 e 390): mês em grade compacta, toque no dia mostra a lista
+  // dele; nada rola para o lado. Claro e escuro.
+  await alternar(page, "Calendário").click();
+  for (const largura of [360, 390]) {
+    await page.setViewportSize({ width: largura, height: 800 });
+    await calendario.getByRole("group", { name: "Período do calendário" }).getByRole("button", { name: "Mês" }).click();
+    await celula.locator("button").first().click();
+    await expect(calendario.getByTestId("calendario-dia-tocado").getByTestId("calendario-item")).toHaveCount(3);
+    await semRolagemHorizontal(page);
+    for (const esquema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: esquema });
+      await page.screenshot({
+        path: test.info().outputPath(`calendario-mes-${largura}-${esquema}.png`),
+        fullPage: true,
+      });
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  }
+  await page.setViewportSize(COMPUTADOR);
 });
+
+async function fotografarCalendario(p: Page, nome: string) {
+  for (const [dispositivo, viewport] of [
+    ["computador", COMPUTADOR],
+    ["celular", CELULAR],
+  ] as const) {
+    await p.setViewportSize(viewport);
+    if (dispositivo === "celular") await semRolagemHorizontal(p);
+    for (const esquema of ["light", "dark"] as const) {
+      await p.emulateMedia({ colorScheme: esquema });
+      await p.screenshot({
+        path: test.info().outputPath(`calendario-${nome}-${dispositivo}-${esquema}.png`),
+        fullPage: true,
+      });
+    }
+    await p.emulateMedia({ colorScheme: "light" });
+  }
+  await p.setViewportSize(COMPUTADOR);
+}

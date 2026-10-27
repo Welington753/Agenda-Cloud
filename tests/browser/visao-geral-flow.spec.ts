@@ -1,13 +1,14 @@
-// Teste de navegador da Visão geral e da estrutura comum da área real
-// (`/conta/**`) — contra o backend real e um PostgreSQL descartável, mesmo
-// padrão de agenda-view-flow.spec.ts.
+// Teste de navegador do Início (dashboard do dono) e da estrutura comum da
+// área real (`/conta/**`) — contra o backend real e um PostgreSQL descartável,
+// mesmo padrão de agenda-view-flow.spec.ts.
 //
-// Prova: os quatro indicadores e as listas a partir da agenda REAL de hoje;
-// carregamento, falha, lista sem prova de completa e falta de permissão, cada
-// um com o seu estado (zero só com resposta válida); o atalho de novo
-// agendamento usando o formulário da agenda; a troca de estabelecimento sem
-// sobra do anterior; o redirecionamento seguro por `next`; e as capturas da
-// Visão geral, Agenda, Serviços e Profissionais em 1280 e 390 px.
+// Prova: os indicadores de hoje e do período contados pelo SERVIDOR
+// (clientes distintos × atendimentos), os próximos atendimentos e o uso do
+// plano; carregamento, falha e falta de permissão, cada um com o seu estado
+// (zero só com resposta válida); o atalho de novo agendamento usando o
+// formulário da agenda; a troca de estabelecimento sem sobra do anterior; o
+// redirecionamento seguro por `next`; e as capturas do Início, Agenda,
+// Serviços e Profissionais em 1280 e 390 px.
 //
 // O SEGUNDO VÍNCULO e a PERMISSÃO NEGADA não têm rota no backend (não há
 // convite nem gestão de papéis ainda): são gravados direto no PostgreSQL
@@ -125,8 +126,8 @@ async function fotografar(page: Page, nome: string) {
 
 const valor = (page: Page, id: string) => page.getByTestId(`indicador-${id}-valor`);
 const nav = (page: Page) => page.getByRole("navigation", { name: "Áreas da conta" });
-const ehListaDoDia = (url: URL) =>
-  url.pathname.endsWith("/appointments") && url.searchParams.has("date");
+/** Leitura dos indicadores do Início. */
+const ehPainel = (url: URL) => url.pathname.endsWith("/dashboard");
 
 test.describe("visão geral e estrutura comum da área real", () => {
   test("indicadores e listas reais, estados próprios, atalhos, troca de estabelecimento e next seguro", async ({
@@ -277,11 +278,24 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);
 
-    // Indicadores: 5 não canceladas, 2 aguardando, 1 em atendimento, 1 concluída.
+    // Hoje: 5 não canceladas, 2 aguardando, 1 em atendimento, 1 concluída.
     await expect(valor(page, "agendamentos")).toHaveText("5");
     await expect(valor(page, "aguardando")).toHaveText("2");
     await expect(valor(page, "em-atendimento")).toHaveText("1");
     await expect(valor(page, "concluidos")).toHaveText("1");
+    // Clientes previstos hoje: pessoas distintas confirmadas, em atendimento
+    // ou concluídas (a cancelada e as que aguardam ficam de fora).
+    await expect(valor(page, "clientes-hoje")).toHaveText("3");
+    await expect(valor(page, "solicitacoes")).toHaveText("2");
+    // Período (este mês): a concluída de hoje, 1 pessoa; por situação.
+    await expect(valor(page, "clientes-atendidos")).toHaveText("1");
+    const porSituacao = page.getByTestId("atendimentos-por-situacao");
+    await expect(porSituacao).toContainText("6 atendimentos");
+    await expect(porSituacao.getByTestId("situacao-PENDING")).toContainText("2");
+    await expect(porSituacao.getByTestId("situacao-CANCELED")).toContainText("1");
+    await expect(page.getByTestId("periodo-indicadores")).toContainText(hoje.slice(0, 4));
+    await expect(page.getByTestId("como-calculamos")).toContainText("pessoas diferentes");
+    await expect(page.getByTestId("uso-profissionais")).toHaveText(/^3 de \d+$/);
     // Próximos: só futuros PENDING/CONFIRMED, em ordem cronológica.
     const proximos = page.getByTestId("proximo-atendimento");
     await expect(proximos).toHaveCount(3);
@@ -293,19 +307,29 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(proximos.first()).toContainText("Barba · com Ana Souza");
     await expect(proximos.first()).toContainText("Aguardando confirmação");
     await expect(proximos.nth(1)).toContainText("Confirmado");
-    // Em atendimento aparece à parte, nunca entre os próximos.
-    await expect(page.getByTestId("em-andamento")).toContainText("Cliente Em Atendimento");
-    await expect(page.getByTestId("proximos-atendimentos")).not.toContainText(
-      "Cliente Em Atendimento",
-    );
+    // Em atendimento nunca aparece entre os próximos.
+    await expect(page.getByTestId("proximos-atendimentos")).not.toContainText("Cliente Em Atendimento");
     await expect(page.getByText("Cliente Cancelada")).toHaveCount(0);
     await fotografar(page, "visao-geral");
+
+    // "Hoje" no seletor do período: os mesmos números de hoje no período.
+    await page.getByRole("group", { name: "Período dos indicadores" }).getByRole("button", { name: "Hoje" }).click();
+    await expect(page.getByTestId("periodo-indicadores")).toHaveText(hoje.split("-").reverse().join("/"));
+    await expect(porSituacao).toContainText("6 atendimentos");
+    // Personalizado: um período sem nada dá zero, provado pelo servidor.
+    await page.getByRole("group", { name: "Período dos indicadores" }).getByRole("button", { name: "Personalizado" }).click();
+    await page.getByLabel("De", { exact: true }).fill("2001-01-01");
+    await page.getByLabel("Até", { exact: true }).fill("2001-01-31");
+    await page.getByRole("button", { name: "Aplicar" }).click();
+    await expect(page.getByTestId("periodo-indicadores")).toHaveText("01/01/2001 a 31/01/2001");
+    await expect(valor(page, "clientes-atendidos")).toHaveText("0");
+    await expect(porSituacao).toContainText("0 atendimentos");
 
     // ------------------------------------------------ estados próprios
     // Carregando: retido pelo teste — nenhum número na tela.
     const retida = Promise.withResolvers<void>();
     const liberar = Promise.withResolvers<void>();
-    await page.route(ehListaDoDia, async (rota) => {
+    await page.route(ehPainel, async (rota) => {
       retida.resolve();
       await liberar.promise;
       await rota.continue();
@@ -319,31 +343,15 @@ test.describe("visão geral e estrutura comum da área real", () => {
       liberar.resolve();
     }
     await expect(valor(page, "agendamentos")).toHaveText("5");
-    await page.unroute(ehListaDoDia);
+    await page.unroute(ehPainel);
 
     // Falha de comunicação: mensagem, "Tentar novamente", nenhum zero.
-    await page.route(ehListaDoDia, (rota) => rota.abort("failed"));
+    await page.route(ehPainel, (rota) => rota.abort("failed"));
     await page.reload();
-    await expect(page.getByTestId("visao-geral-erro")).toContainText("carregar a agenda");
+    await expect(page.getByTestId("visao-geral-erro")).toContainText("carregar os indicadores");
     await expect(page.getByTestId("indicador-agendamentos")).toHaveCount(0);
-    await page.unroute(ehListaDoDia);
+    await page.unroute(ehPainel);
     await page.getByRole("button", { name: "Tentar novamente" }).click();
-    await expect(valor(page, "agendamentos")).toHaveText("5");
-
-    // Resposta real, mas sem a prova de que o dia veio inteiro (`complete`
-    // falso ou ausente, como num backend anterior): nenhum total.
-    for (const complete of [false, undefined]) {
-      await page.route(ehListaDoDia, async (rota) => {
-        const resposta = await rota.fetch();
-        const corpo = (await resposta.json()) as Record<string, unknown>;
-        await rota.fulfill({ response: resposta, json: { ...corpo, complete } });
-      });
-      await page.reload();
-      await expect(page.getByTestId("visao-geral-incompleta")).toBeVisible();
-      await expect(page.getByTestId("indicador-agendamentos")).toHaveCount(0);
-      await page.unroute(ehListaDoDia);
-    }
-    await page.reload();
     await expect(valor(page, "agendamentos")).toHaveText("5");
 
     // ------------------------------------------------ atalhos
@@ -356,7 +364,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page.getByTestId("agenda-do-dia")).toContainText("Cliente Em Atendimento");
     await fotografar(page, "agenda");
 
-    await nav(page).getByRole("link", { name: "Visão geral" }).click();
+    await nav(page).getByRole("link", { name: "Início" }).click();
     await page.getByTestId("atalho-novo-agendamento").click();
     // O formulário é o da agenda, aberto no painel; a URL volta a ficar limpa.
     await expect(page.getByTestId("painel-novo-agendamento")).toBeVisible();
@@ -364,8 +372,12 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("painel-novo-agendamento")).toHaveCount(0);
 
-    // ------------------------------------------------ serviços e profissionais
-    await nav(page).getByRole("link", { name: "Serviços" }).click();
+    // ------------------------------------------------ serviços e profissionais (Configurações)
+    const secao = (rotulo: string) =>
+      page.getByRole("navigation", { name: "Seções de configurações" }).getByRole("link", { name: rotulo });
+    await nav(page).getByRole("link", { name: "Configurações" }).click();
+    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /^Serviços/ }).click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
     const cartaoAvaliacao = page.getByRole("article", { name: "Avaliação" });
     await expect(cartaoAvaliacao).toContainText("Sob consulta");
     await expect(cartaoAvaliacao).not.toContainText("R$ 0,00");
@@ -378,7 +390,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page.getByRole("article", { name: "Corte" })).toContainText("Ativo");
     await fotografar(page, "servicos");
 
-    await nav(page).getByRole("link", { name: "Profissionais" }).click();
+    await secao("Profissionais").click();
     const carla = page.getByRole("article", { name: "Carla Dias" });
     await expect(carla).toContainText("Coloração (inativo)");
     await expect(carla.getByRole("link", { name: "Horários de Carla Dias" })).toBeVisible();
@@ -391,13 +403,11 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(diegoCartao.getByRole("button", { name: "Reativar Diego Reis" })).toBeVisible();
     await fotografar(page, "profissionais");
 
-    // Subpágina mantém "Profissionais" marcado.
+    // Subpágina mantém "Configurações" e a seção "Profissionais" marcadas.
     await carla.getByRole("link", { name: "Horários de Carla Dias" }).click();
-    await expect(page).toHaveURL(/\/conta\/profissionais\/[^/]+\/horarios$/);
-    await expect(nav(page).getByRole("link", { name: "Profissionais" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais\/[^/]+\/horarios$/);
+    await expect(nav(page).getByRole("link", { name: "Configurações" })).toHaveAttribute("aria-current", "page");
+    await expect(secao("Profissionais")).toHaveAttribute("aria-current", "page");
 
     // ------------------------------------------------ troca para B, sem sobra de A
     await page.goto("/conta/visao-geral");
@@ -405,7 +415,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     const listaDeBRetida = Promise.withResolvers<void>();
     const liberarListaDeB = Promise.withResolvers<void>();
     await page.route(
-      (url) => ehListaDoDia(url) && url.pathname.includes(b.tenantId),
+      (url) => ehPainel(url) && url.pathname.includes(b.tenantId),
       async (rota) => {
         listaDeBRetida.resolve();
         await liberarListaDeB.promise;
@@ -442,21 +452,17 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page.getByTestId("indicador-agendamentos")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
     // "Sair" fica no menu da conta.
-
     await page.getByTestId("abrir-menu-conta").click();
-
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
 
     // ------------------------------------------------ next seguro (conta só com B)
-    await page.goto("/conta/servicos");
-    await expect(page).toHaveURL(/\/login\?next=%2Fconta%2Fservicos$/);
+    await page.goto("/conta/configuracoes/servicos");
+    await expect(page).toHaveURL(/\/login\?next=%2Fconta%2Fconfiguracoes%2Fservicos$/);
     await entrar(page, b.email, page.url());
-    await expect(page).toHaveURL(/\/conta\/servicos$/);
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
     // "Sair" fica no menu da conta.
-
     await page.getByTestId("abrir-menu-conta").click();
-
     await page.getByRole("button", { name: "Sair" }).click();
     await expect(page).toHaveURL(/\/login$/);
     await entrar(page, b.email, "/login?next=%2F%2Foutro-site.example%2Fphishing");
