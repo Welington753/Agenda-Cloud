@@ -62,6 +62,7 @@ import {
   conferirModo as conferirModoDeExecucao,
   destinoDoModo,
   execucaoPendente,
+  codigoDeErroTls,
   identificarEstado,
   lerRegistros,
 } from "./equipe-piloto.mjs";
@@ -110,6 +111,10 @@ async function carregarConferencia() {
 /** `before-team-access` / `after-team-access`, a mesma conferência do
  * `npm run pilot:check-database`, com o TLS do socket conferido. */
 async function conferirEsperado(destino, esperado, checkPilotDatabase) {
+  return (await conferirComCodigo(destino, esperado, checkPilotDatabase)).success;
+}
+
+async function conferirComCodigo(destino, esperado, checkPilotDatabase) {
   log(`--- PILOT_EXPECT=${esperado}`);
   const resultado = await checkPilotDatabase({
     env: {
@@ -122,7 +127,7 @@ async function conferirEsperado(destino, esperado, checkPilotDatabase) {
     log,
   });
   log(`RESULT: ${resultado.success ? "SUCCESS" : "FAILURE"}${resultado.code ? ` (${resultado.code})` : ""}`);
-  return resultado.success;
+  return resultado;
 }
 
 /** Levantamento só-leitura do limite do plano (equipe-acessos-schema.ts). */
@@ -228,12 +233,12 @@ function registrosAnteriores() {
   return existsSync(REGISTRO) ? lerRegistros(readFileSync(REGISTRO, "utf8")) : [];
 }
 
-/** Só leitura: sessões da migration ainda ativas e, em `after`, o que um
- * `migration:revert` apagaria ou deixaria de valer. */
-async function diagnosticar(destino, estado) {
+/** Só leitura: sessões da migration (application_name) ainda ativas. É a
+ * primeira conexão da fase `conferir`: se ela falhar, nenhum estado é
+ * concluído. */
+async function contarSessoesDaMigration(destino) {
   const client = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
   try {
-    await client.query("BEGIN TRANSACTION READ ONLY");
     const [{ sessoes }] = (
       await client.query(
         "SELECT count(*)::int AS sessoes FROM pg_stat_activity WHERE application_name = $1 AND pid <> pg_backend_pid()",
@@ -241,7 +246,18 @@ async function diagnosticar(destino, estado) {
       )
     ).rows;
     log(`SESSOES_DA_MIGRATION_ATIVAS: ${sessoes}`);
-    if (estado === "after") {
+    return sessoes;
+  } finally {
+    await encerrar(client);
+  }
+}
+
+/** Só leitura: o que um `migration:revert` apagaria ou deixaria de valer. */
+async function avaliarReversao(destino) {
+  const client = await conectar(destino, { aplicacao: "agenda-cloud-conferencia-equipe", log });
+  try {
+    await client.query("BEGIN TRANSACTION READ ONLY");
+    {
       const [r] = (
         await client.query(`SELECT
           (SELECT count(*)::int FROM memberships WHERE status <> 'ACTIVE') AS "vinculosSuspensos",
@@ -255,18 +271,19 @@ async function diagnosticar(destino, estado) {
       log("REVERSAO_NOTA: não use revert; ver a seção Recuperação do runbook.");
     }
     await client.query("ROLLBACK");
-    return sessoes;
   } finally {
     await encerrar(client);
   }
 }
 
 async function faseConferir(destino, schema) {
-  const before = await conferirEsperado(destino, ESPERADO_ANTES, schema.checkPilotDatabase).catch(() => false);
-  const after = await conferirEsperado(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase).catch(() => false);
-  const estado = identificarEstado({ before, after });
+  const sessoes = await contarSessoesDaMigration(destino);
+  const before = await conferirComCodigo(destino, ESPERADO_ANTES, schema.checkPilotDatabase);
+  const after = await conferirComCodigo(destino, ESPERADO_DEPOIS, schema.checkPilotDatabase);
+  const estado = identificarEstado({ before: before.success, after: after.success, codigos: [before.code, after.code] });
   log(`ESTADO: ${estado}`);
-  const sessoes = await diagnosticar(destino, estado);
+  if (estado === "nao_identificado") parar("ERR_CONFERENCIA_SEM_LEITURA");
+  if (estado === "after") await avaliarReversao(destino);
   await levantarLimites(destino, schema);
   registrar(REGISTRO, { ...base, estado, sessoesDaMigration: sessoes, concluidaEm: new Date().toISOString() });
   if (sessoes > 0) {
@@ -466,7 +483,7 @@ async function principal() {
 
 principal()
   .catch((erro) => {
-    const codigo = erro instanceof Parada ? erro.message : "ERR_INESPERADO";
+    const codigo = erro instanceof Parada ? erro.message : (codigoDeErroTls(erro) ?? "ERR_INESPERADO");
     log(`ERRO: ${codigo}`);
     if (MOTIVOS[codigo]) log(`MOTIVO: ${MOTIVOS[codigo]}`);
     if (!(erro instanceof Parada)) log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 300)}`);

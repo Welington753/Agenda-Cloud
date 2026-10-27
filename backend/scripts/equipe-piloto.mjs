@@ -98,6 +98,13 @@ export function compararServidores(conferido, novo) {
   return motivos;
 }
 
+/** Recusa do certificado pelo Node (CA desconhecida, nome errado, expirado):
+ * o TLS não foi comprovado e nada foi lido. */
+export function codigoDeErroTls(erro) {
+  const codigo = typeof erro?.code === "string" ? erro.code : "";
+  return /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS|HOSTNAME/.test(codigo) ? "ERR_CERTIFICADO_NAO_CONFIAVEL" : null;
+}
+
 // SQLSTATE de conexão perdida ou servidor encerrando: a sessão acabou e o
 // cliente não sabe se o COMMIT chegou.
 const SQLSTATE_DE_CONEXAO = /^(08...|57P0[1-5])$/;
@@ -157,8 +164,14 @@ export function lerRegistros(texto) {
   return registros;
 }
 
-/** Estado identificado pela fase `conferir` a partir das duas conferências. */
-export function identificarEstado({ before, after }) {
+// Única falha de conferência que descreve o schema; qualquer outro código
+// (conexão, TLS, credencial) significa que o estado não foi lido.
+const FALHA_DE_SCHEMA = "ERR_POST_MIGRATION_BASELINE_MISMATCH";
+
+/** Estado identificado pela fase `conferir` a partir das duas conferências;
+ * `nao_identificado` quando alguma delas não chegou a ler o banco. */
+export function identificarEstado({ before, after, codigos = [] }) {
+  if (codigos.some((c) => c !== undefined && c !== FALHA_DE_SCHEMA)) return "nao_identificado";
   if (before && !after) return "before";
   if (after && !before) return "after";
   return "divergente";

@@ -8,6 +8,7 @@ import {
   OPERACAO,
   avaliarBackupConferido,
   classificarFalha,
+  codigoDeErroTls,
   compararServidores,
   conferirModo,
   destinoDoModo,
@@ -251,5 +252,22 @@ describe('identificarEstado', () => {
     expect(identificarEstado({ before: false, after: true })).toBe('after');
     expect(identificarEstado({ before: false, after: false })).toBe('divergente');
     expect(identificarEstado({ before: true, after: true })).toBe('divergente');
+  });
+
+  it('conexão ou TLS falhou numa das conferências: não identificado, nunca "divergente" nem "before"', () => {
+    const schema = 'ERR_POST_MIGRATION_BASELINE_MISMATCH';
+    expect(identificarEstado({ before: true, after: false, codigos: [undefined, schema] })).toBe('before');
+    expect(identificarEstado({ before: false, after: false, codigos: ['ERR_UNEXPECTED', schema] })).toBe('nao_identificado');
+    expect(identificarEstado({ before: true, after: false, codigos: [undefined, 'ERR_UNEXPECTED'] })).toBe('nao_identificado');
+  });
+});
+
+describe('codigoDeErroTls', () => {
+  it('nomeia as recusas de certificado do Node; o resto não', () => {
+    for (const code of ['SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_HAS_EXPIRED']) {
+      expect(codigoDeErroTls(Object.assign(new Error('x'), { code }))).toBe('ERR_CERTIFICADO_NAO_CONFIAVEL');
+    }
+    expect(codigoDeErroTls(Object.assign(new Error('x'), { code: 'ECONNREFUSED' }))).toBeNull();
+    expect(codigoDeErroTls(new Error('x'))).toBeNull();
   });
 });

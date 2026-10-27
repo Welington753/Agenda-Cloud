@@ -43,4 +43,9 @@ export function execucaoPendente(
   filtro: { endpoint: string; modo: string },
 ): { execucao: string; iniciadaEm: string } | null;
 export function lerRegistros(texto: string): Record<string, any>[];
-export function identificarEstado(conferencias: { before: boolean; after: boolean }): 'before' | 'after' | 'divergente';
+export function identificarEstado(conferencias: {
+  before: boolean;
+  after: boolean;
+  codigos?: (string | undefined)[];
+}): 'before' | 'after' | 'divergente' | 'nao_identificado';
+export function codigoDeErroTls(erro: unknown): string | null;
