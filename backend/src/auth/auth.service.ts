@@ -2,7 +2,7 @@
 // O cadastro livre foi fechado; contas novas nascem por convite da
 // administração (src/accounts/invites.service.ts), que reaproveita a mesma
 // política de senha e o mesmo formato de sessão.
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 // Import de valor (não `import type`) — o Nest usa `design:paramtypes` do
 // construtor para resolver o token de injeção; um `import type` apagaria essa
 // referência em runtime e a DI falharia com "dependency ... is undefined".
@@ -18,8 +18,9 @@ import { Unit } from '../entities/unit.entity.js';
 import { User } from '../entities/user.entity.js';
 import { DEFAULT_SESSION_MAX_AGE_MS } from '../config/session-cookie.config.js';
 import { InvalidCredentialsError } from './auth.errors.js';
-import type { LoginDto } from './login.dto.js';
-import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, verifyPassword } from './password-hasher.js';
+import type { ChangePasswordDto, LoginDto } from './login.dto.js';
+import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher.js';
+import { recordAudit } from '../accounts/audit.js';
 import type { SessionContextResult, TenantContext } from './session-context.js';
 import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { isTenantUsableForSession } from './tenant-access.js';
@@ -57,7 +58,7 @@ export class AuthService {
    * invalida a identidade, só fica fora da lista de contexts. */
   async login(dto: LoginDto, context: LoginContext): Promise<LoginResult> {
     return this.dataSource.transaction(async (manager) => {
-      const user = await manager.findOne(User, { where: { email: dto.email } });
+      const user = await this.findLoginUser(manager, dto);
       const credential = user
         ? await manager.findOne(Credential, { where: { userId: user.id } })
         : null;
@@ -90,7 +91,7 @@ export class AuthService {
 
       return {
         token,
-        ...this.buildSessionContextResult(user, contexts),
+        ...(await this.buildSessionContextResult(manager, user, contexts)),
       };
     });
   }
@@ -112,7 +113,7 @@ export class AuthService {
     }
 
     const contexts = await this.loadTenantContexts(manager, user.id);
-    return this.buildSessionContextResult(user, contexts);
+    return this.buildSessionContextResult(manager, user, contexts);
   }
 
   /** Monta um `TenantContext` por Membership utilizável (tenant TRIAL ou
@@ -169,14 +170,82 @@ export class AuthService {
   /** Regra única de decisão de `activeContext`/`requiresTenantSelection`/
    * `hasEstablishmentAccess` a partir da lista de contexts — nunca escolhe o
    * primeiro quando há mais de um. */
-  private buildSessionContextResult(user: User, contexts: TenantContext[]): SessionContextResult {
+  /** Conta pelo identificador do login: e-mail ou nome de usuário. As
+   * colunas novas (StaffLogin) não estão na entidade: SQL explícito. */
+  private async findLoginUser(manager: EntityManager, dto: LoginDto): Promise<User | null> {
+    if (dto.email) return manager.findOne(User, { where: { email: dto.email } });
+    if (!dto.username) return null;
+    const [linha] = await manager.query<{ id: string }[]>('SELECT id FROM users WHERE username = $1', [dto.username]);
+    return linha ? manager.findOne(User, { where: { id: linha.id } }) : null;
+  }
+
+  private async buildSessionContextResult(
+    manager: EntityManager,
+    user: User,
+    contexts: TenantContext[],
+  ): Promise<SessionContextResult> {
+    const [extra] = await manager.query<{ username: string | null; must_change_password: boolean }[]>(
+      'SELECT username, must_change_password FROM users WHERE id = $1',
+      [user.id],
+    );
     return {
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email ?? null,
+        username: extra?.username ?? null,
+        mustChangePassword: extra?.must_change_password === true,
+      },
       contexts,
       activeContext: contexts.length === 1 ? contexts[0] : null,
       requiresTenantSelection: contexts.length > 1,
       hasEstablishmentAccess: contexts.length >= 1,
     };
+  }
+
+  /** POST /auth/password: troca da própria senha. A senha atual é conferida
+   * com Argon2id (hash fictício quando não há credencial real, como no
+   * login); errada, 401 `SENHA_INCORRETA` sem gravar nada. Na mesma
+   * transação: hash novo, fim da senha temporária, as OUTRAS sessões
+   * encerradas e o histórico (sem senha nenhuma). */
+  async changePassword(userId: string, sessionId: string, dto: ChangePasswordDto, now: Date): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const [conta] = await manager.query<{ name: string; password_hash: string | null; algorithm: string | null }[]>(
+        `SELECT u.name, c.password_hash, c.algorithm FROM users u
+           LEFT JOIN credentials c ON c.user_id = u.id
+          WHERE u.id = $1 FOR UPDATE OF u`,
+        [userId],
+      );
+      const real = !!conta?.password_hash && conta.algorithm === CREDENTIAL_ALGORITHM;
+      const confere = await verifyPassword(real ? conta.password_hash! : DUMMY_PASSWORD_HASH, dto.currentPassword);
+      if (!conta || !real || !confere) {
+        throw new UnauthorizedException({ code: 'SENHA_INCORRETA', message: 'Senha atual incorreta.' });
+      }
+      await manager.query(
+        `UPDATE credentials SET password_hash = $2, algorithm = $3, updated_at = $4 WHERE user_id = $1`,
+        [userId, await hashPassword(dto.newPassword), CREDENTIAL_ALGORITHM, now],
+      );
+      await manager.query(
+        `UPDATE users SET must_change_password = false,
+                updated_at = GREATEST($2::timestamptz, updated_at + interval '1 millisecond')
+          WHERE id = $1`,
+        [userId, now],
+      );
+      await manager.query(
+        `UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`,
+        [userId, sessionId, now],
+      );
+      await recordAudit(
+        manager,
+        {
+          action: 'PASSWORD_CHANGED',
+          actor: { id: userId, name: conta.name },
+          targetUserId: userId,
+          summary: 'Senha trocada pela própria pessoa. As outras sessões foram encerradas.',
+        },
+        now,
+      );
+    });
   }
 
   /** POST /auth/logout (Lote 6B.5). Idempotente por natureza: cookie

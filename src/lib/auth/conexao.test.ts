@@ -57,6 +57,17 @@ describe("aplicarVerificacao (volta ao aplicativo / internet de volta)", () => {
     expect(r.estado).toMatchObject({ status: "autenticado", sessao: { user: { id: "user_2" } } });
   });
 
+  it("mesma pessoa que acabou de trocar a senha temporária: adota a sessão nova", () => {
+    const atual: EstadoAutenticacaoReal = {
+      status: "autenticado",
+      sessao: { ...sessao("user_1"), user: { ...sessao("user_1").user, mustChangePassword: true } },
+      tenantIdAtivo: "tenant_1",
+    };
+    const novaSessao = { ...sessao("user_1"), user: { ...sessao("user_1").user, mustChangePassword: false } };
+    const r = aplicarVerificacao(atual, { ok: true, dados: novaSessao }, null);
+    expect(r.estado).toMatchObject({ status: "autenticado", sessao: { user: { id: "user_1", mustChangePassword: false } } });
+  });
+
   it("login sem sessão continua igual quando a API responde 401", () => {
     const atual: EstadoAutenticacaoReal = { status: "nao_autenticado" };
     expect(aplicarVerificacao(atual, { ok: true, dados: null }, null).estado).toBe(atual);

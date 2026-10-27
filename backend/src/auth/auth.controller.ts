@@ -27,9 +27,9 @@ import {
 } from '../config/session-cookie.config.js';
 import { InvalidCredentialsError } from './auth.errors.js';
 import { AuthService } from './auth.service.js';
-import { loginSchema, type LoginDto } from './login.dto.js';
+import { changePasswordSchema, loginSchema, type ChangePasswordDto, type LoginDto } from './login.dto.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from './session-context.js';
-import { SessionGuard } from './session.guard.js';
+import { PermiteSenhaTemporaria, SessionGuard } from './session.guard.js';
 
 const GENERIC_INVALID_CREDENTIALS_MESSAGE = 'Não foi possível entrar com essas credenciais.';
 
@@ -88,6 +88,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionGuard)
+  @PermiteSenhaTemporaria()
   async me(@Req() req: Request) {
     // O guard só provou IDENTIDADE (ver session.guard.ts) — resolver os
     // contexts de estabelecimento é uma consulta própria aqui, nunca do
@@ -105,6 +106,21 @@ export class AuthController {
       requiresTenantSelection: result.requiresTenantSelection,
       hasEstablishmentAccess: result.hasEstablishmentAccess,
     };
+  }
+
+  /** Troca da própria senha: confere a atual, grava a nova (Argon2id), encerra
+   * as OUTRAS sessões da conta e libera a conta da senha temporária. A
+   * sessão atual continua. */
+  @Post('password')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  @PermiteSenhaTemporaria()
+  async changePassword(
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
+  ): Promise<void> {
+    const identity = (req as unknown as Record<string, unknown>)[AUTH_CONTEXT_REQUEST_KEY] as IdentityContext;
+    await this.authService.changePassword(identity.userId, identity.sessionId, dto, new Date());
   }
 
   @Post('logout')

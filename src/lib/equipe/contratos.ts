@@ -33,8 +33,12 @@ export interface MembroDaEquipe {
     isOwner: boolean;
     status: "ACTIVE" | "SUSPENDED";
     statusChangedAt: string | null;
-    user: { id: string; name: string; email: string; status: string };
+    /** `email`: o e-mail ou, na conta sem e-mail, o nome de usuário. */
+    user: { id: string; name: string; email: string; status: string; username?: string | null; hasEmail?: boolean };
     grantedPermissions: PermissaoFuncionario[];
+    /** Conta criada pelo dono com usuário e senha (sem e-mail, sem papel na
+     * plataforma, só este vínculo): pode receber nova senha temporária. */
+    canResetTemporaryPassword?: boolean;
   } | null;
   invite: {
     id: string;

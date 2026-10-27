@@ -25,7 +25,10 @@ export type AdminAuditAction =
   | 'TENANT_ARCHIVED'
   | 'TENANT_PLAN_CHANGED'
   | 'MEMBERSHIP_SUSPENDED'
-  | 'MEMBERSHIP_REACTIVATED';
+  | 'MEMBERSHIP_REACTIVATED'
+  | 'STAFF_ACCESS_CREATED'
+  | 'STAFF_PASSWORD_RESET'
+  | 'PASSWORD_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

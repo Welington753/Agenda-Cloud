@@ -295,7 +295,7 @@ export class AccountsAdminService {
 
   private async lockTarget(manager: EntityManager, actor: Actor, userId: string, expectedUpdatedAt: string) {
     const [target] = await manager.query<TargetRow[]>(
-      `SELECT u.id, u.name, u.email, u.phone, u.status, u.platform_role, u.platform_permissions::text[] AS platform_permissions, u.updated_at,
+      `SELECT u.id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.phone, u.status, u.platform_role, u.platform_permissions::text[] AS platform_permissions, u.updated_at,
               EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS has_credential
          FROM users u WHERE u.id = $1 FOR UPDATE`,
       [userId],
@@ -321,7 +321,7 @@ export class AccountsAdminService {
         denied: string[];
       }[]
     >(
-      `SELECT m.id, m.tenant_id, m.user_id, m.role, u.email, u.platform_role,
+      `SELECT m.id, m.tenant_id, m.user_id, m.role, COALESCE(u.email::text, u.username::text) AS email, u.platform_role,
               COALESCE((SELECT array_agg(o.permission::text ORDER BY o.permission) FROM membership_permission_overrides o
                 WHERE o.membership_id = m.id AND o.tenant_id = m.tenant_id AND o.mode = 'DENIED'), '{}') AS denied
          FROM memberships m JOIN users u ON u.id = m.user_id

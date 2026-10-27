@@ -37,6 +37,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Repeat, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { identificacaoDaConta } from "@/lib/api/auth-api";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { itensDaNavegacao, itemAtivo } from "@/lib/conta/navegacao";
 import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
@@ -51,7 +52,7 @@ import { useSair } from "@/components/conta/use-sair";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 import { emAdministracao } from "@/lib/administracao/rotas";
 import { perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
-import { ROTA_AGENDA, ROTA_CONFIGURACOES, ROTA_INICIO } from "@/lib/conta/rotas";
+import { ROTA_AGENDA, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_PERFIL } from "@/lib/conta/rotas";
 
 /** Classe no `<html>` enquanto o shell está montado: sobe as notificações no
  * celular para não cobrirem a barra inferior (ver globals.css). */
@@ -89,11 +90,18 @@ export function ShellConta({ children }: { children: ReactNode }) {
       : null;
   const semVinculo = estado.status === "autenticado" && !estado.sessao.hasEstablishmentAccess;
   const perfil = perfilDoPapel(contextoAtivo?.role);
-  const destinoDoPerfil = contextoAtivo
-    ? redirecionamentoDoPerfil(perfil, pathname)
-    : semVinculo
-      ? redirecionamentoDoPerfil("sem-area", pathname)
-      : null;
+  // Senha temporária: só Perfil e segurança (onde está a troca) até a pessoa
+  // escolher a dela. O servidor recusa as outras rotas do mesmo jeito.
+  const trocaObrigatoria = estado.status === "autenticado" && estado.sessao.user.mustChangePassword === true;
+  const destinoDoPerfil = trocaObrigatoria
+    ? (pathname ?? "").replace(/\/+$/, "") === ROTA_PERFIL
+      ? null
+      : ROTA_PERFIL
+    : contextoAtivo
+      ? redirecionamentoDoPerfil(perfil, pathname)
+      : semVinculo
+        ? redirecionamentoDoPerfil("sem-area", pathname)
+        : null;
   useEffect(() => {
     if (destinoDoPerfil) router.replace(destinoDoPerfil);
   }, [destinoDoPerfil, router]);
@@ -104,11 +112,13 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const contexto = contextoAtivo;
   const ehDono = perfil === "dono";
   const podeTrocar = sessao.contexts.length > 1;
-  const itens = itensDaNavegacao({
-    comEstabelecimento: !!contexto,
-    comAdministracao: acessoConfirmado(estadoAcesso),
-    perfil,
-  });
+  const itens = trocaObrigatoria
+    ? []
+    : itensDaNavegacao({
+        comEstabelecimento: !!contexto,
+        comAdministracao: acessoConfirmado(estadoAcesso),
+        perfil,
+      });
   const naBarra = itens.filter((item) => item.noCelular === "barra");
   const colunasNoCelular = naBarra.length;
   const comAdministracao = acessoConfirmado(estadoAcesso);
@@ -216,7 +226,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
           )}
           <MenuConta
             nome={sessao.user.name}
-            email={sessao.user.email}
+            email={identificacaoDaConta(sessao.user)}
             tenantId={contexto && ehDono ? tenantIdAtivo : null}
             pendentes={ehDono ? pendentes : null}
             comAdministracao={comAdministracao}

@@ -91,7 +91,7 @@ function LoginPageConteudo() {
     if (!resultado.ok) {
       switch (resultado.falha.tipo) {
         case "credenciais_invalidas":
-          setErro("E-mail ou senha inválidos.");
+          setErro("E-mail, usuário ou senha inválidos.");
           break;
         case "limite_tentativas":
           setErro("Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.");
@@ -156,16 +156,19 @@ function LoginPageConteudo() {
           <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
             <div>
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
-                E-mail
+                E-mail ou usuário
               </label>
               <input
                 id="email"
-                type="email"
+                type="text"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@seuestabelecimento.com.br"
+                placeholder="voce@seuestabelecimento.com.br ou seu usuário"
                 className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
             </div>

@@ -396,8 +396,41 @@ export class TransactionScope {
   }
 }
 
+/**
+ * As poucas consultas em SQL explícito do login e da sessão sobre as colunas
+ * da migration StaffLogin (fora da entidade `User`). No fake, `username` e
+ * `mustChangePassword` são propriedades soltas do objeto do usuário (ausentes
+ * = `null` e `false`, como numa conta antiga). Qualquer outra consulta falha.
+ */
+async function fakeStaffLoginQuery(
+  usuarios: () => Promise<Record<string, unknown>[]>,
+  sql: string,
+  parametros: unknown[] = [],
+): Promise<unknown[]> {
+  const todos = await usuarios();
+  if (sql === 'SELECT id FROM users WHERE username = $1') {
+    return todos.filter((u) => u.username === parametros[0]).map((u) => ({ id: u.id }));
+  }
+  if (sql === 'SELECT username, must_change_password FROM users WHERE id = $1') {
+    return todos
+      .filter((u) => u.id === parametros[0])
+      .map((u) => ({ username: u.username ?? null, must_change_password: u.mustChangePassword === true }));
+  }
+  if (sql === 'SELECT must_change_password FROM users WHERE id = $1') {
+    return todos.filter((u) => u.id === parametros[0]).map((u) => ({ must_change_password: u.mustChangePassword === true }));
+  }
+  throw new Error(`Fake query não suporta: ${sql}`);
+}
+
 export function createFakeEntityManager(scope: TransactionScope): EntityManager {
   return {
+    async query(sql: string, parametros?: unknown[]): Promise<unknown[]> {
+      return fakeStaffLoginQuery(
+        () => scope.find<Record<string, unknown>>(User, { where: {} }),
+        sql,
+        parametros,
+      );
+    },
     create<T extends object>(EntityClass: new () => T, partial: Partial<T>): T {
       return Object.assign(new EntityClass(), partial);
     },
@@ -425,6 +458,13 @@ export function createFakeEntityManager(scope: TransactionScope): EntityManager 
  * sem o overhead/estado de uma `TransactionScope`. */
 function createReadOnlyFakeEntityManager(store: InMemoryStore): EntityManager {
   return {
+    async query(sql: string, parametros?: unknown[]): Promise<unknown[]> {
+      return fakeStaffLoginQuery(
+        async () => [...store.liveCommittedMapFor('users').values()] as unknown as Record<string, unknown>[],
+        sql,
+        parametros,
+      );
+    },
     async findOne<T extends object>(
       EntityClass: EntityCtor,
       options: { where: Record<string, unknown> },

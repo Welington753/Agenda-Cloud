@@ -45,7 +45,17 @@ export interface TenantContext {
 }
 
 export interface SessionContextResult {
-  user: { id: string; name: string; email: string };
+  /** `email` é `null` na conta de funcionário criada com usuário e senha;
+   * `username` é `null` nas contas que entram por e-mail.
+   * `mustChangePassword`: senha temporária — só a troca de senha, a sessão e
+   * a saída funcionam até a pessoa escolher a dela (ver session.guard.ts). */
+  user: {
+    id: string;
+    name: string;
+    email: string | null;
+    username: string | null;
+    mustChangePassword: boolean;
+  };
   contexts: TenantContext[];
   /** Preenchido só quando `contexts.length === 1` — nunca o primeiro de uma
    * lista maior escolhido arbitrariamente. */

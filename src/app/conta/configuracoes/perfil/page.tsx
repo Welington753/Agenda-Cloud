@@ -4,8 +4,12 @@
 // Quem está conectado, os estabelecimentos e papéis desta conta, a senha e
 // a saída do sistema. Vale para todos os perfis, inclusive o funcionário e o
 // administrador da plataforma sem estabelecimento.
+import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { KeyRound, LogOut, Store, UserRound } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { useToast } from "@/components/ui/toast";
+import { TrocarSenha } from "./trocar-senha";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useSair } from "@/components/conta/use-sair";
@@ -14,10 +18,31 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 
 export default function PerfilPage() {
-  const { estado } = useRealAuth();
+  const { estado, recarregar } = useRealAuth();
   const { saindo, sair } = useSair();
+  const { notificar } = useToast();
+  const router = useRouter();
+  // Depois da troca obrigatória, segue para o início do perfil só quando a
+  // sessão relida do servidor já não pede a troca: antes disso o shell
+  // traria a pessoa de volta para cá.
+  const sairDaTroca = useRef(false);
+  const aindaObrigatoria = estado.status === "autenticado" && estado.sessao.user.mustChangePassword === true;
+  useEffect(() => {
+    if (!sairDaTroca.current || estado.status !== "autenticado" || aindaObrigatoria) return;
+    sairDaTroca.current = false;
+    router.replace("/conta");
+  }, [estado.status, aindaObrigatoria, router]);
   if (estado.status !== "autenticado") return null;
   const { sessao, tenantIdAtivo } = estado;
+  const obrigatoria = sessao.user.mustChangePassword === true;
+
+  function aoTrocar() {
+    notificar("Senha trocada. As outras sessões desta conta foram encerradas.", "sucesso");
+    // Relê a sessão (sem a senha temporária); se era o primeiro acesso, o
+    // efeito acima segue para o início do perfil quando ela chegar.
+    if (obrigatoria) sairDaTroca.current = true;
+    recarregar();
+  }
 
   return (
     <PaginaConta titulo="Perfil e segurança" descricao="Sua identificação, seus acessos e a saída do sistema.">
@@ -30,8 +55,20 @@ export default function PerfilPage() {
           <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="perfil-identificacao">
             <dt className="text-ink-soft">Nome</dt>
             <dd className="font-medium break-words text-ink">{sessao.user.name}</dd>
-            <dt className="text-ink-soft">E-mail</dt>
-            <dd className="font-medium break-words text-ink">{sessao.user.email}</dd>
+            {sessao.user.email && (
+              <>
+                <dt className="text-ink-soft">E-mail</dt>
+                <dd className="font-medium break-words text-ink">{sessao.user.email}</dd>
+              </>
+            )}
+            {sessao.user.username && (
+              <>
+                <dt className="text-ink-soft">Usuário</dt>
+                <dd className="font-medium break-words text-ink" data-testid="perfil-usuario">
+                  {sessao.user.username}
+                </dd>
+              </>
+            )}
           </dl>
         </CartaoCorpo>
       </Cartao>
@@ -70,10 +107,13 @@ export default function PerfilPage() {
             <KeyRound size={18} aria-hidden="true" className="text-ink-soft" />
             Senha
           </h2>
-          <p className="text-sm text-ink-soft" data-testid="perfil-senha">
-            Para trocar a senha, peça a quem administra a plataforma um link de redefinição. O link vale
-            por 24 horas e encerra as sessões abertas.
-          </p>
+          <TrocarSenha obrigatoria={obrigatoria} aoTrocar={aoTrocar} />
+          {!obrigatoria && (
+            <p className="text-xs text-ink-soft" data-testid="perfil-senha">
+              Esqueceu a senha? Quem entra com e-mail pede um link de redefinição à administração da plataforma;
+              quem entra com nome de usuário pede uma nova senha temporária ao responsável pelo estabelecimento.
+            </p>
+          )}
         </CartaoCorpo>
       </Cartao>
 

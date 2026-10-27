@@ -9,10 +9,11 @@ import { AuthModule } from '../auth/auth.module.js';
 import { MyAgendaController, TeamController } from './team.controller.js';
 import { MyAgendaService } from './my-agenda.service.js';
 import { TeamService } from './team.service.js';
+import { StaffAccountsService } from './staff-accounts.service.js';
 
 @Module({
   imports: [AuthModule, AccountsModule, AppointmentsModule],
   controllers: [TeamController, MyAgendaController],
-  providers: [TeamService, MyAgendaService],
+  providers: [TeamService, MyAgendaService, StaffAccountsService],
 })
 export class TeamModule {}
