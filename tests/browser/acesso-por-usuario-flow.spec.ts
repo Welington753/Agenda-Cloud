@@ -38,9 +38,15 @@ async function capturar(page: Page, nome: string) {
   await page.setViewportSize({ width: 1280, height: 844 });
 }
 
+/** O pedido de senha só aparece depois da resposta do servidor (403
+ * REAUTENTICACAO_NECESSARIA): espera um pouco por ele antes de seguir. */
 async function confirmarSenhaSePedir(page: Page, senha: string) {
   const dialogo = page.getByTestId("confirmar-senha");
-  if (await dialogo.isVisible().catch(() => false)) {
+  const apareceu = await dialogo
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (apareceu) {
     await page.getByLabel("Sua senha", { exact: true }).fill(senha);
     await page.getByRole("button", { name: "Confirmar", exact: true }).click();
   }
@@ -125,7 +131,7 @@ test("dono cria acesso com usuário e senha; troca obrigatória; nova senha temp
     await capturar(fp.page, "troca-obrigatoria");
 
     await fp.page.getByLabel("Senha temporária").fill(temporaria);
-    await fp.page.getByLabel("Senha nova").fill(SENHA_NOVA);
+    await fp.page.getByLabel("Senha nova", { exact: true }).fill(SENHA_NOVA);
     await fp.page.getByLabel("Confirme a senha nova").fill(SENHA_NOVA);
     await fp.page.getByTestId("trocar-senha").click();
     await expect(fp.page).toHaveURL(/\/conta\/minha-agenda$/);

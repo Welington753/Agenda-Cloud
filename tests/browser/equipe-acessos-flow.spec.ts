@@ -144,7 +144,7 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 em uso (0 ativos, 0 convites pendentes)");
     const ana = page.getByTestId("membro-equipe").filter({ hasText: "Ana Lima" });
     await expect(ana).toContainText("Sem acesso");
-    await ana.getByRole("button", { name: "Convidar para acessar" }).click();
+    await ana.getByRole("button", { name: "Convidar por e-mail" }).click();
     await ana.getByLabel("Nome da pessoa").fill("Ana Lima");
     await ana.getByLabel("E-mail").fill(`${marca}-ANA@example.test`);
     await capturar(page, "convidar");
