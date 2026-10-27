@@ -140,3 +140,18 @@ anterior e o `down` desfaz a migration. Depois, voltar a API anterior deixa
 essas contas sem como entrar e telas da administração recebem o nome de
 usuário no lugar do e-mail; o `down` recusa voltar `email` a obrigatório
 enquanto houver conta sem e-mail (nada é apagado nem inventado).
+
+### Validação local (banco descartável exclusivo `disposable_pr2`, TLS, 9 migrations até `StaffLogin`)
+
+- Navegador: `acesso-usuario` 1 passed, `auth` 7 passed (depois da correção
+  abaixo); `contas` 2 passed e `equipe` 1 passed (antes dela, sem relação
+  com o trecho alterado).
+- Correção comprovada: depois da troca obrigatória, `POST /auth/password`
+  respondia 204 e o banco já tinha `must_change_password = false`, mas a
+  verificação da sessão mantinha o estado antigo para a mesma pessoa; o
+  shell continuava levando ao Perfil. Agora a verificação adota a sessão
+  nova quando `mustChangePassword` muda, e o Perfil só segue para o início
+  depois que a sessão relida não pede mais a troca.
+- Ainda pendente antes da integração: unit, lint e lint:types completos;
+  bateria inteira do navegador; testes db-e2e do backend; CI verde no SHA
+  final do PR.
