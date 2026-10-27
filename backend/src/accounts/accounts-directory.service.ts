@@ -157,7 +157,7 @@ export class AccountsDirectoryService {
       const values: unknown[] = [];
       if (query.q) {
         values.push(escaparLike(query.q));
-        base.push(`(u.name ILIKE $${values.length} OR u.email::text ILIKE $${values.length})`);
+        base.push(`(u.name ILIKE $${values.length} OR u.email::text ILIKE $${values.length} OR u.username::text ILIKE $${values.length})`);
       }
       if (query.tenantId) {
         values.push(query.tenantId);
@@ -180,7 +180,7 @@ export class AccountsDirectoryService {
         filtro.values,
       );
       const items = await manager.query(
-        `SELECT u.id, u.name, u.email, u.phone, u.status, u.email_verified AS "emailVerified",
+        `SELECT u.id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.phone, u.status, u.email_verified AS "emailVerified",
                 u.platform_role AS "platformRole", COALESCE(to_json(u.platform_permissions), '[]'::json) AS "platformPermissions",
                 u.created_at AS "createdAt", u.updated_at AS "updatedAt",
                 EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS "hasPassword",
@@ -227,7 +227,7 @@ export class AccountsDirectoryService {
           activeSessions: number;
         }[]
       >(
-        `SELECT u.id, u.name, u.email, u.phone, u.status, u.email_verified AS "emailVerified",
+        `SELECT u.id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.phone, u.status, u.email_verified AS "emailVerified",
                 u.platform_role AS "platformRole", COALESCE(u.platform_permissions::text[], '{}') AS "platformPermissions",
                 u.created_at AS "createdAt", u.updated_at AS "updatedAt", u.last_seen_at AS "lastSeenAt",
                 EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS "hasPassword",
@@ -285,7 +285,7 @@ export class AccountsDirectoryService {
       const rows = await manager.query<
         (MembershipRow & { userId: string; userName: string; userEmail: string; userStatus: string; platformRole: PlatformRole | null })[]
       >(
-        `SELECT ${MEMBERSHIP_COLUMNS}, u.id AS "userId", u.name AS "userName", u.email AS "userEmail",
+        `SELECT ${MEMBERSHIP_COLUMNS}, u.id AS "userId", u.name AS "userName", COALESCE(u.email::text, u.username::text) AS "userEmail",
                 u.status AS "userStatus", u.platform_role AS "platformRole"
            ${MEMBERSHIP_FROM} JOIN users u ON u.id = m.user_id
           WHERE m.tenant_id = $1 ORDER BY m.created_at, m.id`,
@@ -381,7 +381,7 @@ export class AccountsDirectoryService {
       const items = await manager.query(
         `SELECT a.id, a.occurred_at AS "occurredAt", a.action, a.summary,
                 json_build_object('id', a.actor_user_id, 'name', a.actor_name) AS actor,
-                CASE WHEN tu.id IS NULL THEN NULL ELSE json_build_object('id', tu.id, 'name', tu.name, 'email', tu.email) END
+                CASE WHEN tu.id IS NULL THEN NULL ELSE json_build_object('id', tu.id, 'name', tu.name, 'email', COALESCE(tu.email::text, tu.username::text)) END
                   AS target,
                 CASE WHEN t.id IS NULL THEN NULL ELSE json_build_object('id', t.id, 'name', ${TENANT_NAME}) END AS tenant,
                 a.previous_data AS "previousData", a.new_data AS "newData"

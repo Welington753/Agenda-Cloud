@@ -96,12 +96,18 @@ export class TeamService {
           user_id: string;
           name: string;
           email: string;
+          sem_email: boolean;
+          username: string | null;
+          papel_plataforma: boolean;
+          vinculos: number;
           user_status: string;
           status_changed_at: string | null;
           overrides: OverrideRow[];
         }[]
       >(
-        `SELECT m.id, m.role, m.status, m.professional_id, m.status_changed_at, u.id AS user_id, u.name, u.email,
+        `SELECT m.id, m.role, m.status, m.professional_id, m.status_changed_at, u.id AS user_id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.email IS NULL AS sem_email,
+                u.username::text AS username, u.platform_role IS NOT NULL AS papel_plataforma,
+                (SELECT count(*)::int FROM memberships o WHERE o.user_id = u.id) AS vinculos,
                 u.status AS user_status,
                 COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode))
                   FROM membership_permission_overrides o WHERE o.tenant_id = m.tenant_id AND o.membership_id = m.id),
@@ -153,7 +159,20 @@ export class TeamService {
                   isOwner: ehDono,
                   status: v.status,
                   statusChangedAt: v.status_changed_at,
-                  user: { id: v.user_id, name: v.name, email: v.email, status: v.user_status },
+                  user: {
+                    id: v.user_id,
+                    name: v.name,
+                    // E-mail ou, na conta sem e-mail, o nome de usuário.
+                    email: v.email,
+                    username: v.username,
+                    hasEmail: !v.sem_email,
+                    status: v.user_status,
+                  },
+                  // Só a conta criada pelo dono (usuário e senha, sem e-mail,
+                  // sem papel na plataforma e só com este vínculo) recebe nova
+                  // senha temporária por aqui.
+                  canResetTemporaryPassword:
+                    !ehDono && v.sem_email && !!v.username && !v.papel_plataforma && v.vinculos === 1,
                   grantedPermissions: ehDono ? [] : staffGrantedPermissions(v.role as EstablishmentRole, v.overrides),
                 }
               : null,
@@ -355,7 +374,7 @@ export class TeamService {
   ): Promise<StaffMembershipRow> {
     const linhas = linhasDe<StaffMembershipRow>(
       await manager.query(
-        `SELECT m.id, m.user_id, m.status, m.professional_id, u.email, u.name, u.status AS user_status,
+        `SELECT m.id, m.user_id, m.status, m.professional_id, COALESCE(u.email::text, u.username::text) AS email, u.name, u.status AS user_status,
                 p.active AS professional_active,
                 COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode))
                   FROM membership_permission_overrides o WHERE o.tenant_id = m.tenant_id AND o.membership_id = m.id),

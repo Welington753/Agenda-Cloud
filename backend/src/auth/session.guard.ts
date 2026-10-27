@@ -7,7 +7,22 @@
 // usuário com zero, um ou vários vínculos de estabelecimento autentica
 // exatamente da mesma forma — nunca é motivo de 401 nem de erro nenhum
 // aqui.
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+//
+// SENHA TEMPORÁRIA (StaffLogin): enquanto a conta tiver
+// `must_change_password`, só as rotas marcadas com
+// `@PermiteSenhaTemporaria()` (a sessão e a troca de senha) passam; todas as
+// outras respondem 403 `TROCA_DE_SENHA_OBRIGATORIA`, relido a cada
+// requisição. É o servidor que segura as áreas operacionais, não a tela.
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  Optional,
+  SetMetadata,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { Session } from '../entities/session.entity.js';
@@ -19,9 +34,18 @@ import { hashSessionToken, isValidSessionTokenFormat } from './session-token.js'
 
 const GENERIC_UNAUTHORIZED_MESSAGE = 'Não autenticado.';
 
+export const TROCA_DE_SENHA_OBRIGATORIA = 'TROCA_DE_SENHA_OBRIGATORIA';
+const PERMITE_SENHA_TEMPORARIA = 'permiteSenhaTemporaria';
+
+/** Rota que funciona com senha temporária (sessão e troca de senha). */
+export const PermiteSenhaTemporaria = () => SetMetadata(PERMITE_SENHA_TEMPORARIA, true);
+
 @Injectable()
 export class SessionGuard implements CanActivate {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @Optional() private readonly reflector?: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -44,6 +68,22 @@ export class SessionGuard implements CanActivate {
     const user = await manager.findOne(User, { where: { id: session.userId } });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException(GENERIC_UNAUTHORIZED_MESSAGE);
+    }
+
+    const [senha] = await manager.query<{ must_change_password: boolean }[]>(
+      'SELECT must_change_password FROM users WHERE id = $1',
+      [user.id],
+    );
+    if (senha?.must_change_password === true) {
+      const permitida =
+        this.reflector?.getAllAndOverride<boolean>(PERMITE_SENHA_TEMPORARIA, [context.getHandler(), context.getClass()]) ===
+        true;
+      if (!permitida) {
+        throw new ForbiddenException({
+          code: TROCA_DE_SENHA_OBRIGATORIA,
+          message: 'Troque a senha temporária antes de continuar.',
+        });
+      }
     }
 
     const identity: IdentityContext = { userId: user.id, sessionId: session.id };

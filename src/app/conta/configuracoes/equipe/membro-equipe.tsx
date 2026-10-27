@@ -22,6 +22,8 @@ import {
   type VisaoDaEquipe,
 } from "@/lib/equipe/contratos";
 import { ConvidarFuncionario } from "./convidar-funcionario";
+import { CriarAcessoUsuario } from "./criar-acesso-usuario";
+import { NovaSenhaTemporaria } from "./nova-senha-temporaria";
 
 const COR_SITUACAO: Record<SituacaoNaEquipe, CorBadge> = {
   OWNER: "destaque",
@@ -61,7 +63,9 @@ function explicacao(pergunta: Pergunta, membro: MembroDaEquipe): string {
 export function MembroEquipe({ membro, visao, aoMudar }: { membro: MembroDaEquipe; visao: VisaoDaEquipe; aoMudar: () => void }) {
   const executarSensivel = useAcaoSensivel();
   const { notificar } = useToast();
-  const [convidando, setConvidando] = useState(false);
+  // "convite": por e-mail; "usuario": com nome de usuário e senha temporária.
+  const [criando, setCriando] = useState<"convite" | "usuario" | null>(null);
+  const convidando = criando !== null;
   const [pergunta, setPergunta] = useState<Pergunta | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [mensagem, setMensagem] = useState("");
@@ -138,8 +142,8 @@ export function MembroEquipe({ membro, visao, aoMudar }: { membro: MembroDaEquip
         <div className="min-w-0">
           <p className="break-words font-semibold text-ink">{membro.professional.name}</p>
           {acesso && (
-            <p className="break-all text-sm text-ink-soft">
-              {acesso.user.name} · {acesso.user.email}
+            <p className="break-all text-sm text-ink-soft" data-testid="identificacao-acesso">
+              {acesso.user.name} · {acesso.user.hasEmail === false ? `usuário ${acesso.user.email}` : acesso.user.email}
             </p>
           )}
           {!acesso && convite && <p className="break-all text-sm text-ink-soft">Convite para {convite.email}</p>}
@@ -209,9 +213,14 @@ export function MembroEquipe({ membro, visao, aoMudar }: { membro: MembroDaEquip
 
       <div className="flex flex-wrap gap-2">
         {membro.situation === "NO_ACCESS" && membro.professional.active && !convidando && (
-          <Botao type="button" className="min-h-11" disabled={semVaga} onClick={() => setConvidando(true)}>
-            Convidar para acessar
-          </Botao>
+          <>
+            <Botao type="button" className="min-h-11" disabled={semVaga} onClick={() => setCriando("convite")}>
+              Convidar por e-mail
+            </Botao>
+            <Botao type="button" variante="secundaria" className="min-h-11" disabled={semVaga} onClick={() => setCriando("usuario")}>
+              Criar usuário e senha
+            </Botao>
+          </>
         )}
         {convite && (
           <>
@@ -244,17 +253,29 @@ export function MembroEquipe({ membro, visao, aoMudar }: { membro: MembroDaEquip
       {membro.situation === "NO_ACCESS" && membro.professional.active && semVaga && !convidando && (
         <p className="text-xs text-ink-soft">Sem vaga no plano para outro acesso. Revogue um convite, suspenda ou remova um acesso.</p>
       )}
-      {convidando && (
+      {criando === "convite" && (
         <ConvidarFuncionario
           tenantId={tenantId}
           professional={membro.professional}
-          aoCancelar={() => setConvidando(false)}
+          aoCancelar={() => setCriando(null)}
           aoConcluir={() => {
-            setConvidando(false);
+            setCriando(null);
             aoMudar();
           }}
         />
       )}
+      {criando === "usuario" && (
+        <CriarAcessoUsuario
+          visao={visao}
+          professional={membro.professional}
+          aoCancelar={() => setCriando(null)}
+          aoConcluir={() => {
+            setCriando(null);
+            aoMudar();
+          }}
+        />
+      )}
+      {acesso?.canResetTemporaryPassword && <NovaSenhaTemporaria tenantId={tenantId} acesso={acesso} />}
       {mensagem && (
         <p role="status" className="text-sm text-ink-soft" data-testid="mensagem-membro">
           {mensagem}

@@ -25,7 +25,10 @@ export interface TenantContextReal {
 }
 
 export interface SessaoRealContexto {
-  user: { id: string; name: string; email: string };
+  /** `email` é `null` na conta de funcionário que entra com nome de
+   * usuário. `mustChangePassword`: senha temporária — só a troca de senha
+   * funciona até a pessoa escolher a dela (o servidor recusa o resto). */
+  user: { id: string; name: string; email: string | null; username?: string | null; mustChangePassword?: boolean };
   contexts: TenantContextReal[];
   activeContext: TenantContextReal | null;
   requiresTenantSelection: boolean;
@@ -53,13 +56,31 @@ function ehSessaoRealContexto(valor: unknown): valor is SessaoRealContexto {
   if (!Array.isArray(v.contexts) || !v.contexts.every(ehTenantContextReal)) return false;
   if (v.activeContext !== null && !ehTenantContextReal(v.activeContext)) return false;
   const user = v.user as Record<string, unknown> | undefined;
-  return !!user && typeof user.id === "string" && typeof user.email === "string";
+  return (
+    !!user &&
+    typeof user.id === "string" &&
+    (typeof user.email === "string" || user.email === null) &&
+    (user.username === undefined || user.username === null || typeof user.username === "string") &&
+    (user.mustChangePassword === undefined || typeof user.mustChangePassword === "boolean")
+  );
 }
 
-export async function login(email: string, password: string): Promise<ResultadoAutenticacaoReal<SessaoRealContexto>> {
+/** Como a conta aparece para a própria pessoa: o e-mail ou, sem ele, o nome
+ * de usuário. */
+export function identificacaoDaConta(user: SessaoRealContexto["user"]): string {
+  return user.email ?? user.username ?? "";
+}
+
+/** "E-mail ou usuário": com `@` vai como e-mail (o mesmo corpo de sempre,
+ * aceito por qualquer versão da API); sem `@`, como nome de usuário. */
+export async function login(
+  identificador: string,
+  password: string,
+): Promise<ResultadoAutenticacaoReal<SessaoRealContexto>> {
+  const valor = identificador.trim();
   const resultado = await apiRequest<unknown>("/auth/login", {
     method: "POST",
-    body: { email, password },
+    body: valor.includes("@") ? { email: valor, password } : { login: valor, password },
   });
 
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
@@ -104,3 +125,38 @@ export async function logout(): Promise<ResultadoAutenticacaoReal<void>> {
 
 // O cadastro livre (POST /auth/register) foi fechado: contas novas só
 // entram pelo convite da administração (ver lib/administracao e /convite).
+
+export type FalhaTrocaDeSenha =
+  | { tipo: "senha_incorreta" }
+  | { tipo: "limite_tentativas" }
+  | { tipo: "dados_invalidos"; mensagem: string | null }
+  | { tipo: "nao_autenticado" }
+  | { tipo: "falha_comunicacao" }
+  | { tipo: "indisponivel" };
+
+/** POST /auth/password: troca a própria senha. As outras sessões da conta são
+ * encerradas; esta continua. Sem resposta, a troca pode ou não ter
+ * acontecido: a tela diz isso e não reenvia sozinha. */
+export async function trocarSenha(
+  senhaAtual: string,
+  senhaNova: string,
+): Promise<{ ok: true } | { ok: false; falha: FalhaTrocaDeSenha }> {
+  const resultado = await apiRequest<void>("/auth/password", {
+    method: "POST",
+    body: { currentPassword: senhaAtual, newPassword: senhaNova },
+  });
+  if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
+  if (resultado.kind === "http-error") {
+    if (resultado.status === 401) {
+      const codigo = (resultado.data as { code?: unknown } | null)?.code;
+      return { ok: false, falha: codigo === "SENHA_INCORRETA" ? { tipo: "senha_incorreta" } : { tipo: "nao_autenticado" } };
+    }
+    if (resultado.status === 429) return { ok: false, falha: { tipo: "limite_tentativas" } };
+    if (resultado.status === 400) {
+      const mensagem = (resultado.data as { message?: unknown } | null)?.message;
+      return { ok: false, falha: { tipo: "dados_invalidos", mensagem: typeof mensagem === "string" ? mensagem : null } };
+    }
+    return { ok: false, falha: { tipo: "indisponivel" } };
+  }
+  return { ok: true };
+}

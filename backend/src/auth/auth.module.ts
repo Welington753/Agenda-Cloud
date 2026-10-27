@@ -14,6 +14,7 @@ import { parseClientIpSource, parseProxySecret } from '../config/client-ip.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createLoginRateLimiter } from './login-rate-limit.js';
+import { REAUTH_LIMIT, createAccountRateLimiter } from '../accounts/account-rate-limit.js';
 import { SessionGuard } from './session.guard.js';
 
 // `ConfigModule` (sem opções) garante `ConfigService` resolvível mesmo quando
@@ -41,5 +42,10 @@ export class AuthModule implements NestModule {
     consumer
       .apply(createLoginRateLimiter(clientIpSource, proxySecret))
       .forRoutes({ path: 'auth/login', method: RequestMethod.POST });
+    // Troca de senha confere a senha atual: mesmo limite da reconfirmação de
+    // senha da administração (5 a cada 15 minutos por IP).
+    consumer
+      .apply(createAccountRateLimiter(REAUTH_LIMIT, clientIpSource, proxySecret))
+      .forRoutes({ path: 'auth/password', method: RequestMethod.POST });
   }
 }

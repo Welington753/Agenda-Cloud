@@ -15,7 +15,7 @@ export const ESTABLISHMENT_COLUMNS = `t.id, COALESCE(main_unit.name, t.slug::tex
     'catalogPriceCents', p.price_cents, 'maxProfessionals', p.max_professionals,
     'maxUnits', p.max_units) AS plan,
   COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name,
-    'email', u.email, 'phone', u.phone, 'status', u.status) ORDER BY u.name, u.id)
+    'email', COALESCE(u.email::text, u.username::text), 'phone', u.phone, 'status', u.status) ORDER BY u.name, u.id)
     FROM memberships m JOIN users u ON u.id = m.user_id
     WHERE m.tenant_id = t.id AND m.role = 'DONO'), '[]'::json) AS owners`;
 

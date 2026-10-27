@@ -1,0 +1,58 @@
+// Regras puras do acesso de funcionário por nome de usuário: a sugestão a
+// partir do nome, a conferência do formato (a mesma do servidor, que confere
+// de novo) e a forma da resposta da criação.
+
+/** Mesmo formato de `usernameSchema` no backend. */
+const FORMATO = /^[a-z0-9][a-z0-9._-]{2,39}$/;
+
+/** "Maria José da Silva" → "maria.silva". Sem acento, minúsculo. */
+export function sugestaoDeUsuario(nome: string): string {
+  const partes = nome
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(" ")
+    .filter((p) => p.length > 0 && !["da", "de", "do", "das", "dos", "e"].includes(p));
+  if (partes.length === 0) return "";
+  const sugestao = partes.length === 1 ? partes[0] : `${partes[0]}.${partes[partes.length - 1]}`;
+  return sugestao.slice(0, 40);
+}
+
+/** Por que o nome de usuário não serve (`null`: serve). */
+export function erroDoUsuario(valor: string): string | null {
+  const limpo = valor.trim().toLowerCase();
+  if (limpo.length < 3) return "Use pelo menos 3 caracteres.";
+  if (limpo.includes("@")) return "Nome de usuário não tem @ (isso é de e-mail).";
+  if (!FORMATO.test(limpo)) {
+    return "Use só letras sem acento, números, ponto, hífen ou sublinhado, começando por letra ou número (até 40).";
+  }
+  return null;
+}
+
+export interface AcessoCriado {
+  created: boolean;
+  membershipId: string;
+  userId: string;
+  username: string;
+  /** Só na criação; `null` quando o mesmo formulário já tinha criado. */
+  temporaryPassword: string | null;
+}
+
+export function ehAcessoCriado(v: unknown): v is AcessoCriado {
+  if (typeof v !== "object" || v === null) return false;
+  const a = v as Record<string, unknown>;
+  return (
+    typeof a.created === "boolean" &&
+    typeof a.membershipId === "string" &&
+    typeof a.userId === "string" &&
+    typeof a.username === "string" &&
+    (a.temporaryPassword === null || typeof a.temporaryPassword === "string")
+  );
+}
+
+export function ehNovaSenha(v: unknown): v is { membershipId: string; username: string; temporaryPassword: string } {
+  if (typeof v !== "object" || v === null) return false;
+  const a = v as Record<string, unknown>;
+  return typeof a.membershipId === "string" && typeof a.username === "string" && typeof a.temporaryPassword === "string";
+}

@@ -15,14 +15,17 @@ import {
   type OwnAgendaPeriodDto,
 } from '../appointments/appointment.dto.js';
 import { MyAgendaService } from './my-agenda.service.js';
+import { StaffAccountsService } from './staff-accounts.service.js';
 import { TeamService } from './team.service.js';
 import {
   myAgendaQuerySchema,
   ownStatusActionSchema,
+  staffAccountSchema,
   staffInviteSchema,
   staffPermissionsChangeSchema,
   type MyAgendaQuery,
   type OwnStatusActionDto,
+  type StaffAccountDto,
   type StaffInviteDto,
   type StaffPermissionsChangeDto,
 } from './team.dto.js';
@@ -38,6 +41,7 @@ export class TeamController {
   constructor(
     private readonly team: TeamService,
     private readonly invites: InvitesService,
+    private readonly staffAccounts: StaffAccountsService,
   ) {}
 
   @Get()
@@ -55,6 +59,30 @@ export class TeamController {
     @Body(new ZodValidationPipe(staffInviteSchema)) dto: StaffInviteDto,
   ) {
     return this.invites.inviteStaff(req.auth.userId, tenantId, dto);
+  }
+
+  /** Acesso com nome de usuário e senha temporária (gerada aqui, devolvida
+   * só nesta resposta). Exige senha do dono confirmada há pouco. */
+  @Post('staff-accounts')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  createStaffAccount(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId', id) tenantId: string,
+    @Body(new ZodValidationPipe(staffAccountSchema)) dto: StaffAccountDto,
+  ) {
+    return this.staffAccounts.create(req.auth.userId, req.auth.sessionId, tenantId, dto);
+  }
+
+  @Post('members/:membershipId/temporary-password')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  resetTemporaryPassword(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId', id) tenantId: string,
+    @Param('membershipId', id) membershipId: string,
+  ) {
+    return this.staffAccounts.resetTemporaryPassword(req.auth.userId, req.auth.sessionId, tenantId, membershipId);
   }
 
   @Post('invites/:inviteId/resend')

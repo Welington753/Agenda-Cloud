@@ -93,6 +93,16 @@ export class PasswordResetsService {
         );
         if (!target) throw new NotFoundException('Conta não encontrada.');
         assertCanManageAccount(actor, { id: target.id, platformRole: target.platform_role as never });
+        // Conta de funcionário com usuário e senha, sem e-mail: não há para
+        // onde mandar o link. A nova senha temporária é gerada pelo dono do
+        // estabelecimento, em Equipe e acessos.
+        if (!target.email) {
+          throw new ConflictException({
+            code: 'CONTA_SEM_EMAIL',
+            message:
+              'Esta conta entra com nome de usuário e não tem e-mail. O dono do estabelecimento gera uma nova senha temporária em Equipe e acessos.',
+          });
+        }
         if (target.status !== 'ACTIVE' || !target.has_credential) {
           throw new ConflictException({
             code: 'CONTA_SEM_SENHA_ATIVA',

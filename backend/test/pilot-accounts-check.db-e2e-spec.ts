@@ -36,15 +36,19 @@ describe.skipIf(!url)('conferências das migrations do piloto contra PostgreSQL 
 
   it('contas: as sete primeiras migrations e cada objeto de AccountsAdministration, sem escrever nada', async () => {
     const estado = await comCliente(lerEstadoContas);
-    // O banco descartável já tem também a migration seguinte (TeamAccess): a
-    // conferência de contas vale para o histórico até ela.
-    expect(estado.migrationNames).toEqual([...MIGRATIONS_ATE_CONTAS, MIGRATION_EQUIPE]);
+    // O banco descartável já tem também as migrations seguintes (TeamAccess
+    // e as do lote de operação diária): a conferência de contas vale para o
+    // histórico até ela.
+    expect(estado.migrationNames.slice(0, 8)).toEqual([...MIGRATIONS_ATE_CONTAS, MIGRATION_EQUIPE]);
     expect(falhasDepoisDeContas({ ...estado, migrationNames: [...MIGRATIONS_ATE_CONTAS] })).toEqual([]);
     expect(objetosPresentes(estado)).toBe(TOTAL_OBJETOS_CONTAS);
   });
 
   it('equipe: banco com as oito migrations passa no "depois" e é recusado no "antes"', async () => {
-    const estado = await comCliente(lerEstadoEquipe);
+    const lido = await comCliente(lerEstadoEquipe);
+    // As migrations posteriores (lote de operação diária) ficam fora desta
+    // conferência, que é a do procedimento de TeamAccess.
+    const estado = { ...lido, migrationNames: lido.migrationNames.slice(0, 8) };
     expect(falhasDepoisDeEquipe(estado)).toEqual([]);
     expect(objetosEquipePresentes(estado)).toBe(TOTAL_OBJETOS_EQUIPE);
     expect(falhasAntesDeEquipe(estado)).toEqual([
