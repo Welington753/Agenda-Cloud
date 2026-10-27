@@ -48,7 +48,7 @@ if ($precisaDoDestino -and ($PilotEndpointId -cnotmatch $formato -or $Production
   Write-Host 'ERRO: Endpoint ID ausente ou fora do formato ep-...; nada foi executado.'
   return
 }
-if ($Ensaio -and $precisaDoDestino -and -not (Test-Path -LiteralPath $EnsaioCa -PathType Leaf)) {
+if ($Ensaio -and $precisaDoDestino -and (-not $EnsaioCa -or -not (Test-Path -LiteralPath $EnsaioCa -PathType Leaf))) {
   Write-Host 'ERRO: -Ensaio exige -EnsaioCa com o arquivo da CA descartavel; nada foi executado.'
   return
 }
