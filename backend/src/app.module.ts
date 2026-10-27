@@ -13,6 +13,7 @@ import { PlatformModule } from './platform/platform.module.js';
 import { AccountsModule } from './accounts/accounts.module.js';
 import { TeamModule } from './team/team.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -32,6 +33,7 @@ import { AppService } from './app.service.js';
     AccountsModule,
     TeamModule,
     DashboardModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
