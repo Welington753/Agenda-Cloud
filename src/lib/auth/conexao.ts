@@ -33,8 +33,9 @@ export function rotaDispensaSessao(pathname: string | null): boolean {
  * conexão de volta). Diferente da abertura, ela nunca troca a tela por
  * carregamento ou falha: sem resposta, a tela fica como está e só o aviso
  * muda. A sessão só é substituída quando mudou de verdade (encerrada, ou
- * outra pessoa) — a mesma pessoa mantém o estado atual, e nada que dependa
- * dele (formulários abertos) é recriado.
+ * outra pessoa, ou a troca obrigatória de senha que deixou de valer) — a
+ * mesma pessoa mantém o estado atual, e nada que dependa dele (formulários
+ * abertos) é recriado.
  */
 export function aplicarVerificacao(
   atual: EstadoAutenticacaoReal,
@@ -48,7 +49,8 @@ export function aplicarVerificacao(
   const mesmaPessoa =
     proximo.status === "autenticado" &&
     atual.status === "autenticado" &&
-    proximo.sessao.user.id === atual.sessao.user.id;
+    proximo.sessao.user.id === atual.sessao.user.id &&
+    proximo.sessao.user.mustChangePassword === atual.sessao.user.mustChangePassword;
   const mesmoEstado = proximo.status === "nao_autenticado" && atual.status === "nao_autenticado";
   return { estado: mesmaPessoa || mesmoEstado ? atual : proximo, conexao: "ok" };
 }

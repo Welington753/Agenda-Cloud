@@ -72,6 +72,20 @@ Uma pessoa com três atendimentos conta 1 em "clientes" e 3 em
 Os indicadores financeiros só entram com o PR 3, que cria a fonte real de
 recebimentos. Preço de reserva nunca é apresentado como dinheiro recebido.
 
+### Ordenação da busca de clientes no CI (correção do teste, não do produto)
+
+O db-e2e `operacao-diaria-postgres` falhou no CI: a busca "mari" voltou
+"Mariana Lima, Maria Souza" e o teste esperava o contrário. Comprovado num
+container `postgres:17` igual ao do CI: o banco nasce com `en_US.utf8`, que
+ignora o espaço no primeiro nível e põe "mariana lima" antes de
+"maria souza"; com `C` (e no banco local) a ordem se inverte. O produto já
+cumpre o contrato: listagem e busca usam a mesma consulta, ordenada por
+`lower(name), id` (desempate pelo id), e o cursor compara a mesma tupla na
+mesma collation. Só o exemplo do teste presumia a collation; agora usa
+"Marina Lima", cuja ordem é a mesma em qualquer collation. Validado com o
+arquivo afetado (7 passed) em banco descartável com TLS verificado e as 8
+migrations deste PR.
+
 ## PR 2 — acesso de funcionário por usuário e senha
 
 ### Regras
@@ -140,6 +154,26 @@ anterior e o `down` desfaz a migration. Depois, voltar a API anterior deixa
 essas contas sem como entrar e telas da administração recebem o nome de
 usuário no lugar do e-mail; o `down` recusa voltar `email` a obrigatório
 enquanto houver conta sem e-mail (nada é apagado nem inventado).
+
+### Validação local (banco descartável exclusivo `disposable_pr2`, TLS, 9 migrations até `StaffLogin`)
+
+- Navegador: `acesso-usuario` 1 passed, `auth` 7 passed (depois da correção
+  abaixo); `contas` 2 passed e `equipe` 1 passed (antes dela, sem relação
+  com o trecho alterado).
+- Correção comprovada: depois da troca obrigatória, `POST /auth/password`
+  respondia 204 e o banco já tinha `must_change_password = false`, mas a
+  verificação da sessão mantinha o estado antigo para a mesma pessoa; o
+  shell continuava levando ao Perfil. Agora a verificação adota a sessão
+  nova quando `mustChangePassword` muda, e o Perfil só segue para o início
+  depois que a sessão relida não pede mais a troca.
+- Unit e lint completos (IGNORE_DOTENV_FILE=true, sem banco): web `npm test`
+  838 passed (79 arquivos), `lint` e `lint:types` sem erro; backend
+  `npm test` 1470 passed (91 arquivos), `lint` (oxlint) sem erro.
+- db-e2e do backend (`npm run test:db-e2e`, `disposable_pr2` com TLS
+  verificado, 9 migrations até `StaffLogin`, sem `appointment_payments`):
+  187 passed em 15 arquivos, nenhum falho ou pulado.
+- Ainda pendente antes da integração: bateria inteira do navegador; CI verde
+  no SHA final do PR.
 
 ## PR 3 — recebimentos manuais e indicadores financeiros
 
