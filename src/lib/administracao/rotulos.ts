@@ -79,6 +79,8 @@ export const ACOES_HISTORICO: Record<string, string> = {
   STAFF_ACCESS_CREATED: "Acesso de funcionário criado com usuário e senha",
   STAFF_PASSWORD_RESET: "Nova senha temporária gerada",
   PASSWORD_CHANGED: "Senha trocada pela própria pessoa",
+  PAYMENT_RECORDED: "Recebimento registrado",
+  PAYMENT_REFUNDED: "Recebimento estornado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

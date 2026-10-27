@@ -353,6 +353,25 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/acesso-usuario
         run: npm run test:browser:acesso-usuario
 
+      # Invocação SEPARADA (1 aceite de convite): recebimentos manuais — o
+      # Início mostra só o que foi registrado, quitação com clique duplo
+      # virando um registro, preço do serviço mudando sem alterar o
+      # registrado, estorno com motivo e senha, funcionário sem acesso ao
+      # dinheiro; capturas em claro e escuro, 1280, 390 e 360 px.
+      - name: Run real manual payments flows (record, refund, dashboard money)
+        id: browser_recebimentos
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/recebimentos
+        run: npm run test:browser:recebimentos
+
       # Invocação SEPARADA (4 cadastros e 3 logins, limites reais por IP): tela
       # de Clientes — busca e seus estados, cadastro sem envio repetido,
       # duplicidade, resultado incerto, cliente no seletor da agenda,
@@ -705,6 +724,15 @@ jobs:
         with:
           name: acesso-usuario-visual-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/acesso-usuario/**/usuario-*.png
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload manual payments screenshots
+        if: always() && steps.browser_recebimentos.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recebimentos-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/recebimentos/**/recebimentos-*.png
           retention-days: 7
           if-no-files-found: error
 

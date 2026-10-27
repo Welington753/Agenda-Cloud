@@ -11,8 +11,8 @@
 // QUANDO NÃO HÁ NÚMERO: carregando, falha de comunicação ou sem permissão —
 // cada um com o seu estado. Zero só aparece quando o servidor respondeu zero.
 //
-// Sem valores em dinheiro: preço de reserva não é dinheiro recebido, e o
-// registro de recebimentos é outra entrega.
+// Dinheiro: só os recebimentos registrados à mão (Recebimentos), contados
+// pelo servidor. Preço de reserva nunca vira dinheiro recebido.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, CalendarPlus, ShieldAlert, Store } from "lucide-react";
@@ -34,7 +34,7 @@ import { AvisoSolicitacoes } from "@/components/conta/aviso-solicitacoes";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
-import { Carregando, ComoCalculamos, Hoje, Periodo, Plano, Proximos } from "./blocos";
+import { Carregando, ComoCalculamos, Financeiro, Hoje, Periodo, Plano, Proximos } from "./blocos";
 
 const ESCOLHAS: { valor: EscolhaDePeriodo; rotulo: string }[] = [
   { valor: "hoje", rotulo: "Hoje" },
@@ -243,6 +243,7 @@ export default function InicioPage() {
             )}
 
             <Periodo painel={painel} />
+            <Financeiro painel={painel} />
           </section>
 
           <Proximos painel={painel} />

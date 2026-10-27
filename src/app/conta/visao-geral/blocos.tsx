@@ -11,6 +11,9 @@ import {
   Clock,
   Inbox,
   PlayCircle,
+  Receipt,
+  Undo2,
+  Wallet,
   RefreshCw,
   UserCheck,
   Users,
@@ -22,7 +25,8 @@ import {
   type ProximoAtendimentoDoPainel,
 } from "@/lib/api/dashboard-api";
 import { atendimentos, clientes, dataCurta } from "@/lib/conta/inicio";
-import { ROTA_AGENDA, ROTA_EQUIPE, ROTA_PROFISSIONAIS, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
+import { ROTA_AGENDA, ROTA_EQUIPE, ROTA_PROFISSIONAIS, ROTA_RECEBIMENTOS, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
+import { formatarMoeda } from "@/lib/format";
 import { StatusDoAtendimento } from "@/components/conta/cartao-atendimento";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -132,6 +136,37 @@ export function Periodo({ painel }: { painel: PainelDoEstabelecimento }) {
           </dl>
         </CartaoCorpo>
       </Cartao>
+    </div>
+  );
+}
+
+/** Dinheiro do período: só os recebimentos registrados à mão em
+ * Recebimentos. Sem registro, mostra zero recebido e ticket "—" (nunca um
+ * valor tirado do preço das reservas). */
+export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
+  const { finance, period } = painel;
+  return (
+    <div className="space-y-2" data-testid="financeiro">
+      {/* Uma coluna no celular: valores em reais não cabem em meia largura. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <EstatisticaCard icone={Wallet} rotulo="Recebido no período" valor={formatarMoeda(finance.receivedCents)} corIcone="success" testId="indicador-recebido" />
+        <EstatisticaCard icone={Undo2} rotulo="Estornado no período" valor={formatarMoeda(finance.refundedCents)} corIcone="warning" testId="indicador-estornado" />
+        <EstatisticaCard icone={Wallet} rotulo="Líquido no período" valor={formatarMoeda(finance.netCents)} testId="indicador-liquido" />
+        <EstatisticaCard
+          icone={Receipt}
+          rotulo={`Ticket médio · ${finance.paidAppointments} pago(s)`}
+          valor={finance.averageTicketCents === null ? "—" : formatarMoeda(finance.averageTicketCents)}
+          corIcone="info"
+          testId="indicador-ticket"
+        />
+      </div>
+      <Link
+        href={`${ROTA_RECEBIMENTOS}?de=${period.from}&ate=${period.to}`}
+        className="inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--color-accent-hover)] underline"
+        data-testid="ver-recebimentos"
+      >
+        Ver e registrar recebimentos
+      </Link>
     </div>
   );
 }
@@ -264,8 +299,17 @@ export function ComoCalculamos() {
           <strong className="text-ink">Solicitações aguardando resposta</strong>: pedidos que ainda não começaram e
           esperam sua confirmação, de qualquer data.
         </li>
+        <li>
+          <strong className="text-ink">Recebido</strong>: soma dos recebimentos registrados em Recebimentos com data no
+          período. <strong className="text-ink">Estornado</strong>: soma dos estornos feitos no período, mesmo de um
+          recebimento antigo. <strong className="text-ink">Líquido</strong>: recebido menos estornado.
+        </li>
+        <li>
+          <strong className="text-ink">Ticket médio</strong>: soma dos recebimentos do período que não foram estornados ÷
+          quantidade desses atendimentos. Estornar um recebimento de outro período não muda a média deste.
+        </li>
         <li>Todos os totais são contados no servidor sobre o período inteiro, não só sobre o que a tela mostra.</li>
-        <li>Valores de reserva não aparecem aqui como dinheiro recebido.</li>
+        <li>Valores de reserva não aparecem aqui como dinheiro recebido: só o que foi registrado como recebimento.</li>
       </ul>
     </details>
   );
