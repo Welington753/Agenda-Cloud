@@ -51,11 +51,12 @@ do deploy de 18:19.
 - **Código da API e do web:** o de `0f7bfd30a7b9962dac9aba3a24af2aeda8604f0d`.
 - **SHA a usar em todas as etapas:** o commit de
   `integration/nestjs-typeorm-frontend` que contiver este runbook (o merge
-  deste PR). Entre `0f7bfd3` e ele só mudam `backend/scripts/` e `docs/`.
+  deste PR). Entre `0f7bfd3` e ele só mudam `backend/scripts/`,
+  `backend/test/` e `docs/`.
   Confira antes de começar:
 
   ```powershell
-  git -C C:\Projetos\Agenda-Cloud diff --stat 0f7bfd30a7b9962dac9aba3a24af2aeda8604f0d <sha> -- . ':!backend/scripts' ':!docs'
+  git -C C:\Projetos\Agenda-Cloud diff --stat 0f7bfd30a7b9962dac9aba3a24af2aeda8604f0d <sha> -- . ':!backend/scripts' ':!backend/test' ':!docs'
   ```
 
   A saída precisa ser vazia.
