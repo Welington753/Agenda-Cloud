@@ -1,82 +1,70 @@
-# Continuidade: PR #77 mesclado, TeamManagerAccess pendente no piloto
+# Continuidade: TeamManagerAccess aplicada no piloto, deploy pendente
 
-## Estado em 28/10/2026
+## Estado em 28/10/2026 (18:06 UTC)
 
 - **Mesclado:** PR #77 (`feat/equipe-login-interno`) em
   `integration/nestjs-typeorm-frontend`, merge normal com `[skip render]`:
-  **`7918ccc36f22a37fc2333be9de8b567a69879f00`** (pais `96f5417785a3cfe12c4befba746fec1623713e9d`
-  e `a2be6db36c386bc4f56fa1a87a027f147137fbe0`). A árvore do merge é idêntica
-  à de `a2be6db`.
-- **CI em `a2be6db`:** os dois workflows exigidos passaram (navegador e API,
-  inclusive `proxy` e as suítes `gerente`, `equipe` e `acesso-usuario`;
-  `migration:show/run`). O merge não disparou deployment.
-- **Piloto:** nada executado. Dez migrations (StaffLogin e AppointmentPayments
-  já aplicadas: **não repetir**). **TeamManagerAccess1793145600000 continua
-  pendente.** API e web do piloto continuam na versão anterior. Auto-Deploy
-  não foi alterado nesta tarefa.
+  **`7918ccc36f22a37fc2333be9de8b567a69879f00`** (árvore idêntica à de
+  `a2be6db`, cujos dois workflows exigidos passaram).
+- **Piloto: `TeamManagerAccess1793145600000` APLICADA e conferida.** **Não a
+  repita**, nem StaffLogin ou AppointmentPayments. O piloto tem agora 11
+  migrations. Não use `migration:revert` (ver "Recuperação" em
+  `publicacao-gerente-piloto.md`).
+- **API e web do piloto continuam na versão anterior.** Nenhum deploy foi
+  feito; Render e Auto-Deploy não foram tocados; nenhum e-mail enviado.
 
-## Comprovado (dados fictícios, bancos descartáveis com TLS)
+## Execução no piloto (28/10/2026)
 
-Detalhes em `docs/runbooks/publicacao-gerente-piloto.md` ("Ensaio" e
-"Recuperação") e no PR #77.
+Todas as fases pelo lançador oficial `abrir-gerente-piloto.ps1`, no Windows
+Terminal, modo PILOTO, a partir da cópia limpa
+`C:\Projetos\Agenda-Cloud-publicacao-gerente` (worktree destacada em
+`7918ccc…`, `node_modules` próprio por `npm ci`, sem alterações locais antes de
+cada fase). `-PgBin C:\Program Files\PostgreSQL\18\bin`: **`pg_dump`,
+`pg_restore`, `initdb` e `pg_ctl` 18.6 para Windows**. Servidor do piloto:
+**PostgreSQL 17.11 (11592b3)**, TLSv1.3. O operador colou a URL direta na
+entrada oculta e digitou a frase; os Endpoint IDs não foram exibidos.
 
-- **Revisão final:** autorização relida a cada requisição; recorte de contato
-  e preço também nas solicitações; suspensão e retirada valem na requisição
-  seguinte; gatilho e conferência nos dois caminhos que criam usuário;
-  recusas de criação e convite limitadas por IP; criação idempotente sem
-  devolver senha no replay; disputa pela última vaga.
-- **PostgreSQL 17.11:** ciclo completo do procedimento em `ad8e409` (preparar,
-  restauração, aplicar, conferir) e casos de falha em `98c0d96`; o dump do
-  `preparar` foi restaurado e migrado com o `pg_restore` 17.11 da imagem oficial
-  `postgres:17`, com todas as conferências do procedimento.
-- **Lançador:** aberto no Windows Terminal em modo ENSAIO; URL sem eco, IDs
-  não exibidos, execução registrada, janela aberta no fim e ambiente limpo;
-  recusas de parâmetros antes de rodar.
-- **Recuperação** (versão publicada `96f5417`): voltar só o web não revoga
-  permissões e não dá ao dono como suspender gerente; voltar a API deixa
-  gerentes sem área, logins com `@` sem entrar e **deixa de contar gerentes nas
-  vagas**. Web novo com API antiga não validado.
+Pastas em `%USERPROFILE%\AgendaCloud-operacoes` (preservar):
 
-## Pendências operacionais (antes ou durante a publicação)
+| Fase | Pasta / registro | Resultado |
+| --- | --- | --- |
+| `preparar` (17:54Z) | `gerente-preparar-2026-10-28T17-54-17-824Z` | `before-team-manager`, 10 migrations, `RESULT: SUCCESS`; dump 158818 bytes, 40 tabelas, sha256 `da783579233d91abfacf01724037d8d4e3804bf55b3a5322ed8de1d1edd2aba8` |
+| `restauracao` (17:57Z) | `restauracao-conferida.json` na mesma pasta | `restauracao_e_ensaio_ok` com binários 18.6; 40 tabelas com contagens e md5 iguais; migration ensaiada na cópia; 3 vínculos, 0 gerentes ativos, 0 acima do limite, 0 passam acima |
+| `aplicar` (18:01Z) | `gerente-aplicar-2026-10-28T18-01-09-135Z` | backup novo 158818 bytes, sha256 `0ce63eab570df4ca08acb19f0c064a51b45442ae14ab64e6d31b00c4ce886e2d`; migration às 18:02:56.072Z; registro `aplicada_e_conferida` |
+| `conferir` (18:05Z) | `operacoes.jsonl` | `estado: after`, `sessoesDaMigration: 0` |
 
-1. **Restauração com binários 17:** `conferir-restauracao-gerente.mjs` só
-   chama binários Windows e rodou aqui com os do 18.6. Com binários 17 ele
-   roda pela primeira vez na operação real (`-PgBin` do PC do operador). Se
-   falhar, nada foi gravado no piloto: corrija e repita a fase.
-2. Ler, no `preparar`, a versão do servidor, o levantamento de vagas
-   (`PASSAM_ACIMA_DO_LIMITE`, `PASSAM_AO_LIMITE`) e as colisões. Com colisão, a
-   decisão de cada caso é humana.
-3. Aplicar, conferir, publicar a API e depois o web: só com autorização
-   explícita.
+**Conferido nos arquivos** (pelo agente, sem ler a janela): manifestos
+(modo piloto, commit, endpoint igual nas fases, estado anterior, servidor),
+SHA256 recalculado dos dois dumps, `restauracao-conferida.json` (inclusive o
+sha256 do manifesto), registros de `aplicar` e `conferir` acima.
 
-## Próximos comandos
+**Confirmado pela saída da janela** (relatado pelo operador): na
+`restauracao`, todas as linhas `ENSAIO_*` verdadeiras, inclusive
+`ENSAIO_USERS_IGUAL`, `ENSAIO_NADA_CONFIRMADO_NEM_CONCEDIDO` e
+`DESCARTAVEL_APAGADO`, código 0; no `aplicar`, `COMMIT: ok`,
+`MIGRATIONS_APPLIED: 11`, `SCHEMA_OBJECTS_OK: 9/9`,
+`LOGIN_IDENTIFIER_COLLISIONS: 0`, `RESULT: SUCCESS`,
+`CONTAGENS_DESDE_O_BACKUP: iguais`, código 0.
 
-A operação usa **uma cópia limpa deste SHA** e comprovantes gerados para ele.
-Backups e restaurações de outros commits (inclusive dos ensaios) são
-recusados pelo procedimento.
+**Limitação mantida:** o script de restauração não rodou com binários
+PostgreSQL 17 (só com os 18.6, versão maior que a do servidor, como o runbook
+admite). A restauração em 17 pelo Docker, dos ensaios, não comprova o lançador.
 
-```powershell
-git -C C:\Projetos\Agenda-Cloud fetch origin
-git -C C:\Projetos\Agenda-Cloud worktree add --detach C:\Projetos\Agenda-Cloud-publicacao-gerente 7918ccc36f22a37fc2333be9de8b567a69879f00
-cd C:\Projetos\Agenda-Cloud-publicacao-gerente\backend
-npm ci
+## Próximos passos (cada um com autorização explícita)
 
-# 1. preparar (só leitura no piloto)
-wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File C:\Projetos\Agenda-Cloud-publicacao-gerente\backend\scripts\abrir-gerente-piloto.ps1 -Fase preparar -PilotEndpointId <ep-piloto> -ProductionEndpointId <ep-proibido> -PgBin <bin do PostgreSQL 17 ou maior>
+1. Deploy da API: Render, `agenda-cloud-piloto-api`, Manual Deploy → Deploy a
+   specific commit → `7918ccc36f22a37fc2333be9de8b567a69879f00`; conferências
+   do passo 5 de `publicacao-gerente-piloto.md`.
+2. Deploy do web, mesmo SHA; passo 6 do runbook.
+3. Limpeza (passo 7): fechar as janelas e remover a worktree
+   `C:\Projetos\Agenda-Cloud-publicacao-gerente`; manter a pasta de operações.
 
-# 2. restauracao (sem conexão com o piloto)
-wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File C:\Projetos\Agenda-Cloud-publicacao-gerente\backend\scripts\abrir-gerente-piloto.ps1 -Fase restauracao -PgBin <mesmo bin>
+Para reconferir o estado a qualquer momento (só leitura), a fase `conferir` do
+mesmo lançador. Nunca rode `aplicar` de novo: ela recusa
+(`ERR_TEAMMANAGERACCESS_JA_APLICADA`), mas não há motivo para tentar.
 
-# 3. aplicar e 4. conferir: só com autorização, conforme o runbook
-```
+## Ambiente local
 
-Depois: deploy da API e depois do web, ambos em
-`7918ccc36f22a37fc2333be9de8b567a69879f00` (Manual Deploy → Deploy a specific
-commit), seguindo `publicacao-gerente-piloto.md`.
-
-## Ambiente local desta tarefa
-
-- O `CLAUDE.md` do clone tem alteração do usuário fora do Git: preservado.
-- PR #74, stashes e worktrees existentes: preservados.
-- Contêineres e worktrees temporários do ensaio: removidos. O PostgreSQL 18
-  descartável da pasta de rascunho da sessão pode ser apagado.
+- O `CLAUDE.md` do clone principal tem alteração do usuário fora do Git:
+  preservado.
+- PR #74, stashes e worktrees anteriores: preservados.
