@@ -119,7 +119,10 @@ export function resumoDoErro(erro: unknown, parametros?: Parametros): string {
 
 /** O SQL com o resumo dos parâmetros. Os valores nunca entram. */
 export function resumoDaQuery(query: string, parametros?: Parametros): string {
-  const sql = semSegredos(query.replace(/\s+/g, ' ').trim(), parametros);
+  // O SQL é código, com `$1` no lugar dos dados: trocar valor de parâmetro
+  // nele só apagaria literais legítimos. Os padrões de segredo valem, por
+  // garantia.
+  const sql = semSegredos(query.replace(/\s+/g, ' ').trim());
   return valoresDe(parametros).length ? `${sql} -- parâmetros: ${resumoDosParametros(parametros)}` : sql;
 }
 
