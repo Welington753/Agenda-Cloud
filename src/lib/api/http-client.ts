@@ -32,6 +32,14 @@ export interface ApiRequestInit {
   signal?: AbortSignal;
 }
 
+/** O `message` de um erro da API, quando é texto. Os módulos de cada área
+ * decidem o que fazer com ele; o status continua sendo o que classifica. */
+export function mensagemDoBackend(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const mensagem = (data as Record<string, unknown>).message;
+  return typeof mensagem === "string" ? mensagem : null;
+}
+
 const STATUS_DE_GATEWAY = new Set([502, 503, 504]);
 
 export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Promise<ApiResult<T>> {

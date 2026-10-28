@@ -9,7 +9,7 @@
 // O vocabulário de falhas é PRÓPRIO (e não o de profissionais) por um motivo
 // concreto: o 403 desta rota fala de consultar a AGENDA, não de gerenciar
 // profissionais, e reaproveitar o outro tipo obrigaria a mentir na redação.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 /** Motivos de lista vazia devolvidos pelo backend (`emptyReason`). Lista
  * fechada: qualquer valor fora dela é tratado como resposta inesperada. */
@@ -106,17 +106,11 @@ function ehDisponibilidade(valor: unknown): valor is DisponibilidadeReal {
   );
 }
 
-function mensagemDeErroDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const mensagem = (data as Record<string, unknown>).message;
-  return typeof mensagem === "string" ? mensagem : null;
-}
-
 function falhaPorStatus(status: number, data: unknown): FalhaDisponibilidadeReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
-  if (status === 400) return { tipo: "nao_consultavel", mensagem: mensagemDeErroDoBackend(data) };
+  if (status === 400) return { tipo: "nao_consultavel", mensagem: mensagemDoBackend(data) };
   return { tipo: "indisponivel" };
 }
 

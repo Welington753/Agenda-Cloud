@@ -6,7 +6,7 @@
 // profissionais (`FalhaProfissionaisReal`), porque é o mesmo domínio e as
 // mensagens já existem em lib/profissionais/mensagens.ts — nenhuma redação
 // duplicada.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 import type { FalhaProfissionaisReal, ResultadoProfissionaisReal } from "./professionals-api";
 
 export interface IntervaloReal {
@@ -48,18 +48,12 @@ function ehHorariosReais(valor: unknown): valor is HorariosReais {
   });
 }
 
-function mensagemDeErroDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const mensagem = (data as Record<string, unknown>).message;
-  return typeof mensagem === "string" ? mensagem : null;
-}
-
 function falhaPorStatus(status: number, data: unknown): FalhaProfissionaisReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
   if (status === 409) return { tipo: "conflito" };
-  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDeErroDoBackend(data) };
+  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDoBackend(data) };
   return { tipo: "indisponivel" };
 }
 

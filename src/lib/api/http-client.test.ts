@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reiniciarPedidosDePartida } from "./acordar-api";
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("mensagemDoBackend", () => {
+  it("devolve o message de texto do corpo de erro", () => {
+    expect(mensagemDoBackend({ statusCode: 409, message: "Horário ocupado." })).toBe("Horário ocupado.");
+  });
+
+  it("sem message de texto: null, nunca um texto inventado", () => {
+    expect(mensagemDoBackend(null)).toBeNull();
+    expect(mensagemDoBackend("Horário ocupado.")).toBeNull();
+    expect(mensagemDoBackend({})).toBeNull();
+    expect(mensagemDoBackend({ message: ["a", "b"] })).toBeNull();
+    expect(mensagemDoBackend({ message: 42 })).toBeNull();
+  });
 });
 
 describe("apiRequest", () => {

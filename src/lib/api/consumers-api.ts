@@ -7,7 +7,7 @@
 // O formato do cliente (`ClienteReal`) é o mesmo que o seletor da Agenda já
 // usa (appointments-api.ts) — um cliente cadastrado aqui aparece lá sem
 // conversão nenhuma.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 import type { ClienteReal } from "./appointments-api";
 
 export type { ClienteReal };
@@ -40,18 +40,12 @@ export type ResultadoClientesReal<T> =
   | { ok: true; dados: T }
   | { ok: false; falha: FalhaClientesReal };
 
-function mensagemDeErroDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const mensagem = (data as Record<string, unknown>).message;
-  return typeof mensagem === "string" ? mensagem : null;
-}
-
 function falhaPorStatus(status: number, data: unknown): FalhaClientesReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
-  if (status === 409) return { tipo: "duplicado", mensagem: mensagemDeErroDoBackend(data) };
-  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDeErroDoBackend(data) };
+  if (status === 409) return { tipo: "duplicado", mensagem: mensagemDoBackend(data) };
+  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDoBackend(data) };
   return { tipo: "indisponivel" };
 }
 

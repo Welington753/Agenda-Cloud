@@ -10,7 +10,7 @@
 // estabelecimento está operando. Isso nunca é autorização: quem decide é a
 // Membership que o backend reconsulta a cada requisição. A preferência salva
 // no localStorage só escolhe qual tenant pedir.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 export type ModalidadeServicoReal = "IN_PERSON" | "REMOTE" | "HOME";
 
@@ -68,19 +68,13 @@ function ehServicoReal(valor: unknown): valor is ServicoReal {
   );
 }
 
-function mensagemDeErroDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const mensagem = (data as Record<string, unknown>).message;
-  return typeof mensagem === "string" ? mensagem : null;
-}
-
 /** Mapeamento único de status HTTP para falha de domínio — todas as chamadas
  * deste módulo passam por aqui, para nunca divergirem. */
 function falhaPorStatus(status: number, data: unknown): FalhaServicosReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
-  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDeErroDoBackend(data) };
+  if (status === 400) return { tipo: "dados_invalidos", mensagem: mensagemDoBackend(data) };
   return { tipo: "indisponivel" };
 }
 
