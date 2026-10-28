@@ -24,8 +24,18 @@ com mostrar/ocultar. A política é a mesma das outras senhas da plataforma
 
 **Compatibilidade na publicação.** A API sai antes do web. Durante essa janela,
 o web anterior ainda manda o corpo sem `password`. Esse corpo continua gerando
-a senha temporária de antes, com troca obrigatória. A tela nova sempre manda a
-senha.
+a senha temporária de antes, com troca obrigatória. Só o campo realmente
+AUSENTE tem esse efeito.
+
+- Senha vazia, `null`, número, objeto ou fora da política é recusada com 400,
+  sem ecoar o valor.
+- A tela nova sempre manda a senha e exige senha e confirmação iguais.
+- Enquanto a resposta é incerta (falha de rede), o formulário fica travado.
+  "Conferir" repete exatamente o pedido enviado, com a mesma chave e a mesma
+  senha.
+- Se a repetição só recupera a criação anterior, a tela diz "Este acesso já
+  tinha sido criado… a senha dele não mudou". Ela nunca afirma que uma senha
+  foi salva.
 
 **Definir nova senha.** `PUT /tenants/:tenantId/team/members/:membershipId/password`,
 com corpo `{ password }`, substitui na tela o botão "Gerar nova senha
@@ -60,10 +70,75 @@ a senha ou quando o dono define uma senha nova para aquela conta.
 **Troca voluntária.** Fica no Perfil e segurança (`POST /auth/password`). Exige
 a senha atual e encerra as outras sessões. Nada mudou.
 
-**Editar perfil, vínculo e permissões.** Ficam os controles que já existem: o
-editor de permissões (com as vagas, o isolamento e a regra de que o dono só
-concede o que pode conceder). Trocar o perfil ou o profissional ligado
-continua sendo remover e criar de novo.
+**Editar perfil, vínculo e permissões.** O editor de permissões continua igual.
+Os controles respeitam as vagas, o isolamento e a regra de que o dono só
+concede o que pode conceder.
+
+O perfil e o profissional ligado agora mudam no mesmo acesso, por
+`PUT /tenants/:tenantId/team/members/:membershipId/access`, com o corpo
+`{ expected, role, professionalId, granted }`. Na tela, o botão é **Editar
+perfil e profissional**.
+
+- **O que fica.** O mesmo vínculo (`memberships.id`), a mesma conta, o mesmo
+  login, a mesma senha, as sessões e o histórico. Nada é removido e criado de
+  novo.
+- **Perfil e profissional.** O perfil Profissional exige profissional ligado.
+  O Gerente pode ficar sem profissional.
+- **Novo profissional.** Segue as regras da criação: é deste estabelecimento,
+  está ativo, não tem outro acesso e não tem convite pendente. Os convites
+  vencidos expiram antes da conferência. Um profissional de outro
+  estabelecimento recebe 404.
+- **Agendamentos.** Nenhum muda de profissional.
+- **Vagas.** Não mudam, porque os dois perfis ocupam vaga igual e o estado do
+  vínculo não muda.
+- **Permissões.** A troca nunca concede nada sozinha. O corpo leva exatamente
+  o conjunto que vale depois. A tela mostra o perfil, o profissional, as
+  permissões resultantes, o que sai e o que entra. "Salvar alterações" só
+  libera depois que o dono marca "Conferi o resultado e quero salvar".
+  Qualquer mudança no formulário desmarca. O servidor recusa o que não se
+  aplica ao novo perfil (`PERMISSAO_NAO_SE_APLICA`) e o que o dono não pode
+  conceder. No gerente, salvar aqui é a confirmação das permissões. No
+  profissional, `permissions_confirmed_at` volta a nulo. Os `DENIED` gravados
+  ficam.
+- **Tela desatualizada.** Se `expected` não bate com o vínculo,
+  `ALTERADO_POR_OUTRA_TELA`.
+- **Contas fora do alcance.** O perfil só muda na conta que é só deste
+  estabelecimento, sem papel na plataforma e sem outro vínculo
+  (`canChangeRole`). Para conta compartilhada ou de plataforma, a troca de
+  perfil é recusada com `PERFIL_NAO_E_DO_ESTABELECIMENTO`. O profissional
+  ligado e as permissões continuam editáveis, porque mexem só neste vínculo.
+  Nada aqui toca senha, e-mail, login ou papel de plataforma.
+- **Controles.** Reautenticação do dono, transação com o estabelecimento
+  travado (a mesma fila da criação e do convite) e histórico
+  `USER_PERMISSION_CHANGED` com o antes e o depois.
+- **Quando vale.** Na próxima requisição, inclusive com sessão aberta: a
+  autorização relê o vínculo do banco a cada requisição.
+
+## Logs sem senha, hash nem token
+
+Antes, dois caminhos podiam escrever esses valores no log:
+
+- o logger padrão do TypeORM imprimia `-- PARAMETERS: [...]` numa query que
+  falhava;
+- o tratador de exceções do Nest imprimia o `QueryFailedError` inteiro, com
+  `parameters` e `driverError.detail`.
+
+Assim, uma falha ao gravar `credentials` ou `sessions` levaria o hash da senha
+ou o hash do token para o log.
+
+- `backend/src/database/safe-typeorm-logger.ts` passa a ser o logger dos
+  DataSources de runtime e de migrations. Ele escreve:
+  - o SQL;
+  - o tipo e o tamanho de cada parâmetro;
+  - `code`, `constraint`, `table` e `column`;
+  - a mensagem, com cada valor de parâmetro e tudo o que parece hash Argon2,
+    hex longo ou token base64url trocado por `[omitido]`.
+
+  O `detail` nunca é escrito.
+- `backend/src/common/database-error.filter.ts` (`APP_FILTER`) responde ao
+  `QueryFailedError` com o mesmo 500 genérico do Nest. O log usa o mesmo
+  resumo e a pilha sem a primeira linha.
+- Não é uma reformulação de observabilidade: os outros logs não mudaram.
 
 ## Calendário individual
 
@@ -106,9 +181,67 @@ Tudo contra PostgreSQL 18 descartável com TLS (certificado autoassinado via
 - `equipe-acessos-flow` e `gerente-acessos-flow` passam a criar o acesso com a
   senha do dono.
 
-## Pendência
+### Segunda rodada: edição, logs e compatibilidade
 
-O logger de erro do TypeORM (`logging: ['error', 'warn']`) imprime os
-parâmetros de uma query que falhou. Se a gravação em `credentials` falhasse, o
-hash (nunca a senha em claro) iria para o log. Isso já valia para todas as
-rotas de senha antes deste lote; tratar exige mexer no logger global.
+Commits `4214a65` (logs), `c5b7974` (edição na API) e `2404894` (edição na
+tela).
+
+- `backend/src/database/safe-typeorm-logger.spec.ts` (unitário): o erro de
+  uma gravação de credencial com hash e token nos parâmetros, na mensagem e no
+  `detail`. A saída efetiva (stdout e stderr capturados) tem SQL, tipos,
+  `code` e `table`, e não tem senha, hash, token nem `Failing row`. O mesmo
+  vale para o `DatabaseErrorFilter`, que responde 500 genérico.
+- `senha-do-dono-postgres.db-e2e-spec.ts`, 3 casos novos (10 no total):
+  - edição de profissional para gerente sem profissional e de volta para
+    profissional com outro profissional:
+    - mesmo vínculo, conta, senha e sessão aberta;
+    - reservas sem mudar de profissional;
+    - vagas iguais;
+    - nada concedido sozinho;
+    - histórico sem senha nem hash;
+    - a sessão aberta já segue o perfil novo na próxima chamada (agenda do
+      estabelecimento e própria agenda);
+  - recusas:
+    - profissional com acesso, com convite pendente, desativado ou de outro
+      estabelecimento;
+    - área de gerente em profissional;
+    - tela desatualizada;
+    - outro dono;
+    - vínculo de dono;
+    - funcionário;
+    - sem reautenticação;
+    - perfil de conta compartilhada ou de plataforma;
+  - falha REAL de gravação: um gatilho de teste repete o valor na mensagem e
+    no `detail`. Cobre `INSERT` em `credentials` (criar acesso), `UPDATE` em
+    `credentials` (nova senha) e `INSERT` em `sessions` (login). A saída
+    capturada do logger e do filtro não tem senha, `$argon2`, hex de 64
+    caracteres nem `DETAIL`.
+- `team.e2e-spec.ts`:
+  - corpo estrito da edição;
+  - senha `''`, `null`, `false` e `{}` recusada sem eco;
+  - o corpo sem `password` chega ao serviço sem o campo.
+- `src/lib/equipe/edicao-de-acesso.test.ts`: o resultado da edição (o que
+  sai, o que entra, sem concessão automática) e o corpo enviado.
+- `gerente-acessos-flow`: troca de perfil e profissional pela tela, com
+  "Saem" visível, "Salvar alterações" bloqueado até a conferência, sessão
+  aberta do gerente seguindo o perfil novo, mesmo vínculo e reservas no
+  lugar.
+
+Execuções locais desta rodada (PostgreSQL 18 descartável com TLS, porta
+55434):
+
+- backend: `npm test` com 1510 testes; `team.e2e-spec.ts` com 14 casos; lint;
+  `tsc` do build; build;
+- db-e2e: `senha-do-dono-postgres` (10), `team-access`, `team-manager` e
+  `staff-login` (31);
+- frontend: testes de `src/lib/equipe` (18); `tsc --noEmit`; `lint` e
+  `lint:types` só com os avisos antigos; build;
+- navegador: `test:browser:gerente`.
+
+Não foram repetidas localmente nesta rodada as suítes de navegador `auth`,
+`services`, `acesso-usuario`, `equipe` e `calendario-funcionario`, que não
+tocam o que mudou além do cartão de acesso. O CI do PR roda todas.
+
+## Estado e retomada
+
+Ver o fim deste arquivo, atualizado a cada checkpoint.
