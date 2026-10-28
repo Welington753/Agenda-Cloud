@@ -3,6 +3,7 @@ import {
   buildRuntimeDataSourceOptions,
   RuntimeDataSource,
 } from './runtime-data-source.js';
+import { SafeTypeOrmLogger } from './safe-typeorm-logger.js';
 
 const FAKE_URL = 'postgresql://user:pass@host:5432/db';
 
@@ -24,6 +25,10 @@ describe('buildRuntimeDataSourceOptions', () => {
     const opcoes = buildRuntimeDataSourceOptions(FAKE_URL);
     expect(opcoes.logging).not.toContain('query');
     expect(opcoes.logging).not.toContain('all');
+  });
+
+  it('usa o logger que nunca escreve os valores de bind de uma query que falha', () => {
+    expect(buildRuntimeDataSourceOptions(FAKE_URL).logger).toBeInstanceOf(SafeTypeOrmLogger);
   });
 });
 

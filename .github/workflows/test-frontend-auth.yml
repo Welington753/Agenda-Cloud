@@ -336,11 +336,13 @@ jobs:
         run: npm run test:browser:equipe
 
       # Invocação SEPARADA (1 aceite de convite e 4 logins, limite por IP):
-      # acesso de funcionário com nome de usuário e senha temporária, sem
-      # e-mail — criação pela tela, troca obrigatória no primeiro acesso
-      # (tela e API), nome de usuário único, nova senha temporária encerrando
-      # as sessões; capturas em claro e escuro, 1280, 390 e 360 px.
-      - name: Run real staff login flows (username and temporary password, forced change)
+      # acesso de funcionário com nome de usuário e a senha definida pelo
+      # dono, sem e-mail — criação pela tela (senha, confirmação,
+      # mostrar/ocultar), entrada sem troca obrigatória, nome de usuário
+      # único, nova senha do dono encerrando as sessões e invalidando a
+      # anterior, troca voluntária no Perfil; capturas em claro e escuro,
+      # 1280, 390 e 360 px.
+      - name: Run real staff login flows (username and owner-defined password)
         id: browser_acesso_usuario
         env:
           NODE_ENV: development
@@ -358,6 +360,8 @@ jobs:
       # com login em formato de e-mail e sem profissional; só as áreas
       # concedidas (tela, URL e API), sem telefone nem preço na agenda,
       # solicitação confirmada, retirada valendo na requisição seguinte;
+      # troca de perfil e profissional no mesmo vínculo, conferida pelo dono e
+      # valendo na sessão aberta, sem mover reservas;
       # capturas em claro e escuro, 1280, 390 e 360 px.
       - name: Run real manager access flows (owner-granted areas, internal login)
         id: browser_gerente
@@ -372,6 +376,25 @@ jobs:
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/gerente
         run: npm run test:browser:gerente
+
+      # Invocação SEPARADA (1 aceite de convite e 2 logins): calendário
+      # individual do funcionário — dois profissionais com reservas no mesmo
+      # dia, cada um só com os próprios em Mês, Semana e Dia (eventos,
+      # contagens, "mais" e detalhe), computador e celular, e pelas chamadas
+      # diretas à API; link público do estabelecimento sem profissional.
+      - name: Run real staff calendar isolation flows (month, week, day)
+        id: browser_calendario_funcionario
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/calendario-funcionario
+        run: npm run test:browser:calendario-funcionario
 
       # Invocação SEPARADA (1 aceite de convite): recebimentos manuais — o
       # Início mostra só o que foi registrado, quitação com clique duplo
@@ -756,6 +779,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Upload staff calendar screenshots
+        if: always() && steps.browser_calendario_funcionario.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: calendario-funcionario-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/calendario-funcionario/**/calendario-*.png
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload manual payments screenshots
         if: always() && steps.browser_recebimentos.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -852,6 +884,7 @@ jobs:
             steps.browser_equipe.outcome == 'failure' ||
             steps.browser_acesso_usuario.outcome == 'failure' ||
             steps.browser_gerente.outcome == 'failure' ||
+            steps.browser_calendario_funcionario.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||

@@ -4,8 +4,9 @@
 // 1. O dono cria, em "Criar acesso", um GERENTE sem profissional, com login
 //    em formato de e-mail, e marca a agenda do estabelecimento e as
 //    solicitações. Marcar a agenda traz junto "consultar profissionais", e o
-//    resumo mostra exatamente o que será concedido.
-// 2. O gerente troca a senha temporária e começa na Agenda. Vê os
+//    resumo mostra exatamente o que será concedido. O dono define a senha.
+// 2. O gerente entra com essa senha, sem troca obrigatória, e começa na
+//    Agenda. Vê os
 //    atendimentos de todos sem telefone nem preço, sem "Novo agendamento" e
 //    sem ações; confirma uma solicitação pela aba Solicitações.
 // 3. Áreas não concedidas: pelo endereço, levam ao começo dele; pela API,
@@ -13,7 +14,11 @@
 //    estabelecimento.
 // 4. O dono retira a agenda com a sessão do gerente aberta: a próxima
 //    requisição já é recusada.
-// 5. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
+// 5. O dono troca o perfil para Profissional, ligado à Ana, no MESMO vínculo:
+//    a tela mostra o que sai, nada entra sozinho, e só salva depois de
+//    conferido. A sessão aberta já segue o perfil novo; nenhuma reserva muda
+//    de profissional.
+// 6. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
 //
 // Invocação própria (`npm run test:browser:gerente`): 1 login.
 import { expect, test, type Browser, type Page } from "@playwright/test";
@@ -21,7 +26,7 @@ import { randomUUID } from "node:crypto";
 import { API_DE_TESTE, conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
 
 const SENHA_DONO = "senha-do-dono-do-gerente-1";
-const SENHA_GERENTE = "senha-escolhida-pelo-gerente-1";
+const SENHA_GERENTE = "senha-definida-pelo-dono-1";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 10);
 
 async function semRolagemHorizontal(page: Page) {
@@ -129,11 +134,12 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
       "Solicitações: consultar solicitações; aceitar e recusar solicitações",
       "Profissionais: consultar profissionais",
     ]);
+    await formulario.getByLabel("Senha", { exact: true }).fill(SENHA_GERENTE);
+    await formulario.getByLabel("Confirmar senha").fill(SENHA_GERENTE);
     await capturar(page, "criar");
     await formulario.getByRole("button", { name: "Criar acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    const temporaria = (await page.getByTestId("senha-temporaria-valor").textContent())!.trim();
-    await page.getByRole("button", { name: "Já entreguei" }).click();
+    await page.getByTestId("acesso-criado").getByRole("button", { name: "Concluir" }).click();
     const cartao = page.getByTestId("acesso-equipe").filter({ hasText: "Gerente Fictício" });
     await expect(cartao.getByTestId("perfil-acesso")).toHaveText("Gerente");
     await expect(cartao.getByTestId("profissional-vinculado")).toHaveText("Nenhum: não atende clientes");
@@ -152,13 +158,9 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
     try {
       await gp.goto("/login");
       await gp.getByLabel("E-mail ou login").fill(login.toUpperCase());
-      await gp.getByLabel("Senha", { exact: true }).fill(temporaria);
+      await gp.getByLabel("Senha", { exact: true }).fill(SENHA_GERENTE);
       await gp.getByRole("button", { name: "Entrar" }).click();
-      await expect(gp).toHaveURL(/\/conta\/configuracoes\/perfil$/);
-      await gp.getByLabel("Senha temporária").fill(temporaria);
-      await gp.getByLabel("Senha nova", { exact: true }).fill(SENHA_GERENTE);
-      await gp.getByLabel("Confirme a senha nova").fill(SENHA_GERENTE);
-      await gp.getByTestId("trocar-senha").click();
+      // Senha definida pelo dono: sem troca obrigatória.
       await expect(gp).toHaveURL(/\/conta\/agendamentos$/);
       const nav = gp.getByRole("navigation", { name: "Áreas da conta" });
       await expect(nav.getByRole("link")).toHaveText(["Agenda", "Profissionais", "Configurações"]);
@@ -210,6 +212,44 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
       await expect(cartao.getByTestId("permissoes-efetivas")).not.toContainText("Agenda do estabelecimento");
       expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/appointments?date=${amanha}`)).status()).toBe(403);
       expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/booking-requests`)).status()).toBe(200);
+
+      // ---------------------------------- 5. perfil e profissional, mesmo vínculo
+      const [antes] = (await db.query("SELECT m.id, m.user_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.username = $1", [login])).rows;
+      await cartao.getByRole("button", { name: "Editar perfil e profissional" }).click();
+      const edicao = cartao.getByTestId("editar-acesso");
+      await edicao.getByLabel("Profissional", { exact: true }).check();
+      await edicao.getByLabel("Profissional vinculado").selectOption({ label: "Ana Lima" });
+      // Nada entra sozinho; o que não se aplica ao profissional sai, e a tela diz.
+      const resultado = edicao.getByTestId("resultado-da-edicao");
+      await expect(resultado).toContainText("Perfil: Profissional (era Gerente)");
+      await expect(resultado).toContainText("Profissional: Ana Lima (era nenhum)");
+      await expect(resultado.getByTestId("permissoes-que-saem")).toContainText("Solicitações");
+      await expect(resultado.getByTestId("permissoes-que-entram")).toHaveCount(0);
+      const salvar = edicao.getByRole("button", { name: "Salvar alterações" });
+      await expect(salvar).toBeDisabled();
+      await edicao.getByLabel("Conferi o resultado e quero salvar").check();
+      await capturar(page, "editar");
+      await salvar.click();
+      await confirmarSenhaSePedir(page, SENHA_DONO);
+      await expect(cartao.getByTestId("perfil-acesso")).toHaveText("Profissional");
+      await expect(cartao.getByTestId("profissional-vinculado")).toHaveText("Ana Lima");
+      await expect(cartao.getByTestId("permissoes-efetivas")).toHaveText("Ver a própria agenda.");
+      const [depois] = (await db.query("SELECT m.id, m.user_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.username = $1", [login])).rows;
+      expect(depois).toEqual(antes);
+      // A sessão aberta do gerente já segue o perfil novo na próxima requisição.
+      expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/booking-requests`)).status()).toBe(403);
+      const propria = (await (await api.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/range?from=${amanha}&to=${amanha}`)).json()) as {
+        professional: { id: string };
+        appointments: { id: string }[];
+      };
+      expect(propria.professional.id).toBe(profissionais[0]);
+      expect(propria.appointments.map((a) => a.id)).toEqual([ids.confirmada]);
+      // Nenhuma reserva mudou de profissional.
+      const reservas = (await db.query("SELECT id, professional_id FROM appointments WHERE tenant_id = $1 ORDER BY start_at", [tenantId])).rows;
+      expect(reservas).toEqual([
+        { id: ids.confirmada, professional_id: profissionais[0] },
+        { id: ids.pedido, professional_id: profissionais[1] },
+      ]);
     } finally {
       await g.contexto.close();
     }

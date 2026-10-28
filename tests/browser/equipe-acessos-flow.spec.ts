@@ -2,8 +2,8 @@
 // PostgreSQL DESCARTÁVEL e a caixa de e-mail LOCAL (nada sai da máquina).
 //
 // 1. O dono cria o acesso da funcionária (perfil Profissional, ligada à
-//    profissional Ana) com login e senha temporária, sem convite nem e-mail;
-//    ela troca a senha no primeiro acesso e cai na agenda DELA.
+//    profissional Ana) com login e a senha que ele escolhe, sem convite nem
+//    e-mail; ela entra com essa senha, sem troca obrigatória, na agenda DELA.
 // 2. A funcionária vê só os próprios atendimentos (cliente, serviço,
 //    situação), com o menu reduzido; páginas do dono pelo endereço levam à
 //    agenda dela; a API recusa a agenda geral, a equipe e a reserva do colega
@@ -155,11 +155,12 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await page.getByTestId("profissional-sem-acesso").filter({ hasText: "Ana Lima" }).getByRole("button", { name: /Criar acesso/ }).click();
     const formulario = page.getByTestId("criar-acesso");
     await formulario.getByLabel("Login").fill(`ana@${marca}`);
+    await formulario.getByLabel("Senha", { exact: true }).fill(SENHA_FUNCIONARIA);
+    await formulario.getByLabel("Confirmar senha").fill(SENHA_FUNCIONARIA);
     await capturar(page, "criar-acesso-profissional");
     await formulario.getByRole("button", { name: "Criar acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    const temporaria = (await page.getByTestId("senha-temporaria-valor").textContent())!.trim();
-    await page.getByRole("button", { name: "Já entreguei" }).click();
+    await page.getByTestId("acesso-criado").getByRole("button", { name: "Concluir" }).click();
     const ana = page.getByTestId("acesso-equipe").filter({ hasText: "Ana Lima" });
     await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
     await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
@@ -168,13 +169,9 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     const fp = funcionaria.page;
     await fp.goto("/login");
     await fp.getByLabel("E-mail ou login").fill(`ana@${marca}`);
-    await fp.getByLabel("Senha", { exact: true }).fill(temporaria);
+    await fp.getByLabel("Senha", { exact: true }).fill(SENHA_FUNCIONARIA);
     await fp.getByRole("button", { name: "Entrar" }).click();
-    await expect(fp).toHaveURL(/\/conta\/configuracoes\/perfil$/);
-    await fp.getByLabel("Senha temporária").fill(temporaria);
-    await fp.getByLabel("Senha nova", { exact: true }).fill(SENHA_FUNCIONARIA);
-    await fp.getByLabel("Confirme a senha nova").fill(SENHA_FUNCIONARIA);
-    await fp.getByTestId("trocar-senha").click();
+    // Senha definida pelo dono: direto na agenda, sem troca obrigatória.
     await expect(fp).toHaveURL(/\/conta\/minha-agenda$/);
 
     // --------------------------------- 2. só a própria agenda, menu reduzido

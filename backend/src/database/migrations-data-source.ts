@@ -30,6 +30,10 @@ export function buildMigrationsDataSourceOptions(
     migrationsRun: false,
     namingStrategy: new SnakeNamingStrategy(),
     logging: ['error', 'warn'],
+    // Logger PADRÃO, de propósito: o CLI liga `logging: ['schema']` em tempo
+    // de execução, e o `migration:show` imprime a lista por esse caminho, que
+    // o runbook de production lê. As migrations não gravam senha nem token. O
+    // logger sem valores de bind (safe-typeorm-logger.ts) é o do runtime.
     ssl: { rejectUnauthorized: true },
     entities: [path.join(moduleDir, '../entities/**/*.entity.{ts,js}')],
     // `!(*.spec)` (extglob, suportado pelo `tinyglobby` que o TypeORM usa

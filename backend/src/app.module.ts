@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -16,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { DatabaseErrorFilter } from './common/database-error.filter.js';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { AppService } from './app.service.js';
     PaymentsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  // Erro de banco sem tratamento: 500 genérico e log sem os valores da query.
+  providers: [AppService, { provide: APP_FILTER, useClass: DatabaseErrorFilter }],
 })
 export class AppModule {}

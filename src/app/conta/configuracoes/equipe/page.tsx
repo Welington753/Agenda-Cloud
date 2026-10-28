@@ -181,9 +181,10 @@ export default function EquipePage() {
                     <AcessoEquipe
                       // A chave inclui o estado do acesso: depois de uma ação,
                       // as permissões marcadas voltam a ser as do servidor.
-                      key={`${a.membershipId}:${a.situation}:${a.grantedPermissions.join(",")}`}
+                      key={`${a.membershipId}:${a.role}:${a.professional?.id ?? ""}:${a.situation}:${a.grantedPermissions.join(",")}`}
                       acesso={a}
                       visao={visao}
+                      profissionaisLivres={livres}
                       aoMudar={recarregar}
                     />
                   ))}

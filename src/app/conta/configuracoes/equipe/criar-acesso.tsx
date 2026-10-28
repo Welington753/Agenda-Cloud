@@ -1,16 +1,18 @@
 "use client";
 
 // "Criar acesso": o dono cadastra uma pessoa da equipe com LOGIN INTERNO e
-// SENHA TEMPORÁRIA, sem e-mail, sem convite e sem código. Escolhe o perfil
-// (Profissional ou Gerente), o nome, o login, o profissional ligado (o
-// gerente pode não ter: não atende clientes) e o que a pessoa pode fazer. A
-// senha é gerada pelo servidor e aparece uma vez só (senha-temporaria.tsx).
+// a SENHA que ele escolhe, sem e-mail, sem convite e sem código. Escolhe o
+// perfil (Profissional ou Gerente), o nome, o login, a senha, o profissional
+// ligado (o gerente pode não ter: não atende clientes) e o que a pessoa pode
+// fazer. A senha é definitiva (a pessoa entra sem troca obrigatória), fica só
+// na memória desta tela e nunca volta na resposta.
 //
 // Pede a senha do dono (a mesma reautenticação das mudanças de acesso). A
 // chave do formulário torna o envio idempotente: sem resposta, "Conferir"
 // repete o MESMO pedido — se o acesso já tinha sido criado, o servidor
-// devolve esse acesso (sem senha) em vez de criar outro.
+// devolve esse acesso em vez de criar outro, sem mexer na senha dele.
 import { useState, type FormEvent } from "react";
+import { CircleCheck, History } from "lucide-react";
 import { Botao } from "@/components/ui/button";
 import { useAcaoSensivel } from "@/components/administracao/reautenticacao";
 import { acaoAdministrativa, mensagemDoResultado, novaChaveDeFormulario } from "@/lib/administracao/api-contas";
@@ -23,8 +25,9 @@ import {
 } from "@/lib/equipe/acesso-por-usuario";
 import type { PerfilDaEquipe, PermissaoDaEquipe, VisaoDaEquipe } from "@/lib/equipe/contratos";
 import { ajustarAoPerfil } from "@/lib/equipe/permissoes";
+import { senhaPronta } from "@/lib/equipe/senha-do-acesso";
+import { CamposDeSenha } from "./campos-de-senha";
 import { EditorDePermissoes } from "./editor-de-permissoes";
-import { SenhaTemporaria } from "./senha-temporaria";
 
 const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 const SEM_PROFISSIONAL = "";
@@ -71,12 +74,17 @@ export function CriarAcesso({
   const [nome, setNome] = useState(() => nomeSugerido(profissionalInicial ?? profissionaisLivres[0]?.id ?? ""));
   const [usuario, setUsuario] = useState(() => sugestaoDeUsuario(nome));
   const [usuarioEditado, setUsuarioEditado] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [confirmacao, setConfirmacao] = useState("");
   const [marcadas, setMarcadas] = useState<PermissaoDaEquipe[]>([]);
   const [fase, setFase] = useState<Fase>({ tipo: "editando", erro: null });
   const comProfissional = profissionalId !== SEM_PROFISSIONAL;
   const problemaDoUsuario = erroDoUsuario(usuario);
   const faltaProfissional = perfil === "PROFISSIONAL" && !comProfissional;
-  const travado = fase.tipo === "enviando" || fase.tipo === "criado";
+  // Sem resposta ("incerto"), o formulário fica travado: "Conferir" repete
+  // EXATAMENTE o pedido enviado, inclusive a senha.
+  const travado = fase.tipo !== "editando";
+  const faltaSenha = !senhaPronta(senha, confirmacao);
   const valem = ajustarAoPerfil(marcadas, perfil, comProfissional);
 
   function trocarPerfil(novo: PerfilDaEquipe) {
@@ -99,10 +107,16 @@ export function CriarAcesso({
         name: nome.trim(),
         username: usuario.trim().toLowerCase(),
         permissions: valem,
+        password: senha,
       }),
     );
     if (r.tipo === "ok") {
-      if (ehAcessoCriado(r.dados)) setFase({ tipo: "criado", acesso: r.dados });
+      if (ehAcessoCriado(r.dados)) {
+        // Criado (ou já criado antes): a senha sai da memória da tela.
+        setSenha("");
+        setConfirmacao("");
+        setFase({ tipo: "criado", acesso: r.dados });
+      }
       else setFase({ tipo: "editando", erro: "Resposta inesperada do servidor. Atualize a lista antes de repetir." });
     } else if (r.tipo === "rede") {
       setFase({ tipo: "incerto" });
@@ -113,7 +127,7 @@ export function CriarAcesso({
 
   function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
-    if (travado || problemaDoUsuario || faltaProfissional || nome.trim().length < 2) return;
+    if (travado || problemaDoUsuario || faltaProfissional || faltaSenha || nome.trim().length < 2) return;
     void enviar();
   }
 
@@ -121,19 +135,33 @@ export function CriarAcesso({
     const { acesso } = fase;
     return (
       <div className="space-y-3" data-testid="acesso-criado">
-        {acesso.temporaryPassword ? (
-          <SenhaTemporaria usuario={acesso.username} senha={acesso.temporaryPassword} aoFechar={aoConcluir} />
-        ) : (
-          <div role="status" className="space-y-2 rounded-xl border border-border p-3 text-sm">
-            <p className="font-semibold">Este acesso já tinha sido criado (login {acesso.username}).</p>
-            <p className="text-ink-soft">
-              A senha temporária só aparece na criação. Se ela se perdeu, use “Gerar nova senha temporária”.
-            </p>
-            <Botao type="button" variante="secundaria" className="min-h-11" onClick={aoConcluir}>
-              Concluir
-            </Botao>
-          </div>
-        )}
+        <div role="status" className="space-y-2 rounded-xl border border-border p-3 text-sm">
+          {acesso.created ? (
+            <>
+              <p className="flex items-center gap-2 font-semibold">
+                <CircleCheck size={16} aria-hidden="true" />
+                Acesso criado (login <span data-testid="acesso-criado-usuario">{acesso.username}</span>).
+              </p>
+              <p className="text-ink-soft">
+                A pessoa entra com este login e a senha que você definiu, sem precisar trocar. A senha não aparece de
+                novo; se ela esquecer, defina outra em “Definir nova senha”.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="flex items-center gap-2 font-semibold">
+                <History size={16} aria-hidden="true" />
+                Este acesso já tinha sido criado (login {acesso.username}).
+              </p>
+              <p className="text-ink-soft">
+                Nada foi criado de novo e a senha dele não mudou. Para outra senha, use “Definir nova senha”.
+              </p>
+            </>
+          )}
+          <Botao type="button" variante="secundaria" className="min-h-11" onClick={aoConcluir}>
+            Concluir
+          </Botao>
+        </div>
       </div>
     );
   }
@@ -234,6 +262,14 @@ export function CriarAcesso({
             </p>
           </div>
 
+          <CamposDeSenha
+            senha={senha}
+            confirmacao={confirmacao}
+            aoMudarSenha={setSenha}
+            aoMudarConfirmacao={setConfirmacao}
+            prefixo="novo-acesso"
+          />
+
           <div className="space-y-2">
             <p className="text-sm font-semibold text-ink">Permissões</p>
             <EditorDePermissoes
@@ -263,7 +299,7 @@ export function CriarAcesso({
             <Botao
               type="submit"
               className="min-h-11"
-              disabled={travado || !!problemaDoUsuario || faltaProfissional}
+              disabled={travado || !!problemaDoUsuario || faltaProfissional || faltaSenha}
               aria-busy={fase.tipo === "enviando"}
             >
               {fase.tipo === "enviando" ? "Criando..." : "Criar acesso"}
@@ -275,8 +311,8 @@ export function CriarAcesso({
         )}
       </form>
       <p className="text-xs text-ink-soft">
-        Sem e-mail e sem convite: o servidor gera uma senha temporária, que aparece só uma vez. A pessoa troca por uma
-        dela no primeiro acesso. Se ela esquecer a senha, você gera outra aqui. Ocupa uma vaga de equipe do plano.
+        Sem e-mail e sem convite: a pessoa entra com o login e a senha que você definir aqui. Ela pode trocar a própria
+        senha depois, em Perfil e segurança. Se esquecer, você define outra. Ocupa uma vaga de equipe do plano.
       </p>
     </section>
   );

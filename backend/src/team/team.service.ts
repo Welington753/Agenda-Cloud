@@ -18,6 +18,15 @@
 //   que o próprio dono pode fazer, com as dependências junto
 //   (team-permissions.ts). Salvar as permissões de um gerente é a
 //   CONFIRMAÇÃO do dono: um gerente antigo só passa a ter área depois disso.
+// - Perfil e profissional: troca o perfil (profissional ou gerente) e o
+//   profissional ligado do MESMO vínculo, sem remover e recriar. A conta, o
+//   login, a senha, as sessões e o histórico ficam. Nenhum agendamento muda
+//   de profissional. O novo profissional segue as regras da criação (deste
+//   estabelecimento, ativo, sem outro acesso e sem convite pendente). A vaga
+//   não muda: os dois perfis ocupam vaga igual. As permissões vão junto, no
+//   conjunto que o dono conferiu e confirmou na tela: a troca nunca concede
+//   nada sozinha. Trocar o PERFIL só vale para a conta que é só deste
+//   estabelecimento (sem papel na plataforma e sem outro vínculo).
 //
 // Só vínculos PROFISSIONAL e GERENTE passam por aqui: o dono não altera outro
 // dono nem a si mesmo, e nada aqui concede papel de plataforma. RECEPCIONISTA
@@ -42,8 +51,10 @@ import {
   MANAGER_PERMISSION_REQUIRES,
   managerGrantedPermissions,
 } from '../common/manager-permissions.js';
+import { isUniqueViolation } from '../auth/unique-violation.js';
 import {
   activeProfessionals,
+  expireStaleStaffInvites,
   isOperational,
   lockTenantForSeats,
   seatLimitMessage,
@@ -57,7 +68,7 @@ import {
   type TeamRole,
 } from './staff-access.js';
 import { resolveTeamManager } from './team-authorization.js';
-import type { StaffPermissionsChangeDto, TeamPermission } from './team.dto.js';
+import type { StaffAccessChangeDto, StaffPermissionsChangeDto, TeamPermission } from './team.dto.js';
 import { validarConcessoes } from './team-permissions.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 
@@ -75,6 +86,9 @@ interface StaffMembershipRow {
   name: string;
   user_status: string;
   professional_active: boolean | null;
+  professional_name: string | null;
+  papel_plataforma: boolean;
+  vinculos: number;
   permissions_confirmed: boolean;
   overrides: OverrideRow[];
 }
@@ -199,6 +213,9 @@ export class TeamService {
           // temporária por aqui.
           canResetTemporaryPassword:
             deEquipe && v.sem_email && !!v.username && !v.papel_plataforma && v.vinculos === 1,
+          // O perfil só muda na conta que é só deste estabelecimento. O
+          // profissional ligado muda em qualquer acesso de equipe.
+          canChangeRole: deEquipe && !v.papel_plataforma && v.vinculos === 1,
           /** Gerente de antes da tela nova: nada vale até o dono confirmar. */
           permissionsPending: v.role === EstablishmentRole.GERENTE && !v.permissions_confirmed,
           grantedPermissions: deEquipe ? grantedTeamPermissions(v.role, v.permissions_confirmed, v.overrides) : [],
@@ -398,26 +415,7 @@ export class TeamService {
       // Só concede o que o próprio dono pode fazer. Retirar é sempre possível.
       validarConcessoes(gestor, { role: vinculo.role, withProfessional: !!vinculo.professional_id }, novas, entram);
 
-      // Contra o que está GRAVADO (não só o que vale): um `GRANTED` antigo de
-      // um gerente sem confirmação que o dono não marcou sai agora.
-      const gravadas = vinculo.overrides.filter((o) => o.mode === 'GRANTED').map((o) => o.permission);
-      const remover = gravadas.filter((p) => !novas.includes(p as TeamPermission));
-      const acrescentar = novas.filter((p) => !gravadas.includes(p));
-      if (remover.length) {
-        await manager.query(
-          `DELETE FROM membership_permission_overrides
-            WHERE tenant_id = $1 AND membership_id = $2 AND mode = 'GRANTED' AND permission::text = ANY($3)`,
-          [gestor.tenantId, vinculo.id, remover],
-        );
-      }
-      for (const permission of acrescentar) {
-        await manager.query(
-          `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
-           VALUES ($1, $2, $3, $4::permission, 'GRANTED')
-           ON CONFLICT (tenant_id, membership_id, permission) DO UPDATE SET mode = 'GRANTED'`,
-          [generateId(), gestor.tenantId, vinculo.id, permission],
-        );
-      }
+      const { gravadas, remover, acrescentar } = await this.gravarConcessoes(manager, gestor.tenantId, vinculo, novas);
       const confirmou = vinculo.role === 'GERENTE' && !vinculo.permissions_confirmed;
       if (vinculo.role === 'GERENTE') {
         await manager.query('UPDATE memberships SET permissions_confirmed_at = $2 WHERE id = $1', [vinculo.id, now]);
@@ -444,6 +442,169 @@ export class TeamService {
     });
   }
 
+  async changeAccess(
+    actorId: string,
+    sessionId: string,
+    tenantId: string,
+    membershipId: string,
+    dto: StaffAccessChangeDto,
+    now = new Date(),
+  ) {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await requireRecentReauth(manager, sessionId, now);
+        const gestor = await resolveTeamManager(manager, actorId, tenantId);
+        // Estabelecimento antes do vínculo: a mesma fila de quem ocupa um
+        // profissional (criação, convite, aceite).
+        const tenant = await lockTenantForSeats(manager, gestor.tenantId);
+        const vinculo = await this.lockStaffMembership(manager, gestor.tenantId, membershipId);
+        const atuais = grantedTeamPermissions(vinculo.role, vinculo.permissions_confirmed, vinculo.overrides).sort();
+        if (
+          vinculo.role !== dto.expected.role ||
+          vinculo.professional_id !== dto.expected.professionalId ||
+          JSON.stringify(atuais) !== JSON.stringify([...dto.expected.granted].sort())
+        ) {
+          throw conflito('ALTERADO_POR_OUTRA_TELA', 'Este acesso mudou desde que você abriu a tela. Recarregue.');
+        }
+        const trocaPerfil = dto.role !== vinculo.role;
+        const trocaProfissional = dto.professionalId !== vinculo.professional_id;
+        if (trocaPerfil && (vinculo.papel_plataforma || vinculo.vinculos !== 1)) {
+          throw conflito(
+            'PERFIL_NAO_E_DO_ESTABELECIMENTO',
+            'Esta conta também trabalha em outro estabelecimento ou administra a plataforma: o perfil dela não muda por aqui.',
+          );
+        }
+        let novoProfissional: string | null = null;
+        if (trocaProfissional && dto.professionalId) {
+          if (!isOperational(tenant.status)) {
+            throw conflito('ESTABELECIMENTO_FORA_DE_OPERACAO', 'O estabelecimento não está em operação.');
+          }
+          novoProfissional = await this.profissionalLivre(manager, tenant.id, dto.professionalId, now);
+        }
+        const novas = [...dto.granted].sort() as TeamPermission[];
+        const entram = novas.filter((p) => !atuais.includes(p));
+        // Só o que o dono marcou e pode conceder, e só o que se aplica ao novo
+        // perfil e profissional. Retirar é sempre possível.
+        validarConcessoes(gestor, { role: dto.role, withProfessional: !!dto.professionalId }, novas, entram);
+
+        const confirmou = dto.role === 'GERENTE' && (trocaPerfil || !vinculo.permissions_confirmed);
+        if (trocaPerfil || trocaProfissional || confirmou) {
+          // No gerente, salvar aqui é a confirmação do dono (ver
+          // effectiveOverrides); no profissional, a marca não se aplica.
+          await manager.query(
+            `UPDATE memberships SET role = $2::establishment_role, professional_id = $3,
+                    permissions_confirmed_at = CASE WHEN $2 = 'GERENTE' THEN COALESCE(permissions_confirmed_at, $4) END
+              WHERE id = $1`,
+            [vinculo.id, dto.role, dto.professionalId, now],
+          );
+        }
+        const { remover, acrescentar } = await this.gravarConcessoes(manager, gestor.tenantId, vinculo, novas);
+        if (trocaPerfil || trocaProfissional || confirmou || remover.length || acrescentar.length) {
+          const actor = await loadActor(manager, actorId);
+          const partes = [
+            trocaPerfil ? `perfil de ${ROLE_LABEL[vinculo.role]} para ${ROLE_LABEL[dto.role]}` : null,
+            trocaProfissional
+              ? `profissional ligado de ${vinculo.professional_name ?? 'nenhum'} para ${novoProfissional ?? 'nenhum'}`
+              : null,
+            'permissões conferidas e confirmadas pelo dono',
+          ].filter(Boolean);
+          await recordAudit(
+            manager,
+            {
+              action: 'USER_PERMISSION_CHANGED',
+              actor,
+              tenantId: gestor.tenantId,
+              targetUserId: vinculo.user_id,
+              summary: `Acesso de ${vinculo.email} alterado: ${partes.join('; ')}. Nenhum agendamento mudou de profissional.`,
+              previousData: { role: vinculo.role, professionalId: vinculo.professional_id, granted: atuais },
+              newData: { role: dto.role, professionalId: dto.professionalId, granted: novas },
+            },
+            now,
+          );
+        }
+        return {
+          membershipId: vinculo.id,
+          role: dto.role,
+          professionalId: dto.professionalId,
+          grantedPermissions: novas,
+        };
+      });
+    } catch (error) {
+      if (isUniqueViolation(error, 'uq_memberships_professional_id')) {
+        throw conflito('PROFISSIONAL_COM_ACESSO', 'Este profissional já tem um acesso.');
+      }
+      throw error;
+    }
+  }
+
+  /** O profissional que um acesso existente passa a usar: deste
+   * estabelecimento, ativo, sem outro acesso e sem convite pendente (as
+   * mesmas regras da criação). Devolve o nome, para o histórico. */
+  private async profissionalLivre(
+    manager: EntityManager,
+    tenantId: string,
+    professionalId: string,
+    now: Date,
+  ): Promise<string> {
+    await expireStaleStaffInvites(manager, tenantId, now);
+    const [encontrado] = await manager.query<{ id: string; name: string; active: boolean }[]>(
+      'SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+      [tenantId, professionalId],
+    );
+    if (!encontrado) throw new NotFoundException('Profissional não encontrado.');
+    if (!encontrado.active) {
+      throw conflito('PROFISSIONAL_INATIVO', 'Este profissional está desativado. Reative-o antes de ligá-lo ao acesso.');
+    }
+    const [vinculo] = await manager.query<unknown[]>(
+      'SELECT 1 FROM memberships WHERE tenant_id = $1 AND professional_id = $2',
+      [tenantId, encontrado.id],
+    );
+    if (vinculo) {
+      throw conflito(
+        'PROFISSIONAL_COM_ACESSO',
+        'Este profissional já tem um acesso. Escolha outro ou remova o acesso dele antes.',
+      );
+    }
+    const [pendente] = await manager.query<unknown[]>(
+      `SELECT 1 FROM invites WHERE tenant_id = $1 AND professional_id = $2 AND status = 'PENDING'`,
+      [tenantId, encontrado.id],
+    );
+    if (pendente) {
+      throw conflito('CONVITE_PENDENTE', 'Este profissional já tem um convite pendente. Revogue o convite antes.');
+    }
+    return encontrado.name;
+  }
+
+  /** Deixa os `GRANTED` gravados iguais a `novas`. Contra o que está GRAVADO
+   * (não só o que vale): um `GRANTED` antigo de um gerente sem confirmação
+   * que o dono não marcou sai agora. Os `DENIED` ficam (só restringem). */
+  private async gravarConcessoes(
+    manager: EntityManager,
+    tenantId: string,
+    vinculo: StaffMembershipRow,
+    novas: readonly TeamPermission[],
+  ) {
+    const gravadas = vinculo.overrides.filter((o) => o.mode === 'GRANTED').map((o) => o.permission);
+    const remover = gravadas.filter((p) => !novas.includes(p as TeamPermission));
+    const acrescentar = novas.filter((p) => !gravadas.includes(p));
+    if (remover.length) {
+      await manager.query(
+        `DELETE FROM membership_permission_overrides
+          WHERE tenant_id = $1 AND membership_id = $2 AND mode = 'GRANTED' AND permission::text = ANY($3)`,
+        [tenantId, vinculo.id, remover],
+      );
+    }
+    for (const permission of acrescentar) {
+      await manager.query(
+        `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
+         VALUES ($1, $2, $3, $4::permission, 'GRANTED')
+         ON CONFLICT (tenant_id, membership_id, permission) DO UPDATE SET mode = 'GRANTED'`,
+        [generateId(), tenantId, vinculo.id, permission],
+      );
+    }
+    return { gravadas, remover, acrescentar };
+  }
+
   /** Trava um vínculo de EQUIPE (profissional ou gerente) deste
    * estabelecimento. Vínculo de dono, de outro estabelecimento ou inexistente:
    * 404 (indistinguíveis). */
@@ -457,7 +618,9 @@ export class TeamService {
         `SELECT m.id, m.user_id, m.role::text AS role, m.status, m.professional_id,
                 m.permissions_confirmed_at IS NOT NULL AS permissions_confirmed,
                 COALESCE(u.email::text, u.username::text) AS email, u.name, u.status AS user_status,
-                p.active AS professional_active,
+                p.active AS professional_active, p.name AS professional_name,
+                u.platform_role IS NOT NULL AS papel_plataforma,
+                (SELECT count(*)::int FROM memberships o WHERE o.user_id = u.id) AS vinculos,
                 COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode))
                   FROM membership_permission_overrides o WHERE o.tenant_id = m.tenant_id AND o.membership_id = m.id),
                   '[]'::json) AS overrides

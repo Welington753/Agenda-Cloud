@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ehAcessoCriado, erroDoUsuario, sugestaoDeUsuario } from "./acesso-por-usuario";
+import { ehAcessoCriado, ehSenhaDefinida, erroDoUsuario, sugestaoDeUsuario } from "./acesso-por-usuario";
 
 describe("acesso por login interno", () => {
   it("sugere primeiro e último nome, sem acento nem partículas", () => {
@@ -25,8 +25,15 @@ describe("acesso por login interno", () => {
     expect(erroDoUsuario("a".repeat(81))).not.toBeNull();
   });
 
-  it("a resposta da criação traz a senha só quando criou", () => {
+  it("a resposta de Definir nova senha nunca traz senha", () => {
+    expect(ehSenhaDefinida({ membershipId: "m", username: "x" })).toBe(true);
+    expect(ehSenhaDefinida({ membershipId: "m", username: "x", temporaryPassword: "abc" })).toBe(false);
+    expect(ehSenhaDefinida(null)).toBe(false);
+  });
+
+  it("a resposta da criação traz senha temporária só no corpo antigo", () => {
     expect(ehAcessoCriado({ created: true, membershipId: "m", userId: "u", username: "x", temporaryPassword: "abc" })).toBe(true);
+    expect(ehAcessoCriado({ created: true, membershipId: "m", userId: "u", username: "x", temporaryPassword: null })).toBe(true);
     expect(ehAcessoCriado({ created: false, membershipId: "m", userId: "u", username: "x", temporaryPassword: null })).toBe(true);
     expect(ehAcessoCriado({ created: false, membershipId: "m", userId: "u", username: "x" })).toBe(false);
   });

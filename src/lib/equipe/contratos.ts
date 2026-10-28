@@ -75,8 +75,11 @@ export interface AcessoDaEquipe {
   user: { id: string; name: string; email: string; status: string; username?: string | null; hasEmail?: boolean };
   grantedPermissions: PermissaoDaEquipe[];
   /** Conta criada pelo dono com login e senha (sem e-mail, sem papel na
-   * plataforma, só este vínculo): pode receber nova senha temporária. */
+   * plataforma, só este vínculo): o dono pode definir nova senha. */
   canResetTemporaryPassword?: boolean;
+  /** O perfil só muda na conta que é só deste estabelecimento (sem papel na
+   * plataforma e sem outro vínculo). Ausente numa API anterior. */
+  canChangeRole?: boolean;
   /** Gerente de antes da tela nova: nada vale até o dono confirmar. */
   permissionsPending?: boolean;
 }

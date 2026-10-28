@@ -77,7 +77,7 @@ export const ACOES_HISTORICO: Record<string, string> = {
   MEMBERSHIP_SUSPENDED: "Acesso de funcionário suspenso",
   MEMBERSHIP_REACTIVATED: "Acesso de funcionário reativado",
   STAFF_ACCESS_CREATED: "Acesso de funcionário criado com usuário e senha",
-  STAFF_PASSWORD_RESET: "Nova senha temporária gerada",
+  STAFF_PASSWORD_RESET: "Senha de acesso da equipe redefinida",
   PASSWORD_CHANGED: "Senha trocada pela própria pessoa",
   PAYMENT_RECORDED: "Recebimento registrado",
   PAYMENT_REFUNDED: "Recebimento estornado",

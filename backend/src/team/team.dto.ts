@@ -2,10 +2,10 @@
 // tudo: papel, estabelecimento, permissão fora da lista ou qualquer campo a
 // mais é recusado em vez de ignorado.
 import { z } from 'zod';
-import { emailSchema, usernameSchema } from '../auth/login.dto.js';
+import { emailSchema, passwordSchema, usernameSchema } from '../auth/login.dto.js';
 import { idSchema, requestKeySchema } from '../accounts/accounts.dto.js';
 import { appointmentStatusActionSchema, rescheduleOptionsSchema } from '../appointments/appointment.dto.js';
-import { STAFF_PERMISSIONS } from './staff-access.js';
+import { STAFF_PERMISSIONS, TEAM_ROLES } from './staff-access.js';
 import { MANAGER_PERMISSIONS } from '../common/manager-permissions.js';
 
 const nameSchema = z.string().trim().min(2).max(120);
@@ -40,9 +40,11 @@ export const staffPermissionsChangeSchema = z
   .strict();
 export type StaffPermissionsChangeDto = z.infer<typeof staffPermissionsChangeSchema>;
 
-/** Acesso de equipe com login interno e senha temporária, sem e-mail. A
- * senha é gerada pelo servidor e devolvida só nesta resposta: o navegador
- * nunca a escolhe nem a envia.
+/** Acesso de equipe com login interno, sem e-mail. `password` é a senha
+ * escolhida pelo dono, com a mesma política das outras senhas, e definitiva:
+ * a pessoa entra com ela, sem troca obrigatória. Sem `password` (o corpo da
+ * tela anterior), o servidor gera uma senha temporária, devolvida só nesta
+ * resposta, com troca no primeiro acesso.
  *
  * `role` ausente é `PROFISSIONAL` (o corpo da tela anterior). Profissional
  * sempre tem profissional ligado; gerente pode não ter. */
@@ -54,6 +56,7 @@ export const staffAccountSchema = z
     name: nameSchema,
     username: usernameSchema,
     permissions: staffPermissionsSchema,
+    password: passwordSchema.optional(),
   })
   .strict()
   .refine((v) => v.role === 'GERENTE' || !!v.professionalId, {
@@ -61,6 +64,35 @@ export const staffAccountSchema = z
     message: 'Escolha o profissional deste acesso.',
   });
 export type StaffAccountDto = z.infer<typeof staffAccountSchema>;
+
+/** Troca do perfil e do profissional ligado de um acesso que já existe, com
+ * o conjunto de permissões que o dono conferiu e confirmou na tela: a troca
+ * nunca concede nada sozinha, o que vale depois é exatamente `granted`.
+ * `expected` é o que a tela mostrava; se outra tela mudou o acesso, 409.
+ * Profissional sempre tem profissional ligado; gerente pode não ter. */
+export const staffAccessChangeSchema = z
+  .object({
+    expected: z
+      .object({
+        role: z.enum(TEAM_ROLES),
+        professionalId: idSchema.nullable(),
+        granted: staffPermissionsSchema,
+      })
+      .strict(),
+    role: z.enum(TEAM_ROLES),
+    professionalId: idSchema.nullable(),
+    granted: staffPermissionsSchema,
+  })
+  .strict()
+  .refine((v) => v.role === 'GERENTE' || !!v.professionalId, {
+    path: ['professionalId'],
+    message: 'Escolha o profissional deste acesso.',
+  });
+export type StaffAccessChangeDto = z.infer<typeof staffAccessChangeSchema>;
+
+/** Nova senha definida pelo dono para um acesso interno: definitiva. */
+export const staffPasswordSchema = z.object({ password: passwordSchema }).strict();
+export type StaffPasswordDto = z.infer<typeof staffPasswordSchema>;
 
 /** Mesmo formato (e mesma validação de data) da agenda do dono. */
 export const myAgendaQuerySchema = rescheduleOptionsSchema;

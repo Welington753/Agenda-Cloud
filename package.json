@@ -27,6 +27,7 @@
     "test:browser:equipe": "playwright test tests/browser/equipe-acessos-flow.spec.ts",
     "test:browser:acesso-usuario": "playwright test tests/browser/acesso-por-usuario-flow.spec.ts",
     "test:browser:gerente": "playwright test tests/browser/gerente-acessos-flow.spec.ts",
+    "test:browser:calendario-funcionario": "playwright test tests/browser/calendario-funcionario-flow.spec.ts",
     "test:browser:recebimentos": "playwright test tests/browser/recebimentos-flow.spec.ts",
     "test:browser:whatsapp": "playwright test tests/browser/whatsapp-contato-flow.spec.ts",
     "test:browser:agendamento-publico": "playwright test tests/browser/agendamento-publico-flow.spec.ts",
