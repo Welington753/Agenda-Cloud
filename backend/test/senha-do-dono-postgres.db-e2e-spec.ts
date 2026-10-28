@@ -5,14 +5,20 @@
 // senha definida pelo dono (senha e sessões anteriores invalidadas), troca
 // voluntária, contas antigas com senha temporária preservadas, recusas de
 // alcance e o isolamento da agenda entre dois profissionais no mesmo dia.
+// Também: a edição de perfil e profissional de um acesso existente (mesmo
+// vínculo, sem mover reservas, sem conceder nada sozinha, valendo na próxima
+// requisição) e os logs de uma gravação de credencial que falha (sem senha,
+// hash nem token).
 import { randomUUID } from 'node:crypto';
+import { inspect } from 'node:util';
 import { globSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { DatabaseErrorFilter } from '../src/common/database-error.filter.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { hashPassword, verifyPassword } from '../src/auth/password-hasher.js';
 import { AuthService } from '../src/auth/auth.service.js';
@@ -26,7 +32,7 @@ import { ConsumersService } from '../src/consumers/consumers.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { StaffAccountsService } from '../src/team/staff-accounts.service.js';
 import { TeamService } from '../src/team/team.service.js';
-import { staffAccountSchema, staffPasswordSchema } from '../src/team/team.dto.js';
+import { staffAccessChangeSchema, staffAccountSchema, staffPasswordSchema } from '../src/team/team.dto.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -52,6 +58,7 @@ describe.skipIf(!url)('senha do dono e calendário do funcionário contra Postgr
   let contas: StaffAccountsService;
   let auth: AuthService;
   let agenda: MyAgendaService;
+  let team: TeamService;
   let appointments: AppointmentsService;
   let hash: string;
   const marca = `senhadono${id().slice(0, 8)}`;
@@ -191,6 +198,7 @@ describe.skipIf(!url)('senha do dono e calendário do funcionário contra Postgr
     const relogio = () => new Date();
     appointments = new AppointmentsService(db, new AvailabilityService(db, relogio), new ConsumersService(db), relogio);
     agenda = new MyAgendaService(db, appointments);
+    team = new TeamService(db);
     hash = await hashPassword(SENHA);
     plano = id();
     await db.query(
@@ -493,5 +501,308 @@ describe.skipIf(!url)('senha do dono e calendário do funcionário contra Postgr
     await expect(agenda.range(a.userId, outro.tenantId, ownAgendaPeriodSchema.parse(periodos.dia))).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  describe('editar um acesso existente', () => {
+    const editar = (est: Est, membershipId: string, corpo: Record<string, unknown>, ator = est.dono) =>
+      team.changeAccess(ator.userId, ator.sessionId, est.tenantId, membershipId, staffAccessChangeSchema.parse(corpo));
+    const vinculoDe = async (membershipId: string) =>
+      (
+        await db.query(
+          `SELECT m.id, m.user_id, m.role::text AS role, m.professional_id, m.status::text AS status,
+                  m.permissions_confirmed_at IS NOT NULL AS confirmado,
+                  COALESCE((SELECT array_agg(o.permission::text || ':' || o.mode::text ORDER BY o.permission::text)
+                    FROM membership_permission_overrides o WHERE o.membership_id = m.id), '{}') AS ajustes
+             FROM memberships m WHERE m.id = $1`,
+          [membershipId],
+        )
+      )[0] as { id: string; user_id: string; role: string; professional_id: string | null; status: string; confirmado: boolean; ajustes: string[] };
+    const vagasDe = async (est: Est) => (await team.overview(est.dono.userId, est.tenantId)).seats;
+
+    it('troca perfil e profissional no MESMO vínculo, sem mover reservas nem conceder nada; vale na próxima requisição', async () => {
+      const est = await estabelecimento('edita');
+      const [pa, pb] = [await profissional(est, 'Edita A'), await profissional(est, 'Edita B')];
+      const criado = await criar(est, pa, `${marca}.edita`, { permissions: ['ATENDIMENTO_PROPRIO_INICIAR'] });
+      const reservaA = await reserva(est, pa, new Date('2031-05-06T13:00:00Z'), 'Cliente do Edita A');
+      const reservaB = await reserva(est, pb, new Date('2031-05-06T15:00:00Z'), 'Cliente do Edita B');
+      const entrada = await login(`${marca}.edita`, ESCOLHIDA);
+      const hashAntes = await hashDe(criado.userId);
+      const vagasAntes = await vagasDe(est);
+      const dia = ownAgendaPeriodSchema.parse({ from: '2031-05-06', to: '2031-05-06' });
+      expect((await agenda.range(criado.userId, est.tenantId, dia)).appointments.map((x) => x.id)).toEqual([reservaA]);
+      await expect(appointments.listRange(criado.userId, est.tenantId, { from: '2031-05-06', to: '2031-05-06' })).rejects.toThrow(
+        ForbiddenException,
+      );
+
+      // Profissional para gerente sem profissional, com uma área marcada e
+      // conferida pelo dono. A ação própria marcada antes sai (não se aplica).
+      const comoGerente = await editar(est, criado.membershipId, {
+        expected: { role: 'PROFISSIONAL', professionalId: pa, granted: ['ATENDIMENTO_PROPRIO_INICIAR'] },
+        role: 'GERENTE',
+        professionalId: null,
+        granted: ['AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'],
+      });
+      expect(comoGerente).toEqual({
+        membershipId: criado.membershipId,
+        role: 'GERENTE',
+        professionalId: null,
+        grantedPermissions: ['AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'],
+      });
+      expect(await vinculoDe(criado.membershipId)).toMatchObject({
+        id: criado.membershipId,
+        user_id: criado.userId,
+        role: 'GERENTE',
+        professional_id: null,
+        status: 'ACTIVE',
+        confirmado: true,
+        ajustes: ['AGENDA_VISUALIZAR:GRANTED', 'PROFISSIONAIS_VISUALIZAR:GRANTED'],
+      });
+      // A mesma conta, o mesmo login, a mesma senha, a sessão aberta segue.
+      expect(await hashDe(criado.userId)).toBe(hashAntes);
+      await expect(rotaOperacional(entrada.token)).resolves.toBe(true);
+      // Vale já na próxima requisição da sessão aberta: a agenda do
+      // estabelecimento abre, a própria agenda (sem profissional) fecha.
+      const doEstabelecimento = await appointments.listRange(criado.userId, est.tenantId, { from: '2031-05-06', to: '2031-05-06' });
+      expect(doEstabelecimento.appointments.map((x) => x.id).sort()).toEqual([reservaA, reservaB].sort());
+      await expect(agenda.range(criado.userId, est.tenantId, dia)).rejects.toThrow(ForbiddenException);
+      // As reservas ficaram com o profissional de antes.
+      const donos = await db.query(`SELECT id, professional_id FROM appointments WHERE id = ANY($1) ORDER BY id`, [[reservaA, reservaB]]);
+      expect(Object.fromEntries(donos.map((r: { id: string; professional_id: string }) => [r.id, r.professional_id]))).toEqual({
+        [reservaA]: pa,
+        [reservaB]: pb,
+      });
+      expect(await vagasDe(est)).toEqual(vagasAntes);
+
+      // De volta a profissional, agora ligado a B, sem nenhuma permissão: a
+      // área de gerente sai, nada entra sozinho.
+      await editar(est, criado.membershipId, {
+        expected: { role: 'GERENTE', professionalId: null, granted: ['AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'] },
+        role: 'PROFISSIONAL',
+        professionalId: pb,
+        granted: [],
+      });
+      expect(await vinculoDe(criado.membershipId)).toMatchObject({
+        role: 'PROFISSIONAL',
+        professional_id: pb,
+        confirmado: false,
+        ajustes: [],
+      });
+      await expect(appointments.listRange(criado.userId, est.tenantId, { from: '2031-05-06', to: '2031-05-06' })).rejects.toThrow(
+        ForbiddenException,
+      );
+      const agoraB = await agenda.range(criado.userId, est.tenantId, dia);
+      expect(agoraB.professional.id).toBe(pb);
+      expect(agoraB.appointments.map((x) => x.id)).toEqual([reservaB]);
+      expect(JSON.stringify(agoraB)).not.toMatch(/Cliente do Edita A/);
+      expect(Object.values(agoraB.permissions).some(Boolean)).toBe(false);
+      expect(await vagasDe(est)).toEqual(vagasAntes);
+      const entradaDepois = await login(`${marca}.edita`, ESCOLHIDA);
+      expect(entradaDepois.user.mustChangePassword).toBe(false);
+
+      // Histórico: autor, estabelecimento, antes e depois, sem senha nem hash.
+      const historico = await db.query(
+        `SELECT actor_user_id, tenant_id, summary, previous_data::text AS antes, new_data::text AS depois
+           FROM audit_logs WHERE target_user_id = $1 AND action = 'USER_PERMISSION_CHANGED' ORDER BY occurred_at`,
+        [criado.userId],
+      );
+      expect(historico).toHaveLength(2);
+      expect(historico[0]).toMatchObject({ actor_user_id: est.dono.userId, tenant_id: est.tenantId });
+      expect(historico[0].summary).toMatch(/perfil de profissional para gerente/);
+      expect(historico[0].summary).toMatch(/Nenhum agendamento mudou de profissional/);
+      expect(JSON.parse(historico[0].antes)).toEqual({ role: 'PROFISSIONAL', professionalId: pa, granted: ['ATENDIMENTO_PROPRIO_INICIAR'] });
+      expect(JSON.parse(historico[1].depois)).toEqual({ role: 'PROFISSIONAL', professionalId: pb, granted: [] });
+      expect(JSON.stringify(historico)).not.toContain(ESCOLHIDA);
+      expect(JSON.stringify(historico)).not.toContain(hashAntes);
+    });
+
+    it('recusas: profissional ocupado, com convite, desativado ou de fora; perfil de conta compartilhada ou de plataforma; tela velha; sem reautenticação; sem ser dono', async () => {
+      const est = await estabelecimento('edita-recusa');
+      const outro = await estabelecimento('edita-recusa-outro');
+      const [p1, p2, p3, p4, p5, p6] = await Promise.all(['E1', 'E2', 'E3', 'E4', 'E5', 'E6'].map((n) => profissional(est, n)));
+      const alvo = await criar(est, p1, `${marca}.alvo`);
+      const ocupante = await criar(est, p2, `${marca}.ocupante`);
+      await db.query(
+        `INSERT INTO invites (id, type, target_name, target_email, tenant_id, establishment_role, status, token_hash,
+                              created_by_user_id, created_at, expires_at, professional_id)
+         VALUES ($1, 'ESTABLISHMENT', 'Convidada', $2, $3, 'PROFISSIONAL', 'PENDING', $4, $5, now(), now() + interval '2 days', $6)`,
+        [id(), `${marca}-convidada@example.test`, est.tenantId, id(), est.dono.userId, p3],
+      );
+      await db.query(`UPDATE professionals SET active = false WHERE id = $1`, [p4]);
+      const deFora = await profissional(outro, 'Fora');
+      const base = { expected: { role: 'PROFISSIONAL', professionalId: p1, granted: [] }, role: 'PROFISSIONAL', granted: [] };
+      const semMudar = async (fazer: () => Promise<unknown>, esperado: string | (new (...a: never[]) => Error)) => {
+        const antes = await vinculoDe(alvo.membershipId);
+        const recusa = await erroDe(fazer());
+        if (typeof esperado === 'string') expect(recusa.getResponse?.()?.code).toBe(esperado);
+        else expect(recusa).toBeInstanceOf(esperado);
+        expect(await vinculoDe(alvo.membershipId)).toEqual(antes);
+      };
+
+      await semMudar(() =>editar(est, alvo.membershipId, { ...base, professionalId: p2 }), 'PROFISSIONAL_COM_ACESSO');
+      await semMudar(() =>editar(est, alvo.membershipId, { ...base, professionalId: p3 }), 'CONVITE_PENDENTE');
+      await semMudar(() =>editar(est, alvo.membershipId, { ...base, professionalId: p4 }), 'PROFISSIONAL_INATIVO');
+      await semMudar(() =>editar(est, alvo.membershipId, { ...base, professionalId: deFora }), NotFoundException);
+      // Profissional sempre com profissional: recusado já no corpo.
+      expect(() => staffAccessChangeSchema.parse({ ...base, professionalId: null })).toThrow();
+      // Área de gerente num profissional: não se aplica.
+      await semMudar(() =>
+        editar(est, alvo.membershipId, { ...base, professionalId: p1, granted: ['AGENDA_VISUALIZAR'] }),
+        'PERMISSAO_NAO_SE_APLICA',
+      );
+      // A tela mostrava outra coisa.
+      await semMudar(() =>
+        editar(est, alvo.membershipId, {
+          ...base,
+          expected: { ...base.expected, professionalId: p5 },
+          professionalId: p6,
+        }),
+        'ALTERADO_POR_OUTRA_TELA',
+      );
+      // Outro estabelecimento não alcança o vínculo daqui.
+      await semMudar(() =>
+        team.changeAccess(
+          outro.dono.userId,
+          outro.dono.sessionId,
+          outro.tenantId,
+          alvo.membershipId,
+          staffAccessChangeSchema.parse({ ...base, professionalId: p5 }),
+        ),
+        NotFoundException,
+      );
+      // O vínculo do dono não é acesso de equipe.
+      const [vinculoDono] = await db.query(`SELECT id FROM memberships WHERE user_id = $1 AND tenant_id = $2`, [
+        est.dono.userId,
+        est.tenantId,
+      ]);
+      expect(await erroDe(editar(est, vinculoDono.id, { ...base, professionalId: p5 }))).toBeInstanceOf(NotFoundException);
+      // Funcionário não edita ninguém, nem a si mesmo.
+      const entradaOcupante = await login(`${marca}.ocupante`, ESCOLHIDA);
+      const [sessaoOcupante] = await db.query(`SELECT id FROM sessions WHERE token_hash = $1`, [hashSessionToken(entradaOcupante.token)]);
+      await db.query(`UPDATE sessions SET reauthenticated_at = now() - interval '1 second' WHERE id = $1`, [sessaoOcupante.id]);
+      await semMudar(() =>
+        editar(est, alvo.membershipId, { ...base, professionalId: p5 }, { userId: ocupante.userId, sessionId: sessaoOcupante.id }),
+        ForbiddenException,
+      );
+      // Sem senha do dono confirmada há pouco.
+      await db.query(`UPDATE sessions SET reauthenticated_at = now() - interval '1 hour' WHERE id = $1`, [est.dono.sessionId]);
+      expect(await codigo(editar(est, alvo.membershipId, { ...base, professionalId: p5 }))).toBe('REAUTENTICACAO_NECESSARIA');
+      await db.query(`UPDATE sessions SET reauthenticated_at = now() - interval '1 second' WHERE id = $1`, [est.dono.sessionId]);
+
+      // Perfil de conta que também trabalha em outro lugar ou administra a
+      // plataforma: não muda por aqui. O profissional ligado muda.
+      const dupla = await criar(est, p5, `${marca}.edupla`);
+      await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role, professional_id) VALUES ($1, $2, $3, 'PROFISSIONAL', $4)`, [
+        id(),
+        dupla.userId,
+        outro.tenantId,
+        deFora,
+      ]);
+      const paraGerente = { expected: { role: 'PROFISSIONAL', professionalId: p5, granted: [] }, role: 'GERENTE', professionalId: p5, granted: [] };
+      expect(await codigo(editar(est, dupla.membershipId, paraGerente))).toBe('PERFIL_NAO_E_DO_ESTABELECIMENTO');
+      await db.query(`UPDATE users SET platform_role = 'MASTER_SUPPORT' WHERE id = $1`, [alvo.userId]);
+      expect(await codigo(editar(est, alvo.membershipId, { ...paraGerente, expected: base.expected, professionalId: p1 }))).toBe(
+        'PERFIL_NAO_E_DO_ESTABELECIMENTO',
+      );
+      await editar(est, dupla.membershipId, { ...paraGerente, role: 'PROFISSIONAL', professionalId: p6 });
+      expect(await vinculoDe(dupla.membershipId)).toMatchObject({ role: 'PROFISSIONAL', professional_id: p6 });
+      expect(await db.query(`SELECT 1 FROM memberships WHERE user_id = $1 AND tenant_id = $2 AND professional_id = $3`, [dupla.userId, outro.tenantId, deFora])).toHaveLength(1);
+      // Nada mudou no papel da plataforma.
+      expect((await db.query(`SELECT platform_role::text AS papel FROM users WHERE id = $1`, [alvo.userId]))[0].papel).toBe('MASTER_SUPPORT');
+    });
+  });
+
+  describe('logs sem senha, hash nem token quando a gravação da credencial falha', () => {
+    /** Tudo o que o processo escreve em stdout e stderr enquanto `fn` roda. */
+    async function saidaDe(fn: () => Promise<unknown>): Promise<{ saida: string; erro: unknown }> {
+      let saida = '';
+      const capturar = (pedaco: unknown) => {
+        saida += String(pedaco);
+        return true;
+      };
+      const out = vi.spyOn(process.stdout, 'write').mockImplementation(capturar);
+      const err = vi.spyOn(process.stderr, 'write').mockImplementation(capturar);
+      let erro: unknown;
+      try {
+        await fn();
+      } catch (e) {
+        erro = e;
+      } finally {
+        out.mockRestore();
+        err.mockRestore();
+      }
+      return { saida, erro };
+    }
+
+    const limpa = (saida: string) => {
+      expect(saida).not.toContain(ESCOLHIDA);
+      expect(saida).not.toContain(OUTRA);
+      expect(saida).not.toMatch(/\$argon2/);
+      expect(saida).not.toMatch(/\b[0-9a-f]{64}\b/);
+      expect(saida).not.toMatch(/Failing row|DETAIL|PARAMETERS/);
+    };
+
+    it('o gatilho que recusa repete o valor na mensagem; o log mostra SQL, código e tabela, nunca o valor', async () => {
+      const est = await estabelecimento('logs');
+      const [p1, p2] = [await profissional(est, 'Log 1'), await profissional(est, 'Log 2')];
+      const existente = await criar(est, p1, `${marca}.logexiste`);
+      const funcao = `${marca}_recusa_log`;
+      // Só para as contas deste teste: os outros arquivos podem rodar junto.
+      await db.query(`
+        CREATE FUNCTION ${funcao}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM users WHERE id = NEW.user_id AND username::text LIKE '${marca}.log%') THEN
+            IF TG_TABLE_NAME = 'sessions' THEN
+              RAISE EXCEPTION 'sessão recusada: %', NEW.token_hash USING DETAIL = 'token ' || NEW.token_hash;
+            END IF;
+            RAISE EXCEPTION 'gravação recusada: %', NEW.password_hash USING DETAIL = 'hash ' || NEW.password_hash;
+          END IF;
+          RETURN NEW;
+        END $$`);
+      await db.query(`CREATE TRIGGER ${funcao} BEFORE INSERT OR UPDATE ON credentials FOR EACH ROW EXECUTE FUNCTION ${funcao}()`);
+      await db.query(`CREATE TRIGGER ${funcao} BEFORE INSERT ON sessions FOR EACH ROW EXECUTE FUNCTION ${funcao}()`);
+      try {
+        const filtro = new DatabaseErrorFilter({
+          httpAdapter: { reply: vi.fn(), isHeadersSent: () => false, end: vi.fn() },
+        } as never);
+        const http = { getType: () => 'http', switchToHttp: () => ({ getResponse: () => ({}) }) } as never;
+
+        // Criar acesso: INSERT em credentials.
+        const criacao = await saidaDe(() => criar(est, p2, `${marca}.lognovo`));
+        expect(criacao.erro).toBeInstanceOf(QueryFailedError);
+        // Sem a proteção, o próprio erro levaria o hash para o log.
+        expect(inspect(criacao.erro)).toMatch(/\$argon2id\$/);
+        expect(criacao.saida).toContain('query que falhou: INSERT INTO credentials');
+        expect(criacao.saida).toContain('code=P0001');
+        expect(criacao.saida).toContain('gravação recusada: [omitido]');
+        limpa(criacao.saida);
+        const naBorda = await saidaDe(async () => filtro.catch(criacao.erro as QueryFailedError, http));
+        expect(naBorda.saida).toContain('ExceptionsHandler');
+        limpa(naBorda.saida);
+        expect(await db.query(`SELECT 1 FROM users WHERE username::text = $1`, [`${marca}.lognovo`])).toHaveLength(0);
+
+        // Definir nova senha: UPDATE em credentials; nada muda.
+        const hashAntes = await hashDe(existente.userId);
+        const redefinicao = await saidaDe(() => definir(est, existente.membershipId, OUTRA));
+        expect(redefinicao.erro).toBeInstanceOf(QueryFailedError);
+        expect(redefinicao.saida).toContain('query que falhou: UPDATE credentials SET password_hash = $2');
+        expect(redefinicao.saida).toContain('[string(24), string(97), string(8), Date]');
+        limpa(redefinicao.saida);
+        limpa((await saidaDe(async () => filtro.catch(redefinicao.erro as QueryFailedError, http))).saida);
+        expect(await hashDe(existente.userId)).toBe(hashAntes);
+
+        // Entrar: INSERT em sessions, com o hash do token.
+        const entrada = await saidaDe(() => login(`${marca}.logexiste`, ESCOLHIDA));
+        expect(entrada.erro).toBeInstanceOf(QueryFailedError);
+        expect(inspect(entrada.erro)).toMatch(/\b[0-9a-f]{64}\b/);
+        expect(entrada.saida).toMatch(/query que falhou: INSERT INTO "?sessions"?/);
+        expect(entrada.saida).toContain('sessão recusada: [omitido]');
+        limpa(entrada.saida);
+        limpa((await saidaDe(async () => filtro.catch(entrada.erro as QueryFailedError, http))).saida);
+      } finally {
+        await db.query(`DROP TRIGGER IF EXISTS ${funcao} ON credentials`);
+        await db.query(`DROP TRIGGER IF EXISTS ${funcao} ON sessions`);
+        await db.query(`DROP FUNCTION IF EXISTS ${funcao}()`);
+      }
+    });
   });
 });

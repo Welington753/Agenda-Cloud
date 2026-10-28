@@ -21,7 +21,7 @@ const INSTANTE = '2026-10-27T13:00:00.000Z';
 describe('equipe e agenda do funcionário — HTTP', () => {
   let app: INestApplication;
   const guard = { canActivate: vi.fn() };
-  const team = { overview: vi.fn(), suspend: vi.fn(), reactivate: vi.fn(), remove: vi.fn(), setPermissions: vi.fn() };
+  const team = { overview: vi.fn(), suspend: vi.fn(), reactivate: vi.fn(), remove: vi.fn(), setPermissions: vi.fn(), changeAccess: vi.fn() };
   const agenda = { day: vi.fn(), changeOwnStatus: vi.fn() };
   const invites = { inviteStaff: vi.fn(), resendStaff: vi.fn(), revokeStaff: vi.fn() };
   const establishments = { update: vi.fn(), suspend: vi.fn(), archive: vi.fn(), reactivate: vi.fn(), changePlan: vi.fn() };
@@ -182,7 +182,7 @@ describe('equipe e agenda do funcionário — HTTP', () => {
 
   it('senha escolhida pelo dono: mesma política das outras senhas, e nunca ecoada no erro', async () => {
     const base = { requestKey: CHAVE, role: 'GERENTE', name: 'Pessoa Fictícia', username: 'senha@salao', permissions: [] };
-    for (const password of ['curta-123', 'x'.repeat(129), 12345678901, null]) {
+    for (const password of ['curta-123', '', 'x'.repeat(129), 12345678901, null, false, {}]) {
       const recusa = await request(app.getHttpServer())
         .post('/tenants/t1/team/staff-accounts')
         .send({ ...base, password })
@@ -198,6 +198,43 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       ...base,
       password: 'escolhida-pelo-dono-1',
     });
+  });
+
+  it('compatibilidade: só o campo de senha AUSENTE chega ao serviço sem senha (corpo da tela anterior)', async () => {
+    const base = { requestKey: CHAVE, role: 'GERENTE', name: 'Pessoa Fictícia', username: 'antiga@salao', permissions: [] };
+    await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(base).expect(200);
+    const [, , , dto] = staffAccounts.create.mock.calls[0];
+    expect(dto).not.toHaveProperty('password');
+  });
+
+  it('editar acesso: perfil, profissional e o conjunto confirmado; nada forjado no corpo', async () => {
+    const valido = {
+      expected: { role: 'PROFISSIONAL', professionalId: 'p1', granted: ['ATENDIMENTO_PROPRIO_INICIAR'] },
+      role: 'GERENTE',
+      professionalId: null,
+      granted: ['AGENDA_VISUALIZAR'],
+    };
+    for (const corpo of [
+      {},
+      { ...valido, expected: undefined },
+      { ...valido, role: 'DONO' },
+      { ...valido, role: 'PROFISSIONAL', professionalId: null },
+      { ...valido, granted: ['EQUIPE_GERENCIAR'] },
+      { ...valido, userId: 'outra_conta' },
+      { ...valido, tenantId: 't2' },
+      { ...valido, password: 'senha-forjada-1' },
+      { ...valido, platformRole: 'MASTER_OWNER' },
+      { ...valido, expected: { ...valido.expected, status: 'ACTIVE' } },
+    ]) {
+      await request(app.getHttpServer()).put('/tenants/t1/team/members/m1/access').send(corpo).expect(400);
+    }
+    expect(team.changeAccess).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .put('/tenants/t1/team/members/m1/access')
+      .send(valido)
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(team.changeAccess).toHaveBeenCalledWith('proven_user', 'proven_session', 't1', 'm1', valido);
   });
 
   it('definir nova senha: só a senha no corpo, com a política; a identidade vem da sessão', async () => {
