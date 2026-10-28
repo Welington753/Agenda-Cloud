@@ -111,7 +111,7 @@ export default function PerfilPage() {
           {!obrigatoria && (
             <p className="text-xs text-ink-soft" data-testid="perfil-senha">
               Esqueceu a senha? Quem entra com e-mail pede um link de redefinição à administração da plataforma;
-              quem entra com o login criado pelo estabelecimento pede uma nova senha temporária ao responsável.
+              quem entra com o login criado pelo estabelecimento pede ao responsável que defina uma nova senha.
             </p>
           )}
         </CartaoCorpo>

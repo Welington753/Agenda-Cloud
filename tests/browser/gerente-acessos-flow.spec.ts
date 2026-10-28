@@ -4,8 +4,9 @@
 // 1. O dono cria, em "Criar acesso", um GERENTE sem profissional, com login
 //    em formato de e-mail, e marca a agenda do estabelecimento e as
 //    solicitações. Marcar a agenda traz junto "consultar profissionais", e o
-//    resumo mostra exatamente o que será concedido.
-// 2. O gerente troca a senha temporária e começa na Agenda. Vê os
+//    resumo mostra exatamente o que será concedido. O dono define a senha.
+// 2. O gerente entra com essa senha, sem troca obrigatória, e começa na
+//    Agenda. Vê os
 //    atendimentos de todos sem telefone nem preço, sem "Novo agendamento" e
 //    sem ações; confirma uma solicitação pela aba Solicitações.
 // 3. Áreas não concedidas: pelo endereço, levam ao começo dele; pela API,
@@ -21,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import { API_DE_TESTE, conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
 
 const SENHA_DONO = "senha-do-dono-do-gerente-1";
-const SENHA_GERENTE = "senha-escolhida-pelo-gerente-1";
+const SENHA_GERENTE = "senha-definida-pelo-dono-1";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 10);
 
 async function semRolagemHorizontal(page: Page) {
@@ -129,11 +130,12 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
       "Solicitações: consultar solicitações; aceitar e recusar solicitações",
       "Profissionais: consultar profissionais",
     ]);
+    await formulario.getByLabel("Senha", { exact: true }).fill(SENHA_GERENTE);
+    await formulario.getByLabel("Confirmar senha").fill(SENHA_GERENTE);
     await capturar(page, "criar");
     await formulario.getByRole("button", { name: "Criar acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    const temporaria = (await page.getByTestId("senha-temporaria-valor").textContent())!.trim();
-    await page.getByRole("button", { name: "Já entreguei" }).click();
+    await page.getByTestId("acesso-criado").getByRole("button", { name: "Concluir" }).click();
     const cartao = page.getByTestId("acesso-equipe").filter({ hasText: "Gerente Fictício" });
     await expect(cartao.getByTestId("perfil-acesso")).toHaveText("Gerente");
     await expect(cartao.getByTestId("profissional-vinculado")).toHaveText("Nenhum: não atende clientes");
@@ -152,13 +154,9 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
     try {
       await gp.goto("/login");
       await gp.getByLabel("E-mail ou login").fill(login.toUpperCase());
-      await gp.getByLabel("Senha", { exact: true }).fill(temporaria);
+      await gp.getByLabel("Senha", { exact: true }).fill(SENHA_GERENTE);
       await gp.getByRole("button", { name: "Entrar" }).click();
-      await expect(gp).toHaveURL(/\/conta\/configuracoes\/perfil$/);
-      await gp.getByLabel("Senha temporária").fill(temporaria);
-      await gp.getByLabel("Senha nova", { exact: true }).fill(SENHA_GERENTE);
-      await gp.getByLabel("Confirme a senha nova").fill(SENHA_GERENTE);
-      await gp.getByTestId("trocar-senha").click();
+      // Senha definida pelo dono: sem troca obrigatória.
       await expect(gp).toHaveURL(/\/conta\/agendamentos$/);
       const nav = gp.getByRole("navigation", { name: "Áreas da conta" });
       await expect(nav.getByRole("link")).toHaveText(["Agenda", "Profissionais", "Configurações"]);

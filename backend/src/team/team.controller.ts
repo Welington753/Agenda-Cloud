@@ -22,11 +22,13 @@ import {
   ownStatusActionSchema,
   staffAccountSchema,
   staffInviteSchema,
+  staffPasswordSchema,
   staffPermissionsChangeSchema,
   type MyAgendaQuery,
   type OwnStatusActionDto,
   type StaffAccountDto,
   type StaffInviteDto,
+  type StaffPasswordDto,
   type StaffPermissionsChangeDto,
 } from './team.dto.js';
 import type { StaffAction } from './staff-access.js';
@@ -61,8 +63,9 @@ export class TeamController {
     return this.invites.inviteStaff(req.auth.userId, tenantId, dto);
   }
 
-  /** Acesso com nome de usuário e senha temporária (gerada aqui, devolvida
-   * só nesta resposta). Exige senha do dono confirmada há pouco. */
+  /** Acesso com nome de usuário e a senha escolhida pelo dono (ou, no corpo
+   * da tela anterior, senha temporária devolvida só nesta resposta). Exige
+   * senha do dono confirmada há pouco. */
   @Post('staff-accounts')
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')
@@ -83,6 +86,20 @@ export class TeamController {
     @Param('membershipId', id) membershipId: string,
   ) {
     return this.staffAccounts.resetTemporaryPassword(req.auth.userId, req.auth.sessionId, tenantId, membershipId);
+  }
+
+  /** Senha escolhida pelo dono para o acesso interno: definitiva, encerra as
+   * sessões da pessoa e nunca volta na resposta. Exige senha do dono
+   * confirmada há pouco. */
+  @Put('members/:membershipId/password')
+  @Header('Cache-Control', 'private, no-store')
+  setStaffPassword(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId', id) tenantId: string,
+    @Param('membershipId', id) membershipId: string,
+    @Body(new ZodValidationPipe(staffPasswordSchema)) dto: StaffPasswordDto,
+  ) {
+    return this.staffAccounts.setPassword(req.auth.userId, req.auth.sessionId, tenantId, membershipId, dto.password);
   }
 
   @Post('invites/:inviteId/resend')

@@ -4,7 +4,7 @@
 //
 // O login NÃO precisa ser um e-mail real e nunca é tratado como um: pode ter
 // a aparência de e-mail (`maria@salao`), mas não recebe mensagem, não é
-// verificado e não serve para recuperar senha (quem gera nova senha é o dono).
+// verificado e não serve para recuperar senha (quem define nova senha é o dono).
 
 /** Mesmo formato de `usernameSchema` no backend (migration TeamManagerAccess). */
 const FORMATO = /^[a-z0-9][a-z0-9._+-]*(@[a-z0-9]([a-z0-9.-]*[a-z0-9])?)?$/;
@@ -45,7 +45,8 @@ export interface AcessoCriado {
   userId: string;
   username: string;
   role?: string;
-  /** Só na criação; `null` quando o mesmo formulário já tinha criado. */
+  /** Senha temporária: só na criação pelo corpo da tela anterior. Com a
+   * senha escolhida pelo dono, e na repetição do formulário, `null`. */
   temporaryPassword: string | null;
 }
 
@@ -61,8 +62,9 @@ export function ehAcessoCriado(v: unknown): v is AcessoCriado {
   );
 }
 
-export function ehNovaSenha(v: unknown): v is { membershipId: string; username: string; temporaryPassword: string } {
+/** Resposta de "Definir nova senha": nunca traz a senha. */
+export function ehSenhaDefinida(v: unknown): v is { membershipId: string; username: string } {
   if (typeof v !== "object" || v === null) return false;
   const a = v as Record<string, unknown>;
-  return typeof a.membershipId === "string" && typeof a.username === "string" && typeof a.temporaryPassword === "string";
+  return typeof a.membershipId === "string" && typeof a.username === "string" && !("temporaryPassword" in a);
 }

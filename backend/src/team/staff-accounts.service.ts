@@ -1,6 +1,7 @@
-// Acesso de equipe com LOGIN INTERNO e SENHA TEMPORÁRIA, sem e-mail (ver
-// docs/plans/operacao-diaria-configuracoes.md, PR 2, e
-// docs/plans/equipe-gerente-login-interno.md).
+// Acesso de equipe com LOGIN INTERNO e senha, sem e-mail (ver
+// docs/plans/operacao-diaria-configuracoes.md, PR 2,
+// docs/plans/equipe-gerente-login-interno.md e
+// docs/plans/senha-do-dono-calendario-profissional.md).
 //
 // CRIAR (dono, senha confirmada há pouco nesta sessão): numa transação só,
 // com o estabelecimento travado (mesma fila das vagas, ver seats.ts):
@@ -9,25 +10,30 @@
 // acesso e sem convite pendente; vaga livre no plano; login livre na
 // plataforma (também contra os e-mails, ver migration TeamManagerAccess); e
 // só as permissões que o dono pode conceder, com as dependências junto (ver
-// team-permissions.ts). Grava conta NOVA (sem e-mail, e-mail não verificado,
-// troca de senha obrigatória), credencial (Argon2id), vínculo, permissões (no
-// gerente, já confirmadas pelo dono), a chave do formulário e o histórico.
-// Qualquer recusa desfaz tudo: nunca sobra conta sem vínculo, e nunca uma
-// conta existente é ligada ou assumida: login em uso é recusado.
+// team-permissions.ts). Grava conta NOVA (sem e-mail, e-mail não verificado),
+// credencial (Argon2id), vínculo, permissões (no gerente, já confirmadas pelo
+// dono), a chave do formulário e o histórico. Qualquer recusa desfaz tudo:
+// nunca sobra conta sem vínculo, e nunca uma conta existente é ligada ou
+// assumida: login em uso é recusado.
 //
 // Gerente sem profissional ocupa vaga de equipe, mas NÃO cria profissional.
 //
-// A senha temporária é gerada aqui, devolvida UMA vez nesta resposta e nunca
-// guardada em claro, em log ou no histórico. Repetir o mesmo formulário
-// (mesma chave) devolve o acesso já criado, SEM senha: para outra, o dono
-// gera uma nova.
+// SENHA: a tela atual manda a senha escolhida pelo dono, que é DEFINITIVA
+// (sem troca obrigatória) e nunca volta na resposta. O corpo da tela
+// anterior (sem senha) ainda recebe uma senha temporária gerada aqui,
+// devolvida UMA vez, com troca obrigatória no primeiro acesso. Em nenhum dos
+// dois casos a senha é guardada em claro, em log, no histórico ou na chave
+// do formulário. Repetir o mesmo formulário (mesma chave) devolve o acesso já
+// criado, SEM senha e SEM mexer na senha gravada.
 //
-// NOVA SENHA TEMPORÁRIA (dono, profissional ou gerente): só para a conta
-// criada assim — sem e-mail,
-// sem papel na plataforma e com este único vínculo. Uma conta que entra por
-// e-mail, que trabalha em outra empresa ou que administra a plataforma não é
-// do dono: a senha dela é global, e trocá-la daria ao dono a conta inteira.
-// Para essas, a recuperação é a redefinição por link da administração.
+// NOVA SENHA (dono, profissional ou gerente): só para a conta criada assim —
+// sem e-mail, sem papel na plataforma e com este único vínculo. Uma conta que
+// entra por e-mail, que trabalha em outra empresa ou que administra a
+// plataforma não é do dono: a senha dela é global, e trocá-la daria ao dono a
+// conta inteira. Para essas, a recuperação é a redefinição por link da
+// administração. A senha definida pelo dono é definitiva; a rota antiga de
+// senha temporária continua para o web anterior. As duas encerram as sessões
+// abertas da pessoa.
 import { randomInt } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -69,8 +75,14 @@ export interface StaffAccountCreated {
   userId: string;
   username: string;
   role: string;
-  /** Só na criação. Nunca de novo. */
+  /** Só na criação SEM senha escolhida (corpo da tela anterior). Nunca de
+   * novo, e nunca a senha escolhida pelo dono. */
   temporaryPassword: string | null;
+}
+
+interface StaffPasswordTarget {
+  user_id: string;
+  username: string;
 }
 
 @Injectable()
@@ -87,7 +99,8 @@ export class StaffAccountsService {
   ): Promise<StaffAccountCreated> {
     const repetido = await this.replay(actorId, dto.requestKey);
     if (repetido) return repetido;
-    const senha = gerarSenhaTemporaria();
+    const temporaria = dto.password === undefined;
+    const senha = dto.password ?? gerarSenhaTemporaria();
     const hash = await hashPassword(senha);
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -139,8 +152,8 @@ export class StaffAccountsService {
         const membershipId = generateId();
         await manager.query(
           `INSERT INTO users (id, name, email, username, email_verified, status, must_change_password, created_at, updated_at)
-           VALUES ($1, $2, NULL, $3, false, 'ACTIVE', true, $4, $4)`,
-          [userId, dto.name, dto.username, now],
+           VALUES ($1, $2, NULL, $3, false, 'ACTIVE', $5, $4, $4)`,
+          [userId, dto.name, dto.username, now, temporaria],
         );
         await manager.query(
           `INSERT INTO credentials (id, user_id, password_hash, algorithm, updated_at) VALUES ($1, $2, $3, $4, $5)`,
@@ -175,17 +188,25 @@ export class StaffAccountsService {
             targetUserId: userId,
             summary: `Acesso de ${gerente ? 'gerente' : 'profissional'} criado para ${dto.username}, ${
               profissional ? `ligado a ${profissional.name}` : 'sem profissional ligado'
-            }.`,
+            }, ${temporaria ? 'com senha temporária' : 'com senha definida pelo responsável'}.`,
             newData: {
               username: dto.username,
               role,
               professionalId: profissional?.id ?? null,
               granted: [...dto.permissions].sort(),
+              mustChangePassword: temporaria,
             },
           },
           now,
         );
-        return { created: true, membershipId, userId, username: dto.username, role, temporaryPassword: senha };
+        return {
+          created: true,
+          membershipId,
+          userId,
+          username: dto.username,
+          role,
+          temporaryPassword: temporaria ? senha : null,
+        };
       });
     } catch (error) {
       // Mesma mensagem para login de outra conta e e-mail de outra conta: a
@@ -204,7 +225,8 @@ export class StaffAccountsService {
     }
   }
 
-  /** Nova senha temporária para a conta de funcionário criada pelo dono. */
+  /** Nova senha temporária para a conta de funcionário criada pelo dono
+   * (rota da tela anterior): troca obrigatória no próximo acesso. */
   async resetTemporaryPassword(
     actorId: string,
     sessionId: string,
@@ -213,6 +235,36 @@ export class StaffAccountsService {
     now = new Date(),
   ): Promise<{ membershipId: string; username: string; temporaryPassword: string }> {
     const senha = gerarSenhaTemporaria();
+    const conta = await this.redefinir(actorId, sessionId, tenantId, membershipId, senha, true, now);
+    return { membershipId, username: conta.username, temporaryPassword: senha };
+  }
+
+  /** Senha escolhida pelo dono para a conta de funcionário criada por ele:
+   * definitiva (sem troca obrigatória). A resposta não traz a senha. */
+  async setPassword(
+    actorId: string,
+    sessionId: string,
+    tenantId: string,
+    membershipId: string,
+    password: string,
+    now = new Date(),
+  ): Promise<{ membershipId: string; username: string }> {
+    const conta = await this.redefinir(actorId, sessionId, tenantId, membershipId, password, false, now);
+    return { membershipId, username: conta.username };
+  }
+
+  /** Grava a senha nova (hash), marca ou libera a troca obrigatória SÓ desta
+   * conta, encerra todas as sessões dela e registra o histórico, numa
+   * transação só, depois de provar que a conta é do estabelecimento. */
+  private async redefinir(
+    actorId: string,
+    sessionId: string,
+    tenantId: string,
+    membershipId: string,
+    senha: string,
+    temporaria: boolean,
+    now: Date,
+  ): Promise<StaffPasswordTarget> {
     const hash = await hashPassword(senha);
     return this.dataSource.transaction(async (manager) => {
       await requireRecentReauth(manager, sessionId, now);
@@ -252,10 +304,10 @@ export class StaffAccountsService {
         now,
       ]);
       await manager.query(
-        `UPDATE users SET must_change_password = true,
+        `UPDATE users SET must_change_password = $3,
                 updated_at = GREATEST($2::timestamptz, updated_at + interval '1 millisecond')
           WHERE id = $1`,
-        [conta.user_id, now],
+        [conta.user_id, now, temporaria],
       );
       await manager.query(`UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL`, [
         conta.user_id,
@@ -269,11 +321,14 @@ export class StaffAccountsService {
           actor,
           tenantId: gestor.tenantId,
           targetUserId: conta.user_id,
-          summary: `Nova senha temporária gerada para ${conta.username}; as sessões abertas foram encerradas.`,
+          summary: `${
+            temporaria ? 'Nova senha temporária gerada' : 'Nova senha definida pelo responsável'
+          } para ${conta.username}; as sessões abertas foram encerradas.`,
+          newData: { mustChangePassword: temporaria },
         },
         now,
       );
-      return { membershipId, username: conta.username, temporaryPassword: senha };
+      return { user_id: conta.user_id, username: conta.username };
     });
   }
 

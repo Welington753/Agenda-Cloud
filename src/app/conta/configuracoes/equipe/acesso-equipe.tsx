@@ -5,7 +5,7 @@
 // conforme a situação; o servidor confere cada uma de novo (vaga,
 // profissional ativo, conta bloqueada, permissões que o dono pode dar).
 //
-// Suspender, reativar, remover, mudar permissões e gerar nova senha pedem a
+// Suspender, reativar, remover, mudar permissões e definir nova senha pedem a
 // senha do dono (useAcaoSensivel, a mesma reautenticação da administração).
 import { useState } from "react";
 import {
@@ -34,7 +34,7 @@ import {
 } from "@/lib/equipe/contratos";
 import { mesmasPermissoes, resumoDasPermissoes } from "@/lib/equipe/permissoes";
 import { EditorDePermissoes } from "./editor-de-permissoes";
-import { NovaSenhaTemporaria } from "./nova-senha-temporaria";
+import { DefinirSenha } from "./definir-senha";
 
 export const ESTILO_SITUACAO: Record<SituacaoNaEquipe, { cor: CorBadge; icone: LucideIcon }> = {
   OWNER: { cor: "destaque", icone: Crown },
@@ -263,7 +263,7 @@ export function AcessoEquipe({ acesso, visao, aoMudar }: { acesso: AcessoNaLista
         </div>
       )}
       {acesso.canResetTemporaryPassword ? (
-        <NovaSenhaTemporaria tenantId={visao.tenant.id} acesso={acesso} />
+        <DefinirSenha tenantId={visao.tenant.id} acesso={acesso} />
       ) : (
         deEquipe && (
           <p className="text-xs text-ink-soft">

@@ -25,7 +25,7 @@ describe('equipe e agenda do funcionário — HTTP', () => {
   const agenda = { day: vi.fn(), changeOwnStatus: vi.fn() };
   const invites = { inviteStaff: vi.fn(), resendStaff: vi.fn(), revokeStaff: vi.fn() };
   const establishments = { update: vi.fn(), suspend: vi.fn(), archive: vi.fn(), reactivate: vi.fn(), changePlan: vi.fn() };
-  const staffAccounts = { create: vi.fn(), resetTemporaryPassword: vi.fn() };
+  const staffAccounts = { create: vi.fn(), resetTemporaryPassword: vi.fn(), setPassword: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -178,6 +178,46 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       username: 'bia.salao',
       professionalId: 'p1',
     });
+  });
+
+  it('senha escolhida pelo dono: mesma política das outras senhas, e nunca ecoada no erro', async () => {
+    const base = { requestKey: CHAVE, role: 'GERENTE', name: 'Pessoa Fictícia', username: 'senha@salao', permissions: [] };
+    for (const password of ['curta-123', 'x'.repeat(129), 12345678901, null]) {
+      const recusa = await request(app.getHttpServer())
+        .post('/tenants/t1/team/staff-accounts')
+        .send({ ...base, password })
+        .expect(400);
+      expect(JSON.stringify(recusa.body)).not.toContain('curta-123');
+    }
+    expect(staffAccounts.create).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post('/tenants/t1/team/staff-accounts')
+      .send({ ...base, password: 'escolhida-pelo-dono-1' })
+      .expect(200);
+    expect(staffAccounts.create).toHaveBeenCalledWith('proven_user', 'proven_session', 't1', {
+      ...base,
+      password: 'escolhida-pelo-dono-1',
+    });
+  });
+
+  it('definir nova senha: só a senha no corpo, com a política; a identidade vem da sessão', async () => {
+    for (const corpo of [
+      {},
+      { password: 'curta' },
+      { password: 'nova-senha-do-dono-1', mustChangePassword: true },
+      { password: 'nova-senha-do-dono-1', userId: 'outra_conta' },
+      { password: 'nova-senha-do-dono-1', tenantId: 't2' },
+    ]) {
+      const recusa = await request(app.getHttpServer()).put('/tenants/t1/team/members/m1/password').send(corpo).expect(400);
+      expect(JSON.stringify(recusa.body)).not.toContain('nova-senha-do-dono-1');
+    }
+    expect(staffAccounts.setPassword).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .put('/tenants/t1/team/members/m1/password')
+      .send({ password: 'nova-senha-do-dono-1' })
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(staffAccounts.setPassword).toHaveBeenCalledWith('proven_user', 'proven_session', 't1', 'm1', 'nova-senha-do-dono-1');
   });
 
   it('recusas em série na criação de acesso e no convite param em 429; criações aceitas não contam', async () => {
