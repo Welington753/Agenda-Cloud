@@ -104,6 +104,20 @@ em `docs/arquitetura/mapa-tecnico.md`, e os lotes propostos em
   `lint:types`.
 - **Correção feita:** o comando está documentado no CLAUDE.md.
 
+**F4. Um teste com banco dependia da hora em que o CI rodava.**
+
+- **Arquivo:** `backend/test/team-manager-postgres.db-e2e-spec.ts`, teste
+  "gerente com profissional ligado vê a própria agenda".
+- **Evidência:** a reserva do colega ficava 2 h depois da do gerente, e as
+  duas eram lidas no dia local da primeira. Com o teste rodando entre 20h e
+  22h de Brasília, a do colega passava para o dia seguinte. O CI do head
+  `adde58e` deste PR falhou assim às 23h44 UTC (`expected [] to deeply
+  equal [ '…' ]`); o mesmo teste tinha passado no head anterior.
+- **Consequência:** CI vermelho sem defeito no código, em duas horas por dia.
+- **Correção feita:** as duas reservas no mesmo instante, em profissionais
+  diferentes, como o teste equivalente de `team-access-postgres` já faz. A
+  asserção não mudou.
+
 ### Riscos
 
 **R1. A agenda do estabelecimento inteiro e as contagens do Início leem

@@ -463,7 +463,10 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
     const pp = await profissional(est, 'Colega');
     const inicio = new Date(Date.now() + 50 * 3_600_000);
     const minha = await reserva(est, pg, inicio);
-    const doColega = await reserva(est, pp, new Date(inicio.getTime() + 2 * 3_600_000));
+    // Mesmo instante, outro profissional: as duas caem no mesmo dia local em
+    // qualquer hora em que o teste rode (com +2 h, a do colega passava para o
+    // dia seguinte quando o teste rodava entre 20h e 22h de Brasília).
+    const doColega = await reserva(est, pp, inicio);
     const gerente = await criar(est, { username: `com-prof@${marca}`, professionalId: pg, permissions: ['ATENDIMENTO_PROPRIO_INICIAR'] });
     const colega = await criar(est, { role: 'PROFISSIONAL', username: `${marca}.colega`, professionalId: pp });
     const dia = { date: diaLocal(inicio) };
