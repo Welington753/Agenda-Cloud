@@ -81,7 +81,8 @@ export class StaffAccountsService {
     actorId: string,
     sessionId: string,
     tenantId: string,
-    dto: StaffAccountDto,
+    // Sem `role` (chamada direta, como a rota anterior): PROFISSIONAL.
+    dto: Omit<StaffAccountDto, 'role'> & { role?: StaffAccountDto['role'] },
     now = new Date(),
   ): Promise<StaffAccountCreated> {
     const repetido = await this.replay(actorId, dto.requestKey);

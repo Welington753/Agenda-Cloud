@@ -11,6 +11,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DataSource } from 'typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
+import { AccountDelivery } from '../src/accounts/account-delivery.js';
+import { InvitesService, LOGIN_IDENTIFIER_IN_USE_MESSAGE } from '../src/accounts/invites.service.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { hashPassword } from '../src/auth/password-hasher.js';
 import { AuthService } from '../src/auth/auth.service.js';
@@ -26,7 +29,7 @@ import { StaffAccountsService } from '../src/team/staff-accounts.service.js';
 import { TeamService } from '../src/team/team.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { dataLocalDe } from '../src/availability/time-zone.js';
-import { staffAccountSchema } from '../src/team/team.dto.js';
+import { staffAccountSchema, staffInviteSchema } from '../src/team/team.dto.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -57,6 +60,7 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
   let dashboard: DashboardService;
   let services: ServicesService;
   let agenda: MyAgendaService;
+  let invites: InvitesService;
   let hash: string;
   const marca = `ger${id().slice(0, 8)}`;
   const planos: Record<number, string> = {};
@@ -196,6 +200,10 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
     dashboard = new DashboardService(db);
     services = new ServicesService(db);
     agenda = new MyAgendaService(db, appointments);
+    // Sem provedor de e-mail: nenhum envio, só o link.
+    const valores: Record<string, string> = { FRONTEND_URL: 'http://localhost:3000' };
+    const config = { get: (k: string) => valores[k], getOrThrow: (k: string) => valores[k] } as unknown as ConfigService;
+    invites = new InvitesService(db, new AccountDelivery(db, config));
     hash = await hashPassword(SENHA);
     for (const max of [1, 2, 3]) {
       planos[max] = id();
@@ -503,5 +511,81 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
     // E-mail e vínculo da conta antiga ficaram como estavam.
     const [usuario] = await db.query(`SELECT email::text AS email FROM users WHERE id = $1`, [antigo.userId]);
     expect(usuario.email).toBe(`${marca}-gerente-antigo@example.test`);
+  });
+
+  const convidar = (est: Est, professionalId: string, email: string) =>
+    invites.inviteStaff(
+      est.dono.userId,
+      est.tenantId,
+      staffInviteSchema.parse({ requestKey: `chave-${id()}`, professionalId, name: 'Pessoa Convidada', email }),
+    );
+
+  it('convite por e-mail igual a um login interno: recusa genérica, sem tocar na conta; convite e login simultâneos: só um grava', async () => {
+    const est = await estabelecimento('convite', 3);
+    const p1 = await profissional(est, 'Um');
+    await criar(est, { username: `recepcao@${marca}.test` });
+    const usuarios = await contagem('SELECT count(*)::int AS n FROM users', []);
+    const recusa = await erroDe(convidar(est, p1, `Recepcao@${marca}.test`));
+    expect(recusa.getResponse?.()).toMatchObject({ code: 'IDENTIFICADOR_EM_USO', message: LOGIN_IDENTIFIER_IN_USE_MESSAGE });
+    // A mensagem não diz que o texto é um login, nem de quem.
+    expect(LOGIN_IDENTIFIER_IN_USE_MESSAGE).not.toMatch(/login|equipe|estabelecimento/i);
+    expect(await contagem('SELECT count(*)::int AS n FROM users', [])).toBe(usuarios);
+    expect(await contagem('SELECT count(*)::int AS n FROM invites WHERE tenant_id = $1', [est.tenantId])).toBe(0);
+
+    // Corrida pelos dois caminhos de criação com o mesmo texto.
+    const p2 = await profissional(est, 'Dois');
+    const texto = `dupla@${marca}.test`;
+    const resultados = await Promise.allSettled([convidar(est, p2, texto), criar(est, { username: texto })]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const perdeu = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(['IDENTIFICADOR_EM_USO', 'USUARIO_EM_USO']).toContain(perdeu.reason.getResponse().code);
+    expect(await contagem('SELECT count(*)::int AS n FROM users WHERE email = $1 OR username = $1', [texto])).toBe(1);
+    // O login continua achando no máximo uma conta.
+    expect(await contagem('SELECT count(*)::int AS n FROM users WHERE email = $1 OR username = $1', [`recepcao@${marca}.test`])).toBe(1);
+  });
+
+  it('acima do limite: acessos e permissões ficam como estão; só o que aumenta o uso é recusado', async () => {
+    const est = await estabelecimento('excesso', 1);
+    const atual = await criar(est, { username: `atual@${marca}`, permissions: AGENDA });
+    const [{ membershipId: atualId }] = (await db.query('SELECT id AS "membershipId" FROM memberships WHERE user_id = $1', [
+      atual.userId,
+    ])) as { membershipId: string }[];
+    // Gerente antigo, de antes da migration: passa a ocupar vaga também.
+    const antigo = await conta('excesso-antigo');
+    const antigoId = id();
+    await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'GERENTE')`, [
+      antigoId,
+      antigo.userId,
+      est.tenantId,
+    ]);
+    await db.query(
+      `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode) VALUES ($1, $2, $3, 'AGENDA_VISUALIZAR', 'GRANTED')`,
+      [id(), est.tenantId, antigoId],
+    );
+    const fotografia = async () =>
+      db.query(
+        `SELECT m.id, m.status::text AS status, m.permissions_confirmed_at,
+                (SELECT array_agg(o.permission::text || ':' || o.mode::text ORDER BY o.permission::text) FROM membership_permission_overrides o WHERE o.membership_id = m.id) AS ajustes
+           FROM memberships m WHERE m.tenant_id = $1 ORDER BY m.id`,
+        [est.tenantId],
+      );
+    const antes = await fotografia();
+    const visao = await team.overview(est.dono.userId, est.tenantId);
+    expect(visao.seats).toMatchObject({ limit: 1, activeAccesses: 2, used: 2, available: 0 });
+    // Ler a visão e o próprio acesso não muda nada: quem já tinha continua tendo.
+    await appointments.list(atual.userId, est.tenantId, { date: diaLocal(new Date()) });
+    expect(await fotografia()).toEqual(antes);
+
+    expect(await codigo(criar(est, { username: `novo@${marca}` }))).toBe('LIMITE_DO_PLANO');
+    // Confirmar permissões de quem já está lá não ocupa vaga.
+    await permissoes(est, antigoId, []);
+    await team.suspend(est.dono.userId, est.dono.sessionId, est.tenantId, atualId);
+    // Continua acima (1 ativo = limite): reativar aumentaria o uso.
+    expect(await codigo(team.reactivate(est.dono.userId, est.dono.sessionId, est.tenantId, atualId))).toBe('LIMITE_DO_PLANO');
+    const [suspenso] = (await db.query('SELECT status::text AS status FROM memberships WHERE id = $1', [atualId])) as { status: string }[];
+    expect(suspenso.status).toBe('SUSPENDED');
+    expect(
+      await contagem(`SELECT count(*)::int AS n FROM membership_permission_overrides WHERE membership_id = $1 AND mode = 'GRANTED'`, [atualId]),
+    ).toBe(AGENDA.length);
   });
 });

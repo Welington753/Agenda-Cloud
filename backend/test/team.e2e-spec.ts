@@ -3,7 +3,7 @@
 // regras (vínculo, vaga, profissional) são provadas contra PostgreSQL em
 // team-access-postgres.db-e2e-spec.ts.
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException, type INestApplication } from '@nestjs/common';
+import { ConflictException, UnauthorizedException, type INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -178,6 +178,32 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       username: 'bia.salao',
       professionalId: 'p1',
     });
+  });
+
+  it('recusas em série na criação de acesso e no convite param em 429; criações aceitas não contam', async () => {
+    const corpo = { requestKey: CHAVE, role: 'GERENTE', name: 'Pessoa Fictícia', username: 'recepcao@salao', permissions: [] };
+    for (let i = 0; i < 12; i++) {
+      await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo).expect(200);
+    }
+    staffAccounts.create.mockRejectedValue(
+      new ConflictException({ code: 'USUARIO_EM_USO', message: 'Este login já está em uso na plataforma. Escolha outro.' }),
+    );
+    for (let i = 0; i < 9; i++) {
+      await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo).expect(409);
+    }
+    // O convite soma no mesmo limite (mesma sondagem por outro caminho).
+    await request(app.getHttpServer()).post('/tenants/t1/team/invites').send({ email: 'x' }).expect(400);
+    staffAccounts.create.mockClear();
+    const bloqueada = await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo);
+    expect(bloqueada.status).toBe(429);
+    expect(staffAccounts.create).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post('/tenants/t1/team/invites')
+      .send({ requestKey: CHAVE, professionalId: 'p1', name: 'Pessoa Fictícia', email: 'pessoa@example.test' })
+      .expect(429);
+    expect(invites.inviteStaff).not.toHaveBeenCalled();
+    // As outras rotas da equipe não entram no limite.
+    await request(app.getHttpServer()).get('/tenants/t1/team').expect(200);
   });
 
   it('permissões: só as do catálogo da equipe, sem duplicar (quem recebe o quê é do serviço)', async () => {

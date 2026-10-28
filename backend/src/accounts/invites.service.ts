@@ -59,7 +59,7 @@ import { resolveTeamManager } from '../team/team-authorization.js';
 import type { StaffInviteDto } from '../team/team.dto.js';
 
 export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
-  'Este endereço já é o login interno de uma conta de equipe. Use outro e-mail ou peça ao estabelecimento para trocar esse login.';
+  'Este e-mail não está disponível para convite. Use outro e-mail.';
 
 export const MAX_SLUG_SAVE_RETRIES = 3;
 
@@ -648,7 +648,8 @@ export class InvitesService {
     }
     // Um login interno com aparência de e-mail (migration TeamManagerAccess)
     // nunca é ligado a este convite: a conta por e-mail seria OUTRA conta com
-    // o mesmo identificador. Recusa explícita, sem tocar na conta existente.
+    // o mesmo identificador. Recusa sem tocar na conta existente e sem dizer
+    // que o texto é um login (nem de qual conta ou estabelecimento).
     const [comoLogin] = await manager.query<unknown[]>('SELECT 1 FROM users WHERE username = $1', [person.email]);
     if (comoLogin) throw conflito('IDENTIFICADOR_EM_USO', LOGIN_IDENTIFIER_IN_USE_MESSAGE);
     const id = generateId();
