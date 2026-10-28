@@ -182,13 +182,22 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     }
     // Configurações do estabelecimento levam às pessoais; só Aparência e
     // Perfil e segurança aparecem para o funcionário.
-    for (const caminho of ["/conta/configuracoes/equipe", "/conta/configuracoes/servicos", "/conta/configuracoes/notificacoes"]) {
+    for (const caminho of [
+      "/conta/configuracoes/equipe",
+      "/conta/configuracoes/servicos",
+      "/conta/configuracoes/profissionais",
+      "/conta/configuracoes/notificacoes",
+    ]) {
       await fp.goto(caminho);
       await expect(fp).toHaveURL(/\/conta\/configuracoes$/);
     }
     expect(
       await fp.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
     ).toEqual(["/conta/configuracoes/aparencia", "/conta/configuracoes/perfil"]);
+    // O submenu de Configurações (computador) mostra só as mesmas duas.
+    await navFuncionaria.getByRole("link", { name: "Configurações" }).hover();
+    await expect(fp.getByTestId("submenu-configuracoes").getByRole("link")).toHaveText(["Aparência", "Perfil e segurança"]);
+    await fp.mouse.move(900, 600);
     await fp.goto("/conta/minha-agenda");
     const data = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(inicio);
     const api = fp.request;

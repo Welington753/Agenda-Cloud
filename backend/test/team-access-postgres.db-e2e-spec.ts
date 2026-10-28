@@ -27,6 +27,7 @@ import { EstablishmentAdminService } from '../src/platform/establishment-admin.s
 import { PlatformService } from '../src/platform/platform.service.js';
 import { TeamService } from '../src/team/team.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
+import { dataLocalDe } from '../src/availability/time-zone.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -184,6 +185,15 @@ describe.skipIf(!url)('equipe, vagas do plano e agenda do funcionário contra Po
     return { userId: aceito.userId, sessionId, membershipId: vinculo.id as string, destination: aceito.destination };
   }
   const hoje = () => new Date().toISOString().slice(0, 10);
+  /** Dia do calendário em que o instante cai NO FUSO DO ESTABELECIMENTO (o
+   * mesmo critério de `MyAgendaService.day`). A data UTC erra perto da
+   * meia-noite: 22:18 em São Paulo já é o dia seguinte em UTC. */
+  const diaLocal = async (est: Est, instante: Date) => {
+    const [{ timezone }] = (await db.query('SELECT timezone FROM tenants WHERE id = $1', [est.tenantId])) as {
+      timezone: string;
+    }[];
+    return dataLocalDe(instante, timezone);
+  };
   const vagas = async (est: Est) => (await team.overview(est.dono.userId, est.tenantId)).seats;
   const versaoDo = async (tenantId: string) =>
     ((await db.query('SELECT updated_at FROM tenants WHERE id = $1', [tenantId])) as { updated_at: Date }[])[0].updated_at.toISOString();
@@ -410,7 +420,7 @@ describe.skipIf(!url)('equipe, vagas do plano e agenda do funcionário contra Po
     const doColega = await reserva(est, p2, daqui);
     const deFora = await reserva(outro, await profissional(outro, 'X'), daqui);
 
-    const dia = await agenda.day(f1.userId, est.tenantId, { date: daqui.toISOString().slice(0, 10) });
+    const dia = await agenda.day(f1.userId, est.tenantId, { date: await diaLocal(est, daqui) });
     const ids = dia.appointments.map((a) => a.id);
     expect(ids).toContain(minha);
     expect(ids).not.toContain(doColega);
@@ -441,6 +451,36 @@ describe.skipIf(!url)('equipe, vagas do plano e agenda do funcionário contra Po
     await expect(agenda.day(est.dono.userId, est.tenantId, { date: hoje() })).rejects.toThrow(ForbiddenException);
   });
 
+  it('agenda do funcionário perto da meia-noite: o dia é o do fuso do estabelecimento, não o UTC', async () => {
+    const est = await estabelecimento('meia-noite', 3);
+    const p1 = await profissional(est, 'A');
+    const p2 = await profissional(est, 'B');
+    const f1 = await funcionario(est, p1, 'meia-noite-1');
+    // 01:18Z = 22:18 do dia 7 em São Paulo: o mesmo instante da falha do CI
+    // (23:18Z + 2 h). Na data UTC já seria o dia 8.
+    const fimDaNoite = new Date('2031-03-08T01:18:00.000Z');
+    // Uma hora cada, sem sobreposição (restrição de exclusão por profissional).
+    const ultimaHora = new Date('2031-03-08T02:20:00.000Z'); // 23:20 do dia 7
+    const depoisDaVirada = new Date('2031-03-08T03:20:00.000Z'); // 00:20 do dia 8
+    expect(fimDaNoite.toISOString().slice(0, 10)).toBe('2031-03-08');
+    expect(await diaLocal(est, fimDaNoite)).toBe('2031-03-07');
+    expect(await diaLocal(est, ultimaHora)).toBe('2031-03-07');
+    expect(await diaLocal(est, depoisDaVirada)).toBe('2031-03-08');
+
+    const r1 = await reserva(est, p1, fimDaNoite);
+    const r2 = await reserva(est, p1, ultimaHora);
+    const r3 = await reserva(est, p1, depoisDaVirada);
+    const doColega = await reserva(est, p2, fimDaNoite);
+
+    const dia7 = await agenda.day(f1.userId, est.tenantId, { date: '2031-03-07' });
+    expect(dia7.professional.id).toBe(p1);
+    expect(dia7.appointments.map((a) => a.id).sort()).toEqual([r1, r2].sort());
+    const dia8 = await agenda.day(f1.userId, est.tenantId, { date: '2031-03-08' });
+    expect(dia8.appointments.map((a) => a.id)).toEqual([r3]);
+    // A reserva do colega, no mesmo instante, não aparece em dia nenhum.
+    expect([...dia7.appointments, ...dia8.appointments].map((a) => a.id)).not.toContain(doColega);
+  });
+
   it('ações liberadas uma a uma; permissão retirada vale na próxima requisição; dono só concede o que pode', async () => {
     const est = await estabelecimento('acoes', 3);
     const p = await profissional(est, 'A');
@@ -451,7 +491,7 @@ describe.skipIf(!url)('equipe, vagas do plano e agenda do funcionário contra Po
     const em = (inicio: Date) => ({ expectedStartAt: inicio.toISOString() });
 
     // Inicial: só consultar.
-    const antes = await agenda.day(f.userId, est.tenantId, { date: comecou.toISOString().slice(0, 10) });
+    const antes = await agenda.day(f.userId, est.tenantId, { date: await diaLocal(est, comecou) });
     expect(antes.permissions).toEqual({ start: false, complete: false, 'no-show': false });
     expect(antes.appointments.every((a) => a.actions.length === 0)).toBe(true);
     await expect(agenda.changeOwnStatus(f.userId, est.tenantId, r1, 'start', em(comecou))).rejects.toThrow(ForbiddenException);

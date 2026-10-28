@@ -97,7 +97,14 @@ test.describe("entrada e navegação do piloto", () => {
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(estabelecimento);
     await expect(page.getByTestId("usuario-conectado")).toContainText("Dona Navegação");
     const nav = navegacaoDaConta(page);
-    expect(await nav.getByRole("link").allTextContents()).toEqual(["Início", "Agenda", "Clientes", "Configurações"]);
+    expect(await nav.getByRole("link").allTextContents()).toEqual([
+      "Início",
+      "Agenda",
+      "Clientes",
+      "Serviços",
+      "Profissionais",
+      "Configurações",
+    ]);
     await expect(nav.getByRole("link", { name: "Início" })).toHaveAttribute("aria-current", "page");
     // Nenhum link da área real aponta para a demonstração.
     const hrefs = await nav
@@ -107,15 +114,14 @@ test.describe("entrada e navegação do piloto", () => {
     // Uma conta com um vínculo só não tem o que trocar.
     await expect(page.getByRole("link", { name: "Trocar de estabelecimento" })).toHaveCount(0);
 
-    // Configurações: as seções do estabelecimento e as pessoais.
+    // Configurações: as seções do estabelecimento e as pessoais (Serviços e
+    // Profissionais são áreas próprias do menu).
     await nav.getByRole("link", { name: "Configurações" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await expect(nav.getByRole("link", { name: "Configurações" })).toHaveAttribute("aria-current", "page");
     const secoes = page.getByTestId("secoes-configuracoes").getByRole("link");
     expect(await secoes.evaluateAll((links) => links.map((l) => l.getAttribute("href")))).toEqual([
       "/conta/configuracoes/estabelecimento",
-      "/conta/configuracoes/servicos",
-      "/conta/configuracoes/profissionais",
       "/conta/configuracoes/equipe",
       "/conta/configuracoes/notificacoes",
       "/conta/configuracoes/aparencia",
@@ -149,6 +155,8 @@ test.describe("entrada e navegação do piloto", () => {
     for (const [rotulo, caminho] of [
       ["Agenda", /\/conta\/agendamentos$/],
       ["Clientes", /\/conta\/clientes$/],
+      ["Serviços", /\/conta\/configuracoes\/servicos$/],
+      ["Profissionais", /\/conta\/configuracoes\/profissionais$/],
       ["Configurações", /\/conta\/configuracoes$/],
       ["Início", /\/conta\/visao-geral$/],
     ] as const) {

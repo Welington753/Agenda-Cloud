@@ -91,9 +91,8 @@ test.describe("gestão real de profissionais", () => {
     const tenantId = await tenantDe(page);
     const servico = await criarServico(page, tenantId, "Corte");
 
-    // Profissionais fica em Configurações.
-    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
-    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: new RegExp("^Profissionais") }).click();
+    // Profissionais é uma área do menu (fora de Configurações), no mesmo endereço.
+    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Profissionais" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
 
     await expect(page.getByText("Nenhum profissional cadastrado")).toBeVisible();

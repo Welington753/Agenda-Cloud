@@ -5,7 +5,16 @@
 // `/profissional`, que são a demonstração movida por dados locais.
 
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
-import { ROTA_AGENDA, ROTA_CLIENTES, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_MINHA_AGENDA } from "./rotas";
+import {
+  ROTA_AGENDA,
+  ROTA_CLIENTES,
+  ROTA_CONFIGURACOES,
+  ROTA_INICIO,
+  ROTA_MINHA_AGENDA,
+  ROTA_PROFISSIONAIS,
+  ROTA_SERVICOS,
+  emAreaSobConfiguracoes,
+} from "./rotas";
 import type { PerfilDaArea } from "./papel";
 
 export interface ItemNavegacaoConta {
@@ -22,11 +31,15 @@ export interface ItemNavegacaoConta {
 }
 
 /** Operação do dono, na ordem do dia a dia: o resumo, a agenda (que também
- * reúne as solicitações), os clientes e as configurações. */
+ * reúne as solicitações), os clientes, o que se atende e quem atende, e as
+ * configurações. Serviços e Profissionais ficam fora da barra do celular
+ * (quatro áreas no máximo) e aparecem no menu da conta. */
 export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
   { href: ROTA_INICIO, rotulo: "Início", noCelular: "barra" },
   { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
   { href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" },
+  { href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "menu" },
+  { href: ROTA_PROFISSIONAIS, rotulo: "Profissionais", noCelular: "menu" },
   { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" },
 ];
 
@@ -51,8 +64,8 @@ export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
 /**
  * Itens do menu para esta sessão.
  *
- * - Dono com estabelecimento ativo: Início, Agenda, Clientes e
- *   Configurações; quem administra a plataforma ganha "Administração" num
+ * - Dono com estabelecimento ativo: Início, Agenda, Clientes, Serviços,
+ *   Profissionais e Configurações; quem administra a plataforma ganha "Administração" num
  *   grupo próprio (no celular, pelo menu da conta, para a barra continuar com
  *   quatro áreas).
  * - Funcionário: "Minha agenda" e "Configurações" (e "Administração" na
@@ -89,12 +102,15 @@ export function itensDaNavegacao({
 /**
  * O item corresponde à página atual? Vale também para as subpáginas
  * (`/conta/agendamentos/solicitacoes` continua em "Agenda";
- * `/conta/configuracoes/profissionais/{id}/horarios`, em "Configurações").
+ * `/conta/configuracoes/profissionais/{id}/horarios`, em "Profissionais").
+ * Serviços e Profissionais moram sob `/conta/configuracoes`, mas são áreas
+ * próprias: nelas, Configurações não fica ativa.
  */
 export function itemAtivo(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
   const atual = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (href === "/conta") return atual === "/conta";
+  if (href === ROTA_CONFIGURACOES && emAreaSobConfiguracoes(atual)) return false;
   return atual === href || atual.startsWith(`${href}/`);
 }
 

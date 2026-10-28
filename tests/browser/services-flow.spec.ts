@@ -17,7 +17,8 @@
 // (backend/src/accounts/account-rate-limit.ts, MemoryStore no processo do
 // backend) e todos os testes saem do mesmo IP. Este arquivo gasta 3 (o fluxo
 // principal + os dois estabelecimentos do teste de isolamento), e
-// pilot-navigation-flow.spec.ts, na mesma invocação, gasta 1 — 4 de 10. As suítes de
+// pilot-navigation-flow.spec.ts e configuracoes-navegacao-flow.spec.ts, na mesma
+// invocação, gastam 1 cada — 5 de 10. As suítes de
 // autenticação gastam outros 4, o que estouraria o limite numa execução única
 // — por isso o CI roda ESTA suíte numa invocação separada do Playwright, que
 // sobe um backend novo e portanto um rate limiter zerado (ver
@@ -71,9 +72,8 @@ test.describe("gestão real de serviços", () => {
     const conta = await criarConta(request, "fluxo");
     await entrar(page, conta);
 
-    // Serviços fica em Configurações.
-    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
-    await page.getByTestId("secoes-configuracoes").getByRole("link", { name: new RegExp("^Serviços") }).click();
+    // Serviços é uma área do menu (fora de Configurações), no mesmo endereço.
+    await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Serviços" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
 
     // Estado vazio com ação de cadastro — nunca uma lista demo.

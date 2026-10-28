@@ -9,7 +9,8 @@
 // - MENU DA CONTA: quem está conectado, "Notificações" (pendentes, situação
 //   neste aparelho e o atalho para Configurações → Notificações), Aparência,
 //   Configurações, Perfil e segurança, a Administração da plataforma (no
-//   celular, onde ela não cabe na barra) e Sair.
+//   celular, onde ela não cabe na barra) e Sair. No celular, também as áreas
+//   que não cabem na barra inferior (Serviços e Profissionais, para o dono).
 //   A situação do push é verificada UMA vez a cada abertura do menu
 //   (lib/push/use-notificacoes-do-dispositivo.ts, o mesmo do cartão); nada
 //   aqui pede permissão ao navegador nem ativa/desativa sozinho.
@@ -31,7 +32,8 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { rotuloDoSino } from "@/lib/conta/navegacao";
+import { itemAtivo, rotuloDoSino, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
+import { ICONE_POR_HREF } from "@/components/conta/link-navegacao";
 import { textoPendentes } from "@/lib/agendamento-publico/solicitacoes";
 import { lerPreferenciaDeSom } from "@/lib/agendamento-publico/som-dos-avisos";
 import { useNotificacoesDoDispositivo } from "@/lib/push/use-notificacoes-do-dispositivo";
@@ -104,6 +106,7 @@ export function MenuConta({
   tenantId,
   pendentes,
   comAdministracao = false,
+  areasNoMenu = [],
   configuracoes,
   saindo,
   aoSair,
@@ -115,6 +118,10 @@ export function MenuConta({
   pendentes: number | null;
   /** Acesso à administração da plataforma confirmado pelo servidor. */
   comAdministracao?: boolean;
+  /** Áreas do menu principal que não cabem na barra inferior do celular
+   * (Serviços e Profissionais, para o dono). Só aparecem aqui no celular: no
+   * computador já estão no menu lateral. */
+  areasNoMenu?: readonly ItemNavegacaoConta[];
   /** Entrada de Configurações (sempre a mesma; parâmetro para o menu não
    * depender do módulo de rotas da área). */
   configuracoes: string;
@@ -193,6 +200,30 @@ export function MenuConta({
             <p className="truncate text-sm font-semibold">{nome}</p>
             <p className="truncate text-xs text-ink-soft">{email}</p>
           </div>
+
+          {areasNoMenu.length > 0 && (
+            <nav
+              aria-label="Mais áreas"
+              className="space-y-1 border-t border-border pt-2 md:hidden"
+              data-testid="menu-mais-areas"
+            >
+              {areasNoMenu.map((area) => {
+                const Icone = ICONE_POR_HREF[area.href] ?? Settings;
+                const atual = itemAtivo(pathname, area.href);
+                return (
+                  <Link
+                    key={area.href}
+                    href={area.href}
+                    aria-current={atual ? "page" : undefined}
+                    className={clsx(CLASSE_LINHA, atual && "bg-accent-soft")}
+                  >
+                    <Icone size={18} aria-hidden="true" className="shrink-0 text-accent" />
+                    {area.rotulo}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
 
           {tenantId && (
             <section aria-label="Notificações" className="space-y-2 border-t border-border pt-3">

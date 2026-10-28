@@ -402,7 +402,14 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);
 
     // ------------------------------------------------ navegação: computador
-    expect(await nav(page).getByRole("link").allTextContents()).toEqual(["Início", "Agenda", "Clientes", "Configurações"]);
+    expect(await nav(page).getByRole("link").allTextContents()).toEqual([
+      "Início",
+      "Agenda",
+      "Clientes",
+      "Serviços",
+      "Profissionais",
+      "Configurações",
+    ]);
     await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
 
     // ------------------------------------------------ navegação: celular
@@ -421,9 +428,10 @@ test.describe("clientes do estabelecimento", () => {
         expect(await link.locator("span").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
-      await nav(page).getByRole("link", { name: "Configurações" }).click();
-      await expect(page).toHaveURL(/\/conta\/configuracoes$/);
-      await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /Profissionais/ }).click();
+      // Serviços e Profissionais não cabem na barra: ficam no menu da conta.
+      await expect(nav(page).getByRole("link", { name: "Profissionais" })).toBeHidden();
+      await page.getByTestId("abrir-menu-conta").click();
+      await page.getByTestId("menu-mais-areas").getByRole("link", { name: "Profissionais" }).click();
       await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
       await semRolagemHorizontal(page);
       await page.goto("/conta/clientes");

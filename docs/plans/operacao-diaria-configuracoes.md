@@ -14,6 +14,11 @@ Base: integration em `c77c313` (TeamAccess aplicada no piloto: 8 migrations,
      Serviços, Profissionais, Equipe e acessos, Notificações, Aparência,
      Perfil e segurança. Cada subpágina é a tela que já existia; nada é
      duplicado;
+   - depois (`feat/configuracoes-indice-submenu`): Serviços e Profissionais
+     viram áreas próprias do menu do dono, nos mesmos endereços (no celular,
+     pelo menu da conta); Configurações fica com Estabelecimento, Equipe e
+     acessos, Notificações, Aparência e Perfil e segurança, com submenu no
+     computador, índice em cartões e só um retorno ao índice nas subpáginas;
    - "Minha conta" deixa de existir: `/conta` leva ao início do perfil, e a
      identificação, a troca de senha (rota nova `POST /auth/password`) e o
      "Sair" ficam em Perfil e segurança;

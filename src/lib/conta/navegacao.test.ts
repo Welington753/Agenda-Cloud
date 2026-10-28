@@ -2,15 +2,22 @@ import { describe, expect, it } from "vitest";
 import { ITENS_NAVEGACAO_CONTA, itemAtivo, itensDaNavegacao, rotuloDoSino } from "./navegacao";
 
 describe("ITENS_NAVEGACAO_CONTA", () => {
-  it("o dono tem quatro áreas, na ordem do dia a dia, todas da área real", () => {
+  it("o dono tem seis áreas, na ordem do dia a dia, todas da área real", () => {
     expect(ITENS_NAVEGACAO_CONTA.map((i) => [i.href, i.rotulo])).toEqual([
       ["/conta/visao-geral", "Início"],
       ["/conta/agendamentos", "Agenda"],
       ["/conta/clientes", "Clientes"],
+      ["/conta/configuracoes/servicos", "Serviços"],
+      ["/conta/configuracoes/profissionais", "Profissionais"],
       ["/conta/configuracoes", "Configurações"],
     ]);
-    // Todas cabem na barra do celular.
-    expect(ITENS_NAVEGACAO_CONTA.every((i) => i.noCelular === "barra")).toBe(true);
+    // Quatro na barra do celular; Serviços e Profissionais vão para o menu da conta.
+    expect(ITENS_NAVEGACAO_CONTA.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
+      "Início",
+      "Agenda",
+      "Clientes",
+      "Configurações",
+    ]);
   });
 });
 
@@ -23,7 +30,15 @@ describe("itensDaNavegacao", () => {
 
   it("com acesso, Administração vem por último, num grupo próprio e fora da barra do celular", () => {
     const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true });
-    expect(rotulos(itens)).toEqual(["Início", "Agenda", "Clientes", "Configurações", "Administração"]);
+    expect(rotulos(itens)).toEqual([
+      "Início",
+      "Agenda",
+      "Clientes",
+      "Serviços",
+      "Profissionais",
+      "Configurações",
+      "Administração",
+    ]);
     expect(itens.at(-1)).toEqual({
       href: "/conta/administracao",
       rotulo: "Administração",
@@ -73,10 +88,17 @@ describe("itemAtivo", () => {
   });
 
   it("subpáginas de Configurações mantêm Configurações ativa", () => {
-    expect(itemAtivo("/conta/configuracoes/profissionais/p1/horarios", "/conta/configuracoes")).toBe(true);
     expect(itemAtivo("/conta/configuracoes/perfil", "/conta/configuracoes")).toBe(true);
+    expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes")).toBe(true);
     expect(itemAtivo("/conta/administracao/estabelecimentos/t1", "/conta/administracao")).toBe(true);
     expect(itemAtivo("/conta/administracao/estabelecimentos", "/conta/configuracoes")).toBe(false);
+  });
+
+  it("Serviços e Profissionais são áreas próprias, mesmo sob /conta/configuracoes", () => {
+    expect(itemAtivo("/conta/configuracoes/profissionais/p1/horarios", "/conta/configuracoes")).toBe(false);
+    expect(itemAtivo("/conta/configuracoes/profissionais/p1/horarios", "/conta/configuracoes/profissionais")).toBe(true);
+    expect(itemAtivo("/conta/configuracoes/servicos", "/conta/configuracoes")).toBe(false);
+    expect(itemAtivo("/conta/configuracoes/servicos", "/conta/configuracoes/servicos")).toBe(true);
   });
 
   it("não confunde prefixos parecidos nem rota ausente", () => {
