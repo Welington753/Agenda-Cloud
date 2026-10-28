@@ -98,10 +98,17 @@ export function CartaoAtendimento({
             : noHorario && "shadow-[inset_3px_0_0_var(--color-border-strong)]",
       )}
     >
-      <div className="flex gap-3 sm:gap-5">
+      {/* No celular, horário à esquerda e o resto empilhado. Em tela larga
+        (lg), colunas como uma tabela: horário, cliente e serviço,
+        profissional, status. Os blocos intermediários viram `contents` para
+        que os mesmos elementos (um só status, um só nome) ocupem a grade. */}
+      <div className="flex gap-3 sm:gap-5 lg:grid lg:grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,11rem)_minmax(0,13rem)] lg:gap-x-6 lg:gap-y-0.5">
         <p
           data-testid="horario-agendado"
-          className={clsx("flex w-12 shrink-0 flex-col tabular-nums sm:w-14", encerrado && "opacity-60")}
+          className={clsx(
+            "flex w-12 shrink-0 flex-col tabular-nums sm:w-14 lg:col-start-1 lg:row-span-3 lg:row-start-1 lg:w-auto",
+            encerrado && "opacity-60",
+          )}
         >
           <span className="text-base leading-tight font-semibold tracking-tight text-ink sm:text-lg">
             {agendamento.localStart}
@@ -110,18 +117,18 @@ export function CartaoAtendimento({
           <span className="text-xs text-ink-muted">{agendamento.localServiceEnd}</span>
         </p>
 
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
+        <div className="min-w-0 flex-1 space-y-0.5 lg:contents">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 lg:contents">
             <p
               data-testid="cliente-agendado"
               className={clsx(
-                "min-w-0 text-[15px] leading-snug font-semibold break-words text-ink sm:text-base",
+                "min-w-0 text-[15px] leading-snug font-semibold break-words text-ink sm:text-base lg:col-start-2 lg:row-start-1",
                 agendamento.status === "CANCELED" && "text-ink-soft line-through decoration-1",
               )}
             >
               {agendamento.consumer.name}
             </p>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 lg:col-start-4 lg:row-span-3 lg:row-start-1 lg:self-center">
               {recemCriada && <Badge cor="sucesso">Novo</Badge>}
               {noHorario && !emAtendimento && (
                 <Badge cor="neutro">
@@ -132,20 +139,26 @@ export function CartaoAtendimento({
               <StatusDoAtendimento status={agendamento.status} />
             </div>
           </div>
-          <p className="text-sm text-ink-soft">
+          <p className="text-sm text-ink-soft lg:col-start-2 lg:!mt-0">
             <span>{agendamento.service.name}</span>
             <span> · </span>
             <span className="tabular-nums">{rotuloDeDuracao(agendamento.durationMinutes)}</span>
-            <span> · com {agendamento.professional.name}</span>
+            <span className="lg:hidden"> · com {agendamento.professional.name}</span>
           </p>
-          <p className="text-xs text-ink-muted tabular-nums">
+          <p className="text-xs text-ink-muted tabular-nums lg:col-start-2 lg:!mt-0">
             {agendamento.consumer.whatsapp} · {rotuloDePreco(agendamento.priceCents)}
+          </p>
+          {/* Coluna própria só em tela larga; no celular o profissional fica
+            na linha do serviço ("com …"). */}
+          <p className="hidden text-sm text-ink lg:col-start-3 lg:row-span-3 lg:row-start-1 lg:block lg:self-center"
+          >
+            {agendamento.professional.name}
           </p>
         </div>
       </div>
 
       {/* Ações alinhadas com o texto (depois da coluna do horário). */}
-      {children && <div className="mt-3 sm:pl-[4.75rem]">{children}</div>}
+      {children && <div className="mt-3 sm:pl-[4.75rem] lg:pl-[5rem]">{children}</div>}
     </article>
   );
 }
