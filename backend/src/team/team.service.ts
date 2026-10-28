@@ -41,7 +41,7 @@ import { generateId } from '../entities/common/generate-id.js';
 import { loadActor } from '../accounts/actor.js';
 import { recordAudit } from '../accounts/audit.js';
 import { requireRecentReauth } from '../accounts/reauth.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import { MAX_INVITE_SENDS } from '../accounts/account-token.js';
 import { effectiveOverrides } from '../common/tenant-authorization.js';
 import {

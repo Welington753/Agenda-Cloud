@@ -3,7 +3,7 @@
 // endpoint; nenhuma devolve o endpoint para fora do executor de envio.
 import type { EntityManager } from 'typeorm';
 import { generateId } from '../entities/common/generate-id.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 
 export interface NovaInscricao {
   userId: string;

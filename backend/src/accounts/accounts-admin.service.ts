@@ -25,7 +25,7 @@ import { assertCanManageAccount, loadActor, requireCapability, FORBIDDEN_MESSAGE
 import { recordAudit } from './audit.js';
 import { requireRecentReauth } from './reauth.js';
 import { avancarVersao } from './user-version.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import { EFFECTIVE_TENANT_PERMISSIONS, RESTRICTABLE_TENANT_ROLES } from './tenant-effective-access.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 

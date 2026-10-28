@@ -25,7 +25,7 @@ import type { EntityManager } from 'typeorm';
 import { loadActor, requireCapability, type Actor } from '../accounts/actor.js';
 import { recordAudit } from '../accounts/audit.js';
 import { requireRecentReauth } from '../accounts/reauth.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import { activeProfessionals, isOperational, staffSeatUsage, unitsCount } from '../team/seats.js';
 import type {
   ArchiveEstablishmentDto,

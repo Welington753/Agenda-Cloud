@@ -44,7 +44,7 @@ import { requireRecentReauth } from '../accounts/reauth.js';
 import { CREDENTIAL_ALGORITHM, hashPassword } from '../auth/password-hasher.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import { generateId } from '../entities/common/generate-id.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import {
   expireStaleStaffInvites,
   isOperational,
