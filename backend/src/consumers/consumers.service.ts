@@ -29,7 +29,7 @@ import {
   CONSUMERS_FORBIDDEN_MESSAGE,
 } from './consumer-access.js';
 import type { ConsumerPageDto, CreateConsumerDto } from './consumer.dto.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 
 /** Teto duro da busca. Existe para a rota nunca virar um dump da base de
  * clientes — quem procura alguém específico acha nas primeiras linhas. */

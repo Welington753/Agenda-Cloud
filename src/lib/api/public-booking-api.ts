@@ -9,7 +9,7 @@
 //   sido gravado. A tela nunca afirma que não foi, e nunca reenvia sozinha:
 //   quem decide "verificar o envio" é a pessoa, com a MESMA chave, e o
 //   servidor devolve o pedido já gravado em vez de criar outro.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 export interface PaginaPublica {
   establishment: { name: string; slug: string; timezone: string };
@@ -72,17 +72,11 @@ export type FalhaPublica =
 
 export type ResultadoPublico<T> = { ok: true; dados: T } | { ok: false; falha: FalhaPublica };
 
-function mensagemDe(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const m = (data as Record<string, unknown>).message;
-  return typeof m === "string" ? m : null;
-}
-
 function falhaHttp(status: number, data: unknown): FalhaPublica | null {
   if (status === 404) return { tipo: "nao_encontrada" };
-  if (status === 400) return { tipo: "recusado", mensagem: mensagemDe(data) };
-  if (status === 409) return { tipo: "conflito", mensagem: mensagemDe(data) };
-  if (status === 429) return { tipo: "limite", mensagem: mensagemDe(data) };
+  if (status === 400) return { tipo: "recusado", mensagem: mensagemDoBackend(data) };
+  if (status === 409) return { tipo: "conflito", mensagem: mensagemDoBackend(data) };
+  if (status === 429) return { tipo: "limite", mensagem: mensagemDoBackend(data) };
   return null;
 }
 

@@ -28,7 +28,7 @@ import { canViewAppointments, APPOINTMENTS_FORBIDDEN_MESSAGE } from '../appointm
 import { dataLocalDe, horaLocalDe } from '../availability/time-zone.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import { activeProfessionals, staffSeatUsage } from '../team/seats.js';
 import { contagemPorSituacao, mesDaData, type PeriodoLocal, type Situacao } from './dashboard-period.js';
 import type { DashboardQueryDto } from './dashboard.dto.js';

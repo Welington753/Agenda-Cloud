@@ -11,8 +11,7 @@
 // - `AGENDA_GERENCIAR`: a página passa a criar reservas pendentes na agenda.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 
 export const PUBLIC_BOOKING_FORBIDDEN_MESSAGE =
   'Você não tem permissão para configurar o agendamento online deste estabelecimento.';
@@ -27,9 +26,5 @@ export function canManagePublicBooking(
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
   if (role !== EstablishmentRole.DONO) return false;
-  return !overrides.some(
-    (override) =>
-      override.mode === PermissionMode.DENIED &&
-      PERMISSOES_PERTINENTES.includes(override.permission),
-  );
+  return !algumaNegada(overrides, PERMISSOES_PERTINENTES);
 }

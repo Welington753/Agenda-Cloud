@@ -27,7 +27,7 @@ import { dataLocalDe } from '../availability/time-zone.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { mesDaData } from '../dashboard/dashboard-period.js';
 import { generateId } from '../entities/common/generate-id.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 import {
   PAYMENTS_FORBIDDEN_MESSAGE,
   PAYMENT_RECORD_FORBIDDEN_MESSAGE,

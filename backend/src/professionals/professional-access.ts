@@ -18,7 +18,7 @@
 // professionals.service.ts, `resolveAuthorizedTenant`).
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 import { managerCan } from '../common/manager-permissions.js';
 
 /** Papéis com acesso padrão à gestão de profissionais neste lote. */
@@ -26,28 +26,13 @@ const ROLES_WITH_PROFESSIONALS_ACCESS: ReadonlySet<EstablishmentRole> = new Set(
   EstablishmentRole.DONO,
 ]);
 
-export interface PermissionOverrideLike {
-  permission: Permission;
-  mode: PermissionMode;
-}
-
-/** Um override só pode tirar acesso aqui, nunca dar (ver cabeçalho). */
-function isDeniedByOverride(
-  overrides: readonly PermissionOverrideLike[],
-  permission: Permission,
-): boolean {
-  return overrides.some(
-    (override) => override.permission === permission && override.mode === PermissionMode.DENIED,
-  );
-}
-
 export function canViewProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'PROFISSIONAIS_VISUALIZAR');
   if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
-  return !isDeniedByOverride(overrides, Permission.PROFISSIONAIS_VISUALIZAR);
+  return !algumaNegada(overrides, [Permission.PROFISSIONAIS_VISUALIZAR]);
 }
 
 export function canManageProfessionals(
@@ -58,6 +43,6 @@ export function canManageProfessionals(
   if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
   // Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
   // DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver".
-  if (isDeniedByOverride(overrides, Permission.PROFISSIONAIS_VISUALIZAR)) return false;
-  return !isDeniedByOverride(overrides, Permission.PROFISSIONAIS_GERENCIAR);
+  if (algumaNegada(overrides, [Permission.PROFISSIONAIS_VISUALIZAR])) return false;
+  return !algumaNegada(overrides, [Permission.PROFISSIONAIS_GERENCIAR]);
 }

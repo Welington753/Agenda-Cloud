@@ -32,8 +32,8 @@ import type { DataSource } from 'typeorm';
 import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
 import { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { montarMensagem, telefoneInternacional } from './notification-messages.js';
+import { linhasDe } from '../common/linhas-de.js';
 import {
-  linhasDe,
   reservarTarefasVencidas,
   resolverEnviosAbandonados,
   transicionar,

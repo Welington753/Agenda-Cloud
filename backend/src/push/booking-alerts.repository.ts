@@ -7,7 +7,7 @@
 // ainda ser dele (`locked_by`).
 import type { EntityManager } from 'typeorm';
 import { generateId } from '../entities/common/generate-id.js';
-import { linhasDe } from '../notifications/notification-jobs.repository.js';
+import { linhasDe } from '../common/linhas-de.js';
 
 /** Aviso velho não serve mais: depois disto, o evento expira sem envio. */
 export const VALIDADE_DO_ALERTA_MS = 24 * 60 * 60_000;

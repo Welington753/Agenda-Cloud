@@ -6,6 +6,7 @@
 // Todas as consultas levam `tenant_id` (ou o id de uma linha já reservada
 // por este executor); nenhuma atravessa estabelecimentos.
 import type { EntityManager } from 'typeorm';
+import { linhasDe } from '../common/linhas-de.js';
 import { generateId } from '../entities/common/generate-id.js';
 import {
   chaveDeDeduplicacao,
@@ -46,22 +47,6 @@ export interface TarefaDeNotificacao {
  * reserva. `SENDING` não entra: a decisão de enviar já foi tomada e
  * gravada (ver notification-dispatcher.ts). */
 const PENDENTES = `('SCHEDULED', 'PROCESSING')`;
-
-/**
- * O driver devolve `[linhas, quantidade]` em UPDATE/DELETE e só `linhas` no
- * resto. Normaliza para sempre receber as linhas.
- */
-export function linhasDe<T>(resultado: unknown): T[] {
-  if (
-    Array.isArray(resultado) &&
-    resultado.length === 2 &&
-    Array.isArray(resultado[0]) &&
-    typeof resultado[1] === 'number'
-  ) {
-    return resultado[0] as T[];
-  }
-  return (Array.isArray(resultado) ? resultado : []) as T[];
-}
 
 /**
  * Programa as tarefas. Repetir é inofensivo: a chave de deduplicação é

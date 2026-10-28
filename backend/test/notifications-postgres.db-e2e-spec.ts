@@ -31,9 +31,9 @@ import { Tenant } from '../src/entities/tenant.entity.js';
 import { Unit } from '../src/entities/unit.entity.js';
 import { User } from '../src/entities/user.entity.js';
 import { ExecutorDeNotificacoes } from '../src/notifications/notification-dispatcher.js';
+import { linhasDe } from '../src/common/linhas-de.js';
 import {
   cancelarPendentes,
-  linhasDe,
   registrarEntrega,
 } from '../src/notifications/notification-jobs.repository.js';
 import { AgendadorDeNotificacoes } from '../src/notifications/notification-scheduler.js';

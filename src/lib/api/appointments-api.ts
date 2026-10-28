@@ -4,7 +4,7 @@
 // O QUE ESTE CLIENTE NUNCA ENVIA: preço, duração, fim, status, unidade ou
 // tenant. O contrato do backend nem aceita esses campos — quem decide todos
 // eles é o servidor.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 export type StatusAgendamentoReal =
   | "PENDING"
@@ -126,18 +126,12 @@ export type ResultadoAgendamentoReal<T> =
   | { ok: true; dados: T }
   | { ok: false; falha: FalhaAgendamentoReal };
 
-function mensagemDeErroDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const mensagem = (data as Record<string, unknown>).message;
-  return typeof mensagem === "string" ? mensagem : null;
-}
-
 export function falhaPorStatus(status: number, data: unknown): FalhaAgendamentoReal {
   if (status === 401) return { tipo: "nao_autenticado" };
   if (status === 403) return { tipo: "sem_permissao" };
   if (status === 404) return { tipo: "sem_acesso" };
-  if (status === 409) return { tipo: "horario_ocupado", mensagem: mensagemDeErroDoBackend(data) };
-  if (status === 400) return { tipo: "nao_agendavel", mensagem: mensagemDeErroDoBackend(data) };
+  if (status === 409) return { tipo: "horario_ocupado", mensagem: mensagemDoBackend(data) };
+  if (status === 400) return { tipo: "nao_agendavel", mensagem: mensagemDoBackend(data) };
   return { tipo: "indisponivel" };
 }
 

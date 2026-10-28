@@ -1,7 +1,7 @@
 // Cliente tipado dos indicadores do Início — espelha
 // backend/src/dashboard/dashboard.service.ts. Todos os números vêm contados
 // pelo servidor sobre o período inteiro; a tela só apresenta.
-import { apiRequest } from "./http-client";
+import { apiRequest, mensagemDoBackend } from "./http-client";
 
 export const SITUACOES_ATENDIMENTO = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "NO_SHOW", "CANCELED"] as const;
 export type SituacaoAtendimento = (typeof SITUACOES_ATENDIMENTO)[number];
@@ -125,12 +125,6 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
     ["receivedCents", "refundedCents", "netCents", "paidAppointments", "paidTotalCents"].every((k) => numero(financeiro[k])) &&
     (financeiro.averageTicketCents === null || numero(financeiro.averageTicketCents))
   );
-}
-
-function mensagemDoBackend(data: unknown): string | null {
-  if (typeof data !== "object" || data === null) return null;
-  const m = (data as Record<string, unknown>).message;
-  return typeof m === "string" ? m : null;
 }
 
 export async function obterPainel(
