@@ -167,9 +167,17 @@ autorização explícita:
 4. API, depois web, do mesmo commit.
 
 A API nova **não** pode vir antes da migration (equipe e gerente antigo com
-ajuste respondem 500 no schema anterior). Voltar só o web mantém o acesso no
-servidor (menu ausente não revoga nada); voltar a API deixa gerentes sem área
-e logins com `@` sem entrar, sem apagar nada. Não use `migration:revert`.
+ajuste respondem 500 no schema anterior). Publicar é API → web; um retorno
+conjunto é web → API (web novo com API anterior não validado).
+
+- **Voltar só o web** não revoga nenhuma permissão na API (menu ausente não é
+  revogação), e o web anterior não tem caminho para o dono suspender ou mudar
+  um gerente. Não serve para incidente de permissões: nesse caso, mantenha o
+  web novo e suspenda ou retire a permissão em Equipe e acessos.
+- **Voltar a API** deixa gerentes sem área (falha fechada) e logins com `@`
+  sem entrar, sem apagar nada, mas **deixa de contar gerentes nas vagas**: o
+  dono pode criar acessos acima do limite enquanto ela estiver no ar.
+- Não use `migration:revert` nem restauração sobre o piloto.
 
 ## Validação local
 

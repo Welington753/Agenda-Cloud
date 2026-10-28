@@ -273,7 +273,11 @@ queda logo depois do COMMIT: `after`).
 
 **Regra geral:** não apague contas, vínculos, permissões, convites nem
 histórico; não use `migration:revert`; nunca restaure o backup por cima do
-piloto.
+piloto. Nenhuma dessas é recuperação padrão.
+
+**Ordem:** publicar é **API → web**; um retorno conjunto é **web → API** (o
+web anterior funciona com a API nova; o web novo com a API anterior **não foi
+validado**). Nunca deixe o web novo no ar com a API anterior.
 
 Ensaio de 28/10/2026, com o schema novo e dados gravados pela API nova
 (dono por e-mail; gerentes `recepcao@retorno.test`, `maria@retorno` com senha
@@ -298,13 +302,26 @@ Comprovado no navegador, web `96f5417` contra a API nova:
   contam os gerentes. Gerentes **não aparecem** e não podem ser suspensos,
   removidos nem ter permissões alteradas por ela.
 
-Use para um defeito só do web. Se for preciso cortar o acesso de um gerente
-nesse período, volte o web novo; nenhum outro caminho foi ensaiado.
+**Voltar só o web não revoga nenhuma permissão na API.** E não há caminho para
+o dono agir sobre um gerente nessa combinação: no web `96f5417`, as ações de
+equipe (suspender, reativar, remover, permissões, senha) estão só na lista de
+`members` (`membro-equipe.tsx`), que a API nova preenche apenas com
+profissionais (conferido no código e no ensaio). Por isso:
+
+- use o retorno só do web **apenas** para defeito de tela que não envolva
+  permissões;
+- **num incidente de permissões, não volte o web**: com o web novo, o dono
+  suspende o acesso ou retira a permissão em **Equipe e acessos**, e isso vale
+  na requisição seguinte, mesmo com a sessão aberta (provado em
+  `team-manager-postgres.db-e2e-spec.ts`);
+- nenhum outro caminho (administração da plataforma, chamada direta à API) foi
+  ensaiado para esse caso.
 
 ### Voltar a API (e o web) para `96f5417`
 
-O web novo depende das rotas novas; volte os dois. Comprovado com a API
-`96f5417` no schema novo:
+O web novo depende das rotas novas; volte os dois, **o web antes da API**.
+Comprovado com a API `96f5417` no schema novo (com o web `96f5417` ou
+chamadas diretas):
 
 - **continua valendo:** sessões abertas (inclusive criadas pela API nova);
   suspensão; troca obrigatória; profissionais com sessão aberta mantêm a
@@ -315,10 +332,12 @@ O web novo depende das rotas novas; volte os dois. Comprovado com a API
   API nova;
 - **deixa de entrar:** logins com `@` (`401` com domínio, `400` sem). Logins
   sem `@` e o dono entram;
-- **vagas:** a API antiga conta só `PROFISSIONAL`. No ensaio, o dono criou um
-  acesso que deixou o estabelecimento com 3 acessos para 2 vagas. Com a API
-  nova de volta, o acesso extra continua, nada é cortado e novas criações são
-  recusadas (`LIMITE_DO_PLANO`);
+- **atenção, vagas:** a API antiga **deixa de contar gerentes** e conta só
+  `PROFISSIONAL`. Enquanto ela estiver no ar, o dono pode criar acessos acima
+  do limite: no ensaio, criou um que deixou o estabelecimento com 3 acessos
+  para 2 vagas. Com a API nova de volta, o acesso extra continua (nada é
+  cortado) e novas criações são recusadas (`LIMITE_DO_PLANO`) até o dono
+  liberar vagas;
 - **convite para um e-mail igual a um login interno:** 500 (o gatilho recusa;
   a API antiga não reconhece a recusa). Nada é gravado;
 - **gerentes na tela de equipe:** suspender ou gerar senha responde 404.
@@ -349,10 +368,11 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 - **Dados:** dono, gerente antigo com `GRANTED`, login sem `@`, convite de
   funcionário pendente, sessões, conta de plataforma, um estabelecimento que
   passa acima do limite (2 vagas, 2 profissionais e 1 gerente).
-- **Procedimento:** commit `98c0d968ca03a0c8ebd600368d1cc2b4839a7645`, modo
-  ensaio, harness fora do repositório por `--import` (terminal simulado e
-  quedas de conexão). Os scripts do procedimento e a migration não mudaram
-  depois dele.
+- **Procedimento:** commits `98c0d968ca03a0c8ebd600368d1cc2b4839a7645` (casos
+  de falha, com harness fora do repositório por `--import`: terminal simulado
+  e quedas de conexão) e `ad8e409752e8e46a913d9d8ca3a1693da1035827` (ciclo
+  completo e lançador). Os scripts do procedimento e a migration são iguais
+  nos dois e no SHA mesclado.
 
 ### Resultados
 
@@ -374,16 +394,27 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 | banco fora do ar | `conferir`: `ERR_SEM_CONEXAO`; `preparar`: `ERR_CONFERENCIA_SEM_LEITURA` |
 | modo piloto com CA do ensaio / com `--import` | `ERR_AJUSTE_DE_ENSAIO_NO_PILOTO` / `ERR_OPCOES_DO_NODE_NO_PILOTO`, antes da URL |
 | senha do banco em `operacoes.jsonl` e manifestos | nenhuma ocorrência |
+| ciclo completo em `ad8e409`: `preparar` → `restauracao` → `aplicar` → `conferir` | `after`, 11 migrations, 9/9 |
+| restauração e ensaio **em PostgreSQL 17.11** do dump do `preparar` | `pg_restore` 17.11 (imagem `postgres:17`) lê o dump; 40 tabelas com contagem e md5 iguais ao manifesto; `before` ok; migration na cópia; `after` ok; dados, `users` e colunas antigas iguais; nada confirmado nem concedido; levantamento igual; descartável apagado |
+| lançador no Windows Terminal, `-Ensaio`, fase `conferir` | mostra modo, fase, commit, pastas, `pg_dump` e "Endpoint IDs: definidos (nao exibidos)"; URL digitada sem eco (captura de tela com a URL inteira digitada e nada visível); execução registrada; "Script terminou com codigo 0. A janela continua aberta. Modo: ENSAIO."; depois do fim, nenhuma variável do procedimento na janela (`PILOT_ENDPOINT_ID`, `PRODUCTION_ENDPOINT_ID`, `AGENDA_ENSAIO_*`, `AGENDA_OPS_MODO`, `NODE_*`, URLs) |
+| lançador: ID fora do formato, `-Ensaio` sem CA, sem IDs, fase inexistente | recusa antes de rodar |
 
 ### Limitações
 
-- A fase `restauracao` rodou com os binários do PostgreSQL **18.6** desta
-  máquina (cópia em 18; destino em 17.11). Os binários Windows do 17 não
-  estavam instalados e o download foi bloqueado. No piloto, use `-PgBin` com a
-  versão do servidor ou maior.
+- **O script `conferir-restauracao-gerente.mjs` em si não rodou com binários
+  17.** Ele só chama binários Windows (`initdb.exe`, `pg_ctl.exe`,
+  `pg_restore.exe`); nesta máquina só há os do 18.6, e o download dos do 17
+  foi bloqueado. A restauração em 17 foi provada por um harness de ensaio que
+  repete os mesmos passos com as mesmas funções do procedimento, mas com o
+  servidor e o `pg_restore` da imagem oficial `postgres:17`. **Pendente antes
+  da publicação:** a fase `restauracao` real roda com o `-PgBin` da máquina
+  do operador; se for o 17.11 (PC de casa), essa execução é a primeira do
+  script com binários 17. O `pg_dump` do `preparar` também precisa ser de
+  versão igual ou maior que a do servidor.
 - A versão do servidor do piloto não foi lida (última conhecida: 17.11).
 - As quedas foram simuladas no cliente, não por falha de rede do Neon.
-- O lançador `.ps1` não foi aberto pelo `wt.exe` nesta rodada; os scripts
-  foram chamados com o mesmo ambiente que ele define. A entrada oculta é a
-  mesma ensaiada nas publicações anteriores.
-- Web novo com a API antiga não foi ensaiado (por isso: volte os dois).
+- Web novo com a API antiga não foi validado (por isso: publicar API → web;
+  voltar web → API).
+- A entrada no lançador foi feita por teclas simuladas (SendKeys) no Windows
+  Terminal; a colagem real com Ctrl+V é a ensaiada nas publicações
+  anteriores.

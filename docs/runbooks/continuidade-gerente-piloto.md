@@ -47,13 +47,17 @@ Detalhes e tabelas em `publicacao-gerente-piloto.md` ("Ensaio" e "Recuperação"
 
 ## Limitações
 
-- A cópia da fase `restauracao` rodou em PostgreSQL 18.6 (sem binários
-  Windows do 17 nesta máquina; o download foi bloqueado).
-- A versão do servidor do piloto não foi lida.
-- Lançador `.ps1` não aberto pelo `wt.exe` nesta rodada.
-- Web novo com a API antiga não ensaiado.
-- Corte do acesso de um gerente durante o retorno só do web: nenhum caminho
-  ensaiado além de voltar o web novo.
+- **Restauração em PostgreSQL 17:** provada por harness de ensaio com o
+  servidor e o `pg_restore` da imagem oficial `postgres:17` e as mesmas
+  funções do procedimento. O script `conferir-restauracao-gerente.mjs` só
+  chama binários Windows e rodou aqui com os do 18.6; com binários 17 ele roda
+  pela primeira vez na operação real (`-PgBin` do PC do operador).
+- A versão do servidor do piloto não foi lida (última conhecida: 17.11).
+- Web novo com a API antiga não validado: publicar API → web, voltar web → API.
+- Voltar só o web não revoga permissões na API e não dá ao dono como suspender
+  um gerente: não é recuperação para incidente de permissões.
+- Lançador aberto no Windows Terminal em modo ENSAIO com teclas simuladas; a
+  colagem real com Ctrl+V é a das publicações anteriores.
 
 ## Pendente (depende de execução real, com autorização)
 
