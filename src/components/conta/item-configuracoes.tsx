@@ -164,9 +164,9 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
           requestAnimationFrame(() => painelRef.current?.querySelector("a")?.focus());
         }}
         className={clsx(
-          "absolute top-1/2 right-1 hidden size-9 -translate-y-1/2 items-center justify-center rounded-[var(--radius-control)] text-white/70 hover:bg-white/10 hover:text-white md:inline-flex",
-          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
-          aberto && "bg-white/10 text-white",
+          "absolute top-1/2 right-1 hidden size-9 -translate-y-1/2 items-center justify-center rounded-[var(--radius-control)] text-chrome-ink-soft hover:bg-chrome-hover hover:text-chrome-ink md:inline-flex",
+          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus",
+          aberto && "bg-chrome-selected text-chrome-ink",
         )}
       >
         <ChevronRight size={16} aria-hidden="true" className={clsx("transition-transform", aberto && "rotate-180")} />
@@ -199,8 +199,8 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
                       onClick={fechar}
                       className={clsx(
                         "flex min-h-11 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium",
-                        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                        atual ? "bg-accent-soft text-ink" : "text-ink hover:bg-paper-muted",
+                        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus",
+                        atual ? "bg-accent-soft text-ink shadow-[inset_3px_0_0_var(--color-ink)]" : "text-ink hover:bg-paper-muted",
                       )}
                     >
                       <Icone size={18} aria-hidden="true" className="shrink-0 text-accent" />

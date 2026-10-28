@@ -81,7 +81,7 @@ export function ReautenticacaoProvider({ children }: { children: ReactNode }) {
               minLength={10}
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
-              className="mt-1 min-h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
+              className="mt-1 min-h-11 w-full rounded-lg border border-border-strong bg-card px-3 text-sm"
             />
           </label>
           {erro && (

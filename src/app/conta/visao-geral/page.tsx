@@ -195,7 +195,7 @@ export default function InicioPage() {
                     onClick={() => setEscolha(valor)}
                     className={
                       escolha === valor
-                        ? "min-h-11 flex-1 rounded-[calc(var(--radius-control)-2px)] bg-ink px-3 text-sm font-medium text-paper sm:flex-none"
+                        ? "min-h-11 flex-1 rounded-[calc(var(--radius-control)-2px)] px-3 text-sm bg-accent-soft font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-border-control)] sm:flex-none"
                         : "min-h-11 flex-1 rounded-[calc(var(--radius-control)-2px)] px-3 text-sm font-medium text-ink-soft hover:bg-paper-muted hover:text-ink sm:flex-none"
                     }
                   >
@@ -219,7 +219,7 @@ export default function InicioPage() {
                     type="date"
                     value={rascunho.from}
                     onChange={(e) => setRascunho((r) => ({ ...r, from: e.target.value }))}
-                    className="min-h-11 rounded-[var(--radius-control)] border border-border bg-card px-3 text-ink"
+                    className="min-h-11 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-ink"
                   />
                 </label>
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-ink">
@@ -228,7 +228,7 @@ export default function InicioPage() {
                     type="date"
                     value={rascunho.to}
                     onChange={(e) => setRascunho((r) => ({ ...r, to: e.target.value }))}
-                    className="min-h-11 rounded-[var(--radius-control)] border border-border bg-card px-3 text-ink"
+                    className="min-h-11 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-ink"
                   />
                 </label>
                 <Botao type="submit" disabled={!!erroPersonalizado}>

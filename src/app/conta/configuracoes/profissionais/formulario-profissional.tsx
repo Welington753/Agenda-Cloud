@@ -81,7 +81,7 @@ export function FormularioProfissional({
           onChange={(e) => setNome(e.target.value)}
           aria-invalid={erroNome ? true : undefined}
           aria-describedby={erroNome ? "nome-profissional-erro" : undefined}
-          className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
+          className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
           placeholder="Ana Souza"
         />
         {erroNome && (

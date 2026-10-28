@@ -3,6 +3,8 @@
 :root {
   --color-ink: #1c1a17;
   --color-ink-soft: #4a453e;
+  /* Texto discreto e placeholders (≥ 4.5:1 com o cartão). */
+  --color-ink-muted: #6b6458;
   --color-paper: #faf7f2;
   --color-paper-muted: #f1ebe1;
   --color-card: #ffffff;
@@ -23,13 +25,26 @@
   --color-on-danger: #ffffff;
   /* Borda de campo e de opção selecionável: precisa de 3:1 com o fundo. */
   --color-border-strong: #8f8270;
+  /* Borda de botão secundário e borda de controle no hover. */
+  --color-border-control: #cdbfa9;
+  /* Indicador de foco do teclado. */
+  --color-focus: #b5651d;
   /* Barra/menu escuro da área real e painel lateral do login: escuro nos
      dois temas, com texto branco. */
   --color-chrome: #1c1a17;
+  --color-chrome-ink: #ffffff;
+  --color-chrome-ink-soft: #c9c4bc;
+  --color-chrome-hover: #2a2723;
+  --color-chrome-selected: #34312c;
+  --color-chrome-border: #34312c;
+  /* Linha de 3 px do item ativo do menu. */
+  --color-chrome-marker: #b5651d;
+  --color-chrome-focus: #ffffff;
   --shadow-soft: 0 1px 2px rgba(28, 26, 23, 0.06), 0 4px 12px rgba(28, 26, 23, 0.05);
   --shadow-lift: 0 8px 24px rgba(28, 26, 23, 0.12);
-  --radius-card: 0.875rem;
-  --radius-control: 0.625rem;
+  /* Cantos de 8 px (cartões, menus, modais) e 6 px (botões e campos). */
+  --radius-card: 0.5rem;
+  --radius-control: 0.375rem;
 }
 
 /* Tema escuro — SÓ em página adaptável (MarcadorAparencia, ver
@@ -37,63 +52,91 @@
    escuro. Os dois blocos são iguais de propósito: o segundo só vale dentro
    da media query. Página que segue SEMPRE o aparelho (MarcadorAparelho: o
    agendamento público) entra só no segundo, qualquer que seja o `data-tema`
-   salvo pelo dono: a escolha dele nunca força o tema do cliente. Mesma identidade (papel quente, tinta, laranja queimado),
-   com contraste conferido: texto ≥ 7:1, secundário ≥ 7:1, estados ≥ 6:1,
-   bordas de campo ≥ 3:1. */
+   salvo pelo dono: a escolha dele nunca força o tema do cliente.
+
+   Identidade escura quase monocromática: grafite, cores sólidas, o botão
+   principal claro e nenhum acento laranja; cor só onde ela informa (erro,
+   aviso, sucesso). Contraste conferido sobre o fundo (#141619) e o cartão
+   (#1a1d21): texto ≥ 13:1, secundário ≥ 7:1, discreto ≥ 5:1, estados ≥ 6:1.
+   Único ajuste da paleta de referência: a borda de CAMPO (border-strong) é
+   #656c75, não #414750 — esta tem só 1.7:1 com o cartão, e o campo precisa
+   de 3:1 para ser reconhecido (WCAG 1.4.11). #414750 fica nos botões
+   secundários e no hover (border-control), que têm texto e não dependem da
+   borda. Sombra só no que se sobrepõe (menus e modais): shadow-soft some. */
 html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
   color-scheme: dark;
-  --color-ink: #f3ede4;
-  --color-ink-soft: #c4baab;
-  --color-paper: #16130f;
-  --color-paper-muted: #2a251f;
-  --color-card: #211d18;
-  --color-border: #3d362d;
-  --color-border-strong: #7d705f;
-  --color-accent: #e39552;
-  --color-accent-hover: #f0ad70;
-  --color-accent-soft: #43301d;
-  --color-success: #74c597;
-  --color-success-soft: #1c3326;
-  --color-danger: #f2897f;
-  --color-danger-soft: #3e211d;
-  --color-warning: #e6bb5a;
-  --color-warning-soft: #3a2f16;
-  --color-info: #9dbfd1;
-  --color-info-soft: #1e2d35;
-  --color-on-accent: #1a1009;
-  --color-on-danger: #1a0806;
-  --color-chrome: #0f0d0a;
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --color-ink: #eceeeb;
+  --color-ink-soft: #a4a8ad;
+  --color-ink-muted: #89919a;
+  --color-paper: #141619;
+  --color-paper-muted: #282d33;
+  --color-card: #1a1d21;
+  --color-border: #2b2f34;
+  --color-border-strong: #656c75;
+  --color-border-control: #414750;
+  --color-accent: #eceeeb;
+  --color-accent-hover: #d9ddd8;
+  --color-accent-soft: #22262b;
+  --color-focus: #bfc5cc;
+  --color-success: #9cc9ac;
+  --color-success-soft: #1d2a23;
+  --color-danger: #f0918a;
+  --color-danger-soft: #3a2224;
+  --color-warning: #e3c07a;
+  --color-warning-soft: #322a1a;
+  --color-info: #b3bdc8;
+  --color-info-soft: #23282e;
+  --color-on-accent: #141619;
+  --color-on-danger: #141619;
+  --color-chrome: #0d0f11;
+  --color-chrome-ink: #eceeeb;
+  --color-chrome-ink-soft: #a4a8ad;
+  --color-chrome-hover: #282d33;
+  --color-chrome-selected: #22262b;
+  --color-chrome-border: #2b2f34;
+  --color-chrome-marker: #eceeeb;
+  --color-chrome-focus: #bfc5cc;
+  --shadow-soft: none;
+  --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
   html[data-tema="sistema"]:has([data-aparencia-adaptavel]),
   html:has([data-aparencia-aparelho]) {
     color-scheme: dark;
-    --color-ink: #f3ede4;
-    --color-ink-soft: #c4baab;
-    --color-paper: #16130f;
-    --color-paper-muted: #2a251f;
-    --color-card: #211d18;
-    --color-border: #3d362d;
-    --color-border-strong: #7d705f;
-    --color-accent: #e39552;
-    --color-accent-hover: #f0ad70;
-    --color-accent-soft: #43301d;
-    --color-success: #74c597;
-    --color-success-soft: #1c3326;
-    --color-danger: #f2897f;
-    --color-danger-soft: #3e211d;
-    --color-warning: #e6bb5a;
-    --color-warning-soft: #3a2f16;
-    --color-info: #9dbfd1;
-    --color-info-soft: #1e2d35;
-    --color-on-accent: #1a1009;
-    --color-on-danger: #1a0806;
-    --color-chrome: #0f0d0a;
-    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
-    --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --color-ink: #eceeeb;
+    --color-ink-soft: #a4a8ad;
+    --color-ink-muted: #89919a;
+    --color-paper: #141619;
+    --color-paper-muted: #282d33;
+    --color-card: #1a1d21;
+    --color-border: #2b2f34;
+    --color-border-strong: #656c75;
+    --color-border-control: #414750;
+    --color-accent: #eceeeb;
+    --color-accent-hover: #d9ddd8;
+    --color-accent-soft: #22262b;
+    --color-focus: #bfc5cc;
+    --color-success: #9cc9ac;
+    --color-success-soft: #1d2a23;
+    --color-danger: #f0918a;
+    --color-danger-soft: #3a2224;
+    --color-warning: #e3c07a;
+    --color-warning-soft: #322a1a;
+    --color-info: #b3bdc8;
+    --color-info-soft: #23282e;
+    --color-on-accent: #141619;
+    --color-on-danger: #141619;
+    --color-chrome: #0d0f11;
+    --color-chrome-ink: #eceeeb;
+    --color-chrome-ink-soft: #a4a8ad;
+    --color-chrome-hover: #282d33;
+    --color-chrome-selected: #22262b;
+    --color-chrome-border: #2b2f34;
+    --color-chrome-marker: #eceeeb;
+    --color-chrome-focus: #bfc5cc;
+    --shadow-soft: none;
+    --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -119,6 +162,16 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
   --color-on-danger: var(--color-on-danger);
   --color-border-strong: var(--color-border-strong);
   --color-chrome: var(--color-chrome);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-border-control: var(--color-border-control);
+  --color-focus: var(--color-focus);
+  --color-chrome-ink: var(--color-chrome-ink);
+  --color-chrome-ink-soft: var(--color-chrome-ink-soft);
+  --color-chrome-hover: var(--color-chrome-hover);
+  --color-chrome-selected: var(--color-chrome-selected);
+  --color-chrome-border: var(--color-chrome-border);
+  --color-chrome-marker: var(--color-chrome-marker);
+  --color-chrome-focus: var(--color-chrome-focus);
   --font-sans: var(--font-jakarta);
 }
 
@@ -128,6 +181,13 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
 @layer base {
   * {
     border-color: var(--color-border);
+  }
+
+  /* Campos da área real e do agendamento público: borda de 3:1 com o fundo
+     (border-strong), não a de divisória. A demonstração fica como está. */
+  html:is(:has([data-aparencia-adaptavel]), :has([data-aparencia-aparelho]))
+    :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea) {
+    border-color: var(--color-border-strong);
   }
 }
 
@@ -147,8 +207,13 @@ body {
   color: var(--color-ink);
 }
 
+::placeholder {
+  color: var(--color-ink-muted);
+  opacity: 1;
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 

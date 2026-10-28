@@ -279,7 +279,10 @@ export function AgendaDoDia({
       {visiveis.length > 0 && (
         <div ref={listaRef}>
           {visualizacao === "lista" ? (
-            <ul data-testid="agenda-do-dia" className="space-y-3">
+            <ul
+              data-testid="agenda-do-dia"
+              className="divide-y divide-border overflow-hidden rounded-[var(--radius-card)] border border-border bg-card"
+            >
               {visiveis.map((agendamento) => (
                 <li key={agendamento.id} data-reserva-id={agendamento.id} className="scroll-mt-24">
                   {renderizarReserva(agendamento)}

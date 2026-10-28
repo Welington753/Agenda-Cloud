@@ -44,7 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { CalendarioDoFuncionario } from "./calendario-do-funcionario";
 
-const CAMPO = "min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink";
+const CAMPO = "min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink";
 
 const MENSAGEM_DE_LEITURA = {
   sessao: "Sua sessão precisa ser verificada novamente. Entre de novo.",
@@ -152,7 +152,7 @@ export default function MinhaAgendaPage() {
             onClick={() => setModo(valor)}
             className={clsx(
               "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-4 text-sm font-medium sm:flex-none",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               modo === valor ? "bg-ink text-paper" : "text-ink-soft hover:bg-paper-muted hover:text-ink",
             )}
           >

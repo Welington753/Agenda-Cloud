@@ -8,7 +8,7 @@ export function Faq() {
         <div className="mt-8 space-y-3">
           {PERGUNTAS_FREQUENTES.map((item) => (
             <details key={item.id} className="rounded-[var(--radius-card)] border border-border bg-card">
-              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
                 {item.pergunta}
               </summary>
               <div className="border-t border-border px-4 py-3 text-sm text-ink-soft">{item.resposta}</div>

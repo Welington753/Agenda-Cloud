@@ -26,7 +26,7 @@ export function GrupoOpcoes<T extends string>({ legenda, opcoes, valor, aoEscolh
               aria-checked={selecionado}
               onClick={() => aoEscolher(opcao.valor)}
               className={clsx(
-                "rounded-[var(--radius-card)] border px-4 py-3 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent",
+                "rounded-[var(--radius-card)] border px-4 py-3 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus",
                 selecionado ? "border-accent bg-accent-soft text-ink" : "border-border bg-card text-ink hover:bg-paper-muted"
               )}
             >

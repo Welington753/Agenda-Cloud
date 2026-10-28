@@ -17,8 +17,8 @@
 // (backend/src/accounts/account-rate-limit.ts, MemoryStore no processo do
 // backend) e todos os testes saem do mesmo IP. Este arquivo gasta 3 (o fluxo
 // principal + os dois estabelecimentos do teste de isolamento), e
-// pilot-navigation-flow.spec.ts e configuracoes-navegacao-flow.spec.ts, na mesma
-// invocação, gastam 1 cada — 5 de 10. As suítes de
+// pilot-navigation-flow.spec.ts, configuracoes-navegacao-flow.spec.ts e
+// identidade-visual-flow.spec.ts, na mesma invocação, gastam 1 cada — 6 de 10. As suítes de
 // autenticação gastam outros 4, o que estouraria o limite numa execução única
 // — por isso o CI roda ESTA suíte numa invocação separada do Playwright, que
 // sobe um backend novo e portanto um rate limiter zerado (ver

@@ -171,7 +171,7 @@ export default function DisponibilidadeDoProfissionalPage() {
                   value={serviceId}
                   disabled={consultando}
                   onChange={(e) => aoMudarSelecao(() => setServiceId(e.target.value))}
-                  className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+                  className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
                 >
                   {servicosElegiveis.map((vinculo) => (
                     <option key={vinculo.serviceId} value={vinculo.serviceId}>
@@ -191,7 +191,7 @@ export default function DisponibilidadeDoProfissionalPage() {
                   value={date}
                   disabled={consultando}
                   onChange={(e) => aoMudarSelecao(() => setDate(e.target.value))}
-                  className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+                  className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
                 />
               </div>
             </CartaoCorpo>

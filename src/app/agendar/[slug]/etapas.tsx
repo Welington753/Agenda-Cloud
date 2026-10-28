@@ -20,7 +20,7 @@ import { CartaoServico, Dias, Horarios, type EstadoHorarios } from "./escolhas";
 import { Resumo } from "./recibo";
 
 const CLASSE_CAMPO =
-  "min-h-12 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-base text-ink placeholder:text-ink-soft/70 focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
+  "min-h-12 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-base text-ink placeholder:text-ink-muted focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 
 /** Falha do envio, mostrada onde a pessoa pode agir: na escolha do horário
  * (conflito) ou na revisão (incerto, limite, página desativada). */
@@ -123,7 +123,7 @@ export function EtapaHorario({
           `sticky`, não `fixed`: ocupa o próprio lugar no fim do conteúdo,
           então nunca cobre a última linha nem mensagens; e nesta etapa não
           há campo de texto (o teclado não abre). */}
-      <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-paper/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
+      <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-paper px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-3">
           <p className="min-w-0 flex-1 text-sm text-ink" aria-live="polite" data-testid="horario-escolhido">
             {slot && date ? (

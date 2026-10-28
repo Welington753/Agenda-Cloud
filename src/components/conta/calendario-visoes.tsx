@@ -61,7 +61,7 @@ function ItemCompacto({ item, aoAbrir }: { item: ItemDoCalendario; aoAbrir: (ite
       data-situacao={item.status}
       className={clsx(
         "block w-full min-w-0 rounded-[6px] px-1.5 py-1 text-left text-xs text-ink hover:brightness-95",
-        "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+        "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
         COR_DA_SITUACAO[item.status],
       )}
     >
@@ -86,7 +86,7 @@ function ItemDeLista({ item, aoAbrir }: { item: ItemDoCalendario; aoAbrir: (item
         data-situacao={item.status}
         className={clsx(
           "grid min-h-14 w-full grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-3 rounded-[var(--radius-control)] px-3 py-2 text-left",
-          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
           COR_DA_SITUACAO[item.status],
         )}
       >
@@ -187,7 +187,7 @@ export function Mes({
                       aria-pressed={selecionado}
                       className={clsx(
                         "flex min-h-12 w-full flex-col items-center justify-center gap-0.5 text-sm md:hidden",
-                        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus",
                         selecionado && "bg-accent-soft",
                         foraDoMes ? "text-ink-soft" : "text-ink",
                       )}
@@ -216,7 +216,7 @@ export function Mes({
                         aria-label={`Abrir o dia: ${nomeDoDia}`}
                         className={clsx(
                           "mb-1 inline-flex size-7 items-center justify-center rounded-full text-sm tabular-nums hover:bg-paper-muted",
-                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
                           ehHoje ? "bg-ink font-bold text-paper hover:bg-ink" : foraDoMes ? "text-ink-soft" : "text-ink",
                         )}
                       >
@@ -284,7 +284,7 @@ export function Semana({
                 aoMudarData(dia);
                 aoMudarVisao("dia");
               }}
-              className="mb-2 flex min-h-11 w-full items-baseline gap-1 rounded-[6px] px-1 text-left hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-accent"
+              className="mb-2 flex min-h-11 w-full items-baseline gap-1 rounded-[6px] px-1 text-left hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-focus"
               aria-label={`Abrir o dia: ${DIAS_DA_SEMANA[indice]}, ${Number(dia.slice(8))}${dia === hoje ? ", hoje" : ""}`}
             >
               <span className="text-xs font-semibold text-ink-soft uppercase">{DIAS_DA_SEMANA_CURTOS[indice]}</span>

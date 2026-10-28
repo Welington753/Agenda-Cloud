@@ -41,7 +41,7 @@ export function SeletorAparencia({ className }: { className?: string }) {
               key={valor}
               className={clsx(
                 "flex min-h-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[calc(var(--radius-control)-2px)] px-1 text-center text-[11px] leading-tight font-medium",
-                "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-accent",
+                "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-focus",
                 ativa ? "bg-card text-ink shadow-[var(--shadow-soft)]" : "text-ink-soft hover:text-ink",
               )}
             >

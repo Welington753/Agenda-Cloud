@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 
 const CLASSE_ICONE = {
+  neutro: "bg-paper-muted text-ink-soft",
   accent: "bg-accent-soft text-[color:var(--color-accent-hover)]",
   success: "bg-success-soft text-[color:var(--color-success)]",
   danger: "bg-danger-soft text-[color:var(--color-danger)]",
@@ -29,14 +30,14 @@ export function EstatisticaCard({
     <Cartao data-testid={testId}>
       <CartaoCorpo className="flex items-center gap-3">
         <div
-          className={`flex size-10 shrink-0 items-center justify-center rounded-full ${CLASSE_ICONE[corIcone]}`}
+          className={`flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] ${CLASSE_ICONE[corIcone]}`}
         >
           <Icone size={18} aria-hidden="true" />
         </div>
         <div className="min-w-0">
           <p className="text-xs font-medium text-ink-soft">{rotulo}</p>
           <p
-            className="text-2xl font-bold text-ink"
+            className="text-2xl font-semibold tracking-tight text-ink tabular-nums"
             data-testid={testId ? `${testId}-valor` : undefined}
           >
             {valor}

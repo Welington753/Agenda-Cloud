@@ -51,7 +51,7 @@ export function ListaDeSecoes({ secoes }: { secoes: readonly SecaoDeConfiguracoe
           <li key={secao.href}>
             <Link
               href={secao.href}
-              className="flex h-full min-h-20 items-center gap-4 rounded-[var(--radius-card)] border border-border bg-card p-4 text-ink shadow-[var(--shadow-soft)] hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="flex h-full min-h-20 items-center gap-4 rounded-[var(--radius-card)] border border-border bg-card p-4 text-ink shadow-[var(--shadow-soft)] hover:border-border-control hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
               <span
                 aria-hidden="true"

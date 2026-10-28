@@ -79,7 +79,7 @@ export function CalendarioDoDono(props: CalendarioDoDonoProps) {
               id="filtro-profissional-calendario"
               value={filtroProfissionalId}
               onChange={(e) => props.aoFiltrar(e.target.value)}
-              className="min-h-11 w-full truncate rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+              className="min-h-11 w-full truncate rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
             >
               <option value={TODOS_OS_PROFISSIONAIS}>Todos os profissionais</option>
               {profissionais.map((p) => (

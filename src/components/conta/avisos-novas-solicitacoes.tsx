@@ -56,7 +56,7 @@ export function AvisosNovasSolicitacoes() {
                 aria-label={`Fechar aviso do pedido de ${s.consumer.name}`}
                 onClick={() => dispensarAviso(s.id)}
                 data-testid="fechar-aviso-solicitacao"
-                className="-m-2 inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                className="-m-2 inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
               >
                 <X size={16} aria-hidden="true" />
               </button>

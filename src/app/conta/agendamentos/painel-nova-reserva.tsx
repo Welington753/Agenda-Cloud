@@ -73,7 +73,7 @@ export function PainelNovaReserva({
             value={date}
             disabled={gravando}
             onChange={(e) => e.target.value && aoMudarData(e.target.value)}
-            className="min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink sm:w-56"
+            className="min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink sm:w-56"
           />
           <p className="mt-1 text-xs text-ink-soft first-letter:uppercase">{rotuloDaData(date)}</p>
         </div>

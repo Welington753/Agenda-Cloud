@@ -34,7 +34,7 @@ export function AbasDaAgenda() {
               aria-current={ativa ? "page" : undefined}
               className={clsx(
                 "-mb-px flex min-h-11 items-center justify-center gap-2 border-b-2 px-4 text-sm font-medium",
-                "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus",
                 ativa
                   ? "border-[color:var(--color-accent)] text-ink"
                   : "border-transparent text-ink-soft hover:text-ink",

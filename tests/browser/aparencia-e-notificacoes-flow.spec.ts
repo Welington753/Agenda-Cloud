@@ -36,8 +36,8 @@ const rotuloDoDia = `dom ${DATA.slice(8, 10)}/${DATA.slice(5, 7)}`;
 
 // Cores de fundo (globals.css): papel claro e papel escuro.
 const PAPEL_CLARO = "rgb(250, 247, 242)";
-const PAPEL_ESCURO = "rgb(22, 19, 15)";
-const DESTAQUE_ESCURO = "rgb(240, 173, 112)";
+const PAPEL_ESCURO = "rgb(20, 22, 25)";
+const DESTAQUE_ESCURO = "rgb(217, 221, 216)";
 const DESTAQUE_CLARO = "rgb(154, 84, 23)";
 
 async function api<T>(pagina: Page, caminho: string, method = "GET", body?: unknown) {

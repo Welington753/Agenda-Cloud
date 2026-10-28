@@ -116,7 +116,7 @@ export function PainelRemarcacao({
             value={date}
             disabled={gravando}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+            className="rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
           />
         </div>
 

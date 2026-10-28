@@ -21,7 +21,7 @@ import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { FaixaConexao } from "@/components/conexao/aviso-conexao";
-import { NOME_PRODUTO } from "@/lib/config";
+import { MarcaAgendaCloud } from "@/components/marca/marca";
 import type { PapelEstabelecimento, PapelPlataforma } from "@/lib/types";
 
 interface ContaDemonstracao {
@@ -123,28 +123,28 @@ function LoginPageConteudo() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-chrome p-10 text-white lg:flex">
+      <div className="hidden flex-col justify-between bg-chrome p-10 text-chrome-ink lg:flex">
         <div>
-          <p className="font-bold tracking-tight">{NOME_PRODUTO}</p>
+          <MarcaAgendaCloud />
         </div>
         <div className="max-w-sm space-y-4">
-          <div className="flex size-12 items-center justify-center rounded-full bg-white/10">
+          <div className="flex size-12 items-center justify-center rounded-[var(--radius-card)] bg-chrome-selected">
             <ShieldCheck size={24} />
           </div>
           <h2 className="text-2xl font-bold">Acesso reservado à equipe</h2>
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-chrome-ink-soft">
             Esta é a porta de entrada para administradores da plataforma e para a equipe de cada estabelecimento
             (donos, gerentes, recepcionistas e profissionais). Consumidores finais nunca precisam fazer login — eles
             agendam direto pela página pública do estabelecimento.
           </p>
         </div>
-        <p className="text-xs text-white/40">Protótipo em transição para autenticação real.</p>
+        <p className="text-xs text-chrome-ink-soft">Protótipo em transição para autenticação real.</p>
       </div>
 
       <div className="flex flex-col justify-center px-4 py-10 sm:px-10">
         <div className="mx-auto w-full max-w-sm space-y-6">
           <div className="lg:hidden">
-            <p className="text-sm font-semibold text-accent">{NOME_PRODUTO}</p>
+            <MarcaAgendaCloud className="text-sm text-ink" tamanho={20} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-ink">Entrar</h1>
@@ -169,7 +169,7 @@ function LoginPageConteudo() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="voce@seuestabelecimento.com.br ou seu usuário"
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
             </div>
             <div>
@@ -184,7 +184,7 @@ function LoginPageConteudo() {
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="••••••••"
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
             </div>
 

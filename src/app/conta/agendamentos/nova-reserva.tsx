@@ -172,7 +172,7 @@ export function NovaReserva({
                 value={professionalId}
                 disabled={gravando}
                 onChange={(e) => setProfessionalId(e.target.value)}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
               >
                 {ativos.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -191,7 +191,7 @@ export function NovaReserva({
                 value={serviceId}
                 disabled={gravando || servicosElegiveis.length === 0}
                 onChange={(e) => setServiceId(e.target.value)}
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
               >
                 {servicosElegiveis.length === 0 && (
                   <option value="">Nenhum serviço vinculado</option>

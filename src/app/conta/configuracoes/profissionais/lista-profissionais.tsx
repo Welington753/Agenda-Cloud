@@ -60,10 +60,9 @@ export function ListaProfissionais({
                 <div className="flex items-center gap-3">
                   <span
                     className={clsx(
-                      "flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white",
+                      "flex size-11 shrink-0 items-center justify-center rounded-full bg-paper-muted text-sm font-semibold text-ink",
                       !profissional.active && "opacity-60",
                     )}
-                    style={{ backgroundColor: profissional.avatarColor }}
                     aria-hidden="true"
                   >
                     {profissional.avatarInitials}
