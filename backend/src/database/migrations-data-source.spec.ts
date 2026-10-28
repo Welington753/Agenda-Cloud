@@ -24,6 +24,10 @@ describe('buildMigrationsDataSourceOptions', () => {
     expect(opcoes.ssl).toEqual({ rejectUnauthorized: true });
   });
 
+  it('usa o logger padrão: o migration:show imprime a lista por ele, e o runbook a lê', () => {
+    expect(buildMigrationsDataSourceOptions(FAKE_URL).logger).toBeUndefined();
+  });
+
   it('usa nome explícito e estável para a tabela de controle de migrations', () => {
     expect(buildMigrationsDataSourceOptions(FAKE_URL).migrationsTableName).toBe(
       'typeorm_migrations',
