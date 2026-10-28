@@ -48,7 +48,12 @@ const LOGIN_INVALIDO = 'Informe um e-mail ou um login válido.';
 
 export const loginSchema = z
   .union([
-    z.object({ email: emailSchema, password: passwordSchema }).strict(),
+    // Corpo antigo: o web anterior manda `email` sempre que o texto tem `@`,
+    // inclusive um login interno como `maria@salao` (sem domínio de e-mail
+    // real). O texto é conferido abaixo como e-mail OU login, igual a `login`.
+    z
+      .object({ email: z.string().trim().min(1).max(254).refine((v) => v.includes('@')), password: passwordSchema })
+      .strict(),
     z.object({ login: z.string().trim().min(1).max(254), password: passwordSchema }).strict(),
   ])
   .transform((valor, ctx): { identifier: string; password: string } => {

@@ -272,6 +272,14 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
       now: new Date(),
     });
     expect(pelaTelaAntiga.user.id).toBe(dono.user.id);
+    // O web anterior manda `email` para todo texto com @, inclusive um login
+    // interno sem domínio de e-mail real.
+    const interno = await criar(est, { username: `balcao@${marca}` });
+    const pelaTelaAntigaComLogin = await auth.login(
+      loginSchema.parse({ email: `Balcao@${marca}`, password: interno.temporaryPassword! }),
+      { now: new Date() },
+    );
+    expect(pelaTelaAntigaComLogin.user).toMatchObject({ username: `balcao@${marca}`, email: null, mustChangePassword: true });
   });
 
   it('colisões: login igual ao e-mail ou ao login de outra conta é recusado, sem assumir nem criar conta', async () => {

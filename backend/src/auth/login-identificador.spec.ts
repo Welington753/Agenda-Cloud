@@ -10,6 +10,12 @@ describe('login por e-mail ou login interno', () => {
     });
   });
 
+  it('o corpo antigo (`email`) também leva um login interno com @, como o web anterior envia', () => {
+    expect(loginSchema.parse({ email: ' Maria@Salao ', password: senha })).toEqual({ identifier: 'maria@salao', password: senha });
+    expect(loginSchema.safeParse({ email: 'bia.salao', password: senha }).success).toBe(false);
+    expect(loginSchema.safeParse({ email: 'sem-dominio@', password: senha }).success).toBe(false);
+  });
+
   it('`login` vira um identificador único, normalizado, com ou sem @', () => {
     expect(loginSchema.parse({ login: 'Dona@Exemplo.Test', password: senha })).toEqual({
       identifier: 'dona@exemplo.test',

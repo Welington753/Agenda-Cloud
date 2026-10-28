@@ -2,57 +2,72 @@
 
 Estado entre sessões do lote "Equipe e acessos" (gerente com permissões do
 dono e login interno), migration `TeamManagerAccess1793145600000`. Nada foi
-executado no piloto, no Neon ou em `agenda_dev`.
+executado no piloto, no Neon ou em `agenda_dev`; nenhum e-mail real foi
+enviado; Render e Auto-Deploy não foram tocados.
 
-## Estado
+## Estado em 28/10/2026
 
 - Branch `feat/equipe-login-interno`, PR #77 para
-  `integration/nestjs-typeorm-frontend`.
-- `5e8c9ae`: implementação (backend, telas, testes). CI verde nos dois
-  workflows exigidos, inclusive `proxy` e `migration:show/run`.
-- `98c0d96`: procedimento protegido (`abrir-gerente-piloto.ps1`,
-  `aplicar-gerente-piloto.mjs`, `conferir-restauracao-gerente.mjs`,
-  `gerente-piloto.mjs`, `lib/gerente-acessos-schema.ts`), consulta de
-  impacto só leitura (`consultas/impacto-gerente-somente-leitura.sql`), limite
-  de recusas na criação de acesso e no convite, mensagem genérica no convite.
+  `integration/nestjs-typeorm-frontend`. Sem merge, sem deploy.
+- Commits:
+  - `5e8c9ae`: implementação (backend, telas, testes);
+  - `98c0d96`: procedimento protegido, consulta de impacto, limite de recusas
+    na criação de acesso e no convite, mensagem genérica no convite;
+  - `8a29566`: checkpoint desta nota (incompleto);
+  - o commit seguinte: o web anterior entra com login interno com `@` pela API
+    nova, runbook `publicacao-gerente-piloto.md`, esta nota e o plano.
+- O piloto tem dez migrations (StaffLogin e AppointmentPayments já aplicadas,
+  registradas no PR #74). **Não as repita.** O procedimento deste lote só aceita
+  TeamManagerAccess como pendente.
 
-## Comprovado nesta rodada (dados fictícios, bancos descartáveis com TLS)
+## Comprovado (dados fictícios, bancos descartáveis com TLS)
 
-- **Testes novos:** `team-manager-postgres.db-e2e-spec.ts` com 13 cenários
-  (convite × login interno, corrida convite × criação, uso acima do limite);
-  `pilot-team-manager-check.db-e2e-spec.ts`; `team.e2e-spec.ts` (429 depois de
-  10 recusas). Backend: 1504 unitários, 133 HTTP e2e, lint limpo.
-- **PostgreSQL 17.11** (Docker `postgres:17`, CA descartável, host fictício
-  `ep-ensaio-piloto-222...neon.tech`), modo ensaio:
-  - colisão antiga: `preparar` para em `ERR_COLISAO_DE_LOGIN` antes do backup;
-    a migration sozinha também para; dados iguais;
-  - `preparar`, `restauracao` (cópia em PostgreSQL 18.6: binários 17 não
-    disponíveis nesta máquina), frase errada, tabela ocupada (`55P03`),
-    queda antes do último comando, aplicação, repetição recusada, queda logo
-    depois do COMMIT, conferência posterior sem conexão e banco fora do ar.
-- **Retorno da API para `96f5417`** (schema novo, dados da API nova):
-  - sessões abertas continuam valendo; gerentes recebem 403 em todas as
-    áreas (falha fechada, sem telefone nem preço); suspenso continua sem
-    contexto; troca obrigatória continua; profissionais com login com `@`
-    mantêm a agenda própria pela sessão aberta;
-  - entrar: dono por e-mail e login sem `@` funcionam; `recepcao@retorno.test`
-    responde 401 e `maria@retorno`, 400;
-  - a API antiga não conta gerentes nas vagas: criou um acesso que deixou um
-    estabelecimento com 3 acessos para 2 vagas;
-  - convite para e-mail igual a um login interno: 500, nada gravado;
-  - suspender ou gerar senha de gerente: 404 (a API antiga só conhece
-    PROFISSIONAL na equipe).
+Detalhes e tabelas em `publicacao-gerente-piloto.md` ("Ensaio" e "Recuperação").
 
-## Pendente
+- **Revisão de permissões e login:** criação de usuário só por dois caminhos
+  (convite e criação direta), ambos cobertos pelo gatilho, pela conferência
+  prévia e pela recusa genérica. Testes novos em
+  `team-manager-postgres.db-e2e-spec.ts` (convite × login interno, corrida
+  convite × criação, uso acima do limite, corpo antigo do login),
+  `pilot-team-manager-check.db-e2e-spec.ts` e `team.e2e-spec.ts` (429 depois
+  de 10 recusas).
+- **PostgreSQL 17.11:** procedimento completo em modo ensaio (colisão,
+  preparar, restauração, frase errada, tabela ocupada, quedas antes e depois
+  do COMMIT, conferência posterior falha, aplicação, repetição recusada,
+  banco fora do ar).
+- **API nova com o schema anterior:** equipe e gerente antigo com ajuste dão
+  500. A migration vem antes da API.
+- **Retorno só do web (`96f5417` + API nova):** todos entram; gerentes ficam
+  sem menu, mas continuam com a permissão no servidor; a tela antiga de equipe
+  não mostra gerentes.
+- **Retorno da API (`96f5417`):** sessões abertas valem; gerentes 403 em tudo;
+  logins com `@` não entram; a API antiga cria acesso acima do limite novo;
+  convite para e-mail igual a login interno dá 500 sem gravar nada. Com a API
+  nova de volta, tudo volta a valer e nada foi perdido.
 
-- API nova de volta depois do retorno (o que a API antiga deixou).
-- Web `96f5417` com a API nova (retorno só do web).
-- Runbook `publicacao-gerente-piloto.md`, PR e CI no SHA final.
+## Limitações
+
+- A cópia da fase `restauracao` rodou em PostgreSQL 18.6 (sem binários
+  Windows do 17 nesta máquina; o download foi bloqueado).
+- A versão do servidor do piloto não foi lida.
+- Lançador `.ps1` não aberto pelo `wt.exe` nesta rodada.
+- Web novo com a API antiga não ensaiado.
+- Corte do acesso de um gerente durante o retorno só do web: nenhum caminho
+  ensaiado além de voltar o web novo.
+
+## Pendente (depende de execução real, com autorização)
+
+1. Merge do PR #77 na integração (revisão humana).
+2. No piloto, pelo runbook: `preparar` (ler o levantamento de vagas e
+   colisões), `restauracao`, `aplicar`, `conferir`.
+3. Deploy da API e depois do web, do mesmo SHA.
 
 ## Para retomar
 
-- Worktree temporária da versão publicada:
-  `%TEMP%\claude\...\scratchpad\antiga` (destacada em `96f5417`, `npm ci`
-  próprio). Remover com `git worktree remove` no fim.
-- PostgreSQL 18 descartável na porta 55434 (`disposable_retorno`) e contêiner
-  `agenda-ensaio-gerente-pg17` na porta 55517: só dados fictícios.
+- Clone: `C:\Projetos\Agenda-Cloud`, branch acima. O `CLAUDE.md` local tem
+  alteração do usuário fora do Git: não incluir nem reverter.
+- Ambientes descartáveis desta rodada (podem ser apagados):
+  - PostgreSQL 18 na porta 55434 (`disposable_equipe`, `disposable_retorno`,
+    `disposable_dez`), na pasta de rascunho da sessão;
+  - o contêiner PostgreSQL 17 do ensaio já foi removido.
+- A worktree temporária de `96f5417` já foi removida.

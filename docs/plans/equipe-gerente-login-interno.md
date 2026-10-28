@@ -44,7 +44,19 @@ escolher uma delas.
 Criar um login nunca liga nem assume uma conta existente: login em uso,
 inclusive igual ao e-mail de outra conta, é recusado com "Este login já está
 em uso na plataforma". Um convite por e-mail para um endereço que já é login
-interno também é recusado (`IDENTIFICADOR_EM_USO`).
+interno também é recusado (`IDENTIFICADOR_EM_USO`), com mensagem genérica
+("Este e-mail não está disponível para convite"): não diz que o texto é um
+login, de quem é nem de qual estabelecimento.
+
+**Sondagem de identificadores.** Criar acesso e convidar exigem sessão de dono
+com senha confirmada há pouco. Além disso, as RECUSAS nessas duas rotas são
+limitadas por IP: 10 a cada 15 minutos, somadas (mesmo limitador das rotas de
+conta, `account-rate-limit.ts`); a 11ª responde 429. Criações aceitas não
+contam. Nada disso grava ou registra senha.
+
+**Corpo antigo do login.** O web anterior manda `email` sempre que o texto tem
+`@`. A API confere esse texto como e-mail ou login, igual ao corpo `login`,
+então um login interno como `maria@salao` entra também pela tela anterior.
 
 **Recuperação.** A conta de login interno é recuperada pelo dono ("Gerar nova
 senha temporária"), com os limites de antes: sem e-mail, sem papel na
@@ -119,8 +131,8 @@ Regras da matriz:
   rota de convite continua na API, para a tela anterior durante a publicação.
 - **Telas anteriores.** A tela anterior continua funcionando com a API nova:
   sem `role`, a criação é `PROFISSIONAL`, e `members` continua na resposta.
-  O web novo manda o login sempre no corpo `login`, que as duas versões da
-  API aceitam.
+  O web novo manda o login sempre no corpo `login`; o anterior manda `email`
+  quando há `@`, e a API nova aceita os dois (ensaiado no navegador).
 - **Usuários antigos.** E-mails, vínculos e credenciais de contas existentes
   não foram alterados.
 
@@ -143,40 +155,21 @@ O `down` remove o gatilho e a coluna e volta o formato antigo. Se existir
 login novo fora do formato antigo, o banco recusa e a reversão para, sem
 reescrever logins. Os valores de enum ficam.
 
-## Ordem segura de publicação
+## Ordem segura de publicação e recuperação
 
-Nada disto foi executado no piloto. Cada passo precisa de autorização
-explícita.
+Procedimento protegido, ordem e recuperação comprovada em
+`docs/runbooks/publicacao-gerente-piloto.md`. Em resumo, cada passo com
+autorização explícita:
 
-1. **Conferir o piloto** (só leitura, pelo procedimento protegido de
-   `docs/runbooks/migrations-production.md`):
-   - `migration:show` com as 10 migrations até `AppointmentPayments`
-     aplicadas;
-   - nenhuma colisão cruzada (a consulta do passo 1 da migration);
-   - quantos vínculos `GERENTE` existem (efeito nas vagas, acima).
-2. **Backup** e conferência.
-3. **Aplicar a migration** `TeamManagerAccess` (11ª). A API em produção
-   continua funcionando: não lê a coluna nova, trata GERENTE como papel sem
-   área e só cria logins sem `@`.
-4. **Publicar a API** do mesmo commit (Manual Deploy → Deploy a specific
-   commit).
-5. **Publicar o web** do mesmo commit.
-6. **Conferir no piloto:**
-   - login do dono por e-mail;
-   - tela de Equipe com os acessos e os convites que já existiam.
+1. `preparar` (só leitura): `before-team-manager`, vagas, colisões, backup.
+2. `restauracao`: backup conferido e migration ensaiada numa cópia descartável.
+3. `aplicar`: backup novo, frase, só TeamManagerAccess, `after-team-manager`.
+4. API, depois web, do mesmo commit.
 
-   Não criar contas reais sem autorização.
-
-**Recuperação.**
-
-- **Web.** O web pode voltar à versão anterior a qualquer momento. Logins com
-  `@` criados nesse meio-tempo não entram pela tela anterior, que os manda
-  como e-mail; os demais entram.
-- **API.** A API pode voltar à anterior com o banco migrado. Gerentes ficam
-  sem área (falha fechada), e logins com `@` não entram até a API nova
-  voltar. Nada é apagado.
-- **Migration.** Desfazer (`down`) só depois de trocar ou remover os logins
-  novos fora do formato antigo e, antes, de voltar a API.
+A API nova **não** pode vir antes da migration (equipe e gerente antigo com
+ajuste respondem 500 no schema anterior). Voltar só o web mantém o acesso no
+servidor (menu ausente não revoga nada); voltar a API deixa gerentes sem área
+e logins com `@` sem entrar, sem apagar nada. Não use `migration:revert`.
 
 ## Validação local
 
