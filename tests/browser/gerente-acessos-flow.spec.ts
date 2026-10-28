@@ -14,7 +14,11 @@
 //    estabelecimento.
 // 4. O dono retira a agenda com a sessão do gerente aberta: a próxima
 //    requisição já é recusada.
-// 5. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
+// 5. O dono troca o perfil para Profissional, ligado à Ana, no MESMO vínculo:
+//    a tela mostra o que sai, nada entra sozinho, e só salva depois de
+//    conferido. A sessão aberta já segue o perfil novo; nenhuma reserva muda
+//    de profissional.
+// 6. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
 //
 // Invocação própria (`npm run test:browser:gerente`): 1 login.
 import { expect, test, type Browser, type Page } from "@playwright/test";
@@ -208,6 +212,44 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
       await expect(cartao.getByTestId("permissoes-efetivas")).not.toContainText("Agenda do estabelecimento");
       expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/appointments?date=${amanha}`)).status()).toBe(403);
       expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/booking-requests`)).status()).toBe(200);
+
+      // ---------------------------------- 5. perfil e profissional, mesmo vínculo
+      const [antes] = (await db.query("SELECT m.id, m.user_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.username = $1", [login])).rows;
+      await cartao.getByRole("button", { name: "Editar perfil e profissional" }).click();
+      const edicao = cartao.getByTestId("editar-acesso");
+      await edicao.getByLabel("Profissional", { exact: true }).check();
+      await edicao.getByLabel("Profissional vinculado").selectOption({ label: "Ana Lima" });
+      // Nada entra sozinho; o que não se aplica ao profissional sai, e a tela diz.
+      const resultado = edicao.getByTestId("resultado-da-edicao");
+      await expect(resultado).toContainText("Perfil: Profissional (era Gerente)");
+      await expect(resultado).toContainText("Profissional: Ana Lima (era nenhum)");
+      await expect(resultado.getByTestId("permissoes-que-saem")).toContainText("Solicitações");
+      await expect(resultado.getByTestId("permissoes-que-entram")).toHaveCount(0);
+      const salvar = edicao.getByRole("button", { name: "Salvar alterações" });
+      await expect(salvar).toBeDisabled();
+      await edicao.getByLabel("Conferi o resultado e quero salvar").check();
+      await capturar(page, "editar");
+      await salvar.click();
+      await confirmarSenhaSePedir(page, SENHA_DONO);
+      await expect(cartao.getByTestId("perfil-acesso")).toHaveText("Profissional");
+      await expect(cartao.getByTestId("profissional-vinculado")).toHaveText("Ana Lima");
+      await expect(cartao.getByTestId("permissoes-efetivas")).toHaveText("Ver a própria agenda.");
+      const [depois] = (await db.query("SELECT m.id, m.user_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.username = $1", [login])).rows;
+      expect(depois).toEqual(antes);
+      // A sessão aberta do gerente já segue o perfil novo na próxima requisição.
+      expect((await api.get(`${API_DE_TESTE}/tenants/${tenantId}/booking-requests`)).status()).toBe(403);
+      const propria = (await (await api.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/range?from=${amanha}&to=${amanha}`)).json()) as {
+        professional: { id: string };
+        appointments: { id: string }[];
+      };
+      expect(propria.professional.id).toBe(profissionais[0]);
+      expect(propria.appointments.map((a) => a.id)).toEqual([ids.confirmada]);
+      // Nenhuma reserva mudou de profissional.
+      const reservas = (await db.query("SELECT id, professional_id FROM appointments WHERE tenant_id = $1 ORDER BY start_at", [tenantId])).rows;
+      expect(reservas).toEqual([
+        { id: ids.confirmada, professional_id: profissionais[0] },
+        { id: ids.pedido, professional_id: profissionais[1] },
+      ]);
     } finally {
       await g.contexto.close();
     }

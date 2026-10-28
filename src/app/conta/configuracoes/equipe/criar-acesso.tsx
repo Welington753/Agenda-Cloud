@@ -81,7 +81,9 @@ export function CriarAcesso({
   const comProfissional = profissionalId !== SEM_PROFISSIONAL;
   const problemaDoUsuario = erroDoUsuario(usuario);
   const faltaProfissional = perfil === "PROFISSIONAL" && !comProfissional;
-  const travado = fase.tipo === "enviando" || fase.tipo === "criado";
+  // Sem resposta ("incerto"), o formulário fica travado: "Conferir" repete
+  // EXATAMENTE o pedido enviado, inclusive a senha.
+  const travado = fase.tipo !== "editando";
   const faltaSenha = !senhaPronta(senha, confirmacao);
   const valem = ajustarAoPerfil(marcadas, perfil, comProfissional);
 

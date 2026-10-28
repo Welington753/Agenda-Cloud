@@ -5,8 +5,9 @@
 // conforme a situação; o servidor confere cada uma de novo (vaga,
 // profissional ativo, conta bloqueada, permissões que o dono pode dar).
 //
-// Suspender, reativar, remover, mudar permissões e definir nova senha pedem a
-// senha do dono (useAcaoSensivel, a mesma reautenticação da administração).
+// Suspender, reativar, remover, mudar permissões, editar perfil e
+// profissional e definir nova senha pedem a senha do dono (useAcaoSensivel, a
+// mesma reautenticação da administração).
 import { useState } from "react";
 import {
   AlertTriangle,
@@ -35,6 +36,7 @@ import {
 import { mesmasPermissoes, resumoDasPermissoes } from "@/lib/equipe/permissoes";
 import { EditorDePermissoes } from "./editor-de-permissoes";
 import { DefinirSenha } from "./definir-senha";
+import { EditarAcesso } from "./editar-acesso";
 
 export const ESTILO_SITUACAO: Record<SituacaoNaEquipe, { cor: CorBadge; icone: LucideIcon }> = {
   OWNER: { cor: "destaque", icone: Crown },
@@ -77,13 +79,25 @@ function explicacao(pergunta: Pergunta, acesso: AcessoNaLista): string {
   }
 }
 
-export function AcessoEquipe({ acesso, visao, aoMudar }: { acesso: AcessoNaLista; visao: VisaoDaEquipe; aoMudar: () => void }) {
+export function AcessoEquipe({
+  acesso,
+  visao,
+  profissionaisLivres,
+  aoMudar,
+}: {
+  acesso: AcessoNaLista;
+  visao: VisaoDaEquipe;
+  /** Profissionais ativos sem acesso e sem convite pendente. */
+  profissionaisLivres: { id: string; name: string }[];
+  aoMudar: () => void;
+}) {
   const executarSensivel = useAcaoSensivel();
   const { notificar } = useToast();
   const [pergunta, setPergunta] = useState<Pergunta | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [mensagem, setMensagem] = useState("");
   const [editando, setEditando] = useState(false);
+  const [editandoAcesso, setEditandoAcesso] = useState(false);
   const [marcadas, setMarcadas] = useState<PermissaoDaEquipe[]>(acesso.grantedPermissions);
   const base = `/tenants/${encodeURIComponent(visao.tenant.id)}/team`;
   const deEquipe = acesso.role === "PROFISSIONAL" || acesso.role === "GERENTE";
@@ -241,11 +255,30 @@ export function AcessoEquipe({ acesso, visao, aoMudar }: { acesso: AcessoNaLista
         </fieldset>
       )}
 
+      {deEquipe && editandoAcesso && (
+        <EditarAcesso
+          visao={visao}
+          acesso={acesso}
+          profissionaisLivres={profissionaisLivres}
+          aoCancelar={() => setEditandoAcesso(false)}
+          aoConcluir={() => {
+            setEditandoAcesso(false);
+            notificar("Acesso alterado. Vale a partir da próxima ação da pessoa.", "sucesso");
+            aoMudar();
+          }}
+        />
+      )}
+
       {deEquipe && (
         <div className="flex flex-wrap gap-2">
-          {!editando && acesso.situation !== "PERMISSIONS_PENDING" && (
+          {!editando && !editandoAcesso && acesso.situation !== "PERMISSIONS_PENDING" && (
             <Botao type="button" variante="secundaria" className="min-h-11" onClick={() => setEditando(true)}>
               Editar permissões
+            </Botao>
+          )}
+          {!editando && !editandoAcesso && (
+            <Botao type="button" variante="secundaria" className="min-h-11" onClick={() => setEditandoAcesso(true)}>
+              Editar perfil e profissional
             </Botao>
           )}
           {acesso.status === "ACTIVE" ? (

@@ -360,6 +360,8 @@ jobs:
       # com login em formato de e-mail e sem profissional; só as áreas
       # concedidas (tela, URL e API), sem telefone nem preço na agenda,
       # solicitação confirmada, retirada valendo na requisição seguinte;
+      # troca de perfil e profissional no mesmo vínculo, conferida pelo dono e
+      # valendo na sessão aberta, sem mover reservas;
       # capturas em claro e escuro, 1280, 390 e 360 px.
       - name: Run real manager access flows (owner-granted areas, internal login)
         id: browser_gerente
