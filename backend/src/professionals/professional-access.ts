@@ -26,7 +26,6 @@ const ROLES_WITH_PROFESSIONALS_ACCESS: ReadonlySet<EstablishmentRole> = new Set(
   EstablishmentRole.DONO,
 ]);
 
-
 export function canViewProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],

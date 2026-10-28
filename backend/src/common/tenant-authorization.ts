@@ -41,7 +41,10 @@ export function algumaNegada(
   overrides: readonly PermissionOverrideLike[],
   permissoes: readonly Permission[],
 ): boolean {
-  return overrides.some((override) => override.mode === PermissionMode.DENIED && permissoes.includes(override.permission));
+  return overrides.some(
+    (override) =>
+      override.mode === PermissionMode.DENIED && permissoes.includes(override.permission),
+  );
 }
 
 /** Vínculo já PROVADO no servidor: existe Membership deste usuário neste

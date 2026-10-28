@@ -30,7 +30,6 @@ const ROLES_WITH_SERVICES_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
   EstablishmentRole.DONO,
 ]);
 
-
 export function canViewServices(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],

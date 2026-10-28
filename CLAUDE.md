@@ -74,7 +74,7 @@ npx tsc --noEmit -p tsconfig.build.json   # o que o build compila
 
 ## Checkpoint, commit e publicação
 
-- Trabalhe em branch própria a partir de `integration/nestjs-typeorm-frontend` (worktree separada se a pasta principal tiver trabalho em andamento). PR para essa branch, nunca para `main`. Merge só com os dois checks exigidos verdes, sem bypass e sem force push.
+- Trabalhe em branch própria a partir de `integration/nestjs-typeorm-frontend` (worktree separada se a pasta principal tiver trabalho em andamento). PR para essa branch, nunca para `main`. Merge só com o CI do PR verde no head final (`test-frontend-auth.yml` sempre que dispara; `test-migration-lote6b2.yml` quando a mudança toca migrations ou `backend/src/database/**`), sem bypass e sem force push. A branch não tem proteção no GitHub: a regra é de processo.
 - Commits pequenos e coerentes; `[skip render]` em commit e título de PR que não devem publicar.
 - Checkpoint: atualize a seção "Estado e retomada" do plano do lote (feito, não feito, próximo passo concreto, o que só existe neste computador) e faça push, para retomar em outra máquina.
 - Publicação é manual no Render: migration (se houver, pelo runbook) → API → web, os dois no mesmo SHA. Roteiro: `docs/runbooks/publicacao-piloto-render.md`. Nunca publique, conecte ao banco real ou envie mensagem sem pedido explícito.

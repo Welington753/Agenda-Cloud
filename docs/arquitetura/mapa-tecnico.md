@@ -131,7 +131,8 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Proxy de mesma origem | `npm run test:browser:proxy` | idem, com bordas HTTPS locais |
 
 O CI (`.github/workflows/test-frontend-auth.yml`) roda tudo isso, menos
-`test:db`, e é um dos dois checks exigidos. O outro
+`test:db`, e é um dos dois checks do processo de merge (a branch não tem
+proteção no GitHub; a regra é de processo). O outro
 (`test-migration-lote6b2.yml`) roda `migration:show/run` quando
 `backend/src/database/**` ou as migrations mudam.
 
