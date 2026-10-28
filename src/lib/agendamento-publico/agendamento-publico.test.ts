@@ -81,6 +81,9 @@ describe("chave e link", () => {
 
   it("link público do estabelecimento", () => {
     expect(linkPublico("https://app.exemplo.com/", "clinica-ana")).toBe("https://app.exemplo.com/agendar/clinica-ana");
+    // Sem origem: o caminho para onde o endereço curto `/<slug>` encaminha.
+    expect(linkPublico("", "clinica-ana")).toBe("/agendar/clinica-ana");
+    expect(linkPublico("", "a b/c")).toBe("/agendar/a%20b%2Fc");
   });
 });
 

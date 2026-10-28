@@ -172,6 +172,12 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   await expect(anonimo.pagina.getByTestId("pagina-publica-falha")).toContainText(
     "Esta página de agendamento não está disponível.",
   );
+  // O endereço curto leva à mesma página real, com o mesmo aviso.
+  await anonimo.pagina.goto(`/${slug}`);
+  await expect(anonimo.pagina).toHaveURL(new RegExp(`/agendar/${slug}$`));
+  await expect(anonimo.pagina.getByTestId("pagina-publica-falha")).toContainText(
+    "Esta página de agendamento não está disponível.",
+  );
 
   // ------------------------------------------- dono ativa e copia o link
   // O agendamento online fica em Configurações → Estabelecimento.
@@ -186,6 +192,29 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
   await page.goto("/conta/agendamentos/solicitacoes");
   await expect(page.getByTestId("sem-solicitacoes")).toBeVisible();
+
+  // ------------------------------------------- endereço curto /<slug>
+  // Estabelecimento real: vai para a página real. Slug inexistente: a página
+  // real diz que não está disponível (nunca "não existe nesta demonstração").
+  // Slug da demonstração continua na demonstração, e as rotas fixas da raiz
+  // não são capturadas.
+  const curto = await visitante(browser, CELULAR);
+  await curto.pagina.goto(`/${slug}`);
+  await expect(curto.pagina).toHaveURL(new RegExp(`/agendar/${slug}$`));
+  await expect(curto.pagina.getByRole("heading", { level: 1 })).toHaveText(estabelecimento);
+  await curto.pagina.goto(`/sem-estabelecimento-${sufixo}`);
+  await expect(curto.pagina).toHaveURL(new RegExp(`/agendar/sem-estabelecimento-${sufixo}$`));
+  await expect(curto.pagina.getByTestId("pagina-publica-falha")).toContainText(
+    "Esta página de agendamento não está disponível.",
+  );
+  await expect(curto.pagina.getByText("nesta demonstração")).toHaveCount(0);
+  await curto.pagina.goto("/dom-navalha");
+  await expect(curto.pagina.getByText("Barbearia Dom Navalha").first()).toBeVisible();
+  await expect(curto.pagina).toHaveURL(/\/dom-navalha$/);
+  await curto.pagina.goto("/login");
+  await expect(curto.pagina.getByRole("button", { name: "Entrar" })).toBeVisible();
+  await expect(curto.pagina).toHaveURL(/\/login$/);
+  await curto.contexto.close();
 
   // ------------------------------------------- cliente agenda no celular
   const p = anonimo.pagina;
