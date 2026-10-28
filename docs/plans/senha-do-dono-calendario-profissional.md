@@ -244,4 +244,46 @@ tocam o que mudou além do cartão de acesso. O CI do PR roda todas.
 
 ## Estado e retomada
 
-Ver o fim deste arquivo, atualizado a cada checkpoint.
+Checkpoint de 2026-10-28, no PR #78 (`feat/senha-dono-calendario-profissional`
+para `integration/nestjs-typeorm-frontend`).
+
+**Concluído e no remoto**
+
+- `66572f0`: senha definida pelo dono e cobertura do calendário. CI verde:
+  https://github.com/Welington753/Agenda-Cloud/actions/runs/40750165285
+- `4214a65`: logs sem senha, hash ou token (logger do TypeORM e filtro HTTP).
+- `c5b7974`: edição de perfil e profissional na API, com os testes de HTTP e
+  de banco.
+- `2404894`: tela "Editar perfil e profissional" e a suíte do gerente.
+- `ae5a662`: este plano. CI disparado nesse head:
+  - https://github.com/Welington753/Agenda-Cloud/actions/runs/40758061114
+    (auth e serviços, navegador e API)
+  - https://github.com/Welington753/Agenda-Cloud/actions/runs/40758061446
+    (migrations, porque `backend/src/database/**` mudou)
+- O commit que traz esta seção dispara de novo os dois workflows. O
+  resultado fica nos checks do PR #78, para o head mais recente.
+
+**Falta**
+
+- Acompanhar os dois checks no head final do PR. Com os dois verdes: revisão
+  final e merge normal na integration com `[skip render]`, sem bypass e sem
+  force push.
+- Se um check falhar: corrigir, rodar localmente só a suíte afetada, enviar,
+  e acompanhar de novo.
+- Fora do escopo, e não fazer: deploy, conexão com banco real, migration no
+  piloto e envio de mensagens.
+
+**Próximo passo concreto**
+
+Abrir os checks do PR #78 no head mais recente da branch. Se estiverem verdes,
+mesclar o PR pela interface ou pela API, com título contendo `[skip render]`.
+
+**Só neste computador (nada disso vai para o Git)**
+
+- O cluster PostgreSQL 18 descartável da sessão, com TLS e certificado
+  autoassinado, na porta 55434, no diretório temporário da sessão do Claude
+  Code. É desligado ao encerrar a sessão. Em outra máquina, crie outro
+  cluster descartável, como descrito em CLAUDE.md.
+- As capturas de tela das suítes locais, no mesmo diretório temporário. As do
+  CI ficam nos artefatos de cada execução.
+- `CLAUDE.md` modificado pelo dono do repositório: fica fora dos commits.
