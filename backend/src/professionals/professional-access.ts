@@ -19,6 +19,7 @@
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
+import { managerCan } from '../common/manager-permissions.js';
 
 /** Papéis com acesso padrão à gestão de profissionais neste lote. */
 const ROLES_WITH_PROFESSIONALS_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
@@ -44,6 +45,7 @@ export function canViewProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'PROFISSIONAIS_VISUALIZAR');
   if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
   return !isDeniedByOverride(overrides, Permission.PROFISSIONAIS_VISUALIZAR);
 }
@@ -52,6 +54,7 @@ export function canManageProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'PROFISSIONAIS_GERENCIAR');
   if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
   // Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
   // DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver".

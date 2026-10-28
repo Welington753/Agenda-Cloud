@@ -287,6 +287,12 @@ export class TransactionScope {
     private readonly store: InMemoryStore,
   ) {}
 
+  /** A busca da conta pelo identificador do login (SQL explícito) é a mesma
+   * "checagem de e-mail" que o gancho `onAfterEmailCheck` simula. */
+  afterLoginLookup(): void {
+    this.store.onAfterEmailCheck?.();
+  }
+
   private assertNotAborted(): void {
     if (this.aborted) {
       throw new Error(ABORTED_TRANSACTION_MESSAGE);
@@ -408,8 +414,14 @@ async function fakeStaffLoginQuery(
   parametros: unknown[] = [],
 ): Promise<unknown[]> {
   const todos = await usuarios();
-  if (sql === 'SELECT id FROM users WHERE username = $1') {
-    return todos.filter((u) => u.username === parametros[0]).map((u) => ({ id: u.id }));
+  if (sql === 'SELECT id FROM users WHERE email = $1 OR username = $1 LIMIT 2') {
+    // `citext` nas duas colunas: comparação sem caixa, como no banco.
+    const alvo = String(parametros[0]).toLowerCase();
+    const igual = (v: unknown) => typeof v === 'string' && v.toLowerCase() === alvo;
+    return todos
+      .filter((u) => igual(u.email) || igual(u.username))
+      .slice(0, 2)
+      .map((u) => ({ id: u.id }));
   }
   if (sql === 'SELECT username, must_change_password FROM users WHERE id = $1') {
     return todos
@@ -419,17 +431,23 @@ async function fakeStaffLoginQuery(
   if (sql === 'SELECT must_change_password FROM users WHERE id = $1') {
     return todos.filter((u) => u.id === parametros[0]).map((u) => ({ must_change_password: u.mustChangePassword === true }));
   }
+  // Áreas da sessão (session-areas.ts): o fake não guarda ajustes de
+  // permissão nem a confirmação do gerente.
+  if (sql.includes('FROM membership_permission_overrides WHERE tenant_id = $1 AND membership_id = $2')) return [];
+  if (sql.startsWith('SELECT permissions_confirmed_at IS NOT NULL AS confirmed FROM memberships')) return [];
   throw new Error(`Fake query não suporta: ${sql}`);
 }
 
 export function createFakeEntityManager(scope: TransactionScope): EntityManager {
   return {
     async query(sql: string, parametros?: unknown[]): Promise<unknown[]> {
-      return fakeStaffLoginQuery(
+      const linhas = await fakeStaffLoginQuery(
         () => scope.find<Record<string, unknown>>(User, { where: {} }),
         sql,
         parametros,
       );
+      if (sql.includes('WHERE email = $1 OR username = $1')) scope.afterLoginLookup();
+      return linhas;
     },
     create<T extends object>(EntityClass: new () => T, partial: Partial<T>): T {
       return Object.assign(new EntityClass(), partial);

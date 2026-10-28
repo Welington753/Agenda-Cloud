@@ -146,7 +146,12 @@ export function CartaoAtendimento({
             <span className="lg:hidden"> · com {agendamento.professional.name}</span>
           </p>
           <p className="text-xs text-ink-muted tabular-nums lg:col-start-2 lg:!mt-0">
-            {agendamento.consumer.whatsapp} · {rotuloDePreco(agendamento.priceCents)}
+            {[
+              agendamento.consumer.whatsapp,
+              agendamento.hidden?.includes("price") ? null : rotuloDePreco(agendamento.priceCents),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
           {/* Coluna própria só em tela larga; no celular o profissional fica
             na linha do serviço ("com …"). */}

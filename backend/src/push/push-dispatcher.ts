@@ -32,7 +32,7 @@ import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional }
 import { ConfigService } from '@nestjs/config';
 import { hostname } from 'node:os';
 import { DataSource } from 'typeorm';
-import { canViewAppointments } from '../appointments/appointment-access.js';
+import { canReceiveBookingAlerts } from '../appointments/appointment-access.js';
 import { isTenantUsableForSession } from '../auth/tenant-access.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
@@ -240,7 +240,7 @@ export class DisparadorDePush implements OnApplicationBootstrap, OnModuleDestroy
 
     for (const d of await destinatarios(manager, alerta, this.agora())) {
       const negacoes = await negacoesDoVinculo(manager, alerta.tenant_id, d.membership_id);
-      const podeVer = canViewAppointments(
+      const podeVer = canReceiveBookingAlerts(
         d.role as EstablishmentRole,
         negacoes as unknown as PermissionOverrideLike[],
       );

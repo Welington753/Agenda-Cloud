@@ -33,7 +33,7 @@ export default function ContaPage() {
     if (sessao.requiresTenantSelection && !tenantIdAtivo) return ROTA_SELECIONAR_ESTABELECIMENTO;
     const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
     const perfil = perfilDoPapel(contexto?.role);
-    if (contexto && perfil !== "sem-area") return inicioDoPerfil(perfil);
+    if (contexto && perfil !== "sem-area") return inicioDoPerfil(perfil, contexto);
     // Sem área: espera a resposta do acesso à plataforma antes de escolher.
     if (acesso.status === "carregando") return null;
     return acessoConfirmado(acesso) ? ROTA_ADMINISTRACAO : inicioDoPerfil("sem-area");

@@ -7,7 +7,11 @@
 //   profissional do estabelecimento; cada profissional tem no máximo um
 //   acesso (índice único em `memberships.professional_id`) ou um convite
 //   pendente (`uq_invites_pending_professional`).
-// - Ocupam vaga: acessos de funcionário ATIVOS + convites de funcionário
+// - GERENTE (migration TeamManagerAccess) também é acesso de equipe e ocupa
+//   vaga do mesmo jeito, com ou sem profissional ligado. Gerente sem
+//   profissional NÃO cria profissional e não conta no limite de
+//   profissionais; com profissional, usa o cadastro que já existe.
+// - Ocupam vaga: acessos de equipe (PROFISSIONAL e GERENTE) ATIVOS + convites de funcionário
 //   pendentes e dentro do prazo. Acesso suspenso não ocupa; reativar confere
 //   a vaga de novo. Convite revogado ou vencido libera; reenviar não ocupa
 //   outra (o mesmo convite continua sendo um só).
@@ -29,6 +33,10 @@ import type { EntityManager } from 'typeorm';
 import { TENANT_NOT_FOUND_MESSAGE } from '../common/tenant-authorization.js';
 
 export const OPERATIONAL_TENANT_STATUSES = ['TRIAL', 'ACTIVE'] as const;
+
+/** Papéis cujo acesso ocupa vaga de equipe. O DONO fica fora. */
+export const TEAM_SEAT_ROLES = ['PROFISSIONAL', 'GERENTE'] as const;
+const TEAM_SEAT_ROLES_SQL = TEAM_SEAT_ROLES.map((r) => `'${r}'`).join(', ');
 
 export interface LockedTenant {
   id: string;
@@ -90,7 +98,7 @@ export async function staffSeatUsage(
   const [vinculos] = await manager.query<{ ativos: number; suspensos: number }[]>(
     `SELECT count(*) FILTER (WHERE status = 'ACTIVE')::int AS ativos,
             count(*) FILTER (WHERE status <> 'ACTIVE')::int AS suspensos
-       FROM memberships WHERE tenant_id = $1 AND role = 'PROFISSIONAL'`,
+       FROM memberships WHERE tenant_id = $1 AND role IN (${TEAM_SEAT_ROLES_SQL})`,
     [tenantId],
   );
   const [convites] = await manager.query<{ pendentes: number }[]>(
@@ -138,7 +146,7 @@ export async function expireStaleStaffInvites(manager: EntityManager, tenantId: 
 
 export function seatLimitMessage(usage: SeatUsage): string {
   return (
-    `O plano permite ${usage.limit} acesso(s) de funcionário e todos estão em uso ` +
+    `O plano permite ${usage.limit} acesso(s) de equipe e todos estão em uso ` +
     `(${usage.activeAccesses} ativo(s), ${usage.pendingInvites} convite(s) pendente(s)). ` +
     'Revogue um convite, suspenda ou remova um acesso, ou troque o plano.'
   );

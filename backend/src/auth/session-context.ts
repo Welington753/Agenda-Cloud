@@ -42,6 +42,9 @@ export interface TenantContext {
    * tenant-access.ts) — nunca SUSPENDED/PAST_DUE/CANCELED aqui, porque esses
    * tenants nunca viram TenantContext (ver `loadTenantContexts`). */
   tenantStatus: TenantStatus;
+  /** Áreas que este vínculo opera agora (ver session-areas.ts). Só para a
+   * tela: as rotas refazem a prova a cada requisição. */
+  areas: string[];
 }
 
 export interface SessionContextResult {

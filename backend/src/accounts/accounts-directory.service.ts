@@ -5,6 +5,8 @@
 //
 // Os contadores vêm do mesmo conjunto filtrado da lista (sem o filtro de
 // situação, que é o que eles detalham), nunca da página carregada.
+import { effectiveOverrides } from '../common/tenant-authorization.js';
+import { isManagerPermission } from '../common/manager-permissions.js';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
@@ -50,10 +52,18 @@ interface MembershipRow {
   status: string;
   professional: { id: string; name: string; active: boolean } | null;
   createdAt: string;
+  permissionsConfirmed: boolean;
   overrides: { permission: Permission; mode: PermissionMode }[];
 }
 
 function vinculoParaTela(row: MembershipRow) {
+  // Os mesmos ajustes que as rotas usam: o gerente sem confirmação do dono
+  // não tem nenhum `GRANTED` valendo.
+  const valem = effectiveOverrides(row.role, row.permissionsConfirmed, row.overrides);
+  const concessaoQueVale = (o: { permission: string; mode: string }) =>
+    o.mode === PermissionMode.GRANTED &&
+    ((STAFF_PERMISSIONS as readonly string[]).includes(o.permission) ||
+      (row.role === 'GERENTE' && row.permissionsConfirmed && isManagerPermission(o.permission)));
   const denied = row.overrides.filter((o) => o.mode === PermissionMode.DENIED).map((o) => o.permission);
   return {
     id: row.id,
@@ -69,15 +79,16 @@ function vinculoParaTela(row: MembershipRow) {
      * mostrados, nunca editados aqui. */
     ineffectiveOverrides: row.overrides
       .filter((o) => o.mode !== PermissionMode.DENIED || !EFFECTIVE_TENANT_PERMISSIONS.includes(o.permission))
-      .filter((o) => !(o.mode === PermissionMode.GRANTED && (STAFF_PERMISSIONS as readonly string[]).includes(o.permission)))
+      .filter((o) => !concessaoQueVale(o))
       .map((o) => `${o.mode}:${o.permission}`)
       .sort(),
-    effectiveAccess: tenantEffectiveAccess(row.role, row.overrides),
+    effectiveAccess: tenantEffectiveAccess(row.role, valem),
   };
 }
 
 const MEMBERSHIP_COLUMNS = `m.id, m.tenant_id AS "tenantId", ${TENANT_NAME} AS "tenantName",
     t.slug AS "tenantSlug", t.status AS "tenantStatus", m.role, m.status, m.created_at AS "createdAt",
+    m.permissions_confirmed_at IS NOT NULL AS "permissionsConfirmed",
     (SELECT json_build_object('id', p.id, 'name', p.name, 'active', p.active) FROM professionals p
       WHERE p.tenant_id = m.tenant_id AND p.id = m.professional_id) AS professional,
     COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode) ORDER BY o.permission)

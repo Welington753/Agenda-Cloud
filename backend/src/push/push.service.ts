@@ -11,7 +11,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { canViewAppointments } from '../appointments/appointment-access.js';
+import { canReceiveBookingAlerts } from '../appointments/appointment-access.js';
 import type { IdentityContext } from '../auth/session-context.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { DisparadorDePush } from './push-dispatcher.js';
@@ -28,7 +28,7 @@ export const PUSH_UNSUPPORTED_SERVICE_MESSAGE =
 export const PUSH_INVALID_KEYS_MESSAGE = 'A inscrição deste navegador veio incompleta. Tente ativar de novo.';
 
 const politicaDeAviso = {
-  permitido: canViewAppointments,
+  permitido: canReceiveBookingAlerts,
   mensagemProibido: PUSH_FORBIDDEN_MESSAGE,
 };
 

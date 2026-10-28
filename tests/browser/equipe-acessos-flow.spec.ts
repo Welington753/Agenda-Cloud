@@ -1,12 +1,14 @@
 // Equipe e acessos de ponta a ponta, pela tela, contra o backend real, o
 // PostgreSQL DESCARTÁVEL e a caixa de e-mail LOCAL (nada sai da máquina).
 //
-// 1. O dono convida a funcionária para a profissional Ana; a pessoa cria a
-//    própria senha pelo link e cai na agenda DELA.
+// 1. O dono cria o acesso da funcionária (perfil Profissional, ligada à
+//    profissional Ana) com login e senha temporária, sem convite nem e-mail;
+//    ela troca a senha no primeiro acesso e cai na agenda DELA.
 // 2. A funcionária vê só os próprios atendimentos (cliente, serviço,
 //    situação), com o menu reduzido; páginas do dono pelo endereço levam à
 //    agenda dela; a API recusa a agenda geral, a equipe e a reserva do colega
-//    (também de um segundo funcionário).
+//    (também de um segundo funcionário, que entra por um convite por e-mail
+//    do fluxo anterior: os convites antigos continuam valendo).
 // 3. O dono libera "Iniciar" (pede a senha) e a funcionária inicia o próprio
 //    atendimento; a permissão retirada vale na próxima ação dela, com a sessão
 //    aberta. Suspender corta o acesso; reativar devolve.
@@ -15,8 +17,8 @@
 //    recusado pela API.
 // 5. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
 //
-// Invocação própria (`npm run test:browser:equipe`): usa 4 aceites de
-// convite (limite de 10 por 15 minutos por IP).
+// Invocação própria (`npm run test:browser:equipe`): usa 1 aceite de
+// convite (limite de 10 por 15 minutos por IP) e 1 login.
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { API_DE_TESTE, conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
@@ -57,9 +59,15 @@ async function capturar(page: Page, nome: string) {
   await page.setViewportSize({ width: 1280, height: 844 });
 }
 
+/** O pedido de senha só aparece depois da resposta do servidor (403
+ * REAUTENTICACAO_NECESSARIA): espera um pouco por ele antes de seguir. */
 async function confirmarSenhaSePedir(page: Page, senha: string) {
   const dialogo = page.getByTestId("confirmar-senha");
-  if (await dialogo.isVisible().catch(() => false)) {
+  const apareceu = await dialogo
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (apareceu) {
     await page.getByLabel("Sua senha", { exact: true }).fill(senha);
     await page.getByRole("button", { name: "Confirmar", exact: true }).click();
   }
@@ -80,7 +88,7 @@ async function novaPagina(browser: Browser) {
   return { contexto, page: await contexto.newPage() };
 }
 
-test("dono convida, funcionária vê só a própria agenda, permissões e suspensão valem na hora; administração do plano", async ({
+test("dono cria acesso, funcionária vê só a própria agenda, permissões e suspensão valem na hora; administração do plano", async ({
   page,
   browser,
   request,
@@ -138,28 +146,35 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
       );
     }
 
-    // ------------------------------------------- 1. convite pela equipe
+    // ------------------------------------- 1. acesso criado pela equipe
     await page.goto("/conta/configuracoes/equipe");
     await expect(main.getByRole("heading", { name: "Equipe e acessos" })).toBeVisible();
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 em uso (0 ativos, 0 convites pendentes)");
-    const ana = page.getByTestId("membro-equipe").filter({ hasText: "Ana Lima" });
-    await expect(ana).toContainText("Sem acesso");
-    await ana.getByRole("button", { name: "Convidar por e-mail" }).click();
-    await ana.getByLabel("Nome da pessoa").fill("Ana Lima");
-    await ana.getByLabel("E-mail").fill(`${marca}-ANA@example.test`);
-    await capturar(page, "convidar");
-    await ana.getByRole("button", { name: "Enviar convite" }).click();
-    await expect(ana.getByTestId("resultado-envio")).toContainText("Convite registrado.");
-    await ana.getByRole("button", { name: "Concluir" }).click();
-    await expect(ana).toContainText("Convite pendente");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (0 ativos, 1 convite pendente)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 em uso (0 ativos)");
+    // O fluxo principal não convida por e-mail.
+    await expect(main.getByRole("button", { name: /Convidar/ })).toHaveCount(0);
+    await page.getByTestId("profissional-sem-acesso").filter({ hasText: "Ana Lima" }).getByRole("button", { name: /Criar acesso/ }).click();
+    const formulario = page.getByTestId("criar-acesso");
+    await formulario.getByLabel("Login").fill(`ana@${marca}`);
+    await capturar(page, "criar-acesso-profissional");
+    await formulario.getByRole("button", { name: "Criar acesso" }).click();
+    await confirmarSenhaSePedir(page, SENHA_DONO);
+    const temporaria = (await page.getByTestId("senha-temporaria-valor").textContent())!.trim();
+    await page.getByRole("button", { name: "Já entreguei" }).click();
+    const ana = page.getByTestId("acesso-equipe").filter({ hasText: "Ana Lima" });
+    await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
 
     const funcionaria = await novaPagina(browser);
     const fp = funcionaria.page;
-    await fp.goto(await linkDoConvite(request, `${marca}-ana@example.test`));
-    await fp.getByLabel("Crie sua senha").fill(SENHA_FUNCIONARIA);
-    await fp.getByLabel("Repita a senha").fill(SENHA_FUNCIONARIA);
-    await fp.getByRole("button", { name: "Ativar minha conta" }).click();
+    await fp.goto("/login");
+    await fp.getByLabel("E-mail ou login").fill(`ana@${marca}`);
+    await fp.getByLabel("Senha", { exact: true }).fill(temporaria);
+    await fp.getByRole("button", { name: "Entrar" }).click();
+    await expect(fp).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    await fp.getByLabel("Senha temporária").fill(temporaria);
+    await fp.getByLabel("Senha nova", { exact: true }).fill(SENHA_FUNCIONARIA);
+    await fp.getByLabel("Confirme a senha nova").fill(SENHA_FUNCIONARIA);
+    await fp.getByTestId("trocar-senha").click();
     await expect(fp).toHaveURL(/\/conta\/minha-agenda$/);
 
     // --------------------------------- 2. só a própria agenda, menu reduzido
@@ -229,11 +244,16 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
       })).status(),
     ).toBe(403);
 
-    // Segundo funcionário (Bruno), aceito pela API: cada um só alcança o seu.
+    // Segundo funcionário (Bruno), por um convite por e-mail do fluxo
+    // anterior, aceito pela API: o convite antigo aparece, ocupa vaga e
+    // continua valendo; cada um só alcança o seu.
     const conviteBruno = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/team/invites`, {
       data: { requestKey: `chave-${id()}-bruno`, professionalId: profissionais["Bruno Reis"], name: "Bruno Reis", email: `${marca}-bruno@example.test` },
     });
     expect(conviteBruno.status(), await conviteBruno.text()).toBe(200);
+    await page.goto("/conta/configuracoes/equipe");
+    await expect(page.getByTestId("convite-antigo").filter({ hasText: "Bruno Reis" })).toContainText("Convite pendente");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (1 ativo, 1 convite pendente)");
     const bruno = await novaPagina(browser);
     const token = /#t=([0-9a-f]{64})/.exec(await linkDoConvite(request, `${marca}-bruno@example.test`))![1];
     expect((await bruno.page.request.post(`${API_DE_TESTE}/invites/accept`, { data: { token, password: "senha-do-bruno-12" } })).status()).toBe(200);
@@ -256,14 +276,15 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
 
     // ------------------- 3. permissão liberada, retirada e acesso suspenso
     await page.goto("/conta/configuracoes/equipe");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (2 ativos, 0 convites pendentes)");
-    await expect(ana).toContainText("Acesso ativo");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (2 ativos)");
+    await expect(page.getByTestId("convite-antigo")).toHaveCount(0);
+    await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
+    await ana.getByRole("button", { name: "Editar permissões" }).click();
     await ana.getByLabel("Iniciar os próprios atendimentos").check();
     await ana.getByRole("button", { name: "Salvar permissões" }).click();
-    await expect(page.getByTestId("confirmar-senha")).toBeVisible();
-    await page.getByLabel("Sua senha", { exact: true }).fill(SENHA_DONO);
-    await page.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(ana.getByLabel("Iniciar os próprios atendimentos")).toBeChecked();
+    // A senha do dono foi confirmada há pouco, na criação do acesso.
+    await confirmarSenhaSePedir(page, SENHA_DONO);
+    await expect(ana.getByTestId("permissoes-efetivas")).toContainText("iniciar os próprios atendimentos");
     await capturar(page, "lista");
 
     await fp.goto("/conta/minha-agenda");
@@ -275,11 +296,11 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     expect(estado.status).toBe("IN_PROGRESS");
 
     // Retirada com a sessão dela aberta: a próxima ação já é recusada.
+    await ana.getByRole("button", { name: "Editar permissões" }).click();
     await ana.getByLabel("Iniciar os próprios atendimentos").uncheck();
-    await ana.getByLabel("Marcar falta nos próprios atendimentos").uncheck();
     await ana.getByRole("button", { name: "Salvar permissões" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    await expect(ana.getByLabel("Iniciar os próprios atendimentos")).not.toBeChecked();
+    await expect(ana.getByTestId("permissoes-efetivas")).toHaveText("Ver a própria agenda.");
     expect(
       (await api.post(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/${ids.daAna}/complete`, {
         data: { expectedStartAt: inicio.toISOString() },
@@ -290,8 +311,8 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await expect(page.getByRole("dialog")).toContainText("acesso a outros estabelecimentos continuam");
     await page.getByRole("dialog").getByRole("button", { name: "Suspender acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    await expect(ana).toContainText("Acesso suspenso");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo, 0 convites pendentes)");
+    await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso suspenso");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
     await fp.getByRole("button", { name: "Atualizar" }).click();
     await expect(fp.getByRole("main").getByRole("alert")).toContainText("não está disponível agora");
     await fp.reload();
@@ -303,7 +324,7 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     await ana.getByRole("button", { name: "Reativar acesso" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Reativar acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
-    await expect(ana).toContainText("Acesso ativo");
+    await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
     await fp.goto("/conta/minha-agenda");
     await expect(lista).toContainText("Cliente da Ana");
     await funcionaria.contexto.close();
@@ -370,6 +391,7 @@ test("dono convida, funcionária vê só a própria agenda, permissões e suspen
     ).rows.map((r: { action: string }) => r.action);
     expect(historico).toEqual(
       expect.arrayContaining([
+        "STAFF_ACCESS_CREATED",
         "USER_INVITED",
         "INVITE_ACCEPTED",
         "USER_PERMISSION_CHANGED",

@@ -12,10 +12,13 @@ import {
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
+  ROTA_RECEBIMENTOS,
   ROTA_SERVICOS,
+  ROTA_SOLICITACOES,
   emAreaSobConfiguracoes,
 } from "./rotas";
-import type { PerfilDaArea } from "./papel";
+import { temArea, type AreaDoEstabelecimento, type PerfilDaArea } from "./papel";
+import type { TenantContextReal } from "@/lib/api/auth-api";
 
 export interface ItemNavegacaoConta {
   href: string;
@@ -51,6 +54,24 @@ export const ITENS_NAVEGACAO_FUNCIONARIO: readonly ItemNavegacaoConta[] = [
   ITEM_CONFIGURACOES,
 ];
 
+/** Menu do gerente: só as áreas concedidas, na ordem do dia a dia. A agenda
+ * do estabelecimento já traz a aba Solicitações; sem ela, Solicitações vira o
+ * item próprio. Até quatro na barra do celular (o resto no menu da conta),
+ * com Configurações sempre por último. */
+export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas"> | null | undefined): ItemNavegacaoConta[] {
+  const tem = (area: AreaDoEstabelecimento) => temArea(contexto, area);
+  const candidatos: ItemNavegacaoConta[] = [];
+  if (tem("AGENDA_VER")) candidatos.push({ href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" });
+  else if (tem("SOLICITACOES_VER")) candidatos.push({ href: ROTA_SOLICITACOES, rotulo: "Solicitações", noCelular: "barra" });
+  if (tem("AGENDA_PROPRIA_VER")) candidatos.push({ href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda", noCelular: "barra" });
+  if (tem("CLIENTES_VER")) candidatos.push({ href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" });
+  if (tem("RECEBIMENTOS_VER")) candidatos.push({ href: ROTA_RECEBIMENTOS, rotulo: "Recebimentos", noCelular: "barra" });
+  if (tem("SERVICOS_VER")) candidatos.push({ href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "barra" });
+  if (tem("PROFISSIONAIS_VER")) candidatos.push({ href: ROTA_PROFISSIONAIS, rotulo: "Profissionais", noCelular: "barra" });
+  const itens = candidatos.map((item, i) => ({ ...item, noCelular: i < 3 ? ("barra" as const) : ("menu" as const) }));
+  return [...itens, ITEM_CONFIGURACOES];
+}
+
 /** Administração da plataforma. Só entra no menu quando o backend confirmou
  * o acesso (`GET /platform/access`); esconder o item não substitui a
  * autorização, que o servidor refaz em toda leitura. */
@@ -70,7 +91,8 @@ export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
  *   quatro áreas).
  * - Funcionário: "Minha agenda" e "Configurações" (e "Administração" na
  *   barra, se for o caso).
- * - Papel sem área (GERENTE, RECEPCIONISTA antigos): só "Configurações".
+ * - Gerente: as áreas concedidas pelo dono (ver `itensDoGerente`).
+ * - Papel sem área (RECEPCIONISTA antigo): só "Configurações".
  * - Sem estabelecimento: só para quem administra a plataforma (um
  *   administrador não precisa de vínculo): Administração e Configurações.
  * - Sem nenhum dos dois: sem menu.
@@ -79,13 +101,20 @@ export function itensDaNavegacao({
   comEstabelecimento,
   comAdministracao,
   perfil = "dono",
+  contexto,
 }: {
   comEstabelecimento: boolean;
   comAdministracao: boolean;
   /** Perfil no estabelecimento ativo (ver papel.ts). */
   perfil?: PerfilDaArea;
+  /** Contexto ativo, com as áreas que o servidor liberou (gerente). */
+  contexto?: Pick<TenantContextReal, "role" | "areas"> | null;
 }): readonly ItemNavegacaoConta[] {
   const administracaoNaBarra: ItemNavegacaoConta = { ...ITEM_ADMINISTRACAO, noCelular: "barra" };
+  if (comEstabelecimento && perfil === "gerente") {
+    const itens = itensDoGerente(contexto);
+    return comAdministracao ? [...itens, ITEM_ADMINISTRACAO] : itens;
+  }
   if (comEstabelecimento && perfil === "funcionario") {
     return comAdministracao ? [...ITENS_NAVEGACAO_FUNCIONARIO, administracaoNaBarra] : ITENS_NAVEGACAO_FUNCIONARIO;
   }

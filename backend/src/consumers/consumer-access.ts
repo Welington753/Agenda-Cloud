@@ -15,6 +15,7 @@ import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js'
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { managerCan } from '../common/manager-permissions.js';
 
 export const CONSUMERS_FORBIDDEN_MESSAGE =
   'Você não tem permissão para acessar os clientes deste estabelecimento.';
@@ -37,6 +38,7 @@ export function canViewConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_VISUALIZAR');
   if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
   return !negado(overrides, [Permission.CONSUMIDORES_VISUALIZAR]);
 }
@@ -46,6 +48,7 @@ export function canManageConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_GERENCIAR');
   if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
   return !negado(overrides, [
     Permission.CONSUMIDORES_VISUALIZAR,

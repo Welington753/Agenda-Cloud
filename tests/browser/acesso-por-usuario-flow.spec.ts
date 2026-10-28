@@ -1,12 +1,14 @@
-// Acesso de funcionário com NOME DE USUÁRIO e SENHA TEMPORÁRIA, sem e-mail,
-// de ponta a ponta pela tela, contra o backend real e o PostgreSQL
-// DESCARTÁVEL. Nada é enviado: este fluxo não usa e-mail.
+// Acesso de equipe com LOGIN INTERNO e SENHA TEMPORÁRIA, sem e-mail, de
+// ponta a ponta pela tela, contra o backend real e o PostgreSQL DESCARTÁVEL.
+// Nada é enviado: este fluxo não usa e-mail.
 //
-// 1. O dono cria, em Configurações → Equipe e acessos, o acesso da
-//    profissional (usuário, permissão) e vê a senha temporária uma vez.
-// 2. A funcionária entra com o usuário: só a troca de senha funciona (pela
-//    tela e pela API) até ela escolher a dela; depois, a própria agenda.
-// 3. O mesmo nome de usuário não serve para outra pessoa.
+// 1. O dono cria, em Configurações → Equipe e acessos → "Criar acesso", o
+//    acesso da profissional (perfil, login com aparência de e-mail,
+//    permissão) e vê a senha temporária uma vez.
+// 2. A funcionária entra com o login: só a troca de senha funciona (pela
+//    tela e pela API) até ela escolher a dela; depois, a própria agenda e o
+//    link público do estabelecimento.
+// 3. O mesmo login não serve para outra pessoa, nem o e-mail de outra conta.
 // 4. O dono gera uma nova senha temporária: as sessões dela terminam e a
 //    troca volta a ser obrigatória.
 // 5. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
@@ -54,7 +56,7 @@ async function confirmarSenhaSePedir(page: Page, senha: string) {
 
 async function entrar(page: Page, identificador: string, senha: string) {
   await page.goto("/login");
-  await page.getByLabel("E-mail ou usuário").fill(identificador);
+  await page.getByLabel("E-mail ou login").fill(identificador);
   await page.getByLabel("Senha", { exact: true }).fill(senha);
   await page.getByRole("button", { name: "Entrar" }).click();
 }
@@ -64,10 +66,11 @@ async function novaPagina(browser: Browser) {
   return { contexto, page: await contexto.newPage() };
 }
 
-test("dono cria acesso com usuário e senha; troca obrigatória; nova senha temporária", async ({ page, browser }) => {
+test("dono cria acesso com login e senha; troca obrigatória; nova senha temporária", async ({ page, browser }) => {
   test.setTimeout(180_000);
   const marca = `usuarios-${id()}`;
-  const usuario = `bia.${marca}`;
+  // Aparência de e-mail, sem ser um: nada é enviado para ele.
+  const usuario = `bia@${marca}.salao`;
 
   // ------------------------------------------------------------- cenário
   const dono = await criarContaDeTeste(page.request, {
@@ -84,34 +87,41 @@ test("dono cria acesso com usuário e senha; troca obrigatória; nova senha temp
 
   // ------------------------------------------- 1. dono cria o acesso da Bia
   await page.goto("/conta/configuracoes/equipe");
-  const bia = page.getByTestId("membro-equipe").filter({ hasText: "Bia Souza" });
-  await bia.getByRole("button", { name: "Criar usuário e senha" }).click();
-  const formulario = bia.getByTestId("criar-acesso-usuario");
-  await expect(formulario.getByLabel("Nome de usuário")).toHaveValue("bia.souza");
-  await formulario.getByLabel("Nome de usuário").fill(usuario);
+  await page.getByTestId("profissional-sem-acesso").filter({ hasText: "Bia Souza" }).getByRole("button", { name: /Criar acesso/ }).click();
+  const formulario = page.getByTestId("criar-acesso");
+  await expect(formulario.getByLabel("Profissional vinculado")).toHaveValue(/.+/);
+  await expect(formulario.getByLabel("Login")).toHaveValue("bia.souza");
+  await formulario.getByLabel("Login").fill(usuario);
   await formulario.getByLabel("Iniciar os próprios atendimentos").check();
+  await expect(formulario.getByTestId("resumo-permissoes")).toContainText("iniciar os próprios atendimentos");
+  await capturar(page, "criar-acesso");
   await formulario.getByRole("button", { name: "Criar acesso" }).click();
   await confirmarSenhaSePedir(page, SENHA_DONO);
-  const quadro = bia.getByTestId("senha-temporaria");
+  const quadro = page.getByTestId("senha-temporaria");
   await expect(quadro).toBeVisible();
   await expect(quadro.getByTestId("senha-temporaria-usuario")).toHaveText(usuario);
   const temporaria = (await quadro.getByTestId("senha-temporaria-valor").textContent())!.trim();
   expect(temporaria).toMatch(/^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/);
   await capturar(page, "senha-temporaria");
   await quadro.getByRole("button", { name: "Já entreguei" }).click();
-  await expect(bia).toContainText(`usuário ${usuario}`);
-  await expect(bia).toContainText("Acesso ativo");
+  const bia = page.getByTestId("acesso-equipe").filter({ hasText: "Bia Souza" });
+  await expect(bia).toContainText(`login ${usuario}`);
+  await expect(bia.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
+  await expect(bia.getByTestId("perfil-acesso")).toHaveText("Profissional");
+  await expect(bia.getByTestId("profissional-vinculado")).toHaveText("Bia Souza");
   // Depois de fechado, a senha não aparece mais em lugar nenhum.
   await page.reload();
   await expect(page.getByRole("main")).not.toContainText(temporaria);
 
-  // O mesmo usuário não serve para o Caio.
-  const caio = page.getByTestId("membro-equipe").filter({ hasText: "Caio Lima" });
-  await caio.getByRole("button", { name: "Criar usuário e senha" }).click();
-  await caio.getByLabel("Nome de usuário").fill(usuario.toUpperCase());
-  await caio.getByRole("button", { name: "Criar acesso" }).click();
-  await confirmarSenhaSePedir(page, SENHA_DONO);
-  await expect(caio.getByTestId("erro-criar-acesso")).toContainText("já está em uso");
+  // O mesmo login não serve para o Caio, nem o e-mail real da dona.
+  await page.getByTestId("profissional-sem-acesso").filter({ hasText: "Caio Lima" }).getByRole("button", { name: /Criar acesso/ }).click();
+  const caio = page.getByTestId("criar-acesso");
+  for (const emUso of [usuario.toUpperCase(), `${marca}-dona@example.test`]) {
+    await caio.getByLabel("Login").fill(emUso);
+    await caio.getByRole("button", { name: "Criar acesso" }).click();
+    await confirmarSenhaSePedir(page, SENHA_DONO);
+    await expect(caio.getByTestId("erro-criar-acesso")).toContainText("já está em uso");
+  }
   await caio.getByRole("button", { name: "Cancelar" }).click();
 
   // ------------------------------------------- 2. primeiro acesso da Bia
@@ -145,6 +155,9 @@ test("dono cria acesso com usuário e senha; troca obrigatória; nova senha temp
       "Configurações",
     ]);
     await expect(fp.page.getByTestId("minhas-permissoes")).toContainText("Iniciar os seus atendimentos");
+    // O link público do estabelecimento, para copiar ou abrir (sem parâmetro inventado).
+    await expect(fp.page.getByTestId("link-agendamento-endereco")).toHaveText(new RegExp(`/agendar/${dono.tenant.slug}$`));
+    await capturar(fp.page, "minha-agenda-com-link");
     expect((await fp.page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/range?from=2031-01-01&to=2031-01-02`)).status()).toBe(
       200,
     );

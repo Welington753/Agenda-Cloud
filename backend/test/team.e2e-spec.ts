@@ -3,7 +3,7 @@
 // regras (vínculo, vaga, profissional) são provadas contra PostgreSQL em
 // team-access-postgres.db-e2e-spec.ts.
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException, type INestApplication } from '@nestjs/common';
+import { ConflictException, UnauthorizedException, type INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -13,6 +13,7 @@ import { TeamService } from '../src/team/team.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { InvitesService } from '../src/accounts/invites.service.js';
 import { EstablishmentAdminService } from '../src/platform/establishment-admin.service.js';
+import { StaffAccountsService } from '../src/team/staff-accounts.service.js';
 
 const CHAVE = 'chave-de-formulario-0001';
 const INSTANTE = '2026-10-27T13:00:00.000Z';
@@ -24,6 +25,7 @@ describe('equipe e agenda do funcionário — HTTP', () => {
   const agenda = { day: vi.fn(), changeOwnStatus: vi.fn() };
   const invites = { inviteStaff: vi.fn(), resendStaff: vi.fn(), revokeStaff: vi.fn() };
   const establishments = { update: vi.fn(), suspend: vi.fn(), archive: vi.fn(), reactivate: vi.fn(), changePlan: vi.fn() };
+  const staffAccounts = { create: vi.fn(), resetTemporaryPassword: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -31,7 +33,7 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       context.switchToHttp().getRequest().auth = { userId: 'proven_user', sessionId: 'proven_session' };
       return true;
     });
-    for (const fn of [...Object.values(team), ...Object.values(agenda), ...Object.values(invites), ...Object.values(establishments)]) {
+    for (const fn of [...Object.values(team), ...Object.values(agenda), ...Object.values(invites), ...Object.values(establishments), ...Object.values(staffAccounts)]) {
       fn.mockResolvedValue({ ok: true });
     }
     const module = await Test.createTestingModule({ imports: [AppModule] })
@@ -45,6 +47,8 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       .useValue(invites)
       .overrideProvider(EstablishmentAdminService)
       .useValue(establishments)
+      .overrideProvider(StaffAccountsService)
+      .useValue(staffAccounts)
       .overrideGuard(SessionGuard)
       .useValue(guard)
       .compile();
@@ -138,8 +142,77 @@ describe('equipe e agenda do funcionário — HTTP', () => {
     expect(invites.inviteStaff).toHaveBeenCalledWith('proven_user', 't1', base);
   });
 
-  it('permissões: só as três do funcionário, sem duplicar', async () => {
-    for (const granted of [['AGENDA_GERENCIAR'], ['ATENDIMENTO_PROPRIO_INICIAR', 'ATENDIMENTO_PROPRIO_INICIAR'], ['DONO']]) {
+  it('criar acesso: perfil, login (inclusive com @), profissional opcional só no gerente; nada forjado', async () => {
+    const base = { requestKey: CHAVE, name: 'Pessoa Fictícia', permissions: [] };
+    for (const corpo of [
+      // Profissional sem profissional ligado.
+      { ...base, username: 'maria@salao' },
+      { ...base, role: 'DONO', username: 'dono2', professionalId: 'p1' },
+      { ...base, role: 'GERENTE', username: 'sem-dominio@' },
+      { ...base, role: 'GERENTE', username: 'g1', tenantId: 't2' },
+      { ...base, role: 'GERENTE', username: 'g1', userId: 'outra_conta' },
+      { ...base, role: 'GERENTE', username: 'g1', email: 'g1@exemplo.test' },
+      { ...base, role: 'GERENTE', username: 'g1', permissions: ['EQUIPE_GERENCIAR'] },
+    ]) {
+      await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo).expect(400);
+    }
+    expect(staffAccounts.create).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post('/tenants/t1/team/staff-accounts')
+      .send({ ...base, role: 'GERENTE', username: ' Maria@Salao ' })
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(staffAccounts.create).toHaveBeenCalledWith('proven_user', 'proven_session', 't1', {
+      ...base,
+      role: 'GERENTE',
+      username: 'maria@salao',
+    });
+    // Corpo da tela anterior: sem `role`, vira PROFISSIONAL.
+    await request(app.getHttpServer())
+      .post('/tenants/t1/team/staff-accounts')
+      .send({ ...base, username: 'bia.salao', professionalId: 'p1' })
+      .expect(200);
+    expect(staffAccounts.create).toHaveBeenLastCalledWith('proven_user', 'proven_session', 't1', {
+      ...base,
+      role: 'PROFISSIONAL',
+      username: 'bia.salao',
+      professionalId: 'p1',
+    });
+  });
+
+  it('recusas em série na criação de acesso e no convite param em 429; criações aceitas não contam', async () => {
+    const corpo = { requestKey: CHAVE, role: 'GERENTE', name: 'Pessoa Fictícia', username: 'recepcao@salao', permissions: [] };
+    for (let i = 0; i < 12; i++) {
+      await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo).expect(200);
+    }
+    staffAccounts.create.mockRejectedValue(
+      new ConflictException({ code: 'USUARIO_EM_USO', message: 'Este login já está em uso na plataforma. Escolha outro.' }),
+    );
+    for (let i = 0; i < 9; i++) {
+      await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo).expect(409);
+    }
+    // O convite soma no mesmo limite (mesma sondagem por outro caminho).
+    await request(app.getHttpServer()).post('/tenants/t1/team/invites').send({ email: 'x' }).expect(400);
+    staffAccounts.create.mockClear();
+    const bloqueada = await request(app.getHttpServer()).post('/tenants/t1/team/staff-accounts').send(corpo);
+    expect(bloqueada.status).toBe(429);
+    expect(staffAccounts.create).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post('/tenants/t1/team/invites')
+      .send({ requestKey: CHAVE, professionalId: 'p1', name: 'Pessoa Fictícia', email: 'pessoa@example.test' })
+      .expect(429);
+    expect(invites.inviteStaff).not.toHaveBeenCalled();
+    // As outras rotas da equipe não entram no limite.
+    await request(app.getHttpServer()).get('/tenants/t1/team').expect(200);
+  });
+
+  it('permissões: só as do catálogo da equipe, sem duplicar (quem recebe o quê é do serviço)', async () => {
+    for (const granted of [
+      ['EQUIPE_GERENCIAR'],
+      ['CONFIGURACOES_GERENCIAR'],
+      ['ATENDIMENTO_PROPRIO_INICIAR', 'ATENDIMENTO_PROPRIO_INICIAR'],
+      ['DONO'],
+    ]) {
       await request(app.getHttpServer())
         .put('/tenants/t1/team/members/m1/permissions')
         .send({ expectedGranted: [], granted })

@@ -33,7 +33,8 @@ import {
 } from "@/lib/profissionais/agenda-visual";
 import type { AgendamentoReal } from "@/lib/api/appointments-api";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
-import { acoesDaReserva, temAlgumaAcao, type AcoesDaReserva } from "@/lib/profissionais/andamento";
+import { acoesDaReserva, acoesPermitidas, temAlgumaAcao, type AcoesDaReserva } from "@/lib/profissionais/andamento";
+import { useAreas } from "@/lib/conta/use-areas";
 import type { EstadoAgenda } from "@/lib/profissionais/use-agendamentos-reais";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -98,6 +99,7 @@ export function AgendaDoDia({
   aoAlterarStatus,
   aoRemarcar,
 }: AgendaDoDiaProps) {
+  const tem = useAreas();
   // A confirmação (cancelar, concluir, registrar falta) vive AQUI, não na
   // linha da reserva: o reload da agenda (inclusive o que segue um 409) passa
   // por "carregando" e desmonta a lista. Guardada aqui, ela sobrevive e pode
@@ -174,7 +176,7 @@ export function AgendaDoDia({
   }, [alvoId, visiveis, visualizacao]);
 
   function renderizarReserva(agendamento: AgendamentoReal) {
-    const acoes = acoesDaReserva(agendamento, agora);
+    const acoes = acoesPermitidas(acoesDaReserva(agendamento, agora), tem);
     const daLinha = confirmacao?.exibida.id === agendamento.id ? confirmacao : null;
     return (
       <CartaoAtendimento

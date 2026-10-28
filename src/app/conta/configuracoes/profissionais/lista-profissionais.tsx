@@ -24,6 +24,9 @@ interface ListaProfissionaisProps {
   gravando: boolean;
   confirmando: ProfissionalReal | null;
   reativandoId: string | null;
+  /** `false`: só consulta (gerente sem a permissão de gerenciar). */
+  podeGerenciar?: boolean;
+  podeConsultarDisponibilidade?: boolean;
   aoEditar: (profissional: ProfissionalReal) => void;
   aoPedirDesativacao: (profissional: ProfissionalReal) => void;
   aoCancelarDesativacao: () => void;
@@ -36,6 +39,8 @@ export function ListaProfissionais({
   gravando,
   confirmando,
   reativandoId,
+  podeGerenciar = true,
+  podeConsultarDisponibilidade = true,
   aoEditar,
   aoPedirDesativacao,
   aoCancelarDesativacao,
@@ -115,7 +120,7 @@ export function ListaProfissionais({
                     <CalendarClock size={14} aria-hidden="true" />
                     Horários
                   </Link>
-                  {profissional.active && (
+                  {profissional.active && podeConsultarDisponibilidade && (
                     <Link
                       href={`/conta/configuracoes/profissionais/${profissional.id}/disponibilidade`}
                       aria-label={`Disponibilidade de ${profissional.name}`}
@@ -159,7 +164,7 @@ export function ListaProfissionais({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2" hidden={!podeGerenciar}>
                     <Botao
                       type="button"
                       variante="fantasma"

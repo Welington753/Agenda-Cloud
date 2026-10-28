@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Clock, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { useAreas } from "@/lib/conta/use-areas";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
 import { useHorariosReais } from "@/lib/profissionais/use-horarios-reais";
@@ -32,6 +33,8 @@ import { EditorSemana } from "./editor-semana";
 
 export default function HorariosDoProfissionalPage() {
   const { estado: estadoSessao } = useRealAuth();
+  // O gerente que só consulta profissionais vê os horários sem poder salvar.
+  const podeGerenciar = useAreas()("PROFISSIONAIS_GERENCIAR");
   const { notificar } = useToast();
   const router = useRouter();
   const params = useParams<{ professionalId: string }>();
@@ -177,7 +180,7 @@ export default function HorariosDoProfissionalPage() {
               semana={semana}
               errosDeCampo={errosDeCampo}
               erroDoDia={erroDoDia}
-              desabilitado={gravando}
+              desabilitado={gravando || !podeGerenciar}
               aoAlterar={alterarDia}
             />
 
@@ -188,7 +191,7 @@ export default function HorariosDoProfissionalPage() {
             )}
 
             <div className="flex gap-2">
-              <Botao type="submit" disabled={gravando} aria-busy={gravando}>
+              <Botao type="submit" disabled={gravando} aria-busy={gravando} hidden={!podeGerenciar}>
                 {gravando ? "Salvando..." : "Salvar horários"}
               </Botao>
               <Botao

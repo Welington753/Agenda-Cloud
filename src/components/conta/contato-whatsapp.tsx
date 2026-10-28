@@ -61,6 +61,9 @@ interface ContatoDaReservaProps {
 /** Atalhos do cartão da agenda: conversa e "Combinar outro horário". */
 export function ContatoDaReserva({ agendamento, estabelecimento }: ContatoDaReservaProps) {
   const { consumer } = agendamento;
+  // Sem o contato na resposta (gerente sem a consulta de clientes), nenhum atalho.
+  if (!consumer.whatsapp) return null;
+  const telefone = consumer.whatsapp;
   const mensagem = STATUS_COMBINAVEIS.has(agendamento.status)
     ? mensagemCombinarOutroHorario({
         nomeCliente: consumer.name,
@@ -70,11 +73,11 @@ export function ContatoDaReserva({ agendamento, estabelecimento }: ContatoDaRese
         timezone: agendamento.timezone,
       })
     : null;
-  const hrefCombinar = mensagem ? linkWhatsapp(consumer.whatsapp, mensagem) : null;
+  const hrefCombinar = mensagem ? linkWhatsapp(telefone, mensagem) : null;
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="contato-reserva">
-      <LinkWhatsappCliente nome={consumer.name} telefone={consumer.whatsapp} />
+      <LinkWhatsappCliente nome={consumer.name} telefone={telefone} />
       {hrefCombinar && (
         <a
           href={hrefCombinar}

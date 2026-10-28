@@ -23,6 +23,7 @@
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
+import { managerCan } from '../common/manager-permissions.js';
 
 /** Papéis com acesso padrão à gestão de serviços neste lote. */
 const ROLES_WITH_SERVICES_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
@@ -48,6 +49,7 @@ export function canViewServices(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SERVICOS_VISUALIZAR');
   if (!ROLES_WITH_SERVICES_ACCESS.has(role)) return false;
   return !isDeniedByOverride(overrides, Permission.SERVICOS_VISUALIZAR);
 }
@@ -56,6 +58,7 @@ export function canManageServices(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SERVICOS_GERENCIAR');
   if (!ROLES_WITH_SERVICES_ACCESS.has(role)) return false;
   // Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
   // DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver".

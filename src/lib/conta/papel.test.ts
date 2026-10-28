@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { inicioDoPerfil, perfilDoPapel, redirecionamentoDoPerfil } from "./papel";
+import { inicioDoPerfil, perfilDoPapel, redirecionamentoDoPerfil, temArea } from "./papel";
+import { itensDaNavegacao } from "./navegacao";
 
 describe("perfil da área real por papel", () => {
-  it("DONO opera, PROFISSIONAL é funcionário, os demais não têm área", () => {
+  it("DONO opera, PROFISSIONAL é funcionário, GERENTE tem as áreas concedidas, os demais não têm área", () => {
     expect(perfilDoPapel("DONO")).toBe("dono");
     expect(perfilDoPapel("PROFISSIONAL")).toBe("funcionario");
-    expect(perfilDoPapel("GERENTE")).toBe("sem-area");
+    expect(perfilDoPapel("GERENTE")).toBe("gerente");
     expect(perfilDoPapel("RECEPCIONISTA")).toBe("sem-area");
     expect(perfilDoPapel(null)).toBe("sem-area");
   });
@@ -67,5 +68,55 @@ describe("redirecionamentoDoPerfil", () => {
     }
     expect(redirecionamentoDoPerfil("sem-area", "/conta/agendamentos")).toBe("/conta/configuracoes");
     expect(redirecionamentoDoPerfil("sem-area", "/conta/minha-agenda")).toBe("/conta/configuracoes");
+  });
+});
+
+describe("gerente: só as áreas que o servidor liberou", () => {
+  const gerente = (areas: string[]) => ({ role: "GERENTE" as const, areas });
+
+  it("sem área nenhuma: só Configurações; um gerente antigo sem a lista também", () => {
+    expect(inicioDoPerfil("gerente", gerente([]))).toBe("/conta/configuracoes");
+    expect(temArea({ role: "GERENTE" }, "AGENDA_VER")).toBe(false);
+    expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos", gerente([]))).toBe("/conta/configuracoes");
+    expect(
+      itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: gerente([]) }).map((i) => i.rotulo),
+    ).toEqual(["Configurações"]);
+  });
+
+  it("menu e começo seguem as áreas; a URL de uma área não concedida leva ao começo", () => {
+    const g = gerente(["AGENDA_VER", "PROFISSIONAIS_VER", "SOLICITACOES_VER", "RECEBIMENTOS_VER", "AGENDA_PROPRIA_VER"]);
+    expect(inicioDoPerfil("gerente", g)).toBe("/conta/agendamentos");
+    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: g });
+    expect(itens.map((i) => i.rotulo)).toEqual(["Agenda", "Minha agenda", "Recebimentos", "Profissionais", "Configurações"]);
+    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
+      "Agenda",
+      "Minha agenda",
+      "Recebimentos",
+      "Configurações",
+    ]);
+    for (const livre of ["/conta/agendamentos", "/conta/agendamentos/solicitacoes", "/conta/recebimentos", "/conta/minha-agenda"]) {
+      expect(redirecionamentoDoPerfil("gerente", livre, g), livre).toBeNull();
+    }
+    for (const fechada of [
+      "/conta/visao-geral",
+      "/conta/clientes",
+      "/conta/configuracoes/servicos",
+      "/conta/configuracoes/equipe",
+      "/conta/configuracoes/estabelecimento",
+    ]) {
+      expect(redirecionamentoDoPerfil("gerente", fechada, g), fechada).toBe("/conta/agendamentos");
+    }
+    // Personais continuam de todos.
+    expect(redirecionamentoDoPerfil("gerente", "/conta/configuracoes/perfil", g)).toBeNull();
+  });
+
+  it("só solicitações: o item próprio no menu, e a agenda geral fica fechada", () => {
+    const g = gerente(["SOLICITACOES_VER"]);
+    expect(inicioDoPerfil("gerente", g)).toBe("/conta/agendamentos/solicitacoes");
+    expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos/solicitacoes", g)).toBeNull();
+    expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos", g)).toBe("/conta/agendamentos/solicitacoes");
+    expect(
+      itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: g }).map((i) => i.rotulo),
+    ).toEqual(["Solicitações", "Configurações"]);
   });
 });

@@ -58,6 +58,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
@@ -95,8 +96,12 @@ import {
   canCreateAppointments,
   canManageAppointmentStatus,
   canRescheduleAppointments,
+  canHandleBookingRequests,
   canViewAppointments,
+  canViewBookingRequests,
 } from './appointment-access.js';
+import { managerCan } from '../common/manager-permissions.js';
+import type { AuthorizedTenant } from '../common/tenant-authorization.js';
 import {
   DESTINO_DA_ACAO,
   mensagemDeRecusa,
@@ -194,9 +199,15 @@ export interface AppointmentView {
   service: { id: string; name: string };
   /** Snapshot congelado no momento da reserva — nunca relido do cadastro
    * atual do cliente. */
-  consumer: { id: string; name: string; whatsapp: string };
+  /** `whatsapp` é `null` quando quem pediu não pode ver o contato do
+   * cliente (ver `recortarParaQuemPediu`). */
+  consumer: { id: string; name: string; whatsapp: string | null };
   unitId: string;
   createdAt: string;
+  /** Presente só quando a resposta escondeu algo de quem pediu: `price`
+   * (então `priceCents` null NÃO é "sob consulta") e `contact` (telefone e
+   * observações). */
+  hidden?: ('price' | 'contact')[];
 }
 
 /** Horários oferecidos para remarcar UMA reserva (Lote 6D.6). Mesma forma dos
@@ -339,7 +350,7 @@ export class AppointmentsService {
         return appointment;
       });
 
-      const [view] = await this.toViews(this.dataSource.manager, salvo.tenantId, [salvo]);
+      const [view] = await this.toViews(this.dataSource.manager, salvo.tenantId, [salvo], authorized);
       return view;
     } catch (error) {
       // SÓ a constraint de sobreposição vira 409. Um erro de FK, de conexão
@@ -455,14 +466,15 @@ export class AppointmentsService {
   }
 
   /** Reservas `PENDING` com início no futuro, para o painel de solicitações.
-   * Mesma autorização da agenda (`canViewAppointments`). */
+   * Dono: a autorização da agenda; gerente: `SOLICITACOES_VISUALIZAR`
+   * (`canViewBookingRequests`). */
   async listPending(
     userId: string,
     tenantId: string,
   ): Promise<{ appointments: AppointmentView[]; complete: boolean }> {
     const manager = this.dataSource.manager;
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
-      permitido: canViewAppointments,
+      permitido: canViewBookingRequests,
       mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
     });
 
@@ -477,7 +489,7 @@ export class AppointmentsService {
     });
 
     return {
-      appointments: await this.toViews(manager, authorized.tenantId, encontrados),
+      appointments: await this.toViews(manager, authorized.tenantId, encontrados, authorized),
       complete: encontrados.length < LIMITE_DE_PENDENTES,
     };
   }
@@ -595,7 +607,7 @@ export class AppointmentsService {
     return {
       timezone,
       date: query.date,
-      appointments: await this.toViews(manager, authorized.tenantId, doDia),
+      appointments: await this.toViews(manager, authorized.tenantId, doDia, authorized),
       // A consulta bateu no teto: a janela é um superconjunto do dia e vem
       // ordenada por início, então o que ficou de fora são justamente as
       // ÚLTIMAS reservas do dia. `false` avisa o cliente de que a lista pode
@@ -653,6 +665,7 @@ export class AppointmentsService {
       manager,
       authorized.tenantId,
       doPeriodo.map(({ appointment }) => appointment),
+      authorized,
     );
 
     return {
@@ -694,10 +707,14 @@ export class AppointmentsService {
     appointmentId: string,
     dto: CancelAppointmentDto,
   ): Promise<AppointmentView> {
+    // Recusar uma solicitação é cancelar uma reserva ainda `PENDING`: o
+    // gerente com `SOLICITACOES_TRATAR` (sem o cancelamento geral) só passa
+    // daqui para isso, conferido abaixo com a reserva travada.
     const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
-      permitido: canCancelAppointments,
+      permitido: (role, overrides) => canCancelAppointments(role, overrides) || canHandleBookingRequests(role, overrides),
       mensagemProibido: APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
     });
+    const soSolicitacao = !canCancelAppointments(authorized.role, authorized.overrides);
 
     const esperado = new Date(dto.expectedStartAt);
 
@@ -713,6 +730,10 @@ export class AppointmentsService {
 
       // Já cancelada: devolve o estado, sem gravar nada.
       if (appointment.status === AppointmentStatus.CANCELED) return appointment;
+
+      if (soSolicitacao && appointment.status !== AppointmentStatus.PENDING) {
+        throw new ForbiddenException(APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE);
+      }
 
       this.exigirEstadoAlteravel(appointment, CANCEL_NOT_ALLOWED_MESSAGE);
 
@@ -758,7 +779,7 @@ export class AppointmentsService {
       return appointment;
     });
 
-    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo], authorized);
     return view;
   }
 
@@ -790,13 +811,18 @@ export class AppointmentsService {
     acao: AcaoDeStatus,
     dto: AppointmentStatusActionDto,
   ): Promise<AppointmentView> {
+    // Confirmar é a única ação que trata uma solicitação: o gerente com
+    // `SOLICITACOES_TRATAR` (sem o andamento geral) confirma; iniciar,
+    // concluir e marcar falta continuam exigindo o andamento. Confirmar só
+    // sai de `PENDING` (appointment-status-transitions.ts).
     const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
-      permitido: canManageAppointmentStatus,
+      permitido: (role, overrides) =>
+        canManageAppointmentStatus(role, overrides) || (acao === 'confirm' && canHandleBookingRequests(role, overrides)),
       mensagemProibido: APPOINTMENT_STATUS_FORBIDDEN_MESSAGE,
     });
 
     const salvo = await this.applyStatusChange(authorized.tenantId, appointmentId, acao, dto, userId);
-    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+    const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo], authorized);
     return view;
   }
 
@@ -985,7 +1011,7 @@ export class AppointmentsService {
         return appointment;
       });
 
-      const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo]);
+      const [view] = await this.toViews(this.dataSource.manager, authorized.tenantId, [salvo], authorized);
       return view;
     } catch (error) {
       // Mesmo tratamento da criação: SÓ a constraint de sobreposição vira 409.
@@ -1156,7 +1182,7 @@ export class AppointmentsService {
     });
     if (!appointment) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
 
-    const [view] = await this.toViews(manager, authorized.tenantId, [appointment]);
+    const [view] = await this.toViews(manager, authorized.tenantId, [appointment], authorized);
     return view;
   }
 
@@ -1178,6 +1204,16 @@ export class AppointmentsService {
    * profissional e serviço dentro do laço viraria N+1 numa agenda cheia.
    */
   private async toViews(
+    manager: EntityManager,
+    tenantId: string,
+    appointments: Appointment[],
+    quem?: AuthorizedTenant,
+  ): Promise<AppointmentView[]> {
+    const views = await this.montarViews(manager, tenantId, appointments);
+    return quem ? views.map((view) => recortarParaQuemPediu(view, quem)) : views;
+  }
+
+  private async montarViews(
     manager: EntityManager,
     tenantId: string,
     appointments: Appointment[],
@@ -1245,6 +1281,31 @@ export class AppointmentsService {
       };
     });
   }
+}
+
+/**
+ * O que a resposta mostra para quem pediu. O dono vê tudo, como sempre. O
+ * GERENTE vê o telefone e as observações do cliente só com a consulta de
+ * clientes (`CONSUMIDORES_VISUALIZAR`), e o preço só com a consulta de
+ * recebimentos (`RECEBIMENTOS_VISUALIZAR`): ter a agenda ou as solicitações
+ * não entrega contato nem dinheiro por tabela.
+ */
+export function recortarParaQuemPediu(view: AppointmentView, quem: Pick<AuthorizedTenant, 'role' | 'overrides'>): AppointmentView {
+  if (quem.role !== 'GERENTE') return view;
+  const overrides = quem.overrides ?? [];
+  const contato = managerCan(quem.role, overrides, 'CONSUMIDORES_VISUALIZAR');
+  const dinheiro = managerCan(quem.role, overrides, 'RECEBIMENTOS_VISUALIZAR');
+  if (contato && dinheiro) return view;
+  const hidden: ('price' | 'contact')[] = [];
+  if (!dinheiro) hidden.push('price');
+  if (!contato) hidden.push('contact');
+  return {
+    ...view,
+    hidden,
+    priceCents: dinheiro ? view.priceCents : null,
+    notes: contato ? view.notes : null,
+    consumer: { ...view.consumer, whatsapp: contato ? view.consumer.whatsapp : null },
+  };
 }
 
 /** Reexportado para os testes conferirem que a listagem e o motor de

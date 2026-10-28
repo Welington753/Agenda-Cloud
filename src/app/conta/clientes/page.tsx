@@ -31,6 +31,7 @@ import { useClientesReais } from "@/lib/clientes/use-clientes-reais";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { useAreas } from "@/lib/conta/use-areas";
 import { FormularioCliente } from "./formulario-cliente";
 import { ListaClientes } from "./lista-clientes";
 import { ROTA_AGENDA } from "@/lib/conta/rotas";
@@ -43,6 +44,8 @@ interface ErroCadastro {
 
 export default function ClientesPage() {
   const { estado: estadoSessao } = useRealAuth();
+  // O gerente cadastra clientes só se o dono concedeu; o servidor confere de novo.
+  const podeCadastrar = useAreas()("CLIENTES_GERENCIAR");
   const router = useRouter();
 
   const sessao = estadoSessao.status === "autenticado" ? estadoSessao.sessao : null;
@@ -143,7 +146,7 @@ export default function ClientesPage() {
       titulo="Clientes"
       descricao="Todos os clientes do estabelecimento, em ordem alfabética. Filtre pelo nome ou WhatsApp."
       acoes={
-        !formularioAberto ? (
+        !formularioAberto && podeCadastrar ? (
           <Botao type="button" onClick={abrirFormulario}>
             <UserPlus size={16} aria-hidden="true" />
             Novo cliente
@@ -249,7 +252,7 @@ export default function ClientesPage() {
         aoRepetir={repetir}
         aoCarregarMais={carregarMais}
         aoLimparBusca={limparBusca}
-        aoCadastrar={formularioAberto ? null : abrirFormulario}
+        aoCadastrar={formularioAberto || !podeCadastrar ? null : abrirFormulario}
       />
     </PaginaConta>
   );

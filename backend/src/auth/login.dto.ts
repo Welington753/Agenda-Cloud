@@ -5,43 +5,64 @@
 // específica, então rejeitar fora dessa faixa aqui não é um oráculo de
 // e-mail existente (todo mundo passa pela mesma regra).
 //
-// "E-mail ou usuário": o corpo novo traz `login`; com `@` ele é um e-mail,
-// sem `@` é um nome de usuário (que nunca tem `@`, ver USERNAME_PATTERN na
-// migration StaffLogin). O corpo antigo (`email`) continua aceito, então a
-// tela anterior segue entrando enquanto as duas versões convivem.
+// "E-mail ou login": o corpo novo traz `login`. Desde a migration
+// TeamManagerAccess, o login interno criado pelo dono pode ter a aparência de
+// um e-mail (`maria@salao`), então a presença de `@` não decide mais nada: o
+// identificador normalizado é procurado nos dois campos, e o banco garante
+// que o mesmo texto nunca é o e-mail de uma conta e o login de outra
+// (`uq_users_login_identifier`). O corpo antigo (`email`) continua aceito,
+// então a tela anterior segue entrando enquanto as duas versões convivem.
 import { z } from 'zod';
+import {
+  LOGIN_USERNAME_MAX,
+  LOGIN_USERNAME_MIN,
+  LOGIN_USERNAME_PATTERN,
+} from '../migrations/1793145600000-TeamManagerAccess.js';
 
 /** Mesma normalização do login (aparar e minúsculas) e o banco compara com
  * `citext`: a administração nunca cria uma segunda conta para o mesmo
  * endereço escrito com outra caixa. */
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 
-/** Nome de usuário de login: minúsculo, 3 a 40 caracteres, letras sem acento,
- * números, ponto, hífen e sublinhado, começando por letra ou número. Único
- * na plataforma inteira. */
+const USERNAME_REGEX = new RegExp(LOGIN_USERNAME_PATTERN);
+
+/** Login interno: minúsculo, 3 a 80 caracteres, letras sem acento, números,
+ * ponto, hífen, sublinhado e `+`, começando por letra ou número; pode ter uma
+ * `@` seguida de um domínio (`maria@salao`). Não precisa ser um e-mail real
+ * e nunca é tratado como um: não vai para `users.email`, não é verificado e
+ * não recebe mensagem. Único na plataforma inteira, também contra os e-mails. */
 export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .regex(/^[a-z0-9][a-z0-9._-]{2,39}$/, 'Use de 3 a 40 letras sem acento, números, ponto, hífen ou sublinhado.');
+  .min(LOGIN_USERNAME_MIN, 'Use de 3 a 80 caracteres.')
+  .max(LOGIN_USERNAME_MAX, 'Use de 3 a 80 caracteres.')
+  .regex(
+    USERNAME_REGEX,
+    'Use letras sem acento, números, ponto, hífen, sublinhado ou +, começando por letra ou número. Uma @ é aceita se vier seguida de um domínio, como maria@salao.',
+  );
 
 export const passwordSchema = z.string().min(10).max(128);
 
-const LOGIN_INVALIDO = 'Informe um e-mail ou um nome de usuário válido.';
+const LOGIN_INVALIDO = 'Informe um e-mail ou um login válido.';
 
 export const loginSchema = z
   .union([
-    z.object({ email: emailSchema, password: passwordSchema }).strict(),
+    // Corpo antigo: o web anterior manda `email` sempre que o texto tem `@`,
+    // inclusive um login interno como `maria@salao` (sem domínio de e-mail
+    // real). O texto é conferido abaixo como e-mail OU login, igual a `login`.
+    z
+      .object({ email: z.string().trim().min(1).max(254).refine((v) => v.includes('@')), password: passwordSchema })
+      .strict(),
     z.object({ login: z.string().trim().min(1).max(254), password: passwordSchema }).strict(),
   ])
-  .transform((valor, ctx): { email?: string; username?: string; password: string } => {
-    if ('email' in valor) return { email: valor.email, password: valor.password };
-    if (valor.login.includes('@')) {
-      const comoEmail = emailSchema.safeParse(valor.login);
-      if (comoEmail.success) return { email: comoEmail.data, password: valor.password };
-    } else {
-      const comoUsuario = usernameSchema.safeParse(valor.login);
-      if (comoUsuario.success) return { username: comoUsuario.data, password: valor.password };
+  .transform((valor, ctx): { identifier: string; password: string } => {
+    const texto = 'email' in valor ? valor.email : valor.login;
+    const comoEmail = emailSchema.safeParse(texto);
+    const comoUsuario = usernameSchema.safeParse(texto);
+    if (comoEmail.success || comoUsuario.success) {
+      // As duas normalizações são a mesma (aparar e minúsculas).
+      return { identifier: comoEmail.success ? comoEmail.data : comoUsuario.data!, password: valor.password };
     }
     ctx.addIssue({ code: 'custom', path: ['login'], message: LOGIN_INVALIDO });
     return z.NEVER;

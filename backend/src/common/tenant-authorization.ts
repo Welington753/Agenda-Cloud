@@ -41,6 +41,38 @@ export interface AuthorizedTenant {
   tenantId: string;
   membershipId: string;
   role: EstablishmentRole;
+  /** Os ajustes que valem (ver `effectiveOverrides`), para quem precisa
+   * decidir, depois da prova, o que a resposta mostra. */
+  overrides?: readonly PermissionOverrideLike[];
+}
+
+/**
+ * Os ajustes que de fato valem para o vínculo.
+ *
+ * GERENTE só recebe área por `GRANTED` dado pelo dono na tela de equipe, e
+ * isso só vale depois que o dono CONFIRMOU as permissões daquele vínculo
+ * (`memberships.permissions_confirmed_at`, migration TeamManagerAccess). Um
+ * GERENTE antigo, de antes dessa tela, continua sem área nenhuma mesmo que
+ * tenha `GRANTED` gravado: os `DENIED` ficam (só restringem), os `GRANTED`
+ * somem. Para os demais papéis nada muda.
+ */
+export function effectiveOverrides<T extends { mode: string }>(
+  role: EstablishmentRole | string,
+  permissionsConfirmed: boolean,
+  overrides: readonly T[],
+): T[] {
+  if (role === 'GERENTE' && !permissionsConfirmed) return overrides.filter((o) => o.mode !== 'GRANTED');
+  return [...overrides];
+}
+
+/** A confirmação do dono para um vínculo GERENTE. A coluna é da migration
+ * TeamManagerAccess e fica fora da entidade (SQL explícito). */
+export async function permissionsConfirmed(manager: EntityManager, membershipId: string): Promise<boolean> {
+  const [linha] = await manager.query<{ confirmed: boolean }[]>(
+    'SELECT permissions_confirmed_at IS NOT NULL AS confirmed FROM memberships WHERE id = $1',
+    [membershipId],
+  );
+  return linha?.confirmed === true;
 }
 
 export interface PoliticaDeAcesso {
@@ -78,13 +110,18 @@ export async function resolveAuthorizedTenant(
     throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
   }
 
-  const overrides = await manager.find(MembershipPermissionOverride, {
+  const gravados = await manager.find(MembershipPermissionOverride, {
     where: { tenantId, membershipId: membership.id },
   });
+  // Só o GERENTE com alguma concessão depende da confirmação; os demais
+  // papéis (e o gerente sem nenhum GRANTED) não leem a coluna.
+  const precisaConfirmacao = membership.role === 'GERENTE' && gravados.some((o) => o.mode === 'GRANTED');
+  const confirmado = precisaConfirmacao ? await permissionsConfirmed(manager, membership.id) : false;
+  const overrides = effectiveOverrides(membership.role, confirmado, gravados);
 
   if (!politica.permitido(membership.role, overrides)) {
     throw new ForbiddenException(politica.mensagemProibido);
   }
 
-  return { tenantId, membershipId: membership.id, role: membership.role };
+  return { tenantId, membershipId: membership.id, role: membership.role, overrides };
 }

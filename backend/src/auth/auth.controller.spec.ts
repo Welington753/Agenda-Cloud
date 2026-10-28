@@ -20,7 +20,7 @@ function buildConfigServiceStub(nodeEnv: string): ConfigService {
 }
 
 const LOGIN_DTO: LoginDto = {
-  email: 'maria@example.com',
+  identifier: 'maria@example.com',
   password: 'senha-valida-123',
 };
 

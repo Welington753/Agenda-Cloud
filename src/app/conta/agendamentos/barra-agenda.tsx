@@ -32,7 +32,8 @@ interface BarraAgendaProps {
   aoHoje: () => void;
   aoFiltrar: (professionalId: string) => void;
   aoAtualizar: () => void;
-  aoNovoAgendamento: () => void;
+  /** Ausente: quem está na sessão não cria reservas (gerente sem a permissão). */
+  aoNovoAgendamento?: () => void;
 }
 
 export function BarraAgenda(props: BarraAgendaProps) {
@@ -58,15 +59,17 @@ export function BarraAgenda(props: BarraAgendaProps) {
             {timezone && <span>fuso {timezone}</span>}
           </p>
         </div>
-        <Botao
-          type="button"
-          data-testid="novo-agendamento"
-          className="min-h-11 w-full sm:w-auto"
-          onClick={props.aoNovoAgendamento}
-        >
-          <CalendarPlus size={18} aria-hidden="true" />
-          Novo agendamento
-        </Botao>
+        {props.aoNovoAgendamento && (
+          <Botao
+            type="button"
+            data-testid="novo-agendamento"
+            className="min-h-11 w-full sm:w-auto"
+            onClick={props.aoNovoAgendamento}
+          >
+            <CalendarPlus size={18} aria-hidden="true" />
+            Novo agendamento
+          </Botao>
+        )}
       </div>
 
       {/* Celular: navegação + Atualizar (só ícone) numa linha, depois o dia e

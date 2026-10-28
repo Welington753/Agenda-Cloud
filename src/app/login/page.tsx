@@ -156,7 +156,7 @@ function LoginPageConteudo() {
           <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
             <div>
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
-                E-mail ou usuário
+                E-mail ou login
               </label>
               <input
                 id="email"
@@ -168,9 +168,13 @@ function LoginPageConteudo() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@seuestabelecimento.com.br ou seu usuário"
+                placeholder="voce@seuestabelecimento.com.br ou seu login"
+                aria-describedby="dica-login"
                 className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
+              <p id="dica-login" className="mt-1 text-xs text-ink-soft">
+                Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um.
+              </p>
             </div>
             <div>
               <label htmlFor="senha" className="mb-1 block text-sm font-medium text-ink">

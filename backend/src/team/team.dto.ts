@@ -6,6 +6,7 @@ import { emailSchema, usernameSchema } from '../auth/login.dto.js';
 import { idSchema, requestKeySchema } from '../accounts/accounts.dto.js';
 import { appointmentStatusActionSchema, rescheduleOptionsSchema } from '../appointments/appointment.dto.js';
 import { STAFF_PERMISSIONS } from './staff-access.js';
+import { MANAGER_PERMISSIONS } from '../common/manager-permissions.js';
 
 const nameSchema = z.string().trim().min(2).max(120);
 
@@ -19,9 +20,15 @@ export const staffInviteSchema = z
   .strict();
 export type StaffInviteDto = z.infer<typeof staffInviteSchema>;
 
+/** Tudo o que a tela de equipe concede: as três ações sobre os próprios
+ * atendimentos e as áreas do gerente. Quem pode receber o quê (papel,
+ * profissional ligado, o que o dono tem) é conferido no serviço. */
+export const TEAM_PERMISSIONS = [...STAFF_PERMISSIONS, ...MANAGER_PERMISSIONS] as const;
+export type TeamPermission = (typeof TEAM_PERMISSIONS)[number];
+
 const staffPermissionsSchema = z
-  .array(z.enum(STAFF_PERMISSIONS))
-  .max(STAFF_PERMISSIONS.length)
+  .array(z.enum(TEAM_PERMISSIONS))
+  .max(TEAM_PERMISSIONS.length)
   .refine((lista) => new Set(lista).size === lista.length);
 
 export const staffPermissionsChangeSchema = z
@@ -33,18 +40,26 @@ export const staffPermissionsChangeSchema = z
   .strict();
 export type StaffPermissionsChangeDto = z.infer<typeof staffPermissionsChangeSchema>;
 
-/** Acesso de funcionário com nome de usuário e senha temporária, sem e-mail.
- * A senha é gerada pelo servidor e devolvida só nesta resposta: o navegador
- * nunca a escolhe nem a envia. */
+/** Acesso de equipe com login interno e senha temporária, sem e-mail. A
+ * senha é gerada pelo servidor e devolvida só nesta resposta: o navegador
+ * nunca a escolhe nem a envia.
+ *
+ * `role` ausente é `PROFISSIONAL` (o corpo da tela anterior). Profissional
+ * sempre tem profissional ligado; gerente pode não ter. */
 export const staffAccountSchema = z
   .object({
     requestKey: requestKeySchema,
-    professionalId: idSchema,
+    role: z.enum(['PROFISSIONAL', 'GERENTE']).default('PROFISSIONAL'),
+    professionalId: idSchema.nullable().optional(),
     name: nameSchema,
     username: usernameSchema,
     permissions: staffPermissionsSchema,
   })
-  .strict();
+  .strict()
+  .refine((v) => v.role === 'GERENTE' || !!v.professionalId, {
+    path: ['professionalId'],
+    message: 'Escolha o profissional deste acesso.',
+  });
 export type StaffAccountDto = z.infer<typeof staffAccountSchema>;
 
 /** Mesmo formato (e mesma validação de data) da agenda do dono. */

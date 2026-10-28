@@ -24,6 +24,7 @@ import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js'
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { managerGranted } from '../common/manager-permissions.js';
 
 export const AVAILABILITY_FORBIDDEN_MESSAGE =
   'Você não tem permissão para consultar a agenda deste estabelecimento.';
@@ -43,6 +44,7 @@ export function canViewAvailability(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerGranted(role, overrides, PERMISSOES_PERTINENTES);
   if (!ROLES_WITH_AVAILABILITY_ACCESS.has(role)) return false;
   return !overrides.some(
     (override) =>

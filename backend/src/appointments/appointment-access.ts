@@ -32,6 +32,17 @@
 //   as permissões de visualizar esses cadastros — e precisam funcionar mesmo
 //   com o serviço ou o profissional desativados depois da reserva.
 //
+// GERENTE (ver common/manager-permissions.ts): cada ação vale só com a
+// permissão correspondente CONCEDIDA pelo dono, com as dependências dela. O
+// nome do papel não libera nada.
+//
+// SOLICITAÇÕES: consultar os pedidos que aguardam resposta e tratá-los
+// (confirmar ou recusar uma reserva ainda `PENDING`). Para o dono, valem as
+// políticas que sempre valeram (ver a agenda; confirmar pelo andamento,
+// recusar pelo cancelamento). Para o gerente, as permissões próprias
+// `SOLICITACOES_*`: tratar solicitações não dá o andamento nem o
+// cancelamento da agenda inteira.
+//
 // Todos os valores já existem no enum real — nenhuma permissão nova
 // (`AGENDAMENTO_CANCELAR` e `AGENDAMENTO_EDITAR` já estão em
 // entities/enums/permission.enum.ts desde o Lote 3).
@@ -39,6 +50,7 @@ import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js'
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { managerCan } from '../common/manager-permissions.js';
 
 export const APPOINTMENTS_FORBIDDEN_MESSAGE =
   'Você não tem permissão para acessar a agenda deste estabelecimento.';
@@ -100,6 +112,7 @@ export function canViewAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_VISUALIZAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_VER);
 }
@@ -108,6 +121,7 @@ export function canCreateAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CRIAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_CRIAR);
 }
@@ -116,6 +130,7 @@ export function canCancelAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CANCELAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_CANCELAR);
 }
@@ -124,6 +139,7 @@ export function canRescheduleAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_EDITAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_REMARCAR);
 }
@@ -133,6 +149,37 @@ export function canManageAppointmentStatus(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_GERENCIAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
   return !negado(overrides, PERMISSOES_PARA_ANDAMENTO);
+}
+
+/** Lista de solicitações. Dono: a mesma política de ver a agenda. */
+export function canViewBookingRequests(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_VISUALIZAR');
+  return canViewAppointments(role, overrides);
+}
+
+/** Confirmar ou recusar uma reserva ainda `PENDING` SEM o andamento ou o
+ * cancelamento gerais. Só o gerente com `SOLICITACOES_TRATAR`; o dono trata
+ * pelas políticas gerais. */
+export function canHandleBookingRequests(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_TRATAR');
+  return false;
+}
+
+/** Avisos de solicitação no aparelho: só o DONO neste lote, com a política
+ * de ver a agenda. O gerente não se inscreve nem recebe (o despachante lê os
+ * ajustes gravados, sem a confirmação do dono, e não deve ampliar nada). */
+export function canReceiveBookingAlerts(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  return role === EstablishmentRole.DONO && canViewAppointments(role, overrides);
 }

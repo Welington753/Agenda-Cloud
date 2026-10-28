@@ -315,12 +315,13 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/contas
         run: npm run test:browser:contas
 
-      # Invocação SEPARADA (4 aceites de convite, limite por IP): Equipe e
-      # acessos — convite de funcionário pela tela, agenda só do próprio
+      # Invocação SEPARADA (1 aceite de convite e 1 login, limite por IP):
+      # Equipe e acessos — acesso criado pela tela com login e senha (sem
+      # convite), convite antigo ainda válido, agenda só do próprio
       # profissional, páginas e API do dono recusadas, permissões e suspensão
       # com a sessão aberta, situação e plano do estabelecimento pela
       # administração; capturas em claro e escuro, 1280, 390 e 360 px.
-      - name: Run real team access flows (staff invite, own agenda, permissions, plan seats)
+      - name: Run real team access flows (create access, legacy invite, own agenda, permissions, plan seats)
         id: browser_equipe
         env:
           NODE_ENV: development
@@ -352,6 +353,25 @@ jobs:
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/acesso-usuario
         run: npm run test:browser:acesso-usuario
+
+      # Invocação SEPARADA (1 login, limite por IP): gerente criado pelo dono
+      # com login em formato de e-mail e sem profissional; só as áreas
+      # concedidas (tela, URL e API), sem telefone nem preço na agenda,
+      # solicitação confirmada, retirada valendo na requisição seguinte;
+      # capturas em claro e escuro, 1280, 390 e 360 px.
+      - name: Run real manager access flows (owner-granted areas, internal login)
+        id: browser_gerente
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/gerente
+        run: npm run test:browser:gerente
 
       # Invocação SEPARADA (1 aceite de convite): recebimentos manuais — o
       # Início mostra só o que foi registrado, quitação com clique duplo
@@ -727,6 +747,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Upload manager access screenshots
+        if: always() && steps.browser_gerente.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gerente-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/gerente/**/gerente-*.png
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload manual payments screenshots
         if: always() && steps.browser_recebimentos.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -821,6 +850,8 @@ jobs:
             steps.browser_administracao.outcome == 'failure' ||
             steps.browser_contas.outcome == 'failure' ||
             steps.browser_equipe.outcome == 'failure' ||
+            steps.browser_acesso_usuario.outcome == 'failure' ||
+            steps.browser_gerente.outcome == 'failure' ||
             steps.browser_whatsapp.outcome == 'failure' ||
             steps.browser_agendamento_publico.outcome == 'failure' ||
             steps.browser_avisos_solicitacoes.outcome == 'failure' ||

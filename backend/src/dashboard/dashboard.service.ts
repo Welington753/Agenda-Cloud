@@ -27,6 +27,7 @@ import type { EntityManager } from 'typeorm';
 import { canViewAppointments, APPOINTMENTS_FORBIDDEN_MESSAGE } from '../appointments/appointment-access.js';
 import { dataLocalDe, horaLocalDe } from '../availability/time-zone.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
+import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { linhasDe } from '../notifications/notification-jobs.repository.js';
 import { activeProfessionals, staffSeatUsage } from '../team/seats.js';
 import { contagemPorSituacao, mesDaData, type PeriodoLocal, type Situacao } from './dashboard-period.js';
@@ -88,7 +89,9 @@ export class DashboardService {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       await manager.query('SET TRANSACTION READ ONLY');
       const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
-        permitido: canViewAppointments,
+        // Só o dono: o Início reúne plano, vagas e dinheiro, que o gerente não
+        // recebe por ter a agenda (ver common/manager-permissions.ts).
+        permitido: (role, overrides) => role === EstablishmentRole.DONO && canViewAppointments(role, overrides),
         mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
       });
       const tenant = authorized.tenantId;

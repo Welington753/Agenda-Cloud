@@ -33,6 +33,13 @@ import {
   objetosEquipePresentes,
   TOTAL_OBJETOS_EQUIPE,
 } from './equipe-acessos-schema.js';
+import {
+  falhasAntesDeGerente,
+  falhasDepoisDeGerente,
+  lerEstadoGerente,
+  objetosGerentePresentes,
+  TOTAL_OBJETOS_GERENTE,
+} from './gerente-acessos-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -48,7 +55,9 @@ export type PilotExpectation =
   | 'before-accounts-administration'
   | 'after-accounts-administration'
   | 'before-team-access'
-  | 'after-team-access';
+  | 'after-team-access'
+  | 'before-team-manager'
+  | 'after-team-manager';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -59,6 +68,8 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'after-accounts-administration',
   'before-team-access',
   'after-team-access',
+  'before-team-manager',
+  'after-team-manager',
 ];
 
 interface EnvLike {
@@ -221,6 +232,17 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
       const falhas = expectation === 'before-team-access' ? falhasAntesDeEquipe(estado) : falhasDepoisDeEquipe(estado);
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosEquipePresentes(estado)}/${TOTAL_OBJETOS_EQUIPE}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    if (expectation === 'before-team-manager' || expectation === 'after-team-manager') {
+      const estado = await lerEstadoGerente(client);
+      const falhas =
+        expectation === 'before-team-manager' ? falhasAntesDeGerente(estado) : falhasDepoisDeGerente(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosGerentePresentes(estado)}/${TOTAL_OBJETOS_GERENTE}`);
+      log(`LOGIN_IDENTIFIER_COLLISIONS: ${estado.colisoesCruzadas}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
