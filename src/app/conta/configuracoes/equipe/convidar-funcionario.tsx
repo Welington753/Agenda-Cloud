@@ -12,7 +12,7 @@ import { useEnvioComChave } from "@/lib/administracao/use-envio-com-chave";
 import { acaoAdministrativa } from "@/lib/administracao/api-contas";
 import { ehResultadoCriacao } from "@/lib/administracao/contas";
 
-const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-lg border border-border bg-card px-3 text-sm";
+const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 
 export function ConvidarFuncionario({
   tenantId,

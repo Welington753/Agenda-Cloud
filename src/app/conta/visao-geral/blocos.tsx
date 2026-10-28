@@ -76,32 +76,33 @@ export function Hoje({
           icone={CircleDashed}
           rotulo="Aguardando confirmação hoje"
           valor={String(hoje.PENDING)}
-          corIcone="warning"
+          corIcone="neutro"
           testId="indicador-aguardando"
         />
         <EstatisticaCard
           icone={PlayCircle}
           rotulo="Em atendimento"
           valor={String(hoje.IN_PROGRESS)}
-          corIcone="info"
+          corIcone="neutro"
           testId="indicador-em-atendimento"
         />
         <EstatisticaCard
           icone={CheckCircle2}
           rotulo="Concluídos hoje"
           valor={String(hoje.COMPLETED)}
-          corIcone="success"
+          corIcone="neutro"
           testId="indicador-concluidos"
         />
         <Link
           href={ROTA_SOLICITACOES}
-          className="rounded-[var(--radius-card)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="rounded-[var(--radius-card)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <EstatisticaCard
             icone={Inbox}
             rotulo="Solicitações aguardando resposta"
             valor={String(painel.pendingRequests)}
-            corIcone="warning"
+            // Cor só quando há o que responder.
+            corIcone={painel.pendingRequests > 0 ? "warning" : "neutro"}
             testId="indicador-solicitacoes"
           />
         </Link>
@@ -149,14 +150,14 @@ export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
     <div className="space-y-2" data-testid="financeiro">
       {/* Uma coluna no celular: valores em reais não cabem em meia largura. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <EstatisticaCard icone={Wallet} rotulo="Recebido no período" valor={formatarMoeda(finance.receivedCents)} corIcone="success" testId="indicador-recebido" />
-        <EstatisticaCard icone={Undo2} rotulo="Estornado no período" valor={formatarMoeda(finance.refundedCents)} corIcone="warning" testId="indicador-estornado" />
+        <EstatisticaCard icone={Wallet} rotulo="Recebido no período" valor={formatarMoeda(finance.receivedCents)} corIcone="neutro" testId="indicador-recebido" />
+        <EstatisticaCard icone={Undo2} rotulo="Estornado no período" valor={formatarMoeda(finance.refundedCents)} corIcone="neutro" testId="indicador-estornado" />
         <EstatisticaCard icone={Wallet} rotulo="Líquido no período" valor={formatarMoeda(finance.netCents)} testId="indicador-liquido" />
         <EstatisticaCard
           icone={Receipt}
           rotulo={`Ticket médio · ${finance.paidAppointments} pago(s)`}
           valor={finance.averageTicketCents === null ? "—" : formatarMoeda(finance.averageTicketCents)}
-          corIcone="info"
+          corIcone="neutro"
           testId="indicador-ticket"
         />
       </div>
@@ -212,7 +213,7 @@ function LinhaProximo({ atendimento, hoje }: { atendimento: ProximoAtendimentoDo
       data-testid="proximo-atendimento"
     >
       <p className="row-span-2 w-16 shrink-0 tabular-nums sm:row-span-1">
-        <span className="block text-lg leading-tight font-bold text-ink">{atendimento.localStart}</span>
+        <span className="block text-lg leading-tight font-semibold tracking-tight text-ink">{atendimento.localStart}</span>
         <span className="block text-xs text-ink-soft">
           {atendimento.localDate === hoje ? "hoje" : dataCurta(atendimento.localDate).slice(0, 5)}
         </span>

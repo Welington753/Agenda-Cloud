@@ -37,8 +37,8 @@ export function AlternarVisualizacao({ valor, aoMudar }: AlternarVisualizacaoPro
             onClick={() => aoMudar(opcao)}
             className={clsx(
               "inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--radius-control)-2px)] px-2 text-sm font-medium sm:flex-none sm:gap-2 sm:px-4",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-              ativa ? "bg-ink text-paper" : "text-ink-soft hover:bg-paper-muted hover:text-ink",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              ativa ? "bg-accent-soft font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-border-control)]" : "text-ink-soft hover:bg-paper-muted hover:text-ink",
             )}
           >
             <Icone size={16} aria-hidden="true" className="hidden shrink-0 min-[400px]:block" />

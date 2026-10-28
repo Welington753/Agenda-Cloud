@@ -14,8 +14,8 @@ const CLASSE_BASE =
   "inline-flex items-center justify-center rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50";
 
 const CLASSE_VARIANTE: Record<Variante, string> = {
-  primaria: "bg-accent text-on-accent hover:bg-[color:var(--color-accent-hover)] shadow-sm",
-  secundaria: "bg-transparent text-ink border border-border hover:bg-paper-muted",
+  primaria: "bg-accent text-on-accent hover:bg-[color:var(--color-accent-hover)]",
+  secundaria: "bg-transparent text-ink border border-border-control hover:bg-paper-muted",
   fantasma: "bg-transparent text-ink hover:bg-paper-muted",
   perigo: "bg-danger text-on-danger hover:opacity-90",
 };

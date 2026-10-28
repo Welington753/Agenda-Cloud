@@ -106,10 +106,13 @@ export function AcoesReserva({
     void aoAlterarStatus(agendamento.id, acao, agendamento.startAt);
 
   return (
-    <div className="flex flex-wrap gap-2" data-testid="acoes-reserva">
+    <div className="flex flex-wrap gap-1.5" data-testid="acoes-reserva">
       {acoes.confirmar && (
         <Botao
           type="button"
+          variante="secundaria"
+          tamanho="sm"
+          className="min-h-11"
           data-testid="confirmar-reserva"
           disabled={gravando}
           onClick={imediata("confirm")}
@@ -121,6 +124,9 @@ export function AcoesReserva({
       {acoes.iniciar && (
         <Botao
           type="button"
+          variante="secundaria"
+          tamanho="sm"
+          className="min-h-11"
           data-testid="iniciar-atendimento"
           disabled={gravando}
           onClick={imediata("start")}
@@ -132,6 +138,9 @@ export function AcoesReserva({
       {acoes.concluir && (
         <Botao
           type="button"
+          variante="secundaria"
+          tamanho="sm"
+          className="min-h-11"
           data-testid="abrir-conclusao"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("complete")}
@@ -143,7 +152,9 @@ export function AcoesReserva({
       {acoes.registrarFalta && (
         <Botao
           type="button"
-          variante="secundaria"
+          variante="fantasma"
+          tamanho="sm"
+          className="min-h-11 text-ink-soft hover:text-ink"
           data-testid="abrir-falta"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("no-show")}
@@ -155,7 +166,9 @@ export function AcoesReserva({
       {acoes.remarcar && (
         <Botao
           type="button"
-          variante="secundaria"
+          variante="fantasma"
+          tamanho="sm"
+          className="min-h-11 text-ink-soft hover:text-ink"
           data-testid="abrir-remarcacao"
           disabled={gravando}
           onClick={() => setRemarcando(true)}
@@ -167,7 +180,9 @@ export function AcoesReserva({
       {acoes.cancelar && (
         <Botao
           type="button"
-          variante="secundaria"
+          variante="fantasma"
+          tamanho="sm"
+          className="min-h-11 text-[color:var(--color-danger)]!"
           data-testid="abrir-cancelamento"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("cancel")}

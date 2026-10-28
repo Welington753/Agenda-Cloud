@@ -39,7 +39,7 @@ const MENSAGEM_ESTADO: Record<Exclude<Previa["status"], "VALID">, string> = {
   UNAVAILABLE: "Este convite não pode ser aceito agora. Fale com a administração.",
 };
 
-const CAMPO = "mt-1 min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 text-sm text-ink";
+const CAMPO = "mt-1 min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 text-sm text-ink";
 
 export default function ConvitePage() {
   const token = useTokenDoLink();

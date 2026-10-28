@@ -37,7 +37,7 @@ export default function ConfiguracoesLayout({ children }: { children: ReactNode 
         <Link
           href={ROTA_CONFIGURACOES}
           data-testid="voltar-configuracoes"
-          className="-mt-2 mb-1 inline-flex min-h-11 items-center text-sm font-medium text-[color:var(--color-accent-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="-mt-2 mb-1 inline-flex min-h-11 items-center text-sm font-medium text-[color:var(--color-accent-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           <ArrowLeft size={14} className="mr-1" aria-hidden="true" />
           Configurações

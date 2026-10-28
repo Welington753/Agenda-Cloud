@@ -225,7 +225,7 @@ export default function ClientesPage() {
                 disabled={buscaBloqueada}
                 onChange={(e) => setTermo(e.target.value)}
                 placeholder="Nome ou WhatsApp"
-                className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
               />
             </div>
             <div className="flex gap-2">

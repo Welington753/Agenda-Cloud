@@ -109,8 +109,12 @@ export function SeletorCliente({
       <div className="flex gap-2">
         <Botao
           type="button"
-          variante={modo === "buscar" ? "primaria" : "secundaria"}
+          variante="secundaria"
           tamanho="sm"
+          // Alternância, não ação principal: escolhido fica marcado sem virar
+          // o botão claro da tela.
+          aria-pressed={modo === "buscar"}
+          className={modo === "buscar" ? "bg-accent-soft font-semibold" : undefined}
           disabled={desabilitado}
           onClick={() => {
             setModo("buscar");
@@ -122,8 +126,10 @@ export function SeletorCliente({
         </Botao>
         <Botao
           type="button"
-          variante={modo === "novo" ? "primaria" : "secundaria"}
+          variante="secundaria"
           tamanho="sm"
+          aria-pressed={modo === "novo"}
+          className={modo === "novo" ? "bg-accent-soft font-semibold" : undefined}
           disabled={desabilitado}
           onClick={() => setModo("novo")}
         >
@@ -160,7 +166,7 @@ export function SeletorCliente({
                 }
               }}
               placeholder="Nome ou telefone"
-              className="flex-1 rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+              className="flex-1 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
             />
             <Botao
               type="button"
@@ -227,7 +233,7 @@ export function SeletorCliente({
               value={nome}
               disabled={desabilitado}
               onChange={(e) => setNome(e.target.value)}
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
             />
           </div>
           <div>
@@ -243,7 +249,7 @@ export function SeletorCliente({
               disabled={desabilitado}
               onChange={(e) => setWhatsapp(e.target.value)}
               placeholder="(11) 90000-0000"
-              className="w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink"
+              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
             />
           </div>
           <p className="text-xs text-ink-soft sm:col-span-2">

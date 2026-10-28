@@ -50,16 +50,16 @@ export const COLUNAS_NO_CELULAR: Record<number, string> = {
 export const CLASSE_ITEM = clsx(
   "flex min-h-14 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[11px] leading-tight font-medium tracking-tight md:tracking-normal",
   "md:min-h-11 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
-  "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white",
+  "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus",
 );
 // Fundo + sombra interna, não borda: a regra global `* { border-color }` de
 // globals.css venceria uma cor de borda utilitária.
 export const CLASSE_ATIVO =
-  "bg-white/10 font-semibold text-white shadow-[inset_0_3px_0_var(--color-accent)] md:shadow-[inset_3px_0_0_var(--color-accent)]";
-export const CLASSE_INATIVO = "text-white/70 hover:bg-white/5 hover:text-white";
+  "bg-chrome-selected font-semibold text-chrome-ink shadow-[inset_0_3px_0_var(--color-chrome-marker)] md:shadow-[inset_3px_0_0_var(--color-chrome-marker)]";
+export const CLASSE_INATIVO = "text-chrome-ink-soft hover:bg-chrome-hover hover:text-chrome-ink";
 /** Item em lista: linha inteira, ícone à esquerda, texto legível. */
 const CLASSE_ITEM_EM_LISTA =
-  "flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
+  "flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus";
 
 /** Contador de pendentes ao lado do rótulo. Só aparece com número
  * positivo vindo do servidor; o texto oculto diz o que o número significa. */
@@ -101,7 +101,7 @@ export function LinkNavegacao({
       aria-current={ativo ? "page" : undefined}
       className={clsx(
         emLista ? CLASSE_ITEM_EM_LISTA : clsx(CLASSE_ITEM, "relative"),
-        ativo ? (emLista ? "bg-white/10 font-semibold text-white" : CLASSE_ATIVO) : CLASSE_INATIVO,
+        ativo ? (emLista ? "bg-chrome-selected font-semibold text-chrome-ink" : CLASSE_ATIVO) : CLASSE_INATIVO,
         className,
       )}
     >

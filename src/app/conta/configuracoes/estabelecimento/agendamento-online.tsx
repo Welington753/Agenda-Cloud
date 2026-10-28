@@ -93,7 +93,7 @@ export function AgendamentoOnline({ tenantId }: { tenantId: string }) {
                   value={linkPublico(origem, estado.config.slug)}
                   data-testid="link-publico"
                   onFocus={(e) => e.currentTarget.select()}
-                  className="min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 text-sm text-ink"
+                  className="min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-paper-muted px-3 text-sm text-ink"
                 />
                 <BotoesDoLinkPublico link={linkPublico(origem, estado.config.slug)} aoFalharCopia={setErro} />
               </div>

@@ -15,7 +15,7 @@ export interface SecaoProps {
   aoMudar: () => void;
 }
 
-export const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-lg border border-border bg-card px-3 text-sm";
+export const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 
 export type Mensagem = { texto: string; erro: boolean } | null;
 

@@ -42,7 +42,7 @@ import { SeletorAparencia } from "@/components/aparencia/aparencia";
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import { ROTA_NOTIFICACOES, ROTA_PERFIL, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
 
-const FOCO_NO_ESCURO = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white";
+const FOCO_NO_ESCURO = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus";
 
 /** Iniciais para o avatar do botão do menu (até duas letras). */
 function iniciais(nome: string): string {
@@ -58,7 +58,7 @@ export function SinoNotificacoes({ pendentes }: { pendentes: number | null }) {
       aria-label={rotuloDoSino(pendentes)}
       data-testid="sino-notificacoes"
       className={clsx(
-        "relative inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-white/80 hover:bg-white/5 hover:text-white",
+        "relative inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-chrome-ink-soft hover:bg-chrome-hover hover:text-chrome-ink",
         FOCO_NO_ESCURO,
       )}
     >
@@ -98,7 +98,7 @@ function SituacaoDoAparelho({ tenantId }: { tenantId: string }) {
 }
 
 const CLASSE_LINHA =
-  "flex min-h-11 items-center gap-3 rounded-[var(--radius-control)] px-2 text-sm font-medium text-ink hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent";
+  "flex min-h-11 items-center gap-3 rounded-[var(--radius-control)] px-2 text-sm font-medium text-ink hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus";
 
 export function MenuConta({
   nome,
@@ -166,23 +166,23 @@ export function MenuConta({
         onClick={() => setAberto((a) => !a)}
         data-testid="abrir-menu-conta"
         className={clsx(
-          "flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-1.5 text-left text-white hover:bg-white/5 md:w-full md:px-3 md:py-2",
-          aberto && "bg-white/10",
+          "flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-1.5 text-left text-chrome-ink hover:bg-chrome-hover md:w-full md:px-3 md:py-2",
+          aberto && "bg-chrome-selected",
           FOCO_NO_ESCURO,
         )}
       >
         <span
           aria-hidden="true"
-          className="grid size-8 shrink-0 place-items-center rounded-full bg-white/15 text-xs font-semibold"
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-chrome-hover text-xs font-semibold"
         >
           {iniciais(nome)}
         </span>
         <span className="sr-only">Menu da conta</span>
         <span className="hidden min-w-0 flex-1 md:block" data-testid="usuario-conectado">
-          <span className="block text-xs text-white/60">Conectado como</span>
+          <span className="block text-xs text-chrome-ink-soft">Conectado como</span>
           <span className="block truncate text-sm font-medium">{nome}</span>
         </span>
-        <Settings2 size={16} aria-hidden="true" className="hidden shrink-0 text-white/60 md:block" />
+        <Settings2 size={16} aria-hidden="true" className="hidden shrink-0 text-chrome-ink-soft md:block" />
       </button>
 
       {aberto && (

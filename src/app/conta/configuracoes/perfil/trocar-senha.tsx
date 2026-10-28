@@ -12,7 +12,7 @@ import { trocarSenha, type FalhaTrocaDeSenha } from "@/lib/api/auth-api";
 import { Botao } from "@/components/ui/button";
 
 const CAMPO =
-  "w-full rounded-[var(--radius-control)] border border-border bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent";
+  "w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent";
 
 const MINIMO = 10;
 

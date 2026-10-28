@@ -60,7 +60,7 @@ export function CalendarioAgenda(props: CalendarioAgendaProps) {
           <div
             role="group"
             aria-label="Período do calendário"
-            className="inline-flex w-full rounded-[var(--radius-control)] border border-border bg-paper-muted p-1 lg:w-auto"
+            className="inline-flex w-full rounded-[var(--radius-control)] border border-border bg-card p-1 lg:w-auto"
           >
             {VISOES.map(({ valor, rotulo }) => (
               <button
@@ -70,8 +70,8 @@ export function CalendarioAgenda(props: CalendarioAgendaProps) {
                 onClick={() => aoMudarVisao(valor)}
                 className={clsx(
                   "min-h-11 flex-1 rounded-[calc(var(--radius-control)-2px)] px-4 text-sm font-medium lg:flex-none",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  visao === valor ? "bg-card text-ink shadow-[var(--shadow-soft)]" : "text-ink-soft hover:text-ink",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                  visao === valor ? "bg-accent-soft font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-border-control)]" : "text-ink-soft hover:text-ink",
                 )}
               >
                 {rotulo}

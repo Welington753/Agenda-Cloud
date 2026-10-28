@@ -13,7 +13,7 @@ import type { AgendamentoReal } from "@/lib/api/appointments-api";
 import { linkWhatsapp, mensagemCombinarOutroHorario } from "@/lib/contato/whatsapp";
 
 const CLASSE_LINK =
-  "inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-control)] border border-border bg-card px-3 text-sm font-medium text-ink hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+  "inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-control)] border border-border-control bg-transparent px-3 text-sm font-medium text-ink hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 /** Só faz sentido combinar outro horário de reserva que ainda vai acontecer. */
 const STATUS_COMBINAVEIS: ReadonlySet<AgendamentoReal["status"]> = new Set([

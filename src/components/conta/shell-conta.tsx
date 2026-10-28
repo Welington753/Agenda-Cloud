@@ -47,7 +47,7 @@ import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { itensDaNavegacao, itemAtivo } from "@/lib/conta/navegacao";
 import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
 import { ItemConfiguracoes } from "@/components/conta/item-configuracoes";
-import { NOME_PRODUTO } from "@/lib/config";
+import { MarcaAgendaCloud } from "@/components/marca/marca";
 import {
   contagemVisivel,
   useSolicitacoesPendentes,
@@ -133,20 +133,20 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-white md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0">
+      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-chrome-ink md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0">
         {/* Marca, estabelecimento ativo e o sino "Notificações" */}
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
           <div className="min-w-0">
           <Link
             href={contexto && ehDono ? ROTA_INICIO : "/conta"}
-            className="font-bold tracking-tight focus-visible:outline-2 focus-visible:outline-white"
+            className="inline-flex rounded-[var(--radius-control)] focus-visible:outline-2 focus-visible:outline-chrome-focus"
           >
-            {NOME_PRODUTO}
+            <MarcaAgendaCloud />
           </Link>
           {modoAdministracao && (
             <p
               data-testid="modo-administracao"
-              className="mt-0.5 flex max-w-full items-start gap-1 text-xs font-semibold text-white md:mt-2"
+              className="mt-0.5 flex max-w-full items-start gap-1 text-xs font-semibold text-chrome-ink md:mt-2"
             >
               <ShieldCheck size={14} aria-hidden="true" className="mt-px shrink-0" />
               {/* No celular cabe numa linha; no computador, o sino divide a
@@ -155,14 +155,14 @@ export function ShellConta({ children }: { children: ReactNode }) {
             </p>
           )}
           {contexto && modoAdministracao && (
-            <p className="mt-3 hidden text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
+            <p className="mt-3 hidden text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block">
               Seu estabelecimento
             </p>
           )}
           {contexto && (
             <p
               className={clsx(
-                "truncate text-xs text-white/70 md:mt-1 md:text-sm md:text-white",
+                "truncate text-xs text-chrome-ink-soft md:mt-1 md:text-sm md:text-chrome-ink",
                 // No celular, a faixa da administração já diz qual é.
                 modoAdministracao && "hidden md:block",
               )}
@@ -174,7 +174,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
           {podeTrocar && (
             <Link
               href="/conta/selecionar-estabelecimento"
-              className="hidden min-h-11 items-center text-xs text-white/70 hover:text-white focus-visible:outline-2 focus-visible:outline-white md:inline-flex"
+              className="hidden min-h-11 items-center text-xs text-chrome-ink-soft hover:text-chrome-ink focus-visible:outline-2 focus-visible:outline-chrome-focus md:inline-flex"
             >
               <Repeat size={14} className="mr-1.5" aria-hidden="true" />
               Trocar
@@ -188,7 +188,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
         {itens.length > 0 && (
           <nav
             aria-label="Áreas da conta"
-            className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-chrome-border bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
           >
             <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
               {itens.map((item) =>
@@ -205,7 +205,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
                     {/* No computador, a administração fica num grupo próprio,
                         separado da operação do estabelecimento. */}
                     {item.grupo === "plataforma" && contexto && (
-                      <span className="mt-4 hidden border-t border-white/10 px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-white/50 uppercase md:block">
+                      <span className="mt-4 hidden border-t border-chrome-border px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block">
                         Plataforma
                       </span>
                     )}
@@ -224,12 +224,12 @@ export function ShellConta({ children }: { children: ReactNode }) {
         {/* Menu da conta (quem está conectado, notificações, aparência e
             Sair): no rodapé do menu no computador, no canto da barra superior
             no celular. */}
-        <div className="flex shrink-0 items-center gap-1 md:mt-auto md:block md:border-t md:border-white/10 md:px-3 md:py-4">
+        <div className="flex shrink-0 items-center gap-1 md:mt-auto md:block md:border-t md:border-chrome-border md:px-3 md:py-4">
           {podeTrocar && (
             <Link
               href="/conta/selecionar-estabelecimento"
               aria-label="Trocar de estabelecimento"
-              className="inline-flex size-11 items-center justify-center rounded-[var(--radius-control)] text-white/80 hover:text-white focus-visible:outline-2 focus-visible:outline-white md:hidden"
+              className="inline-flex size-11 items-center justify-center rounded-[var(--radius-control)] text-chrome-ink-soft hover:text-chrome-ink focus-visible:outline-2 focus-visible:outline-chrome-focus md:hidden"
             >
               <Repeat size={18} aria-hidden="true" />
             </Link>

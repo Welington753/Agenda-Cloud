@@ -92,7 +92,7 @@ export const CabecalhoEtapa = forwardRef<
           disabled={travado}
           onClick={aoVoltar}
           data-testid="voltar-etapa"
-          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-control)] px-2 text-sm font-medium text-[color:var(--color-accent-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-control)] px-2 text-sm font-medium text-[color:var(--color-accent-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
         >
           <ArrowLeft size={16} aria-hidden="true" /> Voltar
         </button>

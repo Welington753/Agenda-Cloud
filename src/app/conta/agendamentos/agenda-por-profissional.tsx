@@ -44,10 +44,10 @@ export function AgendaPorProfissional({
             aria-labelledby={idTitulo}
             data-testid="grupo-profissional"
             data-professional-id={grupo.professionalId}
-            className="min-w-0 space-y-3 rounded-[var(--radius-card)] border border-border bg-paper-muted/40 p-3 sm:p-4"
+            className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-border bg-card"
           >
-            <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h3 id={idTitulo} className="min-w-0 text-base font-bold break-words text-ink">
+            <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
+              <h3 id={idTitulo} className="min-w-0 text-sm font-semibold break-words text-ink">
                 {grupo.nome}
                 {grupo.inativo && (
                   <span className="ml-2 text-xs font-medium text-ink-soft">(inativo)</span>
@@ -59,11 +59,11 @@ export function AgendaPorProfissional({
             </header>
 
             {grupo.agendamentos.length === 0 ? (
-              <p className="text-sm text-ink-soft" data-testid="grupo-sem-agendamentos">
+              <p className="px-4 py-3.5 text-sm text-ink-soft sm:px-5" data-testid="grupo-sem-agendamentos">
                 Sem agendamentos neste dia. Para saber se há horário livre, use “Novo agendamento”.
               </p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="divide-y divide-border">
                 {grupo.agendamentos.map((agendamento) => (
                   <li
                     key={agendamento.id}

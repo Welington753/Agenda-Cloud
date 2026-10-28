@@ -22,7 +22,7 @@ import {
 import { centavosParaCampo, precoParaCentavos } from "@/lib/servicos/dinheiro";
 import { formatarMoeda } from "@/lib/format";
 
-const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border bg-card px-3 text-sm text-ink";
+const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm text-ink";
 
 export function RegistrarRecebimento({
   tenantId,

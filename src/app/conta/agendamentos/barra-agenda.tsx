@@ -15,7 +15,7 @@ import {
 import { Botao } from "@/components/ui/button";
 
 const CLASSE_CAMPO =
-  "min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-card px-3 py-2 text-sm text-ink";
+  "min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink";
 
 interface BarraAgendaProps {
   date: string;
@@ -40,19 +40,19 @@ export function BarraAgenda(props: BarraAgendaProps) {
   const textoDoResumo = resumo ?? (carregando ? "Carregando atendimentos..." : null);
 
   return (
-    <div className="space-y-4 rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
+          <p className="text-xs font-medium tracking-wide text-ink-muted uppercase">
             {ehHoje ? "Hoje" : "Agenda do dia"}
           </p>
           <h2
             data-testid="data-da-agenda"
-            className="text-lg font-bold text-ink first-letter:uppercase sm:text-xl"
+            className="text-xl font-semibold tracking-tight text-ink first-letter:uppercase sm:text-2xl"
           >
             {rotuloDaData(date)}
           </h2>
-          <p className="min-h-4 text-xs text-ink-soft" aria-live="polite">
+          <p className="min-h-4 text-sm text-ink-soft tabular-nums" aria-live="polite">
             {textoDoResumo && <span data-testid="resumo-do-dia">{textoDoResumo}</span>}
             {textoDoResumo && timezone && " · "}
             {timezone && <span>fuso {timezone}</span>}
@@ -60,9 +60,8 @@ export function BarraAgenda(props: BarraAgendaProps) {
         </div>
         <Botao
           type="button"
-          tamanho="lg"
           data-testid="novo-agendamento"
-          className="w-full sm:w-auto"
+          className="min-h-11 w-full sm:w-auto"
           onClick={props.aoNovoAgendamento}
         >
           <CalendarPlus size={18} aria-hidden="true" />
@@ -91,7 +90,7 @@ export function BarraAgenda(props: BarraAgendaProps) {
           <Botao
             type="button"
             variante="secundaria"
-            className={clsx("min-h-11 flex-1 sm:flex-none", ehHoje && "bg-paper-muted")}
+            className={clsx("min-h-11 flex-1 sm:flex-none", ehHoje && "bg-accent-soft")}
             aria-pressed={ehHoje}
             onClick={props.aoHoje}
           >

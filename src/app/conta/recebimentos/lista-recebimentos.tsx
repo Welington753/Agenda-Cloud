@@ -139,7 +139,7 @@ export function ListaRecebimentos({
             <label className="block text-sm font-medium">
               Motivo
               <input
-                className="mt-1 min-h-11 w-full rounded-[var(--radius-control)] border border-border bg-card px-3 text-sm"
+                className="mt-1 min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm"
                 maxLength={300}
                 value={motivo}
                 onChange={(e) => setMotivo(e.target.value)}

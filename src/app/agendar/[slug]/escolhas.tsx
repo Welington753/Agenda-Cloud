@@ -18,7 +18,7 @@ import {
 import { Botao } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const FOCO = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 /** Opção selecionável (serviço, profissional, dia, horário). */
 export const CLASSE_OPCAO = clsx(
