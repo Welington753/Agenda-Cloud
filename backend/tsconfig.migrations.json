@@ -10,7 +10,8 @@
     "src/entities/**/*.ts",
     "src/migrations/**/*.ts",
     "src/database/migrations-data-source.ts",
-    "src/database/snake-naming-strategy.ts"
+    "src/database/snake-naming-strategy.ts",
+    "src/database/safe-typeorm-logger.ts"
   ],
   "exclude": ["node_modules", "dist", "dist-scripts", "dist-migrations", "**/*.spec.ts", "src/**/testing/**"]
 }

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DataSource, type DataSourceOptions } from 'typeorm';
 import { SnakeNamingStrategy } from './snake-naming-strategy.js';
+import { SafeTypeOrmLogger } from './safe-typeorm-logger.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,6 +31,8 @@ export function buildMigrationsDataSourceOptions(
     migrationsRun: false,
     namingStrategy: new SnakeNamingStrategy(),
     logging: ['error', 'warn'],
+    // Ver runtime-data-source.ts: nunca os valores de bind em log.
+    logger: new SafeTypeOrmLogger(['error', 'warn']),
     ssl: { rejectUnauthorized: true },
     entities: [path.join(moduleDir, '../entities/**/*.entity.{ts,js}')],
     // `!(*.spec)` (extglob, suportado pelo `tinyglobby` que o TypeORM usa

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DataSource, type DataSourceOptions } from 'typeorm';
 import { SnakeNamingStrategy } from './snake-naming-strategy.js';
+import { SafeTypeOrmLogger } from './safe-typeorm-logger.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,10 @@ export function buildRuntimeDataSourceOptions(
     // Nunca 'query'/'all' — evitaria vazar parâmetros de bind em log.
     // 'error'/'warn' nunca incluem a connection string nem valor de coluna.
     logging: ['error', 'warn'],
+    // O logger padrão imprime os valores de bind de uma query que falha (hash
+    // de senha, hash de token); este escreve só o SQL, os tipos dos
+    // parâmetros e o erro sem valores (ver safe-typeorm-logger.ts).
+    logger: new SafeTypeOrmLogger(['error', 'warn']),
     // Neon exige TLS; nunca `rejectUnauthorized: false` — validação de
     // certificado sempre ativa, mesmo em desenvolvimento.
     ssl: { rejectUnauthorized: true },
