@@ -126,8 +126,9 @@ Antes, dois caminhos podiam escrever esses valores no log:
 Assim, uma falha ao gravar `credentials` ou `sessions` levaria o hash da senha
 ou o hash do token para o log.
 
-- `backend/src/database/safe-typeorm-logger.ts` passa a ser o logger dos
-  DataSources de runtime e de migrations. Ele escreve:
+- `backend/src/database/safe-typeorm-logger.ts` passa a ser o logger do
+  DataSource de runtime, o da aplicação, que grava as credenciais. Ele
+  escreve:
   - o SQL;
   - o tipo e o tamanho de cada parâmetro;
   - `code`, `constraint`, `table` e `column`;
@@ -138,6 +139,12 @@ ou o hash do token para o log.
 - `backend/src/common/database-error.filter.ts` (`APP_FILTER`) responde ao
   `QueryFailedError` com o mesmo 500 genérico do Nest. O log usa o mesmo
   resumo e a pilha sem a primeira linha.
+- O DataSource de migrations continua com o logger padrão. O CLI liga
+  `logging: ['schema']` em tempo de execução, e o `migration:show` imprime a
+  lista por esse caminho, que o runbook de production lê. Um logger fixo
+  esvaziava essa lista: o workflow "migration:show/run" falhou em `4214a65`
+  até `4311b12`, e `91868ef` corrigiu. As migrations não gravam senha nem
+  token.
 - Não é uma reformulação de observabilidade: os outros logs não mudaram.
 
 ## Calendário individual
