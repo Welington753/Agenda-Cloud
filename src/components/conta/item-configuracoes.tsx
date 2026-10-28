@@ -133,6 +133,11 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
         // O foco saiu do item (Tab além da última opção, por exemplo).
         if (evento.relatedTarget && !raizRef.current?.contains(evento.relatedTarget as Node)) fechar();
       }}
+      onFocus={(evento) => {
+        // Foco numa opção fixa o submenu: tirar o mouse não o fecha com o
+        // foco dentro (o foco iria parar no corpo da página).
+        if (painelRef.current?.contains(evento.target as Node)) modoRef.current = "fixo";
+      }}
     >
       <LinkNavegacao item={item} ativo={ativo} className="md:pr-12" />
       <button

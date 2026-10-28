@@ -121,6 +121,17 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.mouse.move(900, 700);
   await expect(submenu(page)).toHaveCount(0);
 
+  // Aberto pelo mouse, com o foco numa opção: tirar o mouse não fecha nem
+  // derruba o foco.
+  await linkConfiguracoes.hover();
+  await submenu(page).getByRole("link", { name: "Aparência" }).focus();
+  await page.mouse.move(900, 700);
+  await page.waitForTimeout(400);
+  await expect(submenu(page).getByRole("link", { name: "Aparência" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(submenu(page)).toHaveCount(0);
+  await expect(botaoSubmenu(page)).toBeFocused();
+
   // Retorno discreto ao índice.
   await page.getByTestId("voltar-configuracoes").click();
   await expect(page).toHaveURL(/\/conta\/configuracoes$/);
