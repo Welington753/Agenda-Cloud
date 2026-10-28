@@ -112,7 +112,7 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-10"
+          className="min-h-11"
           data-testid="confirmar-reserva"
           disabled={gravando}
           onClick={imediata("confirm")}
@@ -126,7 +126,7 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-10"
+          className="min-h-11"
           data-testid="iniciar-atendimento"
           disabled={gravando}
           onClick={imediata("start")}
@@ -140,7 +140,7 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-10"
+          className="min-h-11"
           data-testid="abrir-conclusao"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("complete")}
@@ -154,7 +154,7 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-10 text-ink-soft hover:text-ink"
+          className="min-h-11 text-ink-soft hover:text-ink"
           data-testid="abrir-falta"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("no-show")}
@@ -168,7 +168,7 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-10 text-ink-soft hover:text-ink"
+          className="min-h-11 text-ink-soft hover:text-ink"
           data-testid="abrir-remarcacao"
           disabled={gravando}
           onClick={() => setRemarcando(true)}
@@ -182,7 +182,7 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-10 text-[color:var(--color-danger)]!"
+          className="min-h-11 text-[color:var(--color-danger)]!"
           data-testid="abrir-cancelamento"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("cancel")}
