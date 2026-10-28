@@ -17,7 +17,7 @@ import { MembershipPermissionOverride } from '../entities/membership-permission-
 import { Tenant } from '../entities/tenant.entity.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import type { Permission } from '../entities/enums/permission.enum.js';
-import type { PermissionMode } from '../entities/enums/permission-mode.enum.js';
+import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 
 /** Mensagem única para "não existe" e "você não tem vínculo com ele" — nunca
  * distinguir os dois revelaria a existência de estabelecimentos de terceiros. */
@@ -33,6 +33,15 @@ export function isMembershipActive(membership: { status?: string | null }): bool
 export interface PermissionOverrideLike {
   permission: Permission;
   mode: PermissionMode;
+}
+
+/** Algum `DENIED` gravado atinge uma destas permissões. Nas políticas do
+ * dono, os ajustes só restringem: quem chama decide o resto. */
+export function algumaNegada(
+  overrides: readonly PermissionOverrideLike[],
+  permissoes: readonly Permission[],
+): boolean {
+  return overrides.some((override) => override.mode === PermissionMode.DENIED && permissoes.includes(override.permission));
 }
 
 /** Vínculo já PROVADO no servidor: existe Membership deste usuário neste

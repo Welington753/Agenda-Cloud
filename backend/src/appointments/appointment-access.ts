@@ -48,8 +48,7 @@
 // entities/enums/permission.enum.ts desde o Lote 3).
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 import { managerCan } from '../common/manager-permissions.js';
 
 export const APPOINTMENTS_FORBIDDEN_MESSAGE =
@@ -98,23 +97,13 @@ const PERMISSOES_PARA_ANDAMENTO: readonly Permission[] = [
   Permission.AGENDA_GERENCIAR,
 ];
 
-function negado(
-  overrides: readonly PermissionOverrideLike[],
-  permissoes: readonly Permission[],
-): boolean {
-  return overrides.some(
-    (override) =>
-      override.mode === PermissionMode.DENIED && permissoes.includes(override.permission),
-  );
-}
-
 export function canViewAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_VISUALIZAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !negado(overrides, PERMISSOES_PARA_VER);
+  return !algumaNegada(overrides, PERMISSOES_PARA_VER);
 }
 
 export function canCreateAppointments(
@@ -123,7 +112,7 @@ export function canCreateAppointments(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CRIAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !negado(overrides, PERMISSOES_PARA_CRIAR);
+  return !algumaNegada(overrides, PERMISSOES_PARA_CRIAR);
 }
 
 export function canCancelAppointments(
@@ -132,7 +121,7 @@ export function canCancelAppointments(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CANCELAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !negado(overrides, PERMISSOES_PARA_CANCELAR);
+  return !algumaNegada(overrides, PERMISSOES_PARA_CANCELAR);
 }
 
 export function canRescheduleAppointments(
@@ -141,7 +130,7 @@ export function canRescheduleAppointments(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_EDITAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !negado(overrides, PERMISSOES_PARA_REMARCAR);
+  return !algumaNegada(overrides, PERMISSOES_PARA_REMARCAR);
 }
 
 /** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7). */
@@ -151,7 +140,7 @@ export function canManageAppointmentStatus(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_GERENCIAR');
   if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !negado(overrides, PERMISSOES_PARA_ANDAMENTO);
+  return !algumaNegada(overrides, PERMISSOES_PARA_ANDAMENTO);
 }
 
 /** Lista de solicitações. Dono: a mesma política de ver a agenda. */

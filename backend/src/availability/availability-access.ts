@@ -22,8 +22,7 @@
 // Nenhuma permissão nova é criada: os três valores já existem no enum real.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 import { managerGranted } from '../common/manager-permissions.js';
 
 export const AVAILABILITY_FORBIDDEN_MESSAGE =
@@ -46,9 +45,5 @@ export function canViewAvailability(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerGranted(role, overrides, PERMISSOES_PERTINENTES);
   if (!ROLES_WITH_AVAILABILITY_ACCESS.has(role)) return false;
-  return !overrides.some(
-    (override) =>
-      override.mode === PermissionMode.DENIED &&
-      PERMISSOES_PERTINENTES.includes(override.permission),
-  );
+  return !algumaNegada(overrides, PERMISSOES_PERTINENTES);
 }

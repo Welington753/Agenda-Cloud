@@ -13,8 +13,7 @@
 // `GRANTED` amplia nada.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 import { managerCan } from '../common/manager-permissions.js';
 
 export const CONSUMERS_FORBIDDEN_MESSAGE =
@@ -24,23 +23,13 @@ const ROLES_WITH_CONSUMER_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
   EstablishmentRole.DONO,
 ]);
 
-function negado(
-  overrides: readonly PermissionOverrideLike[],
-  permissoes: readonly Permission[],
-): boolean {
-  return overrides.some(
-    (override) =>
-      override.mode === PermissionMode.DENIED && permissoes.includes(override.permission),
-  );
-}
-
 export function canViewConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_VISUALIZAR');
   if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
-  return !negado(overrides, [Permission.CONSUMIDORES_VISUALIZAR]);
+  return !algumaNegada(overrides, [Permission.CONSUMIDORES_VISUALIZAR]);
 }
 
 /** Cadastrar exige as duas: quem não pode nem ver a lista também não cadastra. */
@@ -50,7 +39,7 @@ export function canManageConsumers(
 ): boolean {
   if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_GERENCIAR');
   if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
-  return !negado(overrides, [
+  return !algumaNegada(overrides, [
     Permission.CONSUMIDORES_VISUALIZAR,
     Permission.CONSUMIDORES_GERENCIAR,
   ]);
