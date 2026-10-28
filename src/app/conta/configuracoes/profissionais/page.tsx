@@ -20,6 +20,7 @@ import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { useAreas } from "@/lib/conta/use-areas";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -34,6 +35,9 @@ type Edicao =
 
 export default function ProfissionaisPage() {
   const { estado: estadoSessao } = useRealAuth();
+  // O gerente sem a permissão de gerenciar só consulta; o servidor confere de novo.
+  const tem = useAreas();
+  const podeGerenciar = tem("PROFISSIONAIS_GERENCIAR");
   const { notificar } = useToast();
   const router = useRouter();
 
@@ -182,7 +186,7 @@ export default function ProfissionaisPage() {
         estado.status === "carregada" &&
         edicao.modo === "fechado" &&
         estado.profissionais.length > 0 ? (
-          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
             <PlusCircle size={16} aria-hidden="true" />
             Novo profissional
           </Botao>
@@ -241,7 +245,7 @@ export default function ProfissionaisPage() {
               titulo="Nenhum profissional cadastrado"
               descricao="Cadastre quem atende neste estabelecimento para começar."
               acao={
-                <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+                <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
                   <PlusCircle size={16} className="mr-1.5" />
                   Cadastrar profissional
                 </Botao>
@@ -251,6 +255,8 @@ export default function ProfissionaisPage() {
 
           {estado.profissionais.length > 0 && (
             <ListaProfissionais
+              podeGerenciar={podeGerenciar}
+              podeConsultarDisponibilidade={tem("DISPONIBILIDADE")}
               profissionais={estado.profissionais}
               gravando={gravando}
               confirmando={confirmando}

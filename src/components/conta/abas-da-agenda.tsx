@@ -14,16 +14,26 @@ import { CalendarDays, Inbox } from "lucide-react";
 import { contagemVisivel, useSolicitacoesPendentes } from "@/lib/agendamento-publico/use-solicitacoes";
 import { itemAtivo } from "@/lib/conta/navegacao";
 import { ROTA_AGENDA, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
+import { useAreas } from "@/lib/conta/use-areas";
 
 export function AbasDaAgenda() {
   const pathname = usePathname();
   const { estado } = useSolicitacoesPendentes();
   const pendentes = contagemVisivel(estado);
   const naSolicitacao = itemAtivo(pathname, ROTA_SOLICITACOES);
+  const tem = useAreas();
+  // O gerente vê só as abas das áreas concedidas.
   const abas = [
-    { href: ROTA_AGENDA, rotulo: "Atendimentos", icone: CalendarDays, ativa: !naSolicitacao, contador: null },
-    { href: ROTA_SOLICITACOES, rotulo: "Solicitações", icone: Inbox, ativa: naSolicitacao, contador: pendentes },
-  ];
+    tem("AGENDA_VER") && { href: ROTA_AGENDA, rotulo: "Atendimentos", icone: CalendarDays, ativa: !naSolicitacao, contador: null },
+    tem("SOLICITACOES_VER") && {
+      href: ROTA_SOLICITACOES,
+      rotulo: "Solicitações",
+      icone: Inbox,
+      ativa: naSolicitacao,
+      contador: pendentes,
+    },
+  ].filter((aba) => !!aba);
+  if (abas.length < 2) return null;
   return (
     <nav aria-label="Seções da agenda" data-testid="abas-da-agenda">
       <ul className="flex gap-1 border-b border-border">

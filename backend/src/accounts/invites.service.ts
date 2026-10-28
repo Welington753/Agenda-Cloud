@@ -58,6 +58,9 @@ import {
 import { resolveTeamManager } from '../team/team-authorization.js';
 import type { StaffInviteDto } from '../team/team.dto.js';
 
+export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
+  'Este endereço já é o login interno de uma conta de equipe. Use outro e-mail ou peça ao estabelecimento para trocar esse login.';
+
 export const MAX_SLUG_SAVE_RETRIES = 3;
 
 export interface InviteCreationResult {
@@ -611,7 +614,7 @@ export class InvitesService {
   }
 
   /** Conta do e-mail informado: a existente (sem alterar nada nela) ou uma
-   * nova, PENDENTE, sem senha. */
+   * nova, PENDENTE, sem senha. Nunca a conta de um login interno. */
   private async prepareTarget(
     manager: EntityManager,
     actor: Actor,
@@ -643,6 +646,11 @@ export class InvitesService {
         hasCredential: existente.has_credential,
       };
     }
+    // Um login interno com aparência de e-mail (migration TeamManagerAccess)
+    // nunca é ligado a este convite: a conta por e-mail seria OUTRA conta com
+    // o mesmo identificador. Recusa explícita, sem tocar na conta existente.
+    const [comoLogin] = await manager.query<unknown[]>('SELECT 1 FROM users WHERE username = $1', [person.email]);
+    if (comoLogin) throw conflito('IDENTIFICADOR_EM_USO', LOGIN_IDENTIFIER_IN_USE_MESSAGE);
     const id = generateId();
     try {
       await manager.query(
@@ -653,6 +661,9 @@ export class InvitesService {
     } catch (error) {
       if (isUniqueViolation(error, 'uq_users_email')) {
         throw conflito('CONCORRENCIA', 'Outra operação acabou de usar este e-mail. Confira e tente de novo.');
+      }
+      if (isUniqueViolation(error, 'uq_users_login_identifier')) {
+        throw conflito('IDENTIFICADOR_EM_USO', LOGIN_IDENTIFIER_IN_USE_MESSAGE);
       }
       throw error;
     }

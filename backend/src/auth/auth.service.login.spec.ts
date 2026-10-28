@@ -64,7 +64,7 @@ async function seedFullAccount(
 }
 
 const VALID_DTO: LoginDto = {
-  email: 'maria@example.com',
+  identifier: 'maria@example.com',
   password: REAL_PASSWORD,
 };
 
@@ -83,7 +83,7 @@ describe('AuthService.login', () => {
 
     const result = await service.login(VALID_DTO, { now: NOW });
 
-    expect(result.user.email).toBe(VALID_DTO.email);
+    expect(result.user.email).toBe(VALID_DTO.identifier);
     expect(result.activeContext?.tenantId).toBe(tenant.id);
     expect(result.activeContext?.planCode).toBe(plan.code);
     expect(result.activeContext?.role).toBe(EstablishmentRole.DONO);
@@ -115,7 +115,7 @@ describe('AuthService.login', () => {
     await seedFullAccount(store);
 
     const [semUsuario, senhaErrada] = await Promise.allSettled([
-      service.login({ email: 'nao-cadastrado@example.com', password: REAL_PASSWORD }, { now: NOW }),
+      service.login({ identifier: 'nao-cadastrado@example.com', password: REAL_PASSWORD }, { now: NOW }),
       service.login({ ...VALID_DTO, password: 'senha-errada-mas-valida' }, { now: NOW }),
     ]);
 
@@ -142,7 +142,7 @@ describe('AuthService.login', () => {
     const verifySpy = vi.spyOn(passwordHasher, 'verifyPassword');
 
     await expect(
-      service.login({ email: 'nunca-existiu@example.com', password: REAL_PASSWORD }, { now: NOW }),
+      service.login({ identifier: 'nunca-existiu@example.com', password: REAL_PASSWORD }, { now: NOW }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
 
     expect(verifySpy).toHaveBeenCalledTimes(1);

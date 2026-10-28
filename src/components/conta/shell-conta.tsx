@@ -104,7 +104,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
       ? null
       : ROTA_PERFIL
     : contextoAtivo
-      ? redirecionamentoDoPerfil(perfil, pathname)
+      ? redirecionamentoDoPerfil(perfil, pathname, contextoAtivo)
       : semVinculo
         ? redirecionamentoDoPerfil("sem-area", pathname)
         : null;
@@ -124,6 +124,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
         comEstabelecimento: !!contexto,
         comAdministracao: acessoConfirmado(estadoAcesso),
         perfil,
+        contexto,
       });
   const naBarra = itens.filter((item) => item.noCelular === "barra");
   const colunasNoCelular = naBarra.length;

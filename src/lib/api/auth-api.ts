@@ -22,6 +22,10 @@ export interface TenantContextReal {
   planName: string;
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
   tenantStatus: StatusTenantReal;
+  /** Áreas que este vínculo opera agora, calculadas no servidor pelas mesmas
+   * políticas das rotas. Ausente numa API anterior (ver `temArea`). Só para a
+   * tela: o servidor refaz a prova em toda requisição. */
+  areas?: string[];
 }
 
 export interface SessaoRealContexto {
@@ -65,14 +69,16 @@ function ehSessaoRealContexto(valor: unknown): valor is SessaoRealContexto {
   );
 }
 
-/** Como a conta aparece para a própria pessoa: o e-mail ou, sem ele, o nome
- * de usuário. */
+/** Como a conta aparece para a própria pessoa: o e-mail ou, sem ele, o login
+ * interno. */
 export function identificacaoDaConta(user: SessaoRealContexto["user"]): string {
   return user.email ?? user.username ?? "";
 }
 
-/** "E-mail ou usuário": com `@` vai como e-mail (o mesmo corpo de sempre,
- * aceito por qualquer versão da API); sem `@`, como nome de usuário. */
+/** "E-mail ou login": sempre no corpo `login`, que as duas versões da API
+ * aceitam. A presença de `@` não decide mais nada: o login interno criado pelo
+ * dono pode ter aparência de e-mail (`maria@salao`), e o servidor procura o
+ * identificador nos dois campos, sem ambiguidade. */
 export async function login(
   identificador: string,
   password: string,
@@ -80,7 +86,7 @@ export async function login(
   const valor = identificador.trim();
   const resultado = await apiRequest<unknown>("/auth/login", {
     method: "POST",
-    body: valor.includes("@") ? { email: valor, password } : { login: valor, password },
+    body: { login: valor, password },
   });
 
   if (resultado.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };

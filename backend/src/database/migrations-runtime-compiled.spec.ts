@@ -35,10 +35,10 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as dez migrations no dist (nunca specs)', () => {
+  it('descobre as onze migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(10);
+    expect(migrationJsFiles).toHaveLength(11);
     expect(migrationJsFiles.some((f) => f.includes('InitialSchema'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('AllowUndefinedPlanPrice'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('InitialPlanCatalog'))).toBe(true);

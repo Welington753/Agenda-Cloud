@@ -1,9 +1,14 @@
-// Regras puras do acesso de funcionário por nome de usuário: a sugestão a
-// partir do nome, a conferência do formato (a mesma do servidor, que confere
-// de novo) e a forma da resposta da criação.
+// Regras puras do acesso de equipe por login interno: a sugestão a partir do
+// nome, a conferência do formato (a mesma do servidor, que confere de novo) e
+// a forma da resposta da criação.
+//
+// O login NÃO precisa ser um e-mail real e nunca é tratado como um: pode ter
+// a aparência de e-mail (`maria@salao`), mas não recebe mensagem, não é
+// verificado e não serve para recuperar senha (quem gera nova senha é o dono).
 
-/** Mesmo formato de `usernameSchema` no backend. */
-const FORMATO = /^[a-z0-9][a-z0-9._-]{2,39}$/;
+/** Mesmo formato de `usernameSchema` no backend (migration TeamManagerAccess). */
+const FORMATO = /^[a-z0-9][a-z0-9._+-]*(@[a-z0-9]([a-z0-9.-]*[a-z0-9])?)?$/;
+export const LOGIN_MAXIMO = 80;
 
 /** "Maria José da Silva" → "maria.silva". Sem acento, minúsculo. */
 export function sugestaoDeUsuario(nome: string): string {
@@ -19,13 +24,17 @@ export function sugestaoDeUsuario(nome: string): string {
   return sugestao.slice(0, 40);
 }
 
-/** Por que o nome de usuário não serve (`null`: serve). */
+/** Por que o login não serve (`null`: serve). */
 export function erroDoUsuario(valor: string): string | null {
   const limpo = valor.trim().toLowerCase();
   if (limpo.length < 3) return "Use pelo menos 3 caracteres.";
-  if (limpo.includes("@")) return "Nome de usuário não tem @ (isso é de e-mail).";
+  if (limpo.length > LOGIN_MAXIMO) return `Use até ${LOGIN_MAXIMO} caracteres.`;
+  if (/\s/.test(limpo)) return "O login não pode ter espaço.";
+  if ((limpo.match(/@/g) ?? []).length > 1) return "Use no máximo uma @.";
   if (!FORMATO.test(limpo)) {
-    return "Use só letras sem acento, números, ponto, hífen ou sublinhado, começando por letra ou número (até 40).";
+    return limpo.includes("@")
+      ? "Depois da @ vem um nome, como em maria@salao (letras sem acento, números, ponto ou hífen)."
+      : "Use letras sem acento, números, ponto, hífen, sublinhado ou +, começando por letra ou número.";
   }
   return null;
 }
@@ -35,6 +44,7 @@ export interface AcessoCriado {
   membershipId: string;
   userId: string;
   username: string;
+  role?: string;
   /** Só na criação; `null` quando o mesmo formulário já tinha criado. */
   temporaryPassword: string | null;
 }

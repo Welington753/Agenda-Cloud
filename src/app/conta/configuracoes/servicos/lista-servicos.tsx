@@ -35,6 +35,8 @@ interface ListaServicosProps {
   /** Id do serviço sendo reativado agora, para trocar só o rótulo daquele
    * botão — `gravando` sozinho não diria QUAL serviço está em voo. */
   reativandoId: string | null;
+  /** `false`: só consulta (gerente sem a permissão de gerenciar). */
+  podeGerenciar?: boolean;
   aoEditar: (servico: ServicoReal) => void;
   aoPedirDesativacao: (servico: ServicoReal) => void;
   aoCancelarDesativacao: () => void;
@@ -48,6 +50,7 @@ export function ListaServicos({
   gravando,
   confirmando,
   reativandoId,
+  podeGerenciar = true,
   aoEditar,
   aoPedirDesativacao,
   aoCancelarDesativacao,
@@ -103,7 +106,7 @@ export function ListaServicos({
                 <AvisoForaDoOnline motivo={motivosForaDoOnline.get(servico.id)} />
               </div>
 
-              <div className="border-t border-border px-4 py-3 sm:px-5">
+              <div className="border-t border-border px-4 py-3 sm:px-5" hidden={!podeGerenciar}>
                 {confirmandoEste ? (
                   <div className="space-y-2">
                     <p className="text-sm text-ink">

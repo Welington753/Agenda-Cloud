@@ -14,15 +14,33 @@
 // conferidos por quem chama (my-agenda.service.ts), no banco, a cada
 // requisição. Aqui só se decide com o papel e os ajustes em mãos.
 //
+// GERENTE com profissional ligado (migration TeamManagerAccess): a mesma
+// agenda própria, e as mesmas três ações opt-in, depois que o dono confirmou
+// as permissões do vínculo. As áreas do estabelecimento vêm das concessões de
+// common/manager-permissions.ts, nunca do nome do papel.
+//
 // DONO: gerencia a equipe se a permissão `EQUIPE_GERENCIAR` não foi negada a
-// ele. Só concede ao funcionário as ações que ele próprio pode fazer: sem
-// `canManageAppointmentStatus`, nenhuma.
-import { canManageAppointmentStatus } from '../appointments/appointment-access.js';
+// ele. Só concede as ações que ele próprio pode fazer: sem
+// `canManageAppointmentStatus`, nenhuma das três; uma área do estabelecimento
+// só se a política do dono para aquela área o deixa fazê-la. Gerente não
+// gerencia equipe, não concede permissões e não mexe em credenciais.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 import type { AcaoDeStatus } from '../appointments/appointment-status-transitions.js';
+import {
+  canCancelAppointments,
+  canCreateAppointments,
+  canManageAppointmentStatus,
+  canRescheduleAppointments,
+  canViewAppointments,
+} from '../appointments/appointment-access.js';
+import { canManageConsumers, canViewConsumers } from '../consumers/consumer-access.js';
+import { canManageProfessionals, canViewProfessionals } from '../professionals/professional-access.js';
+import { canManageServices, canViewServices } from '../services/service-access.js';
+import { canViewPayments } from '../payments/payment-access.js';
+import { MANAGER_PERMISSIONS, type ManagerPermission } from '../common/manager-permissions.js';
 
 /** Valores novos do enum `permission` (migration TeamAccess1792886400000).
  * Ficam fora do enum TypeScript, que espelha a migration inicial. */
@@ -64,8 +82,16 @@ function tem(overrides: readonly OverrideRow[], permission: string, mode: Permis
   return overrides.some((o) => o.permission === permission && o.mode === mode);
 }
 
-export function canViewOwnAgenda(role: EstablishmentRole): boolean {
-  return role === EstablishmentRole.PROFISSIONAL;
+/** Papéis de equipe que o dono cria e administra em "Equipe e acessos". */
+export const TEAM_ROLES = ['PROFISSIONAL', 'GERENTE'] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
+
+/** Agenda própria: o funcionário sempre; o gerente com profissional ligado só
+ * depois de o dono confirmar as permissões dele (`permissionsConfirmed`). O
+ * profissional ligado e ativo é conferido por quem chama. */
+export function canViewOwnAgenda(role: EstablishmentRole, permissionsConfirmed = false): boolean {
+  if (role === EstablishmentRole.PROFISSIONAL) return true;
+  return role === EstablishmentRole.GERENTE && permissionsConfirmed;
 }
 
 export function staffPermissionGranted(
@@ -73,7 +99,7 @@ export function staffPermissionGranted(
   overrides: readonly OverrideRow[],
   permission: StaffPermission,
 ): boolean {
-  if (role !== EstablishmentRole.PROFISSIONAL) return false;
+  if (role !== EstablishmentRole.PROFISSIONAL && role !== EstablishmentRole.GERENTE) return false;
   if (tem(overrides, permission, PermissionMode.DENIED)) return false;
   return tem(overrides, permission, PermissionMode.GRANTED);
 }
@@ -94,4 +120,38 @@ export function grantableStaffPermissions(
 ): StaffPermission[] {
   if (!canManageTeam(role, overrides)) return [];
   return canManageAppointmentStatus(role, overrides) ? [...STAFF_PERMISSIONS] : [];
+}
+
+type PoliticaDoDono = (role: EstablishmentRole, overrides: readonly PermissionOverrideLike[]) => boolean;
+
+/** Para cada concessão de gerente, a política que o DONO precisa cumprir para
+ * poder concedê-la (a mesma que a rota aplica a ele). */
+const POLITICA_DO_DONO: Readonly<Record<ManagerPermission, PoliticaDoDono>> = {
+  AGENDA_VISUALIZAR: canViewAppointments,
+  AGENDA_GERENCIAR: canManageAppointmentStatus,
+  AGENDAMENTO_CRIAR: canCreateAppointments,
+  AGENDAMENTO_EDITAR: canRescheduleAppointments,
+  AGENDAMENTO_CANCELAR: canCancelAppointments,
+  SOLICITACOES_VISUALIZAR: canViewAppointments,
+  // O dono trata uma solicitação confirmando (andamento) ou recusando
+  // (cancelamento): precisa das duas para conceder as duas.
+  SOLICITACOES_TRATAR: (r, o) => canManageAppointmentStatus(r, o) && canCancelAppointments(r, o),
+  CONSUMIDORES_VISUALIZAR: canViewConsumers,
+  CONSUMIDORES_GERENCIAR: canManageConsumers,
+  SERVICOS_VISUALIZAR: canViewServices,
+  SERVICOS_GERENCIAR: canManageServices,
+  PROFISSIONAIS_VISUALIZAR: canViewProfessionals,
+  PROFISSIONAIS_GERENCIAR: canManageProfessionals,
+  RECEBIMENTOS_VISUALIZAR: canViewPayments,
+  RECEBIMENTOS_REGISTRAR: canViewPayments,
+  RECEBIMENTOS_ESTORNAR: canViewPayments,
+};
+
+/** Concessões de gerente que ESTE dono pode dar. */
+export function grantableManagerPermissions(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[],
+): ManagerPermission[] {
+  if (!canManageTeam(role, overrides) || role !== EstablishmentRole.DONO) return [];
+  return MANAGER_PERMISSIONS.filter((p) => POLITICA_DO_DONO[p](role, overrides));
 }

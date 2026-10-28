@@ -26,6 +26,7 @@ import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } fro
 import { isTenantUsableForSession } from './tenant-access.js';
 import { isMembershipActive } from '../common/tenant-authorization.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
+import { sessionAreas } from './session-areas.js';
 
 export interface LoginContext {
   now: Date;
@@ -161,6 +162,7 @@ export class AuthService {
         planName: plan.name,
         trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
         tenantStatus: tenant.status,
+        areas: await sessionAreas(manager, membership),
       });
     }
 
@@ -170,13 +172,18 @@ export class AuthService {
   /** Regra única de decisão de `activeContext`/`requiresTenantSelection`/
    * `hasEstablishmentAccess` a partir da lista de contexts — nunca escolhe o
    * primeiro quando há mais de um. */
-  /** Conta pelo identificador do login: e-mail ou nome de usuário. As
-   * colunas novas (StaffLogin) não estão na entidade: SQL explícito. */
+  /** Conta pelo identificador do login: e-mail OU login interno (que pode ter
+   * `@`). O banco impede o mesmo texto em contas diferentes
+   * (`uq_users_login_identifier`); se ainda assim duas contas aparecerem, o
+   * login é recusado como credencial inválida, nunca resolvido escolhendo
+   * uma delas. As colunas novas não estão na entidade: SQL explícito. */
   private async findLoginUser(manager: EntityManager, dto: LoginDto): Promise<User | null> {
-    if (dto.email) return manager.findOne(User, { where: { email: dto.email } });
-    if (!dto.username) return null;
-    const [linha] = await manager.query<{ id: string }[]>('SELECT id FROM users WHERE username = $1', [dto.username]);
-    return linha ? manager.findOne(User, { where: { id: linha.id } }) : null;
+    const linhas = await manager.query<{ id: string }[]>(
+      'SELECT id FROM users WHERE email = $1 OR username = $1 LIMIT 2',
+      [dto.identifier],
+    );
+    if (linhas.length !== 1) return null;
+    return manager.findOne(User, { where: { id: linhas[0].id } });
   }
 
   private async buildSessionContextResult(

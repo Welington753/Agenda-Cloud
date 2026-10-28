@@ -16,10 +16,13 @@ import { dataCurta } from "@/lib/conta/inicio";
 export function ListaRecebimentos({
   tenantId,
   recebimentos,
+  podeEstornar = true,
   aoMudar,
 }: {
   tenantId: string;
   recebimentos: readonly Recebimento[];
+  /** `false`: o gerente consulta sem estornar. */
+  podeEstornar?: boolean;
   aoMudar: (mensagem: string) => void;
 }) {
   const executarSensivel = useAcaoSensivel();
@@ -95,6 +98,7 @@ export function ListaRecebimentos({
                     type="button"
                     variante="fantasma"
                     className="min-h-11"
+                    hidden={!podeEstornar}
                     onClick={() => {
                       setErro(null);
                       setMotivo("");

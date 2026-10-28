@@ -35,6 +35,8 @@ import {
   type AtendimentoProprio,
 } from "@/lib/equipe/contratos";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { LinkDeAgendamento } from "@/components/conta/link-de-agendamento";
+import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { StatusDoAtendimento } from "@/components/conta/cartao-atendimento";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -60,6 +62,7 @@ export default function MinhaAgendaPage() {
   const { notificar } = useToast();
   const router = useRouter();
   const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
+  const slug = sessao.status === "autenticado" && tenantId ? encontrarContextoPorTenantId(sessao.sessao, tenantId)?.tenantSlug : null;
   const precisaSelecionar =
     sessao.status === "autenticado" && sessao.sessao.requiresTenantSelection && !tenantId;
   const dia = useDiaDoEstabelecimento(tenantId);
@@ -313,10 +316,12 @@ export default function MinhaAgendaPage() {
                     {agenda.permissions["no-show"] && <li>Marcar falta nos seus atendimentos.</li>}
                   </ul>
                   <p className="text-xs text-ink-soft">
-                    Criar, confirmar, remarcar e cancelar reservas é com o responsável pelo estabelecimento.
+                    Criar, confirmar, remarcar e cancelar reservas pelo painel depende do que o responsável liberar.
+                    Compartilhar o link de agendamento não muda isso.
                   </p>
                 </CartaoCorpo>
               </Cartao>
+              {slug && <LinkDeAgendamento slug={slug} />}
             </>
           )}
         </>

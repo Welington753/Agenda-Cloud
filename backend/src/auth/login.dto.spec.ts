@@ -14,7 +14,7 @@ describe('loginSchema', () => {
 
   it('normaliza email para lowercase e aplica trim', () => {
     const result = loginSchema.parse({ ...validPayload, email: '  Maria@Example.com  ' });
-    expect(result.email).toBe('maria@example.com');
+    expect(result.identifier).toBe('maria@example.com');
   });
 
   it('rejeita email inválido', () => {

@@ -24,6 +24,23 @@ export interface AcoesDaReserva {
   cancelar: boolean;
 }
 
+/** Só as ações que o vínculo ativo opera (o gerente recebe cada uma do dono).
+ * Apresentação: o servidor confere de novo. */
+export function acoesPermitidas(
+  acoes: AcoesDaReserva,
+  tem: (area: "AGENDA_ANDAMENTO" | "AGENDA_REMARCAR" | "AGENDA_CANCELAR") => boolean,
+): AcoesDaReserva {
+  const andamento = tem("AGENDA_ANDAMENTO");
+  return {
+    confirmar: acoes.confirmar && andamento,
+    iniciar: acoes.iniciar && andamento,
+    concluir: acoes.concluir && andamento,
+    registrarFalta: acoes.registrarFalta && andamento,
+    remarcar: acoes.remarcar && tem("AGENDA_REMARCAR"),
+    cancelar: acoes.cancelar && tem("AGENDA_CANCELAR"),
+  };
+}
+
 /**
  * Ações que a linha da reserva oferece neste instante.
  *

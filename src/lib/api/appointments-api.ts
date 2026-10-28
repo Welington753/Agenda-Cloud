@@ -1,6 +1,5 @@
-// Cliente tipado das rotas reais de agendamento e de clientes (Lote 6D.5) —
-// espelha backend/src/appointments/*.ts e backend/src/consumers/*.ts. Nenhum
-// campo inventado.
+// Cliente tipado das rotas reais de agendamento e de clientes (Lote 6D.5), espelho
+// de backend/src/appointments/*.ts e backend/src/consumers/*.ts. Nenhum campo inventado.
 //
 // O QUE ESTE CLIENTE NUNCA ENVIA: preço, duração, fim, status, unidade ou
 // tenant. O contrato do backend nem aceita esses campos — quem decide todos
@@ -35,9 +34,10 @@ export interface AgendamentoReal {
   notes: string | null;
   professional: { id: string; name: string };
   service: { id: string; name: string };
-  consumer: { id: string; name: string; whatsapp: string };
+  consumer: { id: string; name: string; whatsapp: string | null };
   unitId: string;
   createdAt: string;
+  hidden?: ("price" | "contact")[]; // escondido do gerente sem permissão (price: null não é "sob consulta")
 }
 
 export interface AgendaDoDiaReal {

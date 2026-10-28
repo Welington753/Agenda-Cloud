@@ -61,6 +61,7 @@ describe('AuthService.getSessionContext', () => {
         durationDays: TRIAL_DURATION_DAYS,
       },
       tenantStatus: TenantStatus.TRIAL,
+      areas: expect.any(Array),
     });
   });
 

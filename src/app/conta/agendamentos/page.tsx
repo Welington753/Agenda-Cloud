@@ -33,6 +33,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { useAreas } from "@/lib/conta/use-areas";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
 import { useAgendamentosReais } from "@/lib/profissionais/use-agendamentos-reais";
@@ -63,6 +64,8 @@ import { CalendarioDoDono } from "./calendario-do-dono";
 
 export default function AgendamentosPage() {
   const { estado: estadoSessao } = useRealAuth();
+  // O gerente cria reservas só se o dono concedeu; o servidor confere de novo.
+  const podeCriar = useAreas()("AGENDA_CRIAR");
   const { notificar } = useToast();
   const router = useRouter();
 
@@ -112,9 +115,9 @@ export default function AgendamentosPage() {
   // `window` (e não de useSearchParams) porque só importa na chegada.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("novo") !== "1") return;
-    setPainelAberto(true);
+    setPainelAberto(podeCriar);
     router.replace("/conta/agendamentos");
-  }, [router]);
+  }, [router, podeCriar]);
 
   // Trocar de dia também invalida o erro de uma ação: ele falava de uma reserva
   // que não está mais na tela.
@@ -226,7 +229,7 @@ export default function AgendamentosPage() {
           aoHoje={irParaHoje}
           aoFiltrar={setFiltroProfissionalId}
           aoAtualizar={recarregar}
-          aoNovoAgendamento={abrirPainel}
+          aoNovoAgendamento={podeCriar ? abrirPainel : undefined}
         />
       )}
 
@@ -261,7 +264,7 @@ export default function AgendamentosPage() {
           filtroProfissionalId={filtroProfissionalId}
           profissionais={opcoesFiltro}
           aoFiltrar={setFiltroProfissionalId}
-          aoNovoAgendamento={abrirPainel}
+          aoNovoAgendamento={podeCriar ? abrirPainel : undefined}
           aoAbrir={(item) => {
             setAbertaNoCalendario(item.id);
             mudarData(item.localDate);

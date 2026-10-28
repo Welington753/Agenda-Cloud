@@ -8,6 +8,7 @@ import {
   tenantEffectiveAccess,
 } from './tenant-effective-access.js';
 import { STAFF_PERMISSIONS } from '../team/staff-access.js';
+import { MANAGER_PERMISSIONS } from '../common/manager-permissions.js';
 
 const allowed = (role: EstablishmentRole, overrides = [] as { permission: Permission; mode: PermissionMode }[]) =>
   tenantEffectiveAccess(role, overrides)
@@ -18,6 +19,10 @@ const allowed = (role: EstablishmentRole, overrides = [] as { permission: Permis
 const AREAS_DO_FUNCIONARIO = TENANT_AREAS.filter((area) => area.key.startsWith('AGENDA_PROPRIA_')).map((a) => a.key);
 const AREAS_DO_DONO = TENANT_AREAS.filter((area) => !AREAS_DO_FUNCIONARIO.includes(area.key)).map((a) => a.key);
 const GRANTED_DE_DONO = Object.values(Permission).map((permission) => ({ permission, mode: PermissionMode.GRANTED }));
+const GRANTED_DE_GERENTE = MANAGER_PERMISSIONS.map((permission) => ({
+  permission: permission as unknown as Permission,
+  mode: PermissionMode.GRANTED,
+}));
 const GRANTED_DE_FUNCIONARIO = STAFF_PERMISSIONS.map((permission) => ({
   permission: permission as unknown as Permission,
   mode: PermissionMode.GRANTED,
@@ -29,10 +34,23 @@ describe('acesso efetivo de um vínculo', () => {
     expect(allowed(EstablishmentRole.DONO, GRANTED_DE_FUNCIONARIO)).toEqual(AREAS_DO_DONO);
   });
 
-  it('GERENTE e RECEPCIONISTA não têm área nenhuma, nem com GRANTED (as rotas não ampliam)', () => {
-    for (const role of [EstablishmentRole.GERENTE, EstablishmentRole.RECEPCIONISTA]) {
-      expect(allowed(role, [...GRANTED_DE_DONO, ...GRANTED_DE_FUNCIONARIO])).toEqual([]);
-    }
+  it('RECEPCIONISTA não tem área nenhuma, nem com GRANTED (as rotas não ampliam)', () => {
+    expect(allowed(EstablishmentRole.RECEPCIONISTA, [...GRANTED_DE_DONO, ...GRANTED_DE_FUNCIONARIO, ...GRANTED_DE_GERENTE])).toEqual([]);
+  });
+
+  it('GERENTE sem concessão não tem área nenhuma: o nome do papel não libera nada', () => {
+    expect(allowed(EstablishmentRole.GERENTE)).toEqual([]);
+  });
+
+  it('GERENTE com tudo concedido opera as áreas concedidas, nunca as que são só do dono', () => {
+    const areas = allowed(EstablishmentRole.GERENTE, [...GRANTED_DE_DONO, ...GRANTED_DE_GERENTE]);
+    expect(areas).toEqual(expect.arrayContaining(['AGENDA_VER', 'SOLICITACOES_TRATAR', 'RECEBIMENTOS_ESTORNAR']));
+    for (const soDoDono of ['EQUIPE', 'AGENDAMENTO_ONLINE']) expect(areas).not.toContain(soDoDono);
+  });
+
+  it('GERENTE com uma concessão sem as dependências dela não opera aquela área', () => {
+    const soCriar = [{ permission: Permission.AGENDAMENTO_CRIAR, mode: PermissionMode.GRANTED }];
+    expect(allowed(EstablishmentRole.GERENTE, soCriar)).toEqual([]);
   });
 
   it('PROFISSIONAL vê só a própria agenda; as ações só com GRANTED do dono; nunca áreas de dono', () => {

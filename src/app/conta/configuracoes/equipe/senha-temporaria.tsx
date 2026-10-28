@@ -21,7 +21,7 @@ export function SenhaTemporaria({
 
   async function copiar() {
     try {
-      await navigator.clipboard.writeText(`Usuário: ${usuario}\nSenha temporária: ${senha}`);
+      await navigator.clipboard.writeText(`Login: ${usuario}\nSenha temporária: ${senha}`);
       setCopiado("sim");
     } catch {
       setCopiado("falhou");
@@ -39,7 +39,7 @@ export function SenhaTemporaria({
         Entregue estes dados à pessoa
       </p>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-        <dt className="text-ink-soft">Usuário</dt>
+        <dt className="text-ink-soft">Login</dt>
         <dd className="font-mono font-semibold break-all" data-testid="senha-temporaria-usuario">
           {usuario}
         </dd>
@@ -49,13 +49,13 @@ export function SenhaTemporaria({
         </dd>
       </dl>
       <p className="text-xs text-ink-soft">
-        Anote agora: esta senha não aparece de novo, nem para você. No primeiro acesso, a pessoa entra com o usuário
-        e esta senha e escolhe a própria senha antes de ver a agenda.
+        Anote agora: esta senha não aparece de novo, nem para você. No primeiro acesso, a pessoa entra com o login
+        e esta senha e escolhe a própria senha antes de continuar.
       </p>
       <div className="flex flex-wrap gap-2">
         <Botao type="button" variante="secundaria" className="min-h-11" onClick={() => void copiar()}>
           <Copy size={16} aria-hidden="true" />
-          Copiar usuário e senha
+          Copiar login e senha
         </Botao>
         <Botao type="button" variante="fantasma" className="min-h-11" onClick={aoFechar}>
           Já entreguei

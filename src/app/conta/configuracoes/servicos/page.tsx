@@ -21,6 +21,7 @@ import type { DadosServicoReal, ServicoReal } from "@/lib/api/services-api";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
+import { useAreas } from "@/lib/conta/use-areas";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -31,6 +32,8 @@ type Edicao = { modo: "fechado" } | { modo: "novo" } | { modo: "editar"; servico
 
 export default function ServicosPage() {
   const { estado: estadoSessao } = useRealAuth();
+  // O gerente sem a permissão de gerenciar só consulta; o servidor confere de novo.
+  const podeGerenciar = useAreas()("SERVICOS_GERENCIAR");
   const { notificar } = useToast();
   const router = useRouter();
 
@@ -151,7 +154,7 @@ export default function ServicosPage() {
       descricao="Preço, duração e modalidade do que o estabelecimento oferece."
       acoes={
         estado.status === "carregada" && edicao.modo === "fechado" && estado.servicos.length > 0 ? (
-          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
             <PlusCircle size={16} aria-hidden="true" />
             Novo serviço
           </Botao>
@@ -209,7 +212,7 @@ export default function ServicosPage() {
               titulo="Nenhum serviço cadastrado"
               descricao="Cadastre o que este estabelecimento oferece para começar."
               acao={
-                <Botao type="button" onClick={() => setEdicao({ modo: "novo" })}>
+                <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
                   <PlusCircle size={16} className="mr-1.5" />
                   Cadastrar serviço
                 </Botao>
@@ -219,6 +222,7 @@ export default function ServicosPage() {
 
           {estado.servicos.length > 0 && (
             <ListaServicos
+              podeGerenciar={podeGerenciar}
               servicos={estado.servicos}
               motivosForaDoOnline={motivos}
               gravando={gravando}

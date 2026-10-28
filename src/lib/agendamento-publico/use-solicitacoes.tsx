@@ -33,6 +33,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
+import { temArea } from "@/lib/conta/papel";
 import {
   listarSolicitacoes,
   type FalhaPrivada,
@@ -86,12 +87,13 @@ const Contexto = createContext<ValorSolicitacoes | undefined>(undefined);
 export function SolicitacoesProvider({ children }: { children: ReactNode }) {
   const { estado: sessao } = useRealAuth();
   const pathname = usePathname();
-  // Só o dono vê solicitações: para o funcionário (e papéis sem área) não há
-  // leitura nenhuma, nem periódica — o servidor recusaria todas.
+  // Só quem vê solicitações (o dono, ou o gerente a quem o dono concedeu):
+  // para o funcionário e os papéis sem área não há leitura nenhuma, nem
+  // periódica — o servidor recusaria todas.
   const ativo = sessao.status === "autenticado" && sessao.tenantIdAtivo
     ? sessao.sessao.contexts.find((c) => c.tenantId === sessao.tenantIdAtivo)
     : undefined;
-  const tenantId = ativo?.role === "DONO" ? ativo.tenantId : null;
+  const tenantId = ativo && (ativo.role === "DONO" || temArea(ativo, "SOLICITACOES_VER")) ? ativo.tenantId : null;
   const userId = sessao.status === "autenticado" ? sessao.sessao.user.id : null;
   const chave = tenantId && userId ? `${userId}:${tenantId}` : null;
 

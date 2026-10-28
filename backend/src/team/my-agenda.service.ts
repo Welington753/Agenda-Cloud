@@ -1,4 +1,5 @@
-// Agenda do FUNCIONÁRIO: só os atendimentos do profissional ligado ao vínculo
+// Agenda do FUNCIONÁRIO (e do GERENTE com profissional ligado, depois da
+// confirmação do dono): só os atendimentos do profissional ligado ao vínculo
 // de quem está na sessão. O profissional NUNCA vem do navegador: a URL traz
 // só o estabelecimento (que precisa de vínculo ativo da própria conta) e,
 // nas ações, o id da reserva, que só é encontrado se for desse profissional.
@@ -22,7 +23,11 @@ import {
 import type { OwnAgendaPeriodDto } from '../appointments/appointment.dto.js';
 import { transicaoPermitida } from '../appointments/appointment-status-transitions.js';
 import { dataLocalDe, horaLocalDe, janelaDeCarregamento } from '../availability/time-zone.js';
-import { MEMBERSHIP_SUSPENDED_MESSAGE, TENANT_NOT_FOUND_MESSAGE } from '../common/tenant-authorization.js';
+import {
+  MEMBERSHIP_SUSPENDED_MESSAGE,
+  TENANT_NOT_FOUND_MESSAGE,
+  effectiveOverrides,
+} from '../common/tenant-authorization.js';
 import type { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { isOperational } from './seats.js';
@@ -94,10 +99,12 @@ export class MyAgendaService {
         professional_id: string | null;
         professional_name: string | null;
         professional_active: boolean | null;
+        permissions_confirmed: boolean;
         overrides: OverrideRow[];
       }[]
     >(
       `SELECT m.id AS membership_id, m.role, m.status, t.status::text AS tenant_status, t.timezone,
+              m.permissions_confirmed_at IS NOT NULL AS permissions_confirmed,
               p.id AS professional_id, p.name AS professional_name, p.active AS professional_active,
               COALESCE((SELECT json_agg(json_build_object('permission', o.permission, 'mode', o.mode))
                 FROM membership_permission_overrides o WHERE o.tenant_id = m.tenant_id AND o.membership_id = m.id),
@@ -110,14 +117,17 @@ export class MyAgendaService {
     );
     if (!linha || !isOperational(linha.tenant_status)) throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
     if (linha.status !== 'ACTIVE') throw new ForbiddenException(MEMBERSHIP_SUSPENDED_MESSAGE);
-    if (!canViewOwnAgenda(linha.role)) throw new ForbiddenException(OWN_AGENDA_FORBIDDEN_MESSAGE);
+    if (!canViewOwnAgenda(linha.role, linha.permissions_confirmed)) {
+      throw new ForbiddenException(OWN_AGENDA_FORBIDDEN_MESSAGE);
+    }
     if (!linha.professional_id || !linha.professional_active) {
       throw new ForbiddenException(PROFESSIONAL_INACTIVE_MESSAGE);
     }
+    const valem = effectiveOverrides(linha.role, linha.permissions_confirmed, linha.overrides);
     const allowed = Object.fromEntries(
       STAFF_ACTIONS.map((acao) => [
         acao,
-        staffPermissionGranted(linha.role, linha.overrides, STAFF_PERMISSION_OF_ACTION[acao]),
+        staffPermissionGranted(linha.role, valem, STAFF_PERMISSION_OF_ACTION[acao]),
       ]),
     ) as Record<StaffAction, boolean>;
     return {

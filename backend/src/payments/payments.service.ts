@@ -28,7 +28,14 @@ import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { mesDaData } from '../dashboard/dashboard-period.js';
 import { generateId } from '../entities/common/generate-id.js';
 import { linhasDe } from '../notifications/notification-jobs.repository.js';
-import { PAYMENTS_FORBIDDEN_MESSAGE, canManagePayments } from './payment-access.js';
+import {
+  PAYMENTS_FORBIDDEN_MESSAGE,
+  PAYMENT_RECORD_FORBIDDEN_MESSAGE,
+  PAYMENT_REFUND_FORBIDDEN_MESSAGE,
+  canRecordPayments,
+  canRefundPayments,
+  canViewPayments,
+} from './payment-access.js';
 import type { PaymentPeriodDto, RecordPaymentDto, RefundPaymentDto } from './payments.dto.js';
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
@@ -129,8 +136,8 @@ export class PaymentsService {
 
   async record(userId: string, tenantId: string, dto: RecordPaymentDto, now = new Date()): Promise<{ created: boolean; payment: PaymentView }> {
     const autorizado = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
-      permitido: canManagePayments,
-      mensagemProibido: PAYMENTS_FORBIDDEN_MESSAGE,
+      permitido: canRecordPayments,
+      mensagemProibido: PAYMENT_RECORD_FORBIDDEN_MESSAGE,
     });
     const repetido = await this.porChave(this.dataSource.manager, autorizado.tenantId, userId, dto.requestKey);
     if (repetido) return { created: false, payment: repetido };
@@ -200,8 +207,8 @@ export class PaymentsService {
     const tenant = await this.dataSource.transaction(async (manager) => {
       await requireRecentReauth(manager, sessionId, now);
       const autorizado = await resolveAuthorizedTenant(manager, userId, tenantId, {
-        permitido: canManagePayments,
-        mensagemProibido: PAYMENTS_FORBIDDEN_MESSAGE,
+        permitido: canRefundPayments,
+        mensagemProibido: PAYMENT_REFUND_FORBIDDEN_MESSAGE,
       });
       const [linha] = linhasDe<{ refunded_at: Date | null; amount_cents: string; timezone: string; received_on: string }>(
         await manager.query(
@@ -242,7 +249,7 @@ export class PaymentsService {
   async list(userId: string, tenantId: string, query: PaymentPeriodDto, now = new Date()) {
     const manager = this.dataSource.manager;
     const autorizado = await resolveAuthorizedTenant(manager, userId, tenantId, {
-      permitido: canManagePayments,
+      permitido: canViewPayments,
       mensagemProibido: PAYMENTS_FORBIDDEN_MESSAGE,
     });
     const timezone = await this.fuso(manager, autorizado.tenantId);

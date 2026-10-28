@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { ListaRecebimentos } from "./lista-recebimentos";
 import { RegistrarRecebimento } from "./registrar-recebimento";
+import { useAreas } from "@/lib/conta/use-areas";
 
 const MENSAGEM_DE_LEITURA = {
   sessao: "Sua sessão precisa ser verificada novamente. Entre de novo.",
@@ -53,6 +54,10 @@ function periodoInicial(): PeriodoLocal | "mes-atual" {
 
 export default function RecebimentosPage() {
   const { estado: sessao } = useRealAuth();
+  // Registrar e estornar são liberados um a um ao gerente; o servidor confere de novo.
+  const tem = useAreas();
+  const podeRegistrar = tem("RECEBIMENTOS_REGISTRAR");
+  const podeEstornar = tem("RECEBIMENTOS_ESTORNAR");
   const { notificar } = useToast();
   const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
   const [escolha, setEscolha] = useState<PeriodoLocal | "mes-atual" | null>(null);
@@ -159,7 +164,7 @@ export default function RecebimentosPage() {
                             {a.serviceName} · {a.professionalName} · {dataCurta(a.localDate)}
                           </p>
                         </div>
-                        {quitando !== a.id && (
+                        {quitando !== a.id && podeRegistrar && (
                           <Botao type="button" className="min-h-11" onClick={() => setQuitando(a.id)}>
                             Registrar recebimento
                           </Botao>
@@ -185,7 +190,12 @@ export default function RecebimentosPage() {
               <h2 id="titulo-recebimentos" className="text-base font-semibold text-ink">
                 Recebimentos e estornos do período
               </h2>
-              <ListaRecebimentos tenantId={estabelecimento} recebimentos={dados.payments} aoMudar={mudou} />
+              <ListaRecebimentos
+                tenantId={estabelecimento}
+                recebimentos={dados.payments}
+                podeEstornar={podeEstornar}
+                aoMudar={mudou}
+              />
               {!dados.paymentsComplete && <p className="text-xs text-ink-soft">Mostrando os mais recentes: o período tem mais registros.</p>}
             </section>
 

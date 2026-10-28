@@ -47,6 +47,7 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { AbasDaAgenda } from "@/components/conta/abas-da-agenda";
+import { useAreas } from "@/lib/conta/use-areas";
 import { MENSAGEM_DO_DESTINO, useDestinoDaNotificacao } from "@/lib/push/use-destino-da-notificacao";
 
 export default function SolicitacoesPage() {
@@ -171,6 +172,8 @@ function CartaoSolicitacao({
   aoMudar: () => void;
 }) {
   const { notificar } = useToast();
+  // O gerente só confirma e recusa se o dono concedeu; o servidor confere de novo.
+  const podeTratar = useAreas()("SOLICITACOES_TRATAR");
   const [gravando, setGravando] = useState<"confirmar" | "recusar" | null>(null);
   const [confirmandoRecusa, setConfirmandoRecusa] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -260,6 +263,10 @@ function CartaoSolicitacao({
               </Botao>
             </div>
           </div>
+        ) : !podeTratar ? (
+          <p className="text-xs text-ink-soft" data-testid="sem-tratar-solicitacao">
+            Você pode consultar as solicitações. Confirmar e recusar ficam com quem o responsável liberou.
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
             <Botao onClick={() => void confirmar()} disabled={!!gravando} data-testid="confirmar-solicitacao">
@@ -277,13 +284,15 @@ function CartaoSolicitacao({
           </div>
         )}
 
-        <div className="space-y-2">
-          <p className="text-xs text-ink-soft" data-testid="contato-manual">
-            Contato manual pelo WhatsApp: abre a conversa para você escrever. Nenhuma mensagem é
-            enviada automaticamente.
-          </p>
-          <ContatoDaReserva agendamento={s} estabelecimento={estabelecimento} />
-        </div>
+        {s.consumer.whatsapp && (
+          <div className="space-y-2">
+            <p className="text-xs text-ink-soft" data-testid="contato-manual">
+              Contato manual pelo WhatsApp: abre a conversa para você escrever. Nenhuma mensagem é
+              enviada automaticamente.
+            </p>
+            <ContatoDaReserva agendamento={s} estabelecimento={estabelecimento} />
+          </div>
+        )}
       </CartaoCorpo>
     </Cartao>
   );

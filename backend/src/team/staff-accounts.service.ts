@@ -1,21 +1,29 @@
-// Acesso de funcionário com NOME DE USUÁRIO e SENHA TEMPORÁRIA, sem e-mail
-// (ver docs/plans/operacao-diaria-configuracoes.md, PR 2).
+// Acesso de equipe com LOGIN INTERNO e SENHA TEMPORÁRIA, sem e-mail (ver
+// docs/plans/operacao-diaria-configuracoes.md, PR 2, e
+// docs/plans/equipe-gerente-login-interno.md).
 //
 // CRIAR (dono, senha confirmada há pouco nesta sessão): numa transação só,
 // com o estabelecimento travado (mesma fila das vagas, ver seats.ts):
-// estabelecimento em operação, profissional ativo, sem acesso e sem convite
-// pendente, vaga livre no plano, nome de usuário livre na plataforma e só as
-// permissões que o dono pode conceder. Grava conta (sem e-mail, e-mail não
-// verificado, troca de senha obrigatória), credencial (Argon2id), vínculo
-// PROFISSIONAL, permissões, a chave do formulário e o histórico. Qualquer
-// recusa desfaz tudo: nunca sobra conta sem vínculo.
+// estabelecimento em operação; perfil PROFISSIONAL (sempre com profissional)
+// ou GERENTE (com ou sem profissional); o profissional, quando há, ativo, sem
+// acesso e sem convite pendente; vaga livre no plano; login livre na
+// plataforma (também contra os e-mails, ver migration TeamManagerAccess); e
+// só as permissões que o dono pode conceder, com as dependências junto (ver
+// team-permissions.ts). Grava conta NOVA (sem e-mail, e-mail não verificado,
+// troca de senha obrigatória), credencial (Argon2id), vínculo, permissões (no
+// gerente, já confirmadas pelo dono), a chave do formulário e o histórico.
+// Qualquer recusa desfaz tudo: nunca sobra conta sem vínculo, e nunca uma
+// conta existente é ligada ou assumida: login em uso é recusado.
+//
+// Gerente sem profissional ocupa vaga de equipe, mas NÃO cria profissional.
 //
 // A senha temporária é gerada aqui, devolvida UMA vez nesta resposta e nunca
 // guardada em claro, em log ou no histórico. Repetir o mesmo formulário
 // (mesma chave) devolve o acesso já criado, SEM senha: para outra, o dono
 // gera uma nova.
 //
-// NOVA SENHA TEMPORÁRIA (dono): só para a conta criada assim — sem e-mail,
+// NOVA SENHA TEMPORÁRIA (dono, profissional ou gerente): só para a conta
+// criada assim — sem e-mail,
 // sem papel na plataforma e com este único vínculo. Uma conta que entra por
 // e-mail, que trabalha em outra empresa ou que administra a plataforma não é
 // do dono: a senha dela é global, e trocá-la daria ao dono a conta inteira.
@@ -40,6 +48,8 @@ import {
 } from './seats.js';
 import { resolveTeamManager } from './team-authorization.js';
 import type { StaffAccountDto } from './team.dto.js';
+import { validarConcessoes } from './team-permissions.js';
+import { TEAM_ROLES } from './staff-access.js';
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
@@ -58,6 +68,7 @@ export interface StaffAccountCreated {
   membershipId: string;
   userId: string;
   username: string;
+  role: string;
   /** Só na criação. Nunca de novo. */
   temporaryPassword: string | null;
 }
@@ -85,41 +96,43 @@ export class StaffAccountsService {
         if (!isOperational(tenant.status)) {
           throw conflito('ESTABELECIMENTO_FORA_DE_OPERACAO', 'O estabelecimento não está em operação.');
         }
-        const [profissional] = await manager.query<{ id: string; name: string; active: boolean }[]>(
-          'SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND id = $2 FOR SHARE',
-          [tenant.id, dto.professionalId],
-        );
-        if (!profissional) throw new NotFoundException('Profissional não encontrado.');
-        if (!profissional.active) {
-          throw conflito('PROFISSIONAL_INATIVO', 'Este profissional está desativado. Reative-o antes de criar o acesso.');
-        }
-        const [vinculo] = await manager.query<unknown[]>(
-          'SELECT 1 FROM memberships WHERE tenant_id = $1 AND professional_id = $2',
-          [tenant.id, profissional.id],
-        );
-        if (vinculo) {
-          throw conflito(
-            'PROFISSIONAL_COM_ACESSO',
-            'Este profissional já tem um acesso. Para trocar a pessoa, remova o acesso atual antes.',
-          );
-        }
+        // Sem perfil (quem chama sem passar pelo DTO, como a tela anterior): profissional.
+        const role = dto.role ?? 'PROFISSIONAL';
+        if (!(TEAM_ROLES as readonly string[]).includes(role)) throw conflito('PERFIL_INVALIDO', 'Perfil inválido.');
         await expireStaleStaffInvites(manager, tenant.id, now);
-        const [pendente] = await manager.query<unknown[]>(
-          `SELECT 1 FROM invites WHERE tenant_id = $1 AND professional_id = $2 AND status = 'PENDING'`,
-          [tenant.id, profissional.id],
-        );
-        if (pendente) {
-          throw conflito('CONVITE_PENDENTE', 'Este profissional já tem um convite pendente. Revogue o convite antes.');
+        let profissional: { id: string; name: string } | null = null;
+        if (dto.professionalId) {
+          const [encontrado] = await manager.query<{ id: string; name: string; active: boolean }[]>(
+            'SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+            [tenant.id, dto.professionalId],
+          );
+          if (!encontrado) throw new NotFoundException('Profissional não encontrado.');
+          if (!encontrado.active) {
+            throw conflito('PROFISSIONAL_INATIVO', 'Este profissional está desativado. Reative-o antes de criar o acesso.');
+          }
+          const [vinculo] = await manager.query<unknown[]>(
+            'SELECT 1 FROM memberships WHERE tenant_id = $1 AND professional_id = $2',
+            [tenant.id, encontrado.id],
+          );
+          if (vinculo) {
+            throw conflito(
+              'PROFISSIONAL_COM_ACESSO',
+              'Este profissional já tem um acesso. Para trocar a pessoa, remova o acesso atual antes.',
+            );
+          }
+          const [pendente] = await manager.query<unknown[]>(
+            `SELECT 1 FROM invites WHERE tenant_id = $1 AND professional_id = $2 AND status = 'PENDING'`,
+            [tenant.id, encontrado.id],
+          );
+          if (pendente) {
+            throw conflito('CONVITE_PENDENTE', 'Este profissional já tem um convite pendente. Revogue o convite antes.');
+          }
+          profissional = { id: encontrado.id, name: encontrado.name };
         }
         const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now);
         if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
-        const indevidas = dto.permissions.filter((p) => !gestor.grantable.includes(p));
-        if (indevidas.length) {
-          throw conflito(
-            'PERMISSAO_NAO_DISPONIVEL',
-            'Você só pode liberar ações que você mesmo pode fazer neste estabelecimento.',
-          );
-        }
+        validarConcessoes(gestor, { role, withProfessional: !!profissional }, dto.permissions);
+        const gerente = role === 'GERENTE';
 
         const userId = generateId();
         const membershipId = generateId();
@@ -132,10 +145,12 @@ export class StaffAccountsService {
           `INSERT INTO credentials (id, user_id, password_hash, algorithm, updated_at) VALUES ($1, $2, $3, $4, $5)`,
           [generateId(), userId, hash, CREDENTIAL_ALGORITHM, now],
         );
+        // No gerente, a criação JÁ É a confirmação do dono: o que ele marcou
+        // e viu na tela é o que vale (ver effectiveOverrides).
         await manager.query(
-          `INSERT INTO memberships (id, user_id, tenant_id, role, professional_id, status, created_at)
-           VALUES ($1, $2, $3, 'PROFISSIONAL', $4, 'ACTIVE', $5)`,
-          [membershipId, userId, tenant.id, profissional.id, now],
+          `INSERT INTO memberships (id, user_id, tenant_id, role, professional_id, status, created_at, permissions_confirmed_at)
+           VALUES ($1, $2, $3, $4::establishment_role, $5, 'ACTIVE', $6, $7)`,
+          [membershipId, userId, tenant.id, role, profissional?.id ?? null, now, gerente ? now : null],
         );
         for (const permission of dto.permissions) {
           await manager.query(
@@ -157,16 +172,25 @@ export class StaffAccountsService {
             actor,
             tenantId: tenant.id,
             targetUserId: userId,
-            summary: `Acesso de funcionário criado para ${dto.username}, ligado a ${profissional.name}.`,
-            newData: { username: dto.username, professionalId: profissional.id, granted: [...dto.permissions].sort() },
+            summary: `Acesso de ${gerente ? 'gerente' : 'profissional'} criado para ${dto.username}, ${
+              profissional ? `ligado a ${profissional.name}` : 'sem profissional ligado'
+            }.`,
+            newData: {
+              username: dto.username,
+              role,
+              professionalId: profissional?.id ?? null,
+              granted: [...dto.permissions].sort(),
+            },
           },
           now,
         );
-        return { created: true, membershipId, userId, username: dto.username, temporaryPassword: senha };
+        return { created: true, membershipId, userId, username: dto.username, role, temporaryPassword: senha };
       });
     } catch (error) {
-      if (isUniqueViolation(error, 'uq_users_username')) {
-        throw conflito('USUARIO_EM_USO', 'Este nome de usuário já está em uso. Escolha outro.');
+      // Mesma mensagem para login de outra conta e e-mail de outra conta: a
+      // tela não diz qual dos dois, e nada é ligado à conta existente.
+      if (isUniqueViolation(error, 'uq_users_username') || isUniqueViolation(error, 'uq_users_login_identifier')) {
+        throw conflito('USUARIO_EM_USO', 'Este login já está em uso na plataforma. Escolha outro.');
       }
       if (isUniqueViolation(error, 'uq_memberships_professional_id')) {
         throw conflito('PROFISSIONAL_COM_ACESSO', 'Este profissional já tem um acesso.');
@@ -205,7 +229,7 @@ export class StaffAccountsService {
                   u.platform_role::text AS platform_role,
                   (SELECT count(*)::int FROM memberships o WHERE o.user_id = u.id) AS vinculos
              FROM memberships m JOIN users u ON u.id = m.user_id
-            WHERE m.id = $1 AND m.tenant_id = $2 AND m.role = 'PROFISSIONAL'
+            WHERE m.id = $1 AND m.tenant_id = $2 AND m.role IN ('PROFISSIONAL', 'GERENTE')
             FOR UPDATE OF u`,
           [membershipId, gestor.tenantId],
         ),
@@ -261,10 +285,11 @@ export class StaffAccountsService {
     actorId: string,
     requestKey: string,
   ): Promise<StaffAccountCreated | null> {
-    const [linha] = linhasDe<{ membership_id: string; user_id: string; username: string }>(
+    const [linha] = linhasDe<{ membership_id: string; user_id: string; username: string; role: string | null }>(
       await manager.query(
-        `SELECT r.membership_id, r.user_id, u.username::text AS username
+        `SELECT r.membership_id, r.user_id, u.username::text AS username, m.role::text AS role
            FROM staff_account_requests r JOIN users u ON u.id = r.user_id
+           LEFT JOIN memberships m ON m.id = r.membership_id
           WHERE r.actor_user_id = $1 AND r.request_key = $2`,
         [actorId, requestKey],
       ),
@@ -275,6 +300,7 @@ export class StaffAccountsService {
       membershipId: linha.membership_id,
       userId: linha.user_id,
       username: linha.username,
+      role: linha.role ?? 'PROFISSIONAL',
       temporaryPassword: null,
     };
   }

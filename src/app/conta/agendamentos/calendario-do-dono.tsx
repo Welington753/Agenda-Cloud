@@ -25,7 +25,7 @@ interface CalendarioDoDonoProps {
   filtroProfissionalId: string;
   profissionais: readonly OpcaoDeProfissional[];
   aoFiltrar: (professionalId: string) => void;
-  aoNovoAgendamento: () => void;
+  aoNovoAgendamento?: () => void;
   aoAbrir: (item: ItemDoCalendario) => void;
 }
 
@@ -89,10 +89,12 @@ export function CalendarioDoDono(props: CalendarioDoDonoProps) {
               ))}
             </select>
           </div>
-          <Botao type="button" onClick={props.aoNovoAgendamento} className="sm:ml-auto">
-            <CalendarPlus size={16} aria-hidden="true" />
-            Novo agendamento
-          </Botao>
+          {props.aoNovoAgendamento && (
+            <Botao type="button" onClick={props.aoNovoAgendamento} className="sm:ml-auto">
+              <CalendarPlus size={16} aria-hidden="true" />
+              Novo agendamento
+            </Botao>
+          )}
         </>
       }
     />
