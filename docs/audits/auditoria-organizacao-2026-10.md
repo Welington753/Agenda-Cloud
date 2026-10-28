@@ -79,6 +79,15 @@ em `docs/arquitetura/mapa-tecnico.md`, e os lotes propostos em
 - **Correção proposta (muda comportamento, lote E1):** encaminhar `/<slug>`
   que não seja da demonstração para `/agendar/<slug>`, ou retirar a
   demonstração (lote E2).
+- **Estado: corrigido no lote E1** (branch `fix/e1-tipos-testes-endereco-curto`).
+  Slug que a demonstração conhece neste navegador continua na demonstração;
+  qualquer outro troca a URL por `/agendar/<slug>` (`linkPublico`), cuja
+  página já trata inexistente e desativado com o mesmo 404. Evidência: a
+  suíte `test:browser:agendamento-publico` (CI) passou a abrir `/<slug>` de
+  um estabelecimento real desativado e ativado, um slug inexistente, um slug
+  da demonstração (`/dom-navalha`) e `/login`. Fica fora: as subrotas da
+  demonstração (`/<slug>/agendar`, `/<slug>/agendamento/<id>`) continuam só
+  da demonstração, e os conflitos de nome descritos em R6.
 
 **F2. 26 erros de tipo nos testes do backend, fora do CI.**
 
@@ -94,6 +103,16 @@ em `docs/arquitetura/mapa-tecnico.md`, e os lotes propostos em
   não devolve mais.
 - **Correção proposta (lote E1):** corrigir os tipos e acrescentar ao CI
   `npx tsc --noEmit -p tsconfig.json`.
+- **Estado: corrigido no lote E1.** `npm run typecheck` (o mesmo comando)
+  dá 0 erros e roda no CI logo depois da instalação, antes das etapas
+  demoradas. Sem `any`, supressão, exclusão de arquivo nem asserção
+  enfraquecida. Os duplos de login e sessão (spec do controller e e2e HTTP)
+  passaram a ser tipados pelo contrato do serviço e ganharam `areas`,
+  `username` e `mustChangePassword`. O `target` subiu para ES2024 (Node 24)
+  por causa de `Promise.withResolvers` nos testes com banco; o JavaScript
+  gerado pelo build, pelas migrations e pelos scripts ficou idêntico
+  (comparado com `diff -r`). O workflow passou a disparar também em
+  `backend/scripts/**` e `backend/tsconfig*.json`.
 
 **F3. O `tsc --noEmit` do frontend falha sem os tipos gerados do Next.**
 
@@ -177,6 +196,27 @@ todo o histórico do estabelecimento.**
   entidade, sem uso.
 - **Correção proposta:** a frente D usa `units.address` da unidade
   principal como fonte única. A outra coluna fica sem uso até uma decisão.
+
+**R6. Slug de estabelecimento real pode coincidir com uma rota ou com a
+demonstração.**
+
+- **Arquivos:** `backend/src/auth/slug.ts` (gera o slug do nome, sem lista
+  de reservados), `src/lib/estabelecimentos/validacao.ts`
+  (`SLUGS_RESERVADOS`, só da demonstração) e `src/lib/seed/estabelecimentos.ts`.
+- **Evidência (leitura do código):** o backend só garante unicidade. Um
+  estabelecimento chamado "Conta", "Login", "Cadastro", "Convite" ou
+  "Agendar" recebe esse slug, e `/conta`, `/login`... abrem a rota do
+  sistema, nunca o endereço curto. Os seis slugs semeados pela
+  demonstração (`dom-navalha`, `corte-certo`, `barbearia-vintage`,
+  `clinica-sorriso-leve`, `barbearia-jr`, `barbeiro-bastiao`) existem em
+  todo navegador, então `/<slug>` de um estabelecimento real com esse nome
+  mostra a demonstração. Não conferido no banco do piloto (sem conexão).
+- **Consequência:** só o endereço curto falha; `/agendar/<slug>`, que é o
+  link que a tela copia, funciona sempre.
+- **Correção proposta:** lista única de slugs reservados (rotas da raiz e
+  slugs da demonstração) usada pelo `resolveSlug` do backend na criação,
+  num lote próprio; ou retirar a demonstração (E2), que elimina a segunda
+  metade.
 
 ### Organização
 
@@ -276,7 +316,8 @@ cancelamento, remarcação nem andamento, e o arquivo tem os três.
 | Idempotência de recebimentos e pedido público | `payments-postgres`, `public-booking-postgres` |
 | Transições de andamento | `appointment-status-transitions.spec.ts` |
 
-**Lacuna:** os testes não conferem os tipos do duplo em memória (F2).
+**Lacuna (fechada no E1):** os testes não conferiam os tipos do duplo em
+memória (F2); agora o CI confere.
 
 ## 4. Validação deste lote
 
@@ -293,3 +334,20 @@ cancelamento, remarcação nem andamento, e o arquivo tem os três.
 
 Não rodados: `test:db-e2e` e as suítes de navegador. Nenhuma consulta,
 transação ou tela mudou de comportamento. O CI do PR roda as duas.
+
+## 5. Validação do lote E1
+
+| Verificação | Resultado |
+|---|---|
+| `npm run typecheck` no backend (`tsc -p tsconfig.json`) | 0 erros (eram 26) |
+| Build do backend, migrations e scripts com ES2024 | JavaScript idêntico ao de ES2023 |
+| `npm run lint` no backend | passou |
+| `npm run test` no backend | 1.516 testes passaram |
+| `npm run test:e2e` no backend | 13 arquivos, 137 testes passaram |
+| Frontend: `npx vitest run src/lib/agendamento-publico` | 35 testes passaram |
+| Frontend: `eslint` dos arquivos mudados | 0 erros |
+| Frontend: `next typegen` + `tsc --noEmit` | 0 erros |
+
+Não rodados localmente: `test:db-e2e` e as suítes de navegador (sem
+Docker nesta máquina; o Turbopack também recusa o `node_modules` em
+junction da worktree). O CI do PR roda as duas.

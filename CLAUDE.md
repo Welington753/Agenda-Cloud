@@ -66,9 +66,8 @@ npm run test                         # unitários; um arquivo: npx vitest run sr
 npm run test:e2e                     # HTTP sem banco
 npm run test:db-e2e                  # só com DB_E2E_DIRECT_URL (descartável), serial
 npx tsc --noEmit -p tsconfig.build.json   # o que o build compila
+npm run typecheck                    # tipos de src, specs, test e scripts (o CI exige zero)
 ```
-
-`tsc -p tsconfig.json` no backend ainda tem erros antigos nos specs (achado F2 da auditoria); compare a contagem com a base em vez de exigir zero.
 
 **Escolher testes:** rode os do que mudou, não a bateria inteira (tabela em `docs/arquitetura/mapa-tecnico.md`, seção 6). Política ou `common/`: specs do módulo e de quem importa. SQL ou transação: o `*.db-e2e-spec.ts` da área. Rota: `test/<area>.e2e-spec.ts`. Tela: teste em `src/lib/<area>` e a suíte de navegador da área. Só documentação: nenhum teste. O CI do PR roda tudo.
 
