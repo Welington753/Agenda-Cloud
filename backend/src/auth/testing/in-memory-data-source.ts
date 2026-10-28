@@ -247,7 +247,8 @@ export class InMemoryStore {
     this.transactionCount++;
     const working = new Snapshot();
     for (const key of Object.keys(this.committed) as EntityMapName[]) {
-      working[key] = new Map(this.committed[key]);
+      const destino = working.mapFor(key);
+      for (const [id, entidade] of this.committed.mapFor(key)) destino.set(id, entidade);
     }
     return new TransactionScope(working, this);
   }
@@ -442,7 +443,7 @@ export function createFakeEntityManager(scope: TransactionScope): EntityManager 
   return {
     async query(sql: string, parametros?: unknown[]): Promise<unknown[]> {
       const linhas = await fakeStaffLoginQuery(
-        () => scope.find<Record<string, unknown>>(User, { where: {} }),
+        async () => scope.find<Record<string, unknown>>(User, { where: {} }),
         sql,
         parametros,
       );

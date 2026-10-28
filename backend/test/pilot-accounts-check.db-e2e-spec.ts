@@ -4,7 +4,6 @@
 // migrado passa no estado "depois" de cada uma. O levantamento do limite do
 // plano grava antes um estabelecimento próprio, com nomes únicos.
 import { randomUUID } from 'node:crypto';
-import { Client } from 'pg';
 import { falhasDepoisDeContas, lerEstadoContas, objetosPresentes, TOTAL_OBJETOS_CONTAS } from '../scripts/lib/contas-administracao-schema.js';
 import {
   MIGRATIONS_ATE_CONTAS,
@@ -17,6 +16,7 @@ import {
   objetosEquipePresentes,
   TOTAL_OBJETOS_EQUIPE,
 } from '../scripts/lib/equipe-acessos-schema.js';
+import { createPgClient, type PgClientLike } from '../scripts/lib/pg-client.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -24,8 +24,8 @@ if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
 }
 
 describe.skipIf(!url)('conferências das migrations do piloto contra PostgreSQL descartável', () => {
-  async function comCliente<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-    const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: true } });
+  async function comCliente<T>(fn: (client: PgClientLike) => Promise<T>): Promise<T> {
+    const client = await createPgClient(url ?? '');
     await client.connect();
     try {
       return await fn(client);

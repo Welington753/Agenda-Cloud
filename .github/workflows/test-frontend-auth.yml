@@ -20,7 +20,9 @@ on:
       - "package-lock.json"
       - "backend/src/**"
       - "backend/test/**"
+      - "backend/scripts/**"
       - "backend/package.json"
+      - "backend/tsconfig*.json"
       - "backend/vitest.config.db-e2e.ts"
       - ".github/workflows/test-frontend-auth.yml"
   workflow_dispatch: {}
@@ -52,6 +54,13 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: npm ci
+
+      # O build (tsconfig.build.json) deixa de fora os specs, os testes e os
+      # scripts, e o Vitest só transpila: esta é a única conferência de tipos
+      # deles. Fica antes das etapas demoradas para falhar em segundos.
+      - name: Backend type check (src, specs, test, scripts)
+        working-directory: backend
+        run: npm run typecheck
 
       # Falha rápida antes de gastar tempo com Postgres/Playwright.
       - name: Frontend unit tests

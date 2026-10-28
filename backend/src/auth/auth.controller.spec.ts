@@ -39,11 +39,12 @@ const TENANT_CONTEXT_STUB: TenantContext = {
     durationDays: 14,
   },
   tenantStatus: TenantStatus.TRIAL,
+  areas: ['AGENDA_VER', 'AGENDA_CRIAR'],
 };
 
 const LOGIN_SUCCESS_RESULT: LoginResult = {
   token: 'token-puro-login-nunca-deve-vazar-na-resposta',
-  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
+  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com', username: null, mustChangePassword: false },
   contexts: [TENANT_CONTEXT_STUB],
   activeContext: TENANT_CONTEXT_STUB,
   requiresTenantSelection: false,
@@ -223,7 +224,7 @@ describe('AuthController.login', () => {
 const IDENTITY_STUB: IdentityContext = { userId: 'user_1', sessionId: 'session_1' };
 
 const SESSION_CONTEXT_RESULT_STUB: SessionContextResult = {
-  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
+  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com', username: null, mustChangePassword: false },
   contexts: [TENANT_CONTEXT_STUB],
   activeContext: TENANT_CONTEXT_STUB,
   requiresTenantSelection: false,

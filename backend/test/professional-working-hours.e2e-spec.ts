@@ -16,7 +16,7 @@ import {
 import cookieParser from 'cookie-parser';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
 import { ProfessionalWorkingHoursService } from '../src/professionals/working-hours.service.js';

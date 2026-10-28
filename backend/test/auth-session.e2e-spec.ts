@@ -11,11 +11,14 @@ import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
-import { AuthService } from '../src/auth/auth.service.js';
+import { AuthService, type LoginResult } from '../src/auth/auth.service.js';
 import { InvalidCredentialsError } from '../src/auth/auth.errors.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
+import type { SessionContextResult, TenantContext } from '../src/auth/session-context.js';
+import { EstablishmentRole } from '../src/entities/enums/establishment-role.enum.js';
+import { TenantStatus } from '../src/entities/enums/tenant-status.enum.js';
 import { SESSION_COOKIE_NAME } from '../src/config/session-cookie.config.js';
 
 const FAKE_DATA_SOURCE = {
@@ -28,12 +31,14 @@ const VALID_LOGIN_BODY = {
   password: 'senha-valida-123',
 };
 
-const FAKE_TENANT_CONTEXT = {
+// Tipados pelo contrato do serviço: um campo novo na resposta quebra o tipo
+// aqui em vez de passar despercebido.
+const FAKE_TENANT_CONTEXT: TenantContext = {
   membershipId: 'membership_1',
   tenantId: 'tenant_1',
   tenantName: 'Studio Bela',
   tenantSlug: 'studio-bela',
-  role: 'DONO',
+  role: EstablishmentRole.DONO,
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
   planCode: 'equipe',
   planName: 'Gestão',
@@ -42,18 +47,19 @@ const FAKE_TENANT_CONTEXT = {
     trialEndAt: new Date('2026-09-24T12:00:00.000Z'),
     durationDays: 14,
   },
-  tenantStatus: 'TRIAL',
+  tenantStatus: TenantStatus.TRIAL,
+  areas: ['AGENDA_VER', 'AGENDA_CRIAR'],
 };
 
-const FAKE_SESSION_CONTEXT_RESULT = {
-  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com' },
+const FAKE_SESSION_CONTEXT_RESULT: SessionContextResult = {
+  user: { id: 'user_1', name: 'Maria Souza', email: 'maria@example.com', username: null, mustChangePassword: false },
   contexts: [FAKE_TENANT_CONTEXT],
   activeContext: FAKE_TENANT_CONTEXT,
   requiresTenantSelection: false,
   hasEstablishmentAccess: true,
 };
 
-const FAKE_LOGIN_RESULT = {
+const FAKE_LOGIN_RESULT: LoginResult = {
   token: 'token-login-e2e-fake',
   ...FAKE_SESSION_CONTEXT_RESULT,
 };
@@ -134,8 +140,8 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
       hasEstablishmentAccess: true,
     });
 
-    const setCookie = response.headers['set-cookie'];
-    const sessionCookie = setCookie.find((c: string) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+    const setCookie = response.get('Set-Cookie');
+    const sessionCookie = setCookie?.find((c: string) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
     expect(sessionCookie).toContain('HttpOnly');
     expect(sessionCookie).toContain(FAKE_LOGIN_RESULT.token);
   });
@@ -204,8 +210,8 @@ describe('POST /auth/login, GET /auth/me, POST /auth/logout (e2e)', () => {
       .expect(204);
 
     expect(logoutMock).toHaveBeenCalledWith('qualquer-coisa');
-    const setCookie = response.headers['set-cookie'];
-    const cleared = setCookie.find((c: string) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+    const setCookie = response.get('Set-Cookie');
+    const cleared = setCookie?.find((c: string) => c.startsWith(`${SESSION_COOKIE_NAME}=`));
     expect(cleared).toBeDefined();
   });
 
