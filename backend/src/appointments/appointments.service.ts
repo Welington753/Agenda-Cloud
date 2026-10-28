@@ -1,8 +1,9 @@
-// Criação e consulta de agendamentos reais (Lote 6D.5).
+// Agendamentos reais: criação (Lote 6D.5), pedido público, listagem do dia e
+// do período, cancelamento, andamento e remarcação.
 //
-// ESCOPO: um profissional e um serviço por agendamento. Sem cancelamento,
-// remarcação, mudança manual de status, pagamento ou rota pública — nada
-// disso existe neste lote.
+// ESCOPO: um profissional e um serviço por agendamento. Recebimentos ficam
+// em payments/, e a rota pública em public-booking/, que chama
+// `criarPedidoPublico` daqui.
 //
 // O QUE O SERVIDOR DECIDE (nunca o navegador): tenant, unidade, duração,
 // fim, buffer, preço, snapshots e estado inicial. O DTO nem tem esses campos
