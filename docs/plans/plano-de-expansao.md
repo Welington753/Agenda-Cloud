@@ -409,6 +409,23 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 ## 9. Estado e retomada
 
+**Checkpoint de 2026-10-29 (tarde): PR #81 mesclado.**
+
+- **Merge normal na integration:**
+  `0c44052056d95332591e02079a163d5c11b71ada`, com `[skip render]`, sem
+  bypass nem force push. Head conferido antes: `b7ace88`, com os três
+  checks verdes e sem revisão ou comentário pendente. As suítes não foram
+  repetidas.
+- **Entrega do código do O1 encerrada.** O backup real continua **não
+  ativado**: sem conta, bucket, chave, papel no banco, agendamento ou
+  alerta. A ativação depende das decisões da seção 7.5 de
+  `backup-e-monitoramento.md` e segue o roteiro
+  `docs/runbooks/backup-piloto-automatico.md`, seção 3.
+- **Próximo lote em andamento:** planos e validade do acesso
+  (`docs/plans/planos-e-validade-do-acesso.md`).
+
+---
+
 **Checkpoint de 2026-10-29 (revisão final), branch `feat/o1-backup-agendado` (PR #81).**
 
 - **Revisão final feita:** seis defeitos corrigidos (seção 7.6 de
