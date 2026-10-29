@@ -352,8 +352,10 @@ Fonte: [Maps URLs](https://developers.google.com/maps/documentation/urls/get-sta
    do Neon Free foi conferida: 6 horas. Proposta em
    `backup-e-monitoramento.md`: recomendada a alternativa 1 (repositório
    privado no GitHub, dump criptografado com age e guardado no Backblaze B2
-   com Object Lock, US$ 0/mês no tamanho atual). Falta o dono escolher a
-   alternativa e dizer quem guarda a chave privada e a cópia offline.
+   com Object Lock, US$ 0/mês no tamanho atual). O código do O1 para a
+   alternativa 1 está pronto e testado com dados fictícios (PR #81). Falta
+   o dono aprovar a alternativa e dizer quem guarda a chave privada e a
+   cópia offline.
 2. **Agendador e monitoramento:** qual serviço roda as tarefas agendadas
    (O1, O3, A4) e qual ferramenta de alertas, com custo (O2). Proposta no
    mesmo documento:
@@ -361,7 +363,8 @@ Fonte: [Maps URLs](https://developers.google.com/maps/documentation/urls/get-sta
      artifacts abertos e `schedule` só na `main`);
    - notificações do Render e Sentry Developer, sem custo;
    - nenhum ping frequente, que estouraria as 750 h do Render.
-   Falta o e-mail que recebe os alertas.
+   Falta o e-mail que recebe os alertas. O Neon Free inclui 5 GB de saída
+   por projeto por mês (conferido em 2026-10-29).
 3. **Demonstração:** continua no produto ou sai (E2).
 4. **Retorno de clientes:** a janela padrão (dias antes) e o horário de
    envio. Se o profissional vê os próprios clientes (A1).
@@ -405,6 +408,41 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 - **Estoque:** B1 é independente, mas B2 depende de vendas (C1).
 
 ## 9. Estado e retomada
+
+**Checkpoint de 2026-10-29, branch `feat/o1-backup-agendado` (PR #81).**
+
+- **O1 implementado e testado com dados fictícios:** backup sem terminal,
+  restauração conferida, age, envio ao B2 com retenção e conferência,
+  check-ins do cron e recuperação com a chave offline.
+  - O workflow operacional é só um modelo, em
+    `docs/runbooks/modelos/backup-piloto.yml`.
+  - O CI novo (`test-backup-agendado.yml`) roda o caminho completo com
+    simuladores.
+  - O estado, as limitações e as medidas estão na seção 7 de
+    `backup-e-monitoramento.md`.
+  - O roteiro é `docs/runbooks/backup-piloto-automatico.md`.
+- **Nada contratado, configurado ou conectado:** sem conta, bucket, chave
+  real, papel no piloto, agendamento ou alerta. Sem deploy, sem migration,
+  sem banco real.
+- **Neon Free:** 5 GB de saída por projeto por mês, conferido em
+  2026-10-29.
+
+**Próximo passo concreto:**
+
+1. Revisar o PR #81 e fazer o merge normal, com `[skip render]`.
+2. O dono decide e autoriza o que está na seção 7.5 de
+   `backup-e-monitoramento.md`.
+3. Configuração pela seção 3 do roteiro.
+4. Depois, o O2.
+
+**Inalterado:** a publicação do PR #78 no Render continua sem confirmação.
+O PR #74 segue aberto.
+
+**Só neste computador:** a worktree `C:\Projetos\Agenda-Cloud-o1` (branch
+`feat/o1-backup-agendado`) tem `node_modules` próprio em `backend/`, sem
+junction. O `CLAUDE.md` modificado da pasta principal foi preservado.
+
+---
 
 **Checkpoint de 2026-10-28 (madrugada), branch `docs/proposta-backup-monitoramento`.**
 

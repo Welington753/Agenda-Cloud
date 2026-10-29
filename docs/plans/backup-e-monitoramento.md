@@ -1,7 +1,8 @@
 # Backup automático e monitoramento do piloto (lotes O1 e O2)
 
-Proposta para as decisões 7.1 e 7.2 de `plano-de-expansao.md`. Nada aqui
-foi contratado, configurado ou conectado. Os preços e limites foram
+Proposta para as decisões 7.1 e 7.2 de `plano-de-expansao.md`. O código
+do O1 está pronto e testado com dados fictícios (PR #81; ver a seção 7).
+Nada foi contratado, configurado ou conectado. Os preços e limites foram
 consultados nas páginas oficiais em **2026-10-28** (links na seção 6);
 confira de novo antes de executar, porque mudam.
 
@@ -137,8 +138,13 @@ lendo do teclado. Nunca no chat, em arquivo do repositório ou em log.
 6. Criar o bucket privado com **Object Lock ligado na criação**,
    retenção padrão compliance de 35 dias, e uma regra de ciclo de vida que
    apaga versões antigas.
-7. Criar uma chave de aplicação restrita a esse bucket com `listFiles` e
-   `writeFiles`, sem `deleteFiles`.
+7. Criar uma chave de aplicação restrita a esse bucket com `listFiles`,
+   `readFiles`, `writeFiles`, `readFileRetentions` e
+   `writeFileRetentions`, sem `deleteFiles` nem `bypassGovernance`.
+   A implementação (seção 7) mostrou que as três a mais são necessárias:
+   gravar a retenção de cada arquivo (o mensal dura mais que o padrão do
+   bucket) e conferir o objeto e a retenção depois do envio. Em compliance,
+   `writeFileRetentions` só estende a data.
 8. Sentry: criar a conta e um projeto Node.js.
 9. Criar o monitor de cron `backup-piloto`, diário, com 2 h de tolerância.
 10. Criar as regras de alerta por e-mail: erro novo, e mais de N eventos em
@@ -242,8 +248,201 @@ roteiro)**
 
 - se o B2 exige cartão para a cota gratuita;
 - se o Sentry Developer permite a regra de frequência (mais de N eventos em
-  1 h);
-- quanto tráfego de saída o Neon Free inclui.
+  1 h).
+
+**Confirmado em 2026-10-29:** o Neon Free inclui **5 GB de transferência
+pública (saída) por projeto por mês**, somando Postgres, Object Storage e
+Functions. Passou disso, a computação fica suspensa até o próximo ciclo ou
+até mudar de plano. Fontes: <https://neon.com/docs/introduction/plans>
+("Free: 5 GB per project per month") e <https://neon.com/pricing>
+("5 GB per project included").
 
 Conferir cada um no cadastro. Nada disso muda a recomendação: o dump atual
 tem menos de 1 MB.
+
+## 7. Estado e retomada
+
+**Checkpoint de 2026-10-29, branch `feat/o1-backup-agendado` (PR #81).**
+O O1 (seção 4B) está implementado e testado com dados fictícios. A
+alternativa 1 foi preparada no código, mas não foi aprovada formalmente,
+contratada nem configurada.
+
+### 7.1 Implementação
+
+- `backend/scripts/backup-agendado-lib.mjs`: o fluxo e as travas.
+  - Reaproveita de `operacao-piloto.mjs`: `conferirDestino`,
+    `conectar`/`conferirTransporte`, `fotografar`, `compararFotografias` e
+    `sha256DoArquivo`. O ambiente do libpq segue o de `ambienteLibpq`,
+    sempre com `verify-full`.
+  - Faz a restauração e a conferência em `restaurarEConferir`, usada pelo
+    job e pela recuperação.
+  - Envia ao B2 por S3 com assinatura SigV4 própria, sem SDK e sem
+    dependência nova.
+- `backend/scripts/backup-agendado.mjs`: execução sem terminal; sai com 0
+  só no backup completo.
+- `backend/scripts/recuperar-backup-piloto.mjs`: recuperação e teste
+  mensal com a chave offline.
+- `docs/runbooks/modelos/backup-piloto.yml`: modelo do workflow
+  operacional, fora de `.github/workflows/`.
+- `docs/runbooks/backup-piloto-automatico.md`: roteiro com a configuração
+  pelo dono, a primeira execução, a recuperação de emergência, o teste
+  mensal, a troca de chave e os códigos de falha.
+- `.github/workflows/test-backup-agendado.yml`: CI do caminho completo com
+  dados fictícios.
+
+**Travas da execução operacional:**
+
+- `if` do job no repositório de operação;
+- o script recusa o modo `piloto` fora do GitHub Actions, no repositório
+  público ou em outro repositório, e confere pela API do GitHub que o
+  repositório é privado;
+- destino do banco só pela URL direta do endpoint do piloto, sem pooler e
+  sem TLS afrouxado;
+- papel `agenda_backup`, conferido no banco como somente leitura;
+- B2 e Sentry nos domínios esperados;
+- para se houver uma chave privada age no ambiente;
+- o modo `ensaio` aceita só destinos em 127.0.0.1.
+
+**Sinal de conclusão:** check-in `in_progress` no início, `ok` só depois de
+tudo e `error` em qualquer falha. O `resumo.json` vai por último e marca a
+pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
+
+### 7.2 Testes
+
+- **Unitários** (`backup-agendado-lib.spec.ts` e
+  `backup-piloto-modelo.spec.ts`, no CI principal):
+  - cada trava;
+  - visibilidade do repositório;
+  - avaliação do papel;
+  - plano de retenção diário e mensal;
+  - SigV4 contra três vetores públicos da AWS;
+  - cabeçalhos do envio e conferência do objeto;
+  - limpeza de segredos nos detalhes;
+  - check-in do cron;
+  - conteúdo do modelo do workflow: só no repositório de operação, sem
+    artifact nem cache, actions por SHA, segredos só por `secrets`.
+- **Caminho completo** (`test/backup-agendado.backup-e2e-spec.ts`, workflow
+  `test-backup-agendado.yml`):
+  - PostgreSQL 17 descartável com TLS;
+  - `pg_dump`, `pg_restore` e age reais;
+  - simulador S3 que confere a assinatura, o Content-MD5 e o sha256 do
+    corpo;
+  - simulador de cron.
+- **O que o caminho completo cobre:**
+  - backup, restauração, criptografia, envio, conferência e download;
+  - recuperação com a chave pelo script, num banco vazio, e recusa de banco
+    não vazio;
+  - escrita concorrente depois do snapshot;
+  - papel que pode escrever;
+  - falha do `pg_dump` (o detalhe sai sem a senha) e do `pg_restore`;
+  - restauração divergente;
+  - falha do age e age que não cifrou;
+  - envio recusado, objeto sem retenção e download divergente;
+  - check-in `ok` recusado;
+  - a linha de comando, inclusive a recusa do modo piloto no repositório
+    público.
+- **Em todo caso de falha, o teste confere:**
+  - nenhum `resumo.json` no simulador;
+  - check-in `error` e nenhum `ok`;
+  - nada na pasta temporária;
+  - nenhum banco de conferência sobrando;
+  - nenhum segredo, dado fictício de cliente ou nome de tabela no log.
+- **Neste PC** (PostgreSQL 18 local, age simulado porque o binário não pôde
+  ser baixado nesta sessão): 11 casos passaram; os 2 que exigem age real
+  ficaram para o CI. No CI, com age real: 13 de 13.
+
+### 7.3 Limitações dos ensaios
+
+- **Simulado, não o serviço:** o simulador S3 prova o que o script pede e
+  confere, não o B2. A primeira execução real precisa confirmar:
+  - Object Lock em compliance de verdade;
+  - as capacidades da chave de aplicação;
+  - os cabeçalhos `x-amz-object-lock-*` devolvidos no HEAD;
+  - o formato da data;
+  - que `Content-MD5` é aceito.
+- **Monitor de cron:** a URL e o aceite do check-in pelo Sentry não foram
+  testados.
+- **Agendamento:** o `schedule` e as travas de visibilidade só rodam no
+  repositório de operação, que não existe. Aqui elas foram testadas como
+  funções e pela linha de comando.
+- **Neon:** nada foi conectado. O tempo do `pg_dump` contra o Neon (e o
+  despertar da computação) não foi medido.
+- **Chave privada:** o job não consegue provar a chave e o arquivo cifrado
+  (não tem a chave privada). Isso fica com o teste mensal.
+
+### 7.4 Medidas e revisão do custo
+
+**Medido no CI** (run 40868344890, head `ba7cf1c`, `ubuntu-24.04`):
+
+- **Base fictícia:** PostgreSQL 17, `pg_dump` 17.11, 3 tabelas e cerca de
+  2.500 linhas.
+
+| Medida | Valor |
+|---|---|
+| Job inteiro | 41 s |
+| Instalar `postgresql-client-17` e age | 11 s |
+| Subir o PostgreSQL descartável com TLS | 12 s |
+| Suíte de backup (13 casos) | 4 s |
+| Backup completo (um caso) | 0,4 s: dump 84 ms, restauração 247 ms, age 9 ms, envio e conferência 16 ms |
+| Dump claro / cifrado | 36.033 B / 36.233 B (age soma cerca de 200 B) |
+| Manifesto cifrado / resumo | 1.163 B / 932 B |
+
+- **Neste PC** (PostgreSQL 18, age simulado): o backup completo levou
+  cerca de 3,5 s, quase todo na restauração.
+- **O que a medida não inclui:**
+  - o despertar do Neon e a latência até ele;
+  - o `npm ci` de produção do modelo (com `argon2` sem build);
+  - o download da imagem `postgres:17`;
+  - um banco do tamanho real.
+
+**Estimativa revisada para o piloto.** O dump real de hoje tem cerca de
+216 KB e os demais números saem da medida acima.
+
+- **GitHub privado:**
+  - estimativa de 2 a 4 min por execução, contando o despertar do Neon e
+    o arredondamento por job;
+  - 60 a 120 min/mês, de 2.000 incluídos;
+  - US$ 0.
+- **B2:**
+  - 35 diários e 13 mensais, cerca de 48 cópias de 0,22 MB, ou cerca de
+    11 MB guardados, de 10 GB grátis;
+  - o download de conferência, cerca de 6,5 MB/mês, fica abaixo de 3 vezes
+    o armazenado;
+  - US$ 0.
+- **Neon Free:**
+  - a saída por execução é o conteúdo das tabelas sem compressão (a
+    fotografia só traz agregados): menos de 2 MB/dia hoje, ou menos de
+    60 MB/mês, cerca de 1% dos 5 GB;
+  - computação: alguns minutos por dia, de 1 a 2 das 100 CU-h/mês;
+  - US$ 0.
+- **Sentry Developer:** 2 check-ins por dia num único monitor de cron
+  (incluído). US$ 0.
+
+**Condições:** a estimativa vale enquanto o dump estiver na casa dos
+megabytes e os planos gratuitos mantiverem os limites consultados. Ela deve
+ser refeita com o tempo e o tamanho da primeira execução real (roteiro,
+seção 4).
+
+### 7.5 Decisões e autorizações ainda necessárias
+
+1. **Aprovar a alternativa 1**, com as cinco capacidades da chave do B2
+   (seção 4A, passo 7).
+2. **Chave age:** quem guarda a privada no gerenciador de senhas e onde fica
+   a cópia offline, em outro local físico. Os códigos de recuperação da
+   Backblaze ficam junto.
+3. **Alertas:** o e-mail que recebe os avisos do monitor de cron, do Render
+   e de falha do workflow. O GitHub manda para quem editou o agendamento por
+   último.
+4. **Autorizar a criação do papel `agenda_backup` no piloto** (roteiro,
+   seção 3.4). É uma escrita de configuração no banco real, não migration.
+5. **Autorizar a primeira execução manual** e o primeiro teste de
+   restauração com a chave offline (roteiro, seções 4 e 6).
+6. **Confirmar o SHA Live no Render**, que continua pendente (PR #78), antes
+   de fixar `CODIGO_SHA` no modelo. O backup não depende do deploy, mas o
+   SHA fixado deve ser um commit revisado da integration.
+
+**Próximo passo concreto:**
+
+1. Revisar o PR #81 e fazer o merge normal, com `[skip render]`.
+2. O dono faz a seção 3 do roteiro, na ordem, com as autorizações 4 e 5.
+3. Depois, o lote O2 (Sentry na API e health check diário), em PR próprio.
