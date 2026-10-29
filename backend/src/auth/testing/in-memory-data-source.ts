@@ -16,6 +16,9 @@ import { Unit } from '../../entities/unit.entity.js';
 import { User } from '../../entities/user.entity.js';
 import { AuditLog } from '../../entities/audit-log.entity.js';
 import { generateId } from '../../entities/common/generate-id.js';
+import { ACCESS_PERIODS_SQL } from '../../commercial/commercial-gate.js';
+import { ENABLED_FEATURES_SQL } from '../../commercial/feature-areas.js';
+import { FeatureKey } from '../../entities/enums/feature-key.enum.js';
 
 type EntityCtor = new () => object;
 
@@ -436,6 +439,10 @@ async function fakeStaffLoginQuery(
   // permissão nem a confirmação do gerente.
   if (sql.includes('FROM membership_permission_overrides WHERE tenant_id = $1 AND membership_id = $2')) return [];
   if (sql.startsWith('SELECT permissions_confirmed_at IS NOT NULL AS confirmed FROM memberships')) return [];
+  // Validade e recursos (commercial/): o fake não guarda períodos (estabelecimento
+  // sem registro, que opera) e liga todos os recursos.
+  if (sql.startsWith(ACCESS_PERIODS_SQL)) return [];
+  if (sql === ENABLED_FEATURES_SQL) return Object.values(FeatureKey).map((key) => ({ key }));
   throw new Error(`Fake query não suporta: ${sql}`);
 }
 

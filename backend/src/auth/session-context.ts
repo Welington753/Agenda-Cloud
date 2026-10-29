@@ -14,6 +14,7 @@
 // de cada rota de negócio, nunca do SessionGuard.
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import type { TenantStatus } from '../entities/enums/tenant-status.enum.js';
+import type { AccessPeriodKind, AccessState } from '../commercial/access-periods.js';
 
 export interface IdentityContext {
   userId: string;
@@ -38,6 +39,16 @@ export interface TenantContext {
    * política temporária, centralizada ali para trocar por assinatura
    * persistida sem reescrever cada chamador. */
   trial: { trialStartAt: Date; trialEndAt: Date; durationDays: number };
+  /** Validade do acesso (commercial/access-periods.ts). Com `blocked`, o
+   * estabelecimento continua na lista, sem áreas, para a tela mostrar o
+   * motivo e o caminho de regularização. */
+  access: {
+    state: AccessState;
+    blocked: boolean;
+    validUntil: Date | null;
+    expiredAt: Date | null;
+    expiredKind: AccessPeriodKind | null;
+  };
   /** Só os dois valores que tornam um tenant utilizável para sessão (ver
    * tenant-access.ts) — nunca SUSPENDED/PAST_DUE/CANCELED aqui, porque esses
    * tenants nunca viram TenantContext (ver `loadTenantContexts`). */

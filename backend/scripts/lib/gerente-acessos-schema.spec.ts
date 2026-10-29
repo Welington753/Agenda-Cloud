@@ -71,8 +71,11 @@ describe('nomes e formatos derivados da migration', () => {
       const [, carimbo, nome] = /^(\d+)-([A-Za-z]+)\.ts$/.exec(n)!;
       return `${nome}${carimbo}`;
     });
-    expect(nomes.at(-1)).toBe(MIGRATION_GERENTE);
-    expect(nomes.slice(0, -1)).toEqual([...MIGRATIONS_ATE_PAGAMENTOS]);
+    // Migrations posteriores (CommercialAccess em diante) não entram na
+    // conferência do gerente: o corte é a própria TeamManagerAccess.
+    const ate = nomes.slice(0, nomes.indexOf(MIGRATION_GERENTE) + 1);
+    expect(ate.at(-1)).toBe(MIGRATION_GERENTE);
+    expect(ate.slice(0, -1)).toEqual([...MIGRATIONS_ATE_PAGAMENTOS]);
   });
 
   it('a constraint do formato é reconhecida pelo texto que o PostgreSQL devolve', () => {

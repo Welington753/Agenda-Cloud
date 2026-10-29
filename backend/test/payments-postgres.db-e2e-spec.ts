@@ -13,6 +13,7 @@ import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-sour
 import { PAYMENTS_FORBIDDEN_MESSAGE } from '../src/payments/payment-access.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { DashboardService } from '../src/dashboard/dashboard.service.js';
+import { comTodosOsRecursos } from './support/plano-de-teste.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -129,7 +130,7 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
     painel = new DashboardService(db);
     planoId = id();
     await db.query(
-      `INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano', '', 3, 1)`,
+      comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano', '', 3, 1)`),
       [planoId, marca],
     );
   });

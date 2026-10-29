@@ -13,6 +13,7 @@ import { AvailabilityService } from '../src/availability/availability.service.js
 import { ConsumersService } from '../src/consumers/consumers.service.js';
 import { DashboardService } from '../src/dashboard/dashboard.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
+import { comTodosOsRecursos } from './support/plano-de-teste.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -124,7 +125,7 @@ describe.skipIf(!url)('operação diária contra PostgreSQL descartável', () =>
     dashboard = new DashboardService(db);
     planoId = id();
     await db.query(
-      `INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano de teste', '', 3, 1)`,
+      comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano de teste', '', 3, 1)`),
       [planoId, marca],
     );
   });

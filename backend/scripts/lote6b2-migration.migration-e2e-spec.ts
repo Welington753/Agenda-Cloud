@@ -45,6 +45,7 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'StaffLogin1792972800000',
   'AppointmentPayments1793059200000',
   'TeamManagerAccess1793145600000',
+  'CommercialAccess1793232000000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -174,15 +175,17 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
 
       // 31 do 6B.2 + notification_jobs + public_booking_settings + public_booking_requests
       // + push_subscriptions + booking_request_alerts + push_deliveries + password_resets
-      // + staff_account_requests (TeamAccess não cria tabela) + appointment_payments.
-      expect(Number(tables.rows[0]?.n)).toBe(40);
+      // + staff_account_requests (TeamAccess não cria tabela) + appointment_payments
+      // + tenant_access_periods.
+      expect(Number(tables.rows[0]?.n)).toBe(41);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
       expect(plans.rows).toHaveLength(3);
       expect(plans.rows.every((p) => p.price_cents === null)).toBe(true);
       expect(Number(features.rows[0]?.n)).toBe(13);
-      expect(Number(planFeatures.rows[0]?.n)).toBe(22);
+      // 22 do catálogo inicial + 4 da CommercialAccess (o que o código já usava).
+      expect(Number(planFeatures.rows[0]?.n)).toBe(26);
       expect(Number(tenants.rows[0]?.n)).toBe(0);
       expect(Number(users.rows[0]?.n)).toBe(0);
     } finally {

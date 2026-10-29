@@ -14,6 +14,9 @@ import {
 import type { EstablishmentQuery } from './platform.dto.js';
 import { staffSeatUsage } from '../team/seats.js';
 import { planExcess } from './establishment-admin.service.js';
+import { listAccessPeriods } from './access-validity.service.js';
+import { accessSituation, localDate } from '../commercial/access-periods.js';
+import { loadAccessPeriods } from '../commercial/commercial-gate.js';
 import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
@@ -166,6 +169,14 @@ export class PlatformService {
       }
       const status = establishment.status;
       const operando = status === 'TRIAL' || status === 'ACTIVE';
+      // Validade do acesso (assinatura do Agenda Cloud), separada da
+      // situação administrativa acima.
+      const periodos = await loadAccessPeriods(manager, tenantId);
+      const situacao = accessSituation(periodos, now);
+      const ultimoDia = situacao.validUntil
+        ? localDate(new Date(situacao.validUntil.getTime() - 1), establishment.timezone)
+        : null;
+      const registraValidade = caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED');
       return {
         ...establishment,
         ...extra,
@@ -181,12 +192,26 @@ export class PlatformService {
           reactivate:
             caps.manageEstablishmentLifecycle && (status === 'SUSPENDED' || status === 'ARCHIVED') && !!extra.restoreStatus,
           changePlan: caps.manageEstablishmentLifecycle,
+          recordPayment: registraValidade,
+          extendTrial: registraValidade && !periodos.some((p) => p.kind !== 'TRIAL'),
+          grantCourtesy: registraValidade,
         },
+        access: {
+          state: situacao.state,
+          blocked: situacao.blocked,
+          validUntil: situacao.validUntil,
+          /** Último dia coberto, na data local do estabelecimento. */
+          lastDay: ultimoDia
+            ? `${ultimoDia.year}-${String(ultimoDia.month).padStart(2, '0')}-${String(ultimoDia.day).padStart(2, '0')}`
+            : null,
+          expiredAt: situacao.expiredAt,
+          expiredKind: situacao.expiredKind,
+        },
+        accessPeriods: await listAccessPeriods(manager, tenantId),
         trial: {
           ...computeTrialWindow(establishment.createdAt),
           durationDays: TRIAL_DURATION_DAYS,
         },
-        billing: { available: false as const },
       };
     });
   }

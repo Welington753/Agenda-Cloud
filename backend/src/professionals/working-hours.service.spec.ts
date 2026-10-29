@@ -16,6 +16,7 @@ import { Professional } from '../entities/professional.entity.js';
 import { ProfessionalSchedule } from '../entities/professional-schedule.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { ProfessionalWorkingHoursService } from './working-hours.service.js';
+import { commercialQueryFake } from '../commercial/testing/commercial-fake.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -30,6 +31,13 @@ const PROF_A = 'prof_a1';
 let contador = 0;
 
 class FakeManager {
+  /** Só a validade e o recurso do plano (commercial-gate.ts). */
+  async query(sql: string): Promise<unknown[]> {
+    const comercial = commercialQueryFake(sql);
+    if (comercial) return comercial;
+    throw new Error(`Consulta inesperada no teste: ${sql}`);
+  }
+
   constructor(
     public tenants: Registro[],
     public memberships: Registro[],

@@ -33,6 +33,7 @@ import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { StaffAccountsService } from '../src/team/staff-accounts.service.js';
 import { TeamService } from '../src/team/team.service.js';
 import { staffAccessChangeSchema, staffAccountSchema, staffPasswordSchema } from '../src/team/team.dto.js';
+import { comTodosOsRecursos } from './support/plano-de-teste.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -202,7 +203,7 @@ describe.skipIf(!url)('senha do dono e calendário do funcionário contra Postgr
     hash = await hashPassword(SENHA);
     plano = id();
     await db.query(
-      `INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano 5', '', 5, 1)`,
+      comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, 'Plano 5', '', 5, 1)`),
       [plano, `${marca}-5`],
     );
   });

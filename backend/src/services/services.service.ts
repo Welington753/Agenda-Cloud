@@ -15,6 +15,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { isTenantUsableForSession } from '../auth/tenant-access.js';
+import { requireCommercialAccess } from '../commercial/commercial-gate.js';
 import { MEMBERSHIP_SUSPENDED_MESSAGE, isMembershipActive } from '../common/tenant-authorization.js';
 import { Membership } from '../entities/membership.entity.js';
 import { MembershipPermissionOverride } from '../entities/membership-permission-override.entity.js';
@@ -108,6 +109,9 @@ export class ServicesService {
     if (!tenant || !isTenantUsableForSession(tenant.status)) {
       throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
     }
+    // Validade do acesso: mesma regra de common/tenant-authorization.ts.
+    // Serviços são núcleo de todo plano (sem recurso próprio).
+    await requireCommercialAccess(manager, tenantId, null);
 
     const overrides = await manager.find(MembershipPermissionOverride, {
       where: { tenantId, membershipId: membership.id },

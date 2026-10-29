@@ -60,6 +60,7 @@ describe('AuthService.getSessionContext', () => {
         trialEndAt: new Date(tenant.createdAt.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000),
         durationDays: TRIAL_DURATION_DAYS,
       },
+      access: { state: 'UNTRACKED', blocked: false, validUntil: null, expiredAt: null, expiredKind: null },
       tenantStatus: TenantStatus.TRIAL,
       areas: expect.any(Array),
     });

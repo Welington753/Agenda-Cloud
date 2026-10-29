@@ -118,6 +118,7 @@ import type {
   RescheduleAppointmentDto,
   RescheduleOptionsDto,
 } from './appointment.dto.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 /** Nome exato da constraint do banco (ver 1788782400000-InitialSchema.ts).
  * Só ela vira 409 — qualquer outro erro sobe como está. */
@@ -267,7 +268,7 @@ export class AppointmentsService {
       this.dataSource.manager,
       userId,
       tenantId,
-      { permitido: canCreateAppointments, mensagemProibido: APPOINTMENT_CREATE_FORBIDDEN_MESSAGE },
+      { permitido: canCreateAppointments, mensagemProibido: APPOINTMENT_CREATE_FORBIDDEN_MESSAGE, recurso: FeatureKey.AGENDA },
     );
 
     const startAt = new Date(dto.startAt);
@@ -477,6 +478,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewBookingRequests,
       mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const encontrados = await manager.find(Appointment, {
@@ -580,6 +582,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewAppointments,
       mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const timezone = await this.timezoneDoTenant(manager, authorized.tenantId);
@@ -643,6 +646,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewAppointments,
       mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const timezone = await this.timezoneDoTenant(manager, authorized.tenantId);
@@ -714,6 +718,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
       permitido: (role, overrides) => canCancelAppointments(role, overrides) || canHandleBookingRequests(role, overrides),
       mensagemProibido: APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
     const soSolicitacao = !canCancelAppointments(authorized.role, authorized.overrides);
 
@@ -820,6 +825,7 @@ export class AppointmentsService {
       permitido: (role, overrides) =>
         canManageAppointmentStatus(role, overrides) || (acao === 'confirm' && canHandleBookingRequests(role, overrides)),
       mensagemProibido: APPOINTMENT_STATUS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const salvo = await this.applyStatusChange(authorized.tenantId, appointmentId, acao, dto, userId);
@@ -924,6 +930,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
       permitido: canRescheduleAppointments,
       mensagemProibido: APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const novoInicio = new Date(dto.startAt);
@@ -1043,6 +1050,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canRescheduleAppointments,
       mensagemProibido: APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const appointment = await manager.findOne(Appointment, {
@@ -1176,6 +1184,7 @@ export class AppointmentsService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewAppointments,
       mensagemProibido: APPOINTMENTS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const appointment = await manager.findOne(Appointment, {

@@ -26,6 +26,7 @@ import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } fro
 import { isTenantUsableForSession } from './tenant-access.js';
 import { isMembershipActive } from '../common/tenant-authorization.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
+import { tenantAccessSituation } from '../commercial/commercial-gate.js';
 import { sessionAreas } from './session-areas.js';
 
 export interface LoginContext {
@@ -150,6 +151,7 @@ export class AuthService {
       }
 
       const { trialStartAt, trialEndAt } = computeTrialWindow(tenant.createdAt);
+      const access = await tenantAccessSituation(manager, tenant.id, new Date());
 
       contexts.push({
         membershipId: membership.id,
@@ -162,7 +164,9 @@ export class AuthService {
         planName: plan.name,
         trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
         tenantStatus: tenant.status,
-        areas: await sessionAreas(manager, membership),
+        access,
+        // Vencido: nenhuma área (as rotas respondem ACESSO_VENCIDO).
+        areas: access.blocked ? [] : await sessionAreas(manager, membership),
       });
     }
 
