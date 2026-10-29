@@ -25,6 +25,7 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "test:migration-e2e": "vitest run --config ./vitest.config.migration-e2e.ts",
     "test:db-e2e": "vitest run --config ./vitest.config.db-e2e.ts",
+    "test:backup-e2e": "vitest run --config ./vitest.config.backup-e2e.ts",
     "migration:run": "typeorm-ts-node-esm migration:run -d src/database/migrations-data-source.ts",
     "migration:show": "typeorm-ts-node-esm migration:show -d src/database/migrations-data-source.ts",
     "schema:log": "typeorm-ts-node-esm schema:log -d src/database/migrations-data-source.ts",

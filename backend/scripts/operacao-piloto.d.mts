@@ -17,6 +17,7 @@ export const BANCO_PILOTO: string;
 export const FORMATO_ENDPOINT_ID: RegExp;
 export function pastaForaDoRepositorio(pasta: string, raiz?: string): boolean;
 export function conferirDestino(bruta: string, ids: { endpointPiloto: string; endpointProibido: string }): Destino;
+export function fotografar(client: { query: (sql: string) => Promise<{ rows: Record<string, unknown>[] }> }): Promise<Fotografia>;
 export function compararFotografias(
   antes: Fotografia,
   depois: Fotografia,
