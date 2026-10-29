@@ -409,7 +409,24 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 ## 9. Estado e retomada
 
-**Checkpoint de 2026-10-29, branch `feat/o1-backup-agendado` (PR #81).**
+**Checkpoint de 2026-10-29 (revisão final), branch `feat/o1-backup-agendado` (PR #81).**
+
+- **Revisão final feita:** seis defeitos corrigidos (seção 7.6 de
+  `backup-e-monitoramento.md`):
+  - conclusão do backup separada da falha de monitoramento;
+  - envio sem resposta conferido por HEAD;
+  - conferência da versão gravada;
+  - mensal como primeiro backup completo do mês;
+  - pasta própria por tentativa de re-run;
+  - privilégios efetivos do papel.
+- **Documentação:** expiração e regras de ciclo de vida do B2; 24 h como
+  intervalo pretendido, não como perda máxima; alertas como configuração
+  prevista; franquia compartilhada de US$ 12 do GitHub.
+- **Checks:** os três passaram no head `614a1d0`. O backup com age real
+  passou em 17 de 17.
+- **Pronto para aprovação.** Sem merge.
+
+Estado anterior, no mesmo dia:
 
 - **O1 implementado e testado com dados fictícios:** backup sem terminal,
   restauração conferida, age, envio ao B2 com retenção e conferência,
@@ -431,7 +448,8 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 1. Revisar o PR #81 e fazer o merge normal, com `[skip render]`.
 2. O dono decide e autoriza o que está na seção 7.5 de
-   `backup-e-monitoramento.md`.
+   `backup-e-monitoramento.md`, inclusive as regras de ciclo de vida do
+   bucket.
 3. Configuração pela seção 3 do roteiro.
 4. Depois, o O2.
 

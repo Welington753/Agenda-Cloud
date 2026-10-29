@@ -527,9 +527,58 @@ cresce com o atraso do GitHub, com cada falha e com o tempo até alguém agir
 6. **Confirmar o SHA Live no Render**, que continua pendente (PR #78), antes
    de fixar `CODIGO_SHA` no modelo. O backup não depende do deploy, mas o
    SHA fixado deve ser um commit revisado da integration.
+7. **Regras de ciclo de vida do bucket** (roteiro, seção 3.2), feitas pelo
+   dono junto com o bucket. Sem elas, nada é apagado depois da retenção.
 
 **Próximo passo concreto:**
 
 1. Revisar o PR #81 e fazer o merge normal, com `[skip render]`.
 2. O dono faz a seção 3 do roteiro, na ordem, com as autorizações 4 e 5.
 3. Depois, o lote O2 (Sentry na API e health check diário), em PR próprio.
+
+### 7.6 Revisão final (2026-10-29)
+
+**Defeitos comprovados e corrigidos** (commits `1d5f180` e `614a1d0`):
+
+1. Um `ok` recusado pelo Sentry depois do `resumo.json` conferido fazia a
+   execução mandar `error` e sair como `backup_falhou`, embora a pasta no
+   B2 fosse um backup completo. Agora é falha de monitoramento: sem
+   `error`, saída 1, `backup_concluido_monitoramento_falhou`.
+2. Um envio sem resposta (timeout depois de o servidor receber) virava
+   `ERR_ENVIO`, mesmo com o objeto gravado. Agora é conferido por HEAD; o
+   estado desconhecido do resumo é `ERR_RESUMO_INCERTO`.
+3. HEAD e download pediam a versão atual da chave, não a gravada. Agora
+   usam o `x-amz-version-id` do PUT, e o manifesto também é baixado.
+4. O mensal era só o do dia 1: se ele falhasse, o mês ficava sem cópia de
+   13 meses. Agora é o primeiro backup completo do mês.
+5. Um re-run do mesmo run do GitHub repetia o id da execução. Agora a
+   pasta inclui a tentativa.
+6. A conferência do papel não via `UPDATE`/`INSERT` por coluna, `SET ROLE`
+   para um papel sem herança, sequências com `USAGE`/`UPDATE`,
+   `TRIGGER`, funções `SECURITY DEFINER` nem schemas fora de `public`.
+
+**Conferido sem defeito:**
+
+- **Snapshot:** a fotografia e o `pg_dump --snapshot` usam o snapshot
+  exportado. A transação que o exportou fica aberta até o fim do
+  `pg_dump`. O teste de escrita concorrente agora prova isso pela
+  contagem do banco restaurado.
+- **Retenção:** 35 dias corridos no diário, inclusive na virada de mês e
+  de ano. O mensal tem 13 meses e 1 dia, com o estouro do dia empurrando
+  para frente.
+
+**Testes afetados:**
+
+- **Unitários** (`backup-agendado-lib.spec.ts` e
+  `backup-piloto-modelo.spec.ts`): 82 de 82 neste PC.
+- **Caminho completo neste PC** (PostgreSQL 18, age simulado): 15
+  passaram e 2 foram pulados, porque exigem age real.
+- **CI no head `614a1d0`** (run 40876450178, `ubuntu-24.04`, PostgreSQL
+  17.11, age real): 17 de 17, job de 49 s. Backup completo em 0,4 s.
+  Dump claro e cifrado de 36.033 B e 36.233 B, manifesto cifrado de
+  1.163 B e resumo de 978 B.
+- **Os outros dois checks do PR** (frontend auth e 6B.2) também passaram
+  no mesmo head.
+
+**Pendências reais:** as da seção 7.5, mais a primeira execução real, que
+confirma a coluna da direita da tabela da seção 7.3. Nada foi configurado.
