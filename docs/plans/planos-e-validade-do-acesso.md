@@ -340,4 +340,45 @@ lista, com `blocked: true` e sem áreas.
 
 ## 7. Estado e retomada
 
-(Atualizado a cada etapa no fim deste arquivo.)
+**Checkpoint de 2026-10-29, branch `feat/planos-validade-acesso`.**
+
+Commits, em ordem: `30f960c` (plano e merge do O1), `8d88229` (backend),
+`c3e0211` (teste pela API), `acf564d` (frontend), `e704052` (correção
+de sobreposição, sem promessa de multiunidade, fluxo no navegador).
+
+**Testes neste PC** (PostgreSQL 18.6 descartável com TLS, porta 55434,
+`IGNORE_DOTENV_FILE=true`; nenhum banco real):
+
+- backend: 1.618 unitários, 137 e2e HTTP, `tsc`, `oxlint`, `nest build`;
+- banco: as 20 suítes `db-e2e` (224 testes) num banco novo com as 12
+  migrations, inclusive `commercial-access-postgres` pela API HTTP real;
+- migration: `up`, `down` e `up` de novo no descartável;
+- frontend: 865 unitários, `tsc`, `eslint`, `lint:types`, `next build`;
+- navegador: `test:browser:equipe` (com o fluxo novo de validade, telas
+  em claro e escuro, 1280, 390 e 360 px) e `test:browser:auth`.
+
+Num banco reaproveitado por várias rodadas, o teste do levantamento de
+gerentes (`pilot-team-manager-check`) bate no teto de detalhes e falha;
+num banco novo, como no CI, passa. Não tem relação com este lote.
+
+**Decisões tomadas na implementação:**
+
+- estabelecimentos existentes ficam sem período (`UNTRACKED`) e não
+  vencem; o controle começa no primeiro registro individual;
+- a conta de teste dos specs de navegador grava o estabelecimento direto no
+  banco, então também nasce sem período;
+- um período novo nunca começa antes do fim do último do mesmo grupo, mesmo
+  que esse fim não seja meia-noite (troca de fuso); a sobreposição que
+  escapar vira 409 `PERIODO_SOBREPOSTO`;
+- planos criados por testes de banco recebem todos os recursos
+  (`test/support/plano-de-teste.ts`): um plano sem linhas em
+  `plan_features` não tem recurso nenhum.
+
+**Publicação (quando aprovada):** migration nova `CommercialAccess` pelo
+fluxo protegido; API antes do web (o web novo exige `access` na ficha).
+Nada foi publicado, nenhum banco real foi tocado.
+
+**Próximo passo exato:** aguardar os checks do PR; depois, revisão e decisão
+de merge pelo dono. Pendências de produto: aprovar preços, decidir a
+correção de um período registrado por engano e o aviso de vencimento
+próximo.
