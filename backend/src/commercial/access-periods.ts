@@ -152,10 +152,32 @@ export function firstTrial(createdAt: Date, timeZone: string): NewPeriodDates {
   return { startsAt: createdAt, endsAt: fim, anchorDay: null };
 }
 
-/** Início de um período pago ou cortesia: fim da validade em curso, ou a
- * meia-noite de hoje. */
+/** Fim mais recente entre os períodos destes tipos (todos já acabados
+ * quando não há validade em curso). */
+function ultimoFim(periods: readonly StoredPeriod[], tipos: readonly AccessPeriodKind[]): Date | null {
+  let fim: Date | null = null;
+  for (const p of periods) if (tipos.includes(p.kind) && (!fim || p.endsAt > fim)) fim = p.endsAt;
+  return fim;
+}
+
+/** Sem validade em curso, o novo período começa à meia-noite de hoje, ou no
+ * fim do último período do mesmo grupo se ele acabou depois dessa meia-noite
+ * (fim fora da meia-noite, por exemplo depois de uma troca de fuso): nunca
+ * se sobrepõe a ele. */
+function inicioSemValidade(
+  periods: readonly StoredPeriod[],
+  now: Date,
+  timeZone: string,
+  tipos: readonly AccessPeriodKind[],
+): Date {
+  const hoje = startOfLocalDay(localDate(now, timeZone), timeZone);
+  const fim = ultimoFim(periods, tipos);
+  return fim && fim > hoje ? fim : hoje;
+}
+
+/** Início de um período pago ou cortesia: fim da validade em curso, ou hoje. */
 function inicioEncadeado(periods: readonly StoredPeriod[], now: Date, timeZone: string): Date {
-  return coverageEnd(periods, now) ?? startOfLocalDay(localDate(now, timeZone), timeZone);
+  return coverageEnd(periods, now) ?? inicioSemValidade(periods, now, timeZone, ['PAID', 'COURTESY']);
 }
 
 export function nextPaidPeriod(
@@ -207,6 +229,6 @@ export function trialExtension(
     const base = maior(hoje, derivado);
     return { startsAt: hoje, endsAt: startOfLocalDay(addDays(localDate(base, timeZone), days), timeZone), anchorDay: null };
   }
-  const startsAt = coverageEnd(periods, now) ?? hoje;
+  const startsAt = coverageEnd(periods, now) ?? inicioSemValidade(periods, now, timeZone, ['TRIAL']);
   return { startsAt, endsAt: startOfLocalDay(addDays(localDate(startsAt, timeZone), days), timeZone), anchorDay: null };
 }

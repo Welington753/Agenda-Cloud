@@ -18,6 +18,7 @@ import type { EntityManager } from 'typeorm';
 import type { Actor } from '../accounts/actor.js';
 import { recordAudit, type AdminAuditAction } from '../accounts/audit.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
+import { isExclusionViolation } from '../common/exclusion-violation.js';
 import { generateId } from '../entities/common/generate-id.js';
 import {
   accessSituation,
@@ -38,6 +39,7 @@ import type { ExtendTrialDto, GrantCourtesyDto, RecordPaidPeriodDto } from './pl
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
 const REQUEST_KEY_CONSTRAINT = 'uq_tenant_access_periods_request_key';
+const OVERLAP_CONSTRAINTS = ['ex_tenant_access_periods_paid_overlap', 'ex_tenant_access_periods_trial_overlap'];
 
 /** Uma linha de `tenant_access_periods` como a tela vê. */
 export interface AccessPeriodView {
@@ -299,6 +301,11 @@ export class AccessValidityService {
       if (isUniqueViolation(erro, REQUEST_KEY_CONSTRAINT)) {
         const repetida = await this.replay(this.dataSource.manager, actorId, requestKey, tenantId, kind);
         if (repetida) return repetida;
+      }
+      // Rede de segurança do banco: nunca chega aqui pela regra de início,
+      // mas um período sobreposto vira 409 explicado, não 500.
+      if (OVERLAP_CONSTRAINTS.some((nome) => isExclusionViolation(erro, nome))) {
+        throw conflito('PERIODO_SOBREPOSTO', 'Já existe um período registrado nestas datas. Recarregue a ficha e confira.');
       }
       throw erro;
     }

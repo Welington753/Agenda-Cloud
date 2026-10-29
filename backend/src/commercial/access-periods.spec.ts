@@ -185,6 +185,25 @@ describe('cortesia e prorrogação do teste', () => {
   });
 });
 
+describe('período anterior terminado fora da meia-noite (troca de fuso)', () => {
+  it('o novo pago começa no fim dele, sem sobrepor, e termina numa meia-noite', () => {
+    const anterior: StoredPeriod = {
+      kind: 'PAID',
+      startsAt: as('2027-01-10T05:00:00Z'),
+      endsAt: as('2027-02-10T05:00:00Z'),
+      anchorDay: 10,
+    };
+    const r = nextPaidPeriod([anterior], as('2027-02-10T12:00:00Z'), SP, 'MONTHLY');
+    expect(r.startsAt).toEqual(as('2027-02-10T05:00:00Z'));
+    expect(r.endsAt).toEqual(meiaNoite('2027-03-10'));
+  });
+
+  it('vencido há dias: começa hoje, à meia-noite', () => {
+    const anterior: StoredPeriod = { kind: 'PAID', startsAt: as('2027-01-10T05:00:00Z'), endsAt: as('2027-02-10T05:00:00Z'), anchorDay: 10 };
+    expect(nextPaidPeriod([anterior], as('2027-02-20T12:00:00Z'), SP, 'MONTHLY').startsAt).toEqual(meiaNoite('2027-02-20'));
+  });
+});
+
 describe('coverageEnd', () => {
   it('não atravessa lacunas', () => {
     const p = [pago('2027-01-10', '2027-02-10', 10), pago('2027-03-01', '2027-04-01', 1)];

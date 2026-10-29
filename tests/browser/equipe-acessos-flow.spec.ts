@@ -383,6 +383,53 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
     await expect(ap.getByTestId("situacao-estabelecimento")).toContainText("Em teste");
     expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(200);
+
+    // ------------------------------------------ 5. validade do acesso
+    // A conta de teste grava o estabelecimento direto no banco, como os
+    // anteriores ao controle de validade: sem período, não vence.
+    const validade = ap.getByTestId("validade-acesso");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Sem validade registrada");
+    await validade.getByRole("button", { name: "Registrar pagamento" }).click();
+    const formularioPagamento = ap.getByTestId("form-pagamento");
+    await formularioPagamento.getByLabel("Valor contratado (R$)").fill("89,90");
+    await expect(ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" })).toBeDisabled();
+    await formularioPagamento.getByRole("checkbox").check();
+    await capturar(ap, "registrar-pagamento");
+    await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
+    await expect(validade.getByTestId("historico-validade")).toContainText("Confirmado manualmente pela administração");
+    await expect(validade.getByTestId("historico-validade")).toContainText("R$ 89,90");
+
+    // O período vence (simulado no banco): o dono vê o motivo e a
+    // regularização, nada é apagado, e a equipe para.
+    await db.query(
+      `UPDATE tenant_access_periods SET starts_at = now() - interval '30 days', ends_at = now() - interval '1 minute'
+        WHERE tenant_id = $1 AND kind = 'PAID'`,
+      [tenantId],
+    );
+    await page.goto("/conta/visao-geral");
+    const aviso = page.getByTestId("acesso-vencido");
+    await expect(aviso).toContainText("O período pago");
+    await expect(aviso).toContainText("Como regularizar");
+    await expect(aviso).toContainText("Nada foi apagado");
+    await semRolagemHorizontal(page);
+    await capturar(page, "acesso-vencido");
+    expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(403);
+
+    // Regularização: um novo pagamento confirmado manualmente libera na hora.
+    await ap.reload();
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Vencido");
+    await validade.getByRole("button", { name: "Registrar pagamento" }).click();
+    await ap.getByTestId("form-pagamento").getByLabel("Valor contratado (R$)").fill("89,90");
+    await ap.getByTestId("form-pagamento").getByRole("checkbox").check();
+    await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
+    await page.goto("/conta/visao-geral");
+    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await expect(page.getByTestId("acesso-vencido")).toHaveCount(0);
+
     const historico = (
       await db.query(`SELECT action::text FROM audit_logs WHERE tenant_id = $1 ORDER BY occurred_at`, [tenantId])
     ).rows.map((r: { action: string }) => r.action);
@@ -396,6 +443,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
         "MEMBERSHIP_REACTIVATED",
         "TENANT_SUSPENDED",
         "TENANT_REACTIVATED",
+        "ACCESS_PAID_PERIOD_RECORDED",
       ]),
     );
     await admin.contexto.close();
