@@ -30,8 +30,8 @@ Regras que valem para todo lote abaixo:
 
 | Lote | O quê | Estado | Depende de |
 |---|---|---|---|
-| **O1 — Backup automático** | É o A1 de `mensagens-e-proximos-lotes.md`: dump agendado fora dos PCs, criptografado, com retenção, manifesto (contagens e hash) e restauração ensaiada em banco descartável a cada ciclo | Hoje o backup é manual (`backend/scripts/operacao-piloto.mjs`) e fica no PC de quem operou | Decisões 7.1 e 7.2 |
-| **O2 — Monitoramento** | É o A2: registro de erros sem token, senha, e-mail ou telefone; alerta de deploy com falha, de health check e de pico de 5xx. Sem ping para manter acordado | Só existe o health check do Render | Decisão 7.2 |
+| **O1 — Backup automático** | É o A1 de `mensagens-e-proximos-lotes.md`: dump agendado fora dos PCs, criptografado, com retenção, manifesto (contagens e hash) e restauração ensaiada em banco descartável a cada ciclo | Hoje o backup é manual (`backend/scripts/operacao-piloto.mjs`) e fica no PC de quem operou. Proposta com duas alternativas em `backup-e-monitoramento.md` | Decisões 7.1 e 7.2 |
+| **O2 — Monitoramento** | É o A2: registro de erros sem token, senha, e-mail ou telefone; alerta de deploy com falha, de health check e de pico de 5xx. Sem ping para manter acordado | Só existe o health check do Render. Proposta em `backup-e-monitoramento.md` | Decisão 7.2 |
 | **O3 — Retenção** | Apagar sessões vencidas e entregas, alertas e tarefas antigas, com prazos escritos (R3). Roda no mesmo agendador externo de O1 | Nenhuma exclusão existe | O1 (agendador), decisão 7.8 |
 
 O agendador de O1 também é o que falta para o executor de notificações
@@ -41,7 +41,7 @@ O agendador de O1 também é o que falta para o executor de notificações
 
 | Lote | O quê | Por quê | Risco |
 |---|---|---|---|
-| **E1 — Rede de segurança dos testes** (em revisão, branch `fix/e1-tipos-testes-endereco-curto`) | Corrigir os 26 erros de `tsc -p tsconfig.json` do backend e acrescentar a etapa ao CI (F2). Encaminhar `/<slug>` que não é da demonstração para `/agendar/<slug>` (F1) | O duplo de teste já diverge do contrato real; o endereço curto mostra erro a cliente real | Baixo |
+| **E1 — Rede de segurança dos testes** (mesclado no PR #80, `7620bc7`) | Corrigir os 26 erros de `tsc -p tsconfig.json` do backend e acrescentar a etapa ao CI (F2). Encaminhar `/<slug>` que não é da demonstração para `/agendar/<slug>` (F1) | O duplo de teste já diverge do contrato real; o endereço curto mostra erro a cliente real | Baixo |
 | **E2 — Demonstração e Prisma** | Decidir (7.3). Se sair: remover `painel`, `master`, `profissional`, `onboarding`, `[slug]` da demonstração, `src/lib/repositories`, `seed*`, `storage`, Prisma e `test:db`; atualizar o README | Cerca de 15 mil linhas que não são o produto (O6) | Médio: tela inicial e login citam a demonstração |
 | **E3 — Índice da agenda** | `EXPLAIN (ANALYZE, BUFFERS)` com volume sintético (anos de histórico) em banco descartável; se confirmado, migration com `(tenant_id, start_at)` (R1) | O custo da agenda do estabelecimento e do Início cresce com o histórico | Baixo, mas é migration (roteiro de publicação) |
 | **E4 — Núcleo dos scripts de publicação** | Extrair o comum de `abrir-*`, `aplicar-*` e `conferir-restauracao-*` (O4) | Cada lote copia cerca de 1.000 linhas | Espera o desfecho do PR #74, que mexe nos mesmos arquivos |
@@ -348,10 +348,20 @@ Fonte: [Maps URLs](https://developers.google.com/maps/documentation/urls/get-sta
 
 ## 7. Decisões pendentes (do dono do produto)
 
-1. **Backup:** onde armazenar, retenção e quem tem a chave (O1). Conferir a
-   janela de restauração do plano atual do Neon.
+1. **Backup:** onde armazenar, retenção e quem tem a chave (O1). A janela
+   do Neon Free foi conferida: 6 horas. Proposta em
+   `backup-e-monitoramento.md`: recomendada a alternativa 1 (repositório
+   privado no GitHub, dump criptografado com age e guardado no Backblaze B2
+   com Object Lock, US$ 0/mês no tamanho atual). Falta o dono escolher a
+   alternativa e dizer quem guarda a chave privada e a cópia offline.
 2. **Agendador e monitoramento:** qual serviço roda as tarefas agendadas
-   (O1, O3, A4) e qual ferramenta de alertas, com custo (O2).
+   (O1, O3, A4) e qual ferramenta de alertas, com custo (O2). Proposta no
+   mesmo documento:
+   - workflow agendado num repositório privado (o público não serve: logs e
+     artifacts abertos e `schedule` só na `main`);
+   - notificações do Render e Sentry Developer, sem custo;
+   - nenhum ping frequente, que estouraria as 750 h do Render.
+   Falta o e-mail que recebe os alertas.
 3. **Demonstração:** continua no produto ou sai (E2).
 4. **Retorno de clientes:** a janela padrão (dias antes) e o horário de
    envio. Se o profissional vê os próprios clientes (A1).
@@ -396,6 +406,63 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 ## 9. Estado e retomada
 
+**Checkpoint de 2026-10-28 (madrugada), branch `docs/proposta-backup-monitoramento`.**
+
+- **PR #80 (E1) revisado e mesclado:**
+  `7620bc7be6d3e9ad81ef6077a6781665c52cdf42`.
+  - A revisão final só acrescentou documentação: `/agendar/<slug>` é o
+    endereço canônico, e R6 segue aberto.
+  - Os dois checks passaram no head `797f70e`.
+- **Proposta O1/O2 em `backup-e-monitoramento.md`:** duas alternativas
+  com preços e limites oficiais consultados em 2026-10-28, e a
+  recomendação (alternativa 1).
+- **Nada contratado, configurado ou conectado:** sem banco real, sem
+  deploy, sem migration.
+
+**Pendências de processo (registradas, sem mudar configuração agora):**
+
+- **Integration sem proteção automática:** a branch
+  `integration/nestjs-typeorm-frontend` não tem regra de proteção nem
+  ruleset no GitHub (`branch not protected`, conferido em 2026-10-28).
+  - "Merge só com o CI verde, sem bypass nem force push" é só disciplina.
+    Nada impede um push direto, um force push ou um merge com check
+    vermelho.
+  - Proposta para quando o dono decidir: um ruleset na integration exigindo
+    PR, os dois checks e bloqueio de force push e de exclusão.
+  - Com filtro de caminhos, um check que não dispara fica "pendente" para
+    sempre. Por isso o check de migrations não pode ser exigido como está;
+    ele precisaria rodar sempre, com um passo que sai cedo quando nada
+    relevante mudou.
+- **Filtros dos workflows com lacunas antigas:**
+  - Mudanças nestes arquivos não disparam o CI principal:
+    `backend/package-lock.json`, `backend/vitest.config*.ts` (menos o de
+    db-e2e), `backend/oxlint.json`, e na raiz `next.config.ts`,
+    `tsconfig.json` e as configs de eslint e vitest.
+  - O workflow de migrations não observa `backend/tsconfig.json`, que
+    `tsconfig.migrations.json` estende.
+  - Corrigir junto com o ruleset, num PR só de CI.
+- **`main` parada desde 2026-09-10 e branch padrão:** qualquer
+  `schedule` neste repositório rodaria nela. A proposta O1/O2 evita isso
+  com o repositório privado.
+
+**Próximo passo concreto:**
+
+1. O dono escolhe a alternativa e responde às decisões listadas na
+   resposta desta rodada.
+2. Depois, os passos da seção 4 de `backup-e-monitoramento.md`, na ordem:
+   - A: contas e chave, feitos pelo dono;
+   - B: PR do O1;
+   - C: PR do O2;
+   - D: configuração e primeira execução, com autorização explícita.
+
+**Inalterado:** a publicação do PR #78 no Render continua sem confirmação.
+O PR #74 segue aberto.
+
+**Só neste computador:** igual ao checkpoint abaixo (worktree com
+`node_modules` em junction).
+
+---
+
 **Checkpoint de 2026-10-28 (noite), branch `fix/e1-tipos-testes-endereco-curto`.**
 
 PR #79 revisado e mesclado na integration
@@ -404,7 +471,7 @@ próprio de `algumaNegada`, a correção da redação sobre checks "exigidos"
 (a branch não tem proteção no GitHub) e o teste com banco que dependia da
 hora (F4).
 
-**E1 feito (aguardando revisão, sem merge):**
+**E1 feito (mesclado depois no PR #80):**
 
 - F2: `npm run typecheck` com 0 erros e etapa no CI antes das demoradas.
 - F1: `/<slug>` fora da demonstração vai para `/agendar/<slug>`, com
