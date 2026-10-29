@@ -204,11 +204,11 @@ test("administração no menu principal: autorização, busca, ficha, contexto e
       page.getByText(`${marca}@example.test`, { exact: true }).first(),
     ).toBeVisible();
     await expect(page.getByText("Não definido", { exact: true })).toBeVisible();
+    // Validade do acesso separada do preço do catálogo. A conta de teste
+    // grava o estabelecimento direto no banco: sem período registrado.
     await expect(
-      page.getByText(
-        /Valor contratado, vencimento e pagamentos recebidos não estão disponíveis/,
-      ),
-    ).toBeVisible();
+      page.getByTestId("validade-acesso").getByTestId("estado-validade"),
+    ).toHaveText("Sem validade registrada");
     await page.reload();
     await expect(
       page.getByRole("heading", { name: principal, exact: true }),
