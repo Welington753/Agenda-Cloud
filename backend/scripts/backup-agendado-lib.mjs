@@ -737,6 +737,7 @@ export async function executarBackup(config, deps = {}) {
     const plano = planoDoObjeto(capturado.pontoDeRecuperacao, config.execucao, {
       mensalDoMesExiste: (mensais.chaves ?? []).some((k) => k.endsWith(`/${ARQUIVOS.resumo}`)),
     });
+    log(`PASTA: ${plano.prefixo}`);
 
     // 4. Criptografia (dump e manifesto completo).
     const manifesto = {

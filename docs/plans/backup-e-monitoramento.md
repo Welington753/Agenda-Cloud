@@ -205,6 +205,9 @@ roteiro)**
   arquivo criptografado. Isso fica com o teste mensal manual.
 - A retenção da alternativa 1 é imutável por 35 dias. Um backup gravado
   por engano também fica lá até vencer; o custo é desprezível.
+- O fim da retenção só permite apagar. A exclusão depende das regras de
+  ciclo de vida do bucket, configuradas pelo dono; a chave do backup
+  continua sem `deleteFiles`.
 - O papel de leitura vê os hashes de senha e os contatos dos clientes, como
   o dump de hoje. A proteção está na criptografia e no acesso ao bucket.
 - O primeiro deploy com Sentry precisa conferir a memória da API no plano
@@ -219,6 +222,16 @@ roteiro)**
   GitHub Free, US$ 12 de computação e 500 MB; US$ 0,006/min Linux 2-core e
   US$ 0,25/GB-mês de armazenamento além disso):
   <https://docs.github.com/en/billing/concepts/product-billing/github-actions>
+  - Conferido de novo em 2026-10-29: a franquia é um valor mensal,
+    compartilhado ("shared included compute usage") e cobrado do dono do
+    repositório. Sem forma de pagamento, o uso é bloqueado ao acabar.
+- GitHub Actions, preço por runner (Linux 2-core a US$ 0,006/min; cada job
+  arredondado para cima ao minuto), conferido em 2026-10-29:
+  <https://docs.github.com/en/billing/reference/actions-runner-pricing>
+- Backblaze B2, regras de ciclo de vida (`daysFromUploadingToHiding`,
+  `daysFromHidingToDeleting`, rodam uma vez por dia; versão sob Object Lock
+  não é apagada), conferido em 2026-10-29:
+  <https://www.backblaze.com/docs/cloud-storage-lifecycle-rules>
 - GitHub Actions, evento `schedule` (mínimo de 5 min, atraso em carga, só a
   branch padrão, desligado após 60 dias sem atividade em repositório
   público, aviso para quem editou o cron):
@@ -303,9 +316,32 @@ contratada nem configurada.
 - para se houver uma chave privada age no ambiente;
 - o modo `ensaio` aceita só destinos em 127.0.0.1.
 
-**Sinal de conclusão:** check-in `in_progress` no início, `ok` só depois de
-tudo e `error` em qualquer falha. O `resumo.json` vai por último e marca a
-pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
+**Sinal de conclusão (revisado em 2026-10-29):**
+
+- **Início:** check-in `in_progress`.
+- **Conclusão:** o `resumo.json`, enviado por último e conferido na versão
+  gravada, marca o backup como concluído.
+- **Falha antes do resumo:** `error`, saída 1, `backup_falhou`.
+- **Falha só do `ok`, depois do resumo:** é falha de **monitoramento**. O
+  backup continua concluído e não há `error`. A saída é 1, com
+  `backup_concluido_monitoramento_falhou`; o monitor acusa o timeout do
+  `in_progress` e o GitHub manda e-mail.
+- **Envio sem resposta:** conferido por HEAD, nunca presumido ausente. Se o
+  estado do resumo não puder ser conferido, o resultado é `backup_incerto`
+  (`ERR_RESUMO_INCERTO`, com `error`).
+- **Nada é apagado no B2:** a chave não tem `deleteFiles` e os objetos
+  estão sob retenção. A limpeza do script é só da pasta temporária local.
+  Objetos parciais de uma falha ficam no B2 até as regras de ciclo de vida.
+
+**Retenção e repetição:**
+
+- **Mensal:** o primeiro backup completo do mês UTC (listado no B2), não
+  mais "o do dia 1". Um dia 1 que falha não deixa o mês sem mensal, e uma
+  reexecução no mesmo mês sai como diário.
+- **Reexecução:** a pasta inclui a tentativa (`<run>-<tentativa>`), então
+  uma reexecução não grava por cima.
+- **Versão:** HEAD e download usam o `x-amz-version-id` devolvido pelo PUT,
+  e o resumo registra a versão de cada arquivo.
 
 ### 7.2 Testes
 
@@ -314,7 +350,9 @@ pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
   - cada trava;
   - visibilidade do repositório;
   - avaliação do papel;
-  - plano de retenção diário e mensal;
+  - plano de retenção diário e mensal: virada de mês e de ano, dia 1 que
+    falhou, reexecução, mensal tardio no fim do mês;
+  - HEAD e GET por versão, listagem e assinatura com consulta;
   - SigV4 contra três vetores públicos da AWS;
   - cabeçalhos do envio e conferência do objeto;
   - limpeza de segredos nos detalhes;
@@ -329,18 +367,31 @@ pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
     corpo;
   - simulador de cron.
 - **O que o caminho completo cobre:**
-  - backup, restauração, criptografia, envio, conferência e download;
-  - recuperação com a chave pelo script, num banco vazio, e recusa de banco
-    não vazio;
-  - escrita concorrente depois do snapshot;
-  - papel que pode escrever;
+  - backup, restauração, criptografia, envio, conferência da versão e
+    download do dump e do manifesto;
+  - recuperação com a chave:
+    - o resumo e os dois `.age` vêm do simulador por GET assinado, na
+      versão do resumo;
+    - o script confere os `.age` contra o resumo, decifra com o age real,
+      confere o sha256, restaura num banco vazio e compara com o manifesto;
+    - o teste compara o banco recuperado com a origem, tabela por tabela;
+    - a recuperação é recusada em banco não vazio;
+  - escrita concorrente depois do snapshot: o banco restaurado tem a
+    contagem do snapshot, não a da origem depois da escrita;
+  - papel que pode escrever: superusuário, `UPDATE` só numa coluna e
+    membro sem herança de um papel que escreve (`SET ROLE`);
   - falha do `pg_dump` (o detalhe sai sem a senha) e do `pg_restore`;
   - restauração divergente;
   - falha do age e age que não cifrou;
   - envio recusado, objeto sem retenção e download divergente;
-  - check-in `ok` recusado;
-  - a linha de comando, inclusive a recusa do modo piloto no repositório
-    público.
+  - resposta do envio do resumo perdida depois de gravado: conferido e
+    concluído sem reenvio;
+  - resposta e conferência perdidas: `ERR_RESUMO_INCERTO`;
+  - primeiro backup completo do mês como mensal, pasta incompleta sem
+    contar e o seguinte como diário;
+  - check-in `ok` recusado: backup concluído e preservado, sem `error`;
+  - a linha de comando: saída 0 só com `backup_ok`, 1 com o monitor
+    falhando, e a recusa do modo piloto no repositório público.
 - **Em todo caso de falha, o teste confere:**
   - nenhum `resumo.json` no simulador;
   - check-in `error` e nenhum `ok`;
@@ -348,20 +399,27 @@ pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
   - nenhum banco de conferência sobrando;
   - nenhum segredo, dado fictício de cliente ou nome de tabela no log.
 - **Neste PC** (PostgreSQL 18 local, age simulado porque o binário não pôde
-  ser baixado nesta sessão): 11 casos passaram; os 2 que exigem age real
-  ficaram para o CI. No CI, com age real: 13 de 13.
+  ser baixado): 15 casos passaram na revisão final. Os 2 que exigem age
+  real (recuperação e linha de comando) ficam para o CI, que roda os 17 com
+  age real (resultado na seção 7.6).
 
 ### 7.3 Limitações dos ensaios
 
+**O que está provado, e com o quê:**
+
+| Com PostgreSQL 17 e age reais (CI) | Só com simuladores | Ainda exige B2 e Sentry reais |
+|---|---|---|
+| snapshot exportado e `pg_dump --snapshot`; restauração e fotografia; conferência de privilégios efetivos; criptografia e recuperação com a chave; comparação com a origem | assinatura SigV4, Content-MD5, versionamento, HEAD/GET por versão, listagem, retenção pedida e devolvida, envio sem resposta, check-ins | Object Lock compliance de verdade; capacidades da chave; `x-amz-version-id` e cabeçalhos de retenção do B2; formato da data; `ListObjectsV2` do B2; regras de ciclo de vida; aceite do check-in; alertas |
+
 - **Simulado, não o serviço:** o simulador S3 prova o que o script pede e
-  confere, não o B2. A primeira execução real precisa confirmar:
-  - Object Lock em compliance de verdade;
-  - as capacidades da chave de aplicação;
-  - os cabeçalhos `x-amz-object-lock-*` devolvidos no HEAD;
-  - o formato da data;
-  - que `Content-MD5` é aceito.
+  confere, não o B2. A primeira execução real precisa confirmar a coluna da
+  direita.
 - **Monitor de cron:** a URL e o aceite do check-in pelo Sentry não foram
-  testados.
+  testados. Os alertas (2 h de tolerância, 30 min de tempo máximo) são a
+  configuração prevista, não ativa.
+- **Ciclo de vida:** só dá para ver a exclusão real depois de 37 dias. O
+  fim do Object Lock só permite apagar; quem apaga são as regras do bucket
+  (roteiro, seção 3.2).
 - **Agendamento:** o `schedule` e as travas de visibilidade só rodam no
   repositório de operação, que não existe. Aqui elas foram testadas como
   funções e pela linha de comando.
@@ -398,16 +456,33 @@ pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
 **Estimativa revisada para o piloto.** O dump real de hoje tem cerca de
 216 KB e os demais números saem da medida acima.
 
-- **GitHub privado:**
-  - estimativa de 2 a 4 min por execução, contando o despertar do Neon e
-    o arredondamento por job;
-  - 60 a 120 min/mês, de 2.000 incluídos;
-  - US$ 0.
+- **GitHub privado** (documentação oficial consultada em 2026-10-29):
+  - **Franquia:** o GitHub Free inclui **US$ 12/mês de computação** em
+    repositórios privados, em valor e não em minutos. Ela é do **dono do
+    repositório** e é compartilhada por todo o uso dele que entra na
+    franquia, inclusive outros repositórios privados.
+  - **Preço do runner:** o `ubuntu-24.04` num repositório privado é o
+    runner padrão Linux de 2 núcleos, a US$ 0,006/min. A franquia equivale
+    a cerca de 2.000 min/mês.
+  - **Arredondamento:** cada job é arredondado para cima ao minuto inteiro.
+  - **Consumo previsto:** um job por execução, de 2 a 4 min com o despertar
+    do Neon, ou 60 a 120 min/mês (US$ 0,36 a 0,72 da franquia). Cada
+    reexecução manual soma outra. O pior caso, um job travado até o
+    `timeout-minutes: 30`, custa 30 min.
+  - **Sem forma de pagamento,** o uso é bloqueado quando a franquia acaba
+    (não há cobrança surpresa). Nesse caso, o backup para e o monitor acusa
+    "missed".
+  - **US$ 0** enquanto o consumo de todos os repositórios privados do dono
+    couber na franquia.
 - **B2:**
-  - 35 diários e 13 mensais, cerca de 48 cópias de 0,22 MB, ou cerca de
-    11 MB guardados, de 10 GB grátis;
-  - o download de conferência, cerca de 6,5 MB/mês, fica abaixo de 3 vezes
-    o armazenado;
+  - com as regras de ciclo de vida (roteiro, seção 3.2): cerca de 37
+    diários e 14 mensais ao mesmo tempo, cerca de 51 cópias de 0,22 MB, ou
+    cerca de 11 MB guardados, de 10 GB grátis;
+  - **sem as regras, nada é apagado** (o fim da retenção só permite
+    apagar): cerca de 365 cópias por ano, perto de 80 MB/ano no tamanho de
+    hoje. Ainda grátis por anos, mas sem teto;
+  - o download de conferência (dump e manifesto), cerca de 7 MB/mês, fica
+    abaixo de 3 vezes o armazenado;
   - US$ 0.
 - **Neon Free:**
   - a saída por execução é o conteúdo das tabelas sem compressão (a
@@ -418,10 +493,22 @@ pasta como completa. Um `ok` recusado pelo monitor faz o job falhar.
 - **Sentry Developer:** 2 check-ins por dia num único monitor de cron
   (incluído). US$ 0.
 
-**Condições:** a estimativa vale enquanto o dump estiver na casa dos
-megabytes e os planos gratuitos mantiverem os limites consultados. Ela deve
-ser refeita com o tempo e o tamanho da primeira execução real (roteiro,
-seção 4).
+**Condições:** US$ 0 é uma estimativa condicionada ao consumo. Ela vale
+enquanto:
+
+- o dump estiver na casa dos megabytes;
+- as regras de ciclo de vida estiverem ativas;
+- o uso de Actions de todos os repositórios privados do dono couber nos
+  US$ 12;
+- os planos gratuitos mantiverem os limites consultados.
+
+Ela deve ser refeita com o tempo e o tamanho da primeira execução real
+(roteiro, seção 4).
+
+**Exposição:** 24 h é o intervalo pretendido entre backups, não uma perda
+máxima garantida. A exposição real é a idade do último backup válido, que
+cresce com o atraso do GitHub, com cada falha e com o tempo até alguém agir
+(roteiro, seção 2).
 
 ### 7.5 Decisões e autorizações ainda necessárias
 
