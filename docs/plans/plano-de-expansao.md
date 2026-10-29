@@ -41,7 +41,7 @@ O agendador de O1 também é o que falta para o executor de notificações
 
 | Lote | O quê | Por quê | Risco |
 |---|---|---|---|
-| **E1 — Rede de segurança dos testes** | Corrigir os 26 erros de `tsc -p tsconfig.json` do backend e acrescentar a etapa ao CI (F2). Encaminhar `/<slug>` que não é da demonstração para `/agendar/<slug>` (F1) | O duplo de teste já diverge do contrato real; o endereço curto mostra erro a cliente real | Baixo |
+| **E1 — Rede de segurança dos testes** (em revisão, branch `fix/e1-tipos-testes-endereco-curto`) | Corrigir os 26 erros de `tsc -p tsconfig.json` do backend e acrescentar a etapa ao CI (F2). Encaminhar `/<slug>` que não é da demonstração para `/agendar/<slug>` (F1) | O duplo de teste já diverge do contrato real; o endereço curto mostra erro a cliente real | Baixo |
 | **E2 — Demonstração e Prisma** | Decidir (7.3). Se sair: remover `painel`, `master`, `profissional`, `onboarding`, `[slug]` da demonstração, `src/lib/repositories`, `seed*`, `storage`, Prisma e `test:db`; atualizar o README | Cerca de 15 mil linhas que não são o produto (O6) | Médio: tela inicial e login citam a demonstração |
 | **E3 — Índice da agenda** | `EXPLAIN (ANALYZE, BUFFERS)` com volume sintético (anos de histórico) em banco descartável; se confirmado, migration com `(tenant_id, start_at)` (R1) | O custo da agenda do estabelecimento e do Início cresce com o histórico | Baixo, mas é migration (roteiro de publicação) |
 | **E4 — Núcleo dos scripts de publicação** | Extrair o comum de `abrir-*`, `aplicar-*` e `conferir-restauracao-*` (O4) | Cada lote copia cerca de 1.000 linhas | Espera o desfecho do PR #74, que mexe nos mesmos arquivos |
@@ -159,6 +159,27 @@ Conferido na documentação oficial da Meta em 2026-10-28:
 
 Fontes: [preços](https://developers.facebook.com/docs/whatsapp/pricing) e
 [consentimento](https://developers.facebook.com/docs/whatsapp/overview/getting-opt-in).
+
+Conferência das fontes (2026-10-28, só a documentação oficial da Meta; a
+página de preços não mostra data de atualização):
+
+| Regra | Vigência na fonte |
+|---|---|
+| Cobrança por mensagem entregue | desde 1/7/2025 |
+| Utility em resposta ao cliente, dentro da janela | grátis de 1/7/2025 a 30/9/2026; cobrada desde 1/10/2026 |
+| 1.000 mensagens de serviço entregues grátis por mês, por número | de 1/10/2026 a 31/12/2027 |
+| Fora da janela de 24 h, só modelo | sem data (regra corrente) |
+| Preço muda só no 1º dia do trimestre | aviso de 1 mês (tabela), 3 meses (adicionais) e 6 meses (modelo de cobrança) |
+
+**Pendências para a etapa de automação (A4), não bloqueiam o E1:**
+
+- Não foram comparadas fontes de terceiros (provedores parceiros). Se o
+  provedor escolhido (7.5) cobrar diferente da Meta, registrar a
+  divergência antes de decidir.
+- A franquia gratuita de serviço tem fim marcado (31/12/2027): o custo
+  estimado do A4 não pode contar com ela depois disso.
+- Reconferir a página no trimestre em que o A4 começar, porque a tabela
+  muda a cada trimestre.
 
 ## 4. Frente B — Estoque
 
@@ -375,7 +396,37 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 ## 9. Estado e retomada
 
-**Checkpoint de 2026-10-28, branch `chore/organizacao-mapa-tecnico`.**
+**Checkpoint de 2026-10-28 (noite), branch `fix/e1-tipos-testes-endereco-curto`.**
+
+PR #79 revisado e mesclado na integration
+(`b88fb2819181c3ea0f0649fe743cc077c39f0621`). Na revisão entraram um teste
+próprio de `algumaNegada`, a correção da redação sobre checks "exigidos"
+(a branch não tem proteção no GitHub) e o teste com banco que dependia da
+hora (F4).
+
+**E1 feito (aguardando revisão, sem merge):**
+
+- F2: `npm run typecheck` com 0 erros e etapa no CI antes das demoradas.
+- F1: `/<slug>` fora da demonstração vai para `/agendar/<slug>`, com
+  testes no fluxo de navegador do agendamento público.
+- R6 registrado (slug real igual a rota ou a slug da demonstração), sem
+  correção neste lote.
+
+**Não feito, de propósito:** nenhuma migration, deploy, conexão com banco
+real ou mudança nos scripts do PR #74; demonstração mantida.
+
+**Próximo passo concreto:** acompanhar o CI do PR do E1 no head final;
+com ele verde, revisão e merge normal com `[skip render]`. Depois, O1/O2
+(backup e monitoramento), que dependem das decisões 7.1 e 7.2.
+
+**Só neste computador:** a worktree `C:\Projetos\Agenda-Cloud-organizacao`
+usa `node_modules` em junction para as pastas `Agenda-Cloud` e
+`Agenda-Cloud-publicacao`. Não remova com `rm -rf` (apagaria os
+destinos); o Turbopack não sobe o web nela.
+
+---
+
+**Checkpoint anterior: 2026-10-28, branch `chore/organizacao-mapa-tecnico`.**
 
 **Feito**
 

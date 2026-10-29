@@ -14,7 +14,7 @@ Agenda Cloud: agendamento multi-tenant para pequenos negócios. Interface, docs 
 
 Dois projetos npm independentes, Node `>=24 <25`:
 
-- **Raiz**: web Next.js (App Router, `src/app/`). Área real em `src/app/conta/*`; agendamento público em `src/app/agendar/[slug]`; regras puras de tela em `src/lib/<area>/` com teste ao lado; um cliente por área em `src/lib/api/`.
+- **Raiz**: web Next.js (App Router, `src/app/`). Área real em `src/app/conta/*`; agendamento público em `src/app/agendar/[slug]` (`/agendar/<slug>` é o endereço canônico; `/<slug>` só encaminha para ele quando o slug não é da demonstração, com colisões pendentes no achado R6); regras puras de tela em `src/lib/<area>/` com teste ao lado; um cliente por área em `src/lib/api/`.
 - **`backend/`**: API NestJS + TypeORM + PostgreSQL. Um módulo por domínio em `backend/src/<area>/`.
 - **Legado, não estender:** a demonstração em `localStorage` (`src/app/painel`, `master`, `profissional`, `onboarding`, `src/app/[slug]`, `src/lib/repositories`) e o Prisma (`prisma/`, `src/generated/prisma`). TypeORM é a única fonte do schema; `src/architecture-prisma-boundary.test.ts` barra import novo de Prisma.
 
@@ -66,9 +66,8 @@ npm run test                         # unitários; um arquivo: npx vitest run sr
 npm run test:e2e                     # HTTP sem banco
 npm run test:db-e2e                  # só com DB_E2E_DIRECT_URL (descartável), serial
 npx tsc --noEmit -p tsconfig.build.json   # o que o build compila
+npm run typecheck                    # tipos de src, specs, test e scripts (o CI exige zero)
 ```
-
-`tsc -p tsconfig.json` no backend ainda tem erros antigos nos specs (achado F2 da auditoria); compare a contagem com a base em vez de exigir zero.
 
 **Escolher testes:** rode os do que mudou, não a bateria inteira (tabela em `docs/arquitetura/mapa-tecnico.md`, seção 6). Política ou `common/`: specs do módulo e de quem importa. SQL ou transação: o `*.db-e2e-spec.ts` da área. Rota: `test/<area>.e2e-spec.ts`. Tela: teste em `src/lib/<area>` e a suíte de navegador da área. Só documentação: nenhum teste. O CI do PR roda tudo.
 

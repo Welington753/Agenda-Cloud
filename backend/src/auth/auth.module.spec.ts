@@ -2,7 +2,7 @@ import { Global, INestApplication, Module, UnauthorizedException } from '@nestjs
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import type { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 import { DataSource } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthModule } from './auth.module.js';

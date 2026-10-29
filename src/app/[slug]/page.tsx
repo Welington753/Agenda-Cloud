@@ -1,21 +1,26 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Store } from "lucide-react";
+// `/<slug>` é o endereço curto do estabelecimento e ainda abriga a página
+// pública da demonstração (localStorage). Slug da demonstração neste
+// navegador: a demonstração, como antes. Qualquer outro vai para a página
+// real (`/agendar/<slug>`), que trata estabelecimento inexistente e
+// indisponível. As rotas fixas da raiz (`/login`, `/conta`...) nunca chegam
+// aqui: o Next resolve a rota fixa antes da dinâmica.
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { estabelecimentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
 import { useClientData } from "@/lib/hooks/use-client-data";
 import { obterTerminologia } from "@/lib/verticals/terminologia";
 import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
-import { Botao } from "@/components/ui/button";
-import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ModeloClassico } from "@/components/publico/modelo-classico";
 import { ModeloModerno } from "@/components/publico/modelo-moderno";
+import { linkPublico } from "@/lib/agendamento-publico/agendamento-publico";
 
 export default function PaginaPublicaEstabelecimento() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const router = useRouter();
 
   const { dados, carregando } = useClientData(() => {
     const estabelecimento = estabelecimentoRepository.obterPorSlug(slug);
@@ -29,31 +34,17 @@ export default function PaginaPublicaEstabelecimento() {
     return { estabelecimento, profissionais, servicos };
   }, [slug]);
 
-  if (carregando) {
+  const foraDaDemonstracao = !carregando && !dados;
+  useEffect(() => {
+    if (foraDaDemonstracao) router.replace(linkPublico("", slug));
+  }, [foraDaDemonstracao, router, slug]);
+
+  if (!dados) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 px-4 py-10">
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
-
-  if (!dados) {
-    return (
-      <div className="mx-auto flex min-h-screen max-w-md items-center justify-center px-4">
-        <EstadoVazio
-          icone={Store}
-          titulo="Estabelecimento não encontrado"
-          descricao={`Não existe nenhum estabelecimento com o endereço "/${slug}" nesta demonstração.`}
-          acao={
-            <Link href="/">
-              <Botao variante="secundaria" tamanho="sm">
-                Voltar para a apresentação
-              </Botao>
-            </Link>
-          }
-        />
       </div>
     );
   }
