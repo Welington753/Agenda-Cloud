@@ -33,9 +33,10 @@ export function rotaDispensaSessao(pathname: string | null): boolean {
  * conexão de volta). Diferente da abertura, ela nunca troca a tela por
  * carregamento ou falha: sem resposta, a tela fica como está e só o aviso
  * muda. A sessão só é substituída quando mudou de verdade (encerrada, ou
- * outra pessoa, ou a troca obrigatória de senha que deixou de valer) — a
- * mesma pessoa mantém o estado atual, e nada que dependa dele (formulários
- * abertos) é recriado.
+ * outra pessoa, ou a troca obrigatória de senha que deixou de valer, ou o
+ * acesso de um estabelecimento que pausou ou voltou) — a mesma pessoa, com
+ * os mesmos bloqueios, mantém o estado atual, e nada que dependa dele
+ * (formulários abertos) é recriado.
  */
 export function aplicarVerificacao(
   atual: EstadoAutenticacaoReal,
@@ -50,7 +51,16 @@ export function aplicarVerificacao(
     proximo.status === "autenticado" &&
     atual.status === "autenticado" &&
     proximo.sessao.user.id === atual.sessao.user.id &&
-    proximo.sessao.user.mustChangePassword === atual.sessao.user.mustChangePassword;
+    proximo.sessao.user.mustChangePassword === atual.sessao.user.mustChangePassword &&
+    bloqueios(proximo.sessao) === bloqueios(atual.sessao);
   const mesmoEstado = proximo.status === "nao_autenticado" && atual.status === "nao_autenticado";
   return { estado: mesmaPessoa || mesmoEstado ? atual : proximo, conexao: "ok" };
 }
+
+/** Quais estabelecimentos estão com o acesso pausado (validade vencida). */
+const bloqueios = (sessao: SessaoRealContexto) =>
+  sessao.contexts
+    .filter((c) => c.access?.blocked === true)
+    .map((c) => c.tenantId)
+    .sort()
+    .join(",");

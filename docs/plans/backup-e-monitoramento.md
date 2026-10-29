@@ -532,7 +532,8 @@ cresce com o atraso do GitHub, com cada falha e com o tempo até alguém agir
 
 **Próximo passo concreto:**
 
-1. Revisar o PR #81 e fazer o merge normal, com `[skip render]`.
+1. ~~Revisar o PR #81 e fazer o merge normal, com `[skip render]`.~~
+   Feito em 2026-10-29: `0c44052056d95332591e02079a163d5c11b71ada`.
 2. O dono faz a seção 3 do roteiro, na ordem, com as autorizações 4 e 5.
 3. Depois, o lote O2 (Sentry na API e health check diário), em PR próprio.
 

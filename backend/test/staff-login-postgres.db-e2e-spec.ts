@@ -23,6 +23,7 @@ import { AccountDelivery } from '../src/accounts/account-delivery.js';
 import { PasswordResetsService } from '../src/accounts/password-resets.service.js';
 import { StaffAccountsService } from '../src/team/staff-accounts.service.js';
 import { TeamService } from '../src/team/team.service.js';
+import { comTodosOsRecursos } from './support/plano-de-teste.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -77,7 +78,7 @@ describe.skipIf(!url)('acesso de funcionário por usuário e senha contra Postgr
   async function estabelecimento(nome: string, maxProfissionais: number) {
     const tenantId = id();
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE')`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now())`,
       [tenantId, `${marca}-${nome}`, planos[maxProfissionais]],
     );
     await db.query(
@@ -146,7 +147,7 @@ describe.skipIf(!url)('acesso de funcionário por usuário e senha contra Postgr
     for (const max of [1, 2, 3]) {
       planos[max] = id();
       await db.query(
-        `INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, $3, '', $4, 1)`,
+        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, $3, '', $4, 1)`),
         [planos[max], `${marca}-${max}`, `Plano ${max}`, max],
       );
     }

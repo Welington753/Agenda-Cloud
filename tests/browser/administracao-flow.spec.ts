@@ -111,7 +111,7 @@ test("administração no menu principal: autorização, busca, ficha, contexto e
     for (let n = 0; n < 21; n++) {
       const tenant = id();
       await db.query(
-        "INSERT INTO tenants (id,slug,category,timezone,plan_id,status) VALUES ($1,$2,'OTHER','America/Sao_Paulo',$3,$4)",
+        "INSERT INTO tenants (id,slug,category,timezone,plan_id,status,access_legacy_since) VALUES ($1,$2,'OTHER','America/Sao_Paulo',$3,$4,now())",
         [
           tenant,
           `${marca}-${n}`,
@@ -204,11 +204,13 @@ test("administração no menu principal: autorização, busca, ficha, contexto e
       page.getByText(`${marca}@example.test`, { exact: true }).first(),
     ).toBeVisible();
     await expect(page.getByText("Não definido", { exact: true })).toBeVisible();
+    // Validade do acesso separada do preço do catálogo. A conta de teste
+    // grava o estabelecimento direto no banco, marcado como anterior ao
+    // controle: validade ainda não definida, nem paga nem teste renovado.
     await expect(
-      page.getByText(
-        /Valor contratado, vencimento e pagamentos recebidos não estão disponíveis/,
-      ),
-    ).toBeVisible();
+      page.getByTestId("validade-acesso").getByTestId("estado-validade"),
+    ).toHaveText("Validade ainda não definida");
+    await expect(page.getByTestId("validade-nao-definida")).toContainText("individualmente");
     await page.reload();
     await expect(
       page.getByRole("heading", { name: principal, exact: true }),

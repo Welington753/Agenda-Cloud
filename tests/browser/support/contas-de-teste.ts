@@ -89,10 +89,12 @@ export async function prepararConviteDeDono(db: Client, dados: DadosDeConta) {
       [ids.user, dados.ownerName, dados.email.trim().toLowerCase(), telefoneDe(dados.phone)],
     );
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, created_at, updated_at)
-       VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'TRIAL', $4, $4)`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, created_at, updated_at, access_legacy_since)
+       VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'TRIAL', $4, $4, $4)`,
       // O período de teste conta do "agora" dos testes (relógio deslocado,
       // quando houver), como contava do relógio do backend no antigo cadastro.
+      // Marcado como anterior ao controle de validade: opera sem período,
+      // como os estabelecimentos do piloto (commercial/ no backend).
       [ids.tenant, slug, planId, new Date(Date.now() + (Number(process.env.E2E_RELOGIO_DESLOCAMENTO_MS) || 0))],
     );
     await db.query(

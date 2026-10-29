@@ -50,6 +50,7 @@ import {
 } from './availability-rules.js';
 import type { AvailabilityQueryDto } from './availability.dto.js';
 import { ErroDeFuso, janelaDeCarregamento, type DataLocal } from './time-zone.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 const PROFESSIONAL_NOT_FOUND_MESSAGE = 'Profissional não encontrado.';
 const SERVICE_NOT_FOUND_MESSAGE = 'Serviço não encontrado.';
@@ -187,6 +188,7 @@ export class AvailabilityService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewAvailability,
       mensagemProibido: AVAILABILITY_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDA,
     });
 
     const calculo = await this.calcular(

@@ -18,6 +18,7 @@ import {
   SituacaoDoEstabelecimento,
 } from "@/components/administracao/ciclo-estabelecimento";
 import { PlanoDoEstabelecimento } from "@/components/administracao/plano-estabelecimento";
+import { ValidadeDoAcesso } from "@/components/administracao/validade-acesso";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -60,7 +61,7 @@ export default function DetalhePage() {
             <h2 className="mb-4 font-semibold">Estabelecimento</h2>
             <dl className="grid grid-cols-2 gap-4">
               <Dado
-                titulo="Situação do acesso"
+                titulo="Situação administrativa"
                 valor={SITUACOES[item.status]}
               />
               <Dado
@@ -73,13 +74,6 @@ export default function DetalhePage() {
               />
               <Dado titulo="Fuso horário" valor={item.timezone} />
             </dl>
-            {item.status === "TRIAL" && (
-              <p className="mt-4 text-sm text-ink-soft">
-                Teste previsto até {dataCadastro(item.trial.trialEndAt)}, pela
-                política atual de {item.trial.durationDays} dias a partir do
-                cadastro.
-              </p>
-            )}
           </CartaoCorpo>
         </Cartao>
         <Cartao>
@@ -113,6 +107,7 @@ export default function DetalhePage() {
       </div>
       {/* A versão lida entra na chave: depois de uma ação, os formulários
           recomeçam com os dados novos do servidor. */}
+      <ValidadeDoAcesso key={`validade-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <SituacaoDoEstabelecimento key={`situacao-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <DadosCadastrais key={`dados-${item.updatedAt}`} item={item} aoMudar={recarregar} />
@@ -138,16 +133,6 @@ export default function DetalhePage() {
         </CartaoCorpo>
       </Cartao>
       <PessoasEstabelecimento tenantId={item.id} />
-      <Cartao>
-        <CartaoCorpo>
-          <h2 className="font-semibold">Mensalidades e pagamentos</h2>
-          <p className="mt-2 text-sm text-ink-soft">
-            Ainda não há registro financeiro nesta área. Valor contratado,
-            vencimento e pagamentos recebidos não estão disponíveis. A situação
-            do acesso acima não indica se houve pagamento.
-          </p>
-        </CartaoCorpo>
-      </Cartao>
     </div>
   );
 }

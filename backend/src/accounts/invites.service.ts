@@ -57,6 +57,7 @@ import {
 } from '../team/seats.js';
 import { resolveTeamManager } from '../team/team-authorization.js';
 import type { StaffInviteDto } from '../team/team.dto.js';
+import { firstTrial } from '../commercial/access-periods.js';
 
 export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
   'Este e-mail não está disponível para convite. Use outro e-mail.';
@@ -156,6 +157,14 @@ export class InvitesService {
        VALUES ($1, $2, $3, '', $4, true, $5)`,
       [generateId(), tenantId, dto.businessName, dto.timezone, now],
     );
+    // Teste gratuito gravado desde o cadastro: a validade passa a valer para
+    // este estabelecimento (commercial/access-periods.ts).
+    const teste = firstTrial(now, dto.timezone);
+    await manager.query(
+      `INSERT INTO tenant_access_periods (id, tenant_id, kind, plan_id, starts_at, ends_at, recorded_at, recorded_by_user_id)
+       VALUES ($1, $2, 'TRIAL', $3, $4, $5, $6, $7)`,
+      [generateId(), tenantId, plan.id, teste.startsAt, teste.endsAt, now, actor.id],
+    );
     await recordAudit(
       manager,
       {
@@ -163,7 +172,14 @@ export class InvitesService {
         actor,
         tenantId,
         summary: `Estabelecimento ${dto.businessName} criado pela administração.`,
-        newData: { slug, planCode: plan.code, category: dto.category, timezone: dto.timezone, status: 'TRIAL' },
+        newData: {
+          slug,
+          planCode: plan.code,
+          category: dto.category,
+          timezone: dto.timezone,
+          status: 'TRIAL',
+          trialEndsAt: teste.endsAt.toISOString(),
+        },
       },
       now,
     );

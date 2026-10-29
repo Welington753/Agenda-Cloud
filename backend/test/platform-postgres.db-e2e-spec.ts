@@ -62,8 +62,8 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
       ],
     );
     await db.query(
-      `INSERT INTO tenants (id,slug,category,timezone,plan_id,status) VALUES
-      ($1,$3,'OTHER','America/Sao_Paulo',$5,'ACTIVE'),($2,$4,'OTHER','America/Sao_Paulo',$5,'SUSPENDED')`,
+      `INSERT INTO tenants (id,slug,category,timezone,plan_id,status,access_legacy_since) VALUES
+      ($1,$3,'OTHER','America/Sao_Paulo',$5,'ACTIVE',now()),($2,$4,'OTHER','America/Sao_Paulo',$5,'SUSPENDED',now())`,
       [tenantA, tenantB, `${marker}-a`, `${marker}-b`, plan],
     );
     await db.query(
@@ -160,7 +160,10 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
     expect(detail.owners.map((owner) => owner.id)).toEqual([dono]);
     expect(detail.units).toHaveLength(1);
     expect(detail.plan.catalogPriceCents).toBeNull();
-    expect(detail.billing).toEqual({ available: false });
+    // Sem período registrado (estabelecimento anterior ao controle de
+    // validade): nada é inventado.
+    expect(detail.access).toMatchObject({ state: 'UNTRACKED', blocked: false, validUntil: null });
+    expect(detail.accessPeriods).toEqual([]);
     expect(detail.usage).toEqual({
       professionals: 0,
       services: 0,

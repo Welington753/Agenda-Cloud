@@ -20,6 +20,7 @@ import {
 } from '../common/tenant-authorization.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { canManageProfessionals, canViewProfessionals } from './professional-access.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 export { TENANT_NOT_FOUND_MESSAGE };
 export type { AuthorizedTenant };
@@ -39,5 +40,6 @@ export async function resolveAuthorizedProfessionalsTenant(
         ? canManageProfessionals(role, overrides)
         : canViewProfessionals(role, overrides),
     mensagemProibido: PROFESSIONALS_FORBIDDEN_MESSAGE,
+    recurso: FeatureKey.PROFISSIONAIS,
   });
 }

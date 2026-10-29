@@ -87,8 +87,11 @@ export interface Funcionalidade {
   status: StatusFuncionalidade;
 }
 
-/** Só funcionalidades que existem de fato na demonstração local. Nunca liste
- * aqui algo que ainda não tem tela funcionando. */
+/** Só funcionalidades que existem de fato no produto. Nunca liste aqui algo
+ * que ainda não tem tela funcionando. Multiunidade, comissões e
+ * personalização da página são recursos futuros da matriz de planos
+ * (docs/plans/planos-e-validade-do-acesso.md, seção 2.3): ficam em
+ * desenvolvimento. */
 export const FUNCIONALIDADES_DISPONIVEIS: Funcionalidade[] = [
   { id: "agenda", rotulo: "Agenda", descricao: "Visão do dia com todos os horários e profissionais.", status: "disponivel" },
   { id: "profissionais", rotulo: "Profissionais", descricao: "Cadastro de profissionais e seus horários de trabalho.", status: "disponivel" },
@@ -97,16 +100,16 @@ export const FUNCIONALIDADES_DISPONIVEIS: Funcionalidade[] = [
   { id: "bloqueios", rotulo: "Bloqueios", descricao: "Folgas, almoço e outros horários indisponíveis na agenda.", status: "disponivel" },
   { id: "clientes", rotulo: "Clientes", descricao: "Cadastro de clientes com histórico de agendamentos.", status: "disponivel" },
   { id: "agendamento-publico", rotulo: "Agendamento público", descricao: "Página própria onde o cliente marca um horário sozinho.", status: "disponivel" },
-  { id: "unidades", rotulo: "Unidades", descricao: "Mais de um endereço para negócios com mais de uma unidade.", status: "disponivel" },
   { id: "equipe-permissoes", rotulo: "Equipe e permissões", descricao: "Donos, gerentes, recepcionistas e profissionais, cada um com seu acesso.", status: "disponivel" },
-  { id: "personalizacao", rotulo: "Personalização", descricao: "Cores, logo e apresentação da página pública do negócio.", status: "disponivel" },
-  { id: "comissoes", rotulo: "Comissões", descricao: "Regras de comissão por profissional ou serviço.", status: "disponivel" },
   { id: "administracao", rotulo: "Administração básica", descricao: "Configurações gerais do negócio num só lugar.", status: "disponivel" },
 ];
 
 /** Anunciadas como próximo passo do piloto — nunca como já funcionando. Ver
  * docs/plans/mvp-agendamento-pequenos-negocios.md para os requisitos completos. */
 export const FUNCIONALIDADES_EM_DESENVOLVIMENTO: Funcionalidade[] = [
+  { id: "comissoes", rotulo: "Comissões", descricao: "Regras de comissão por profissional ou serviço.", status: "em-desenvolvimento" },
+  { id: "personalizacao", rotulo: "Personalização da página", descricao: "Cores, logo e apresentação da página pública do negócio.", status: "em-desenvolvimento" },
+  { id: "unidades", rotulo: "Mais de uma unidade", descricao: "Mais de um endereço no mesmo cadastro. Hoje cada estabelecimento tem uma unidade.", status: "em-desenvolvimento" },
   { id: "lembrete", rotulo: "Lembrete antes do atendimento", descricao: "Aviso automático antes do horário marcado.", status: "em-desenvolvimento" },
   { id: "confirmacao", rotulo: "Confirmação pelo cliente", descricao: "Cliente confirma presença a partir do lembrete.", status: "em-desenvolvimento" },
   { id: "cancelamento-link", rotulo: "Cancelamento e remarcação por link", descricao: "Cliente ajusta o próprio horário sem precisar ligar.", status: "em-desenvolvimento" },
@@ -145,8 +148,8 @@ export interface PlanoComercial {
   /** Código interno estável do domínio (`essencial`/`equipe`/`pro`,
    * `CodigoPlano` em src/lib/types.ts) — o mesmo usado em `src/lib/planos.ts`
    * e no catálogo persistido no banco. Nome exibido ao cliente vem de `nome`,
-   * que é decisão de marketing e pode divergir do código (ex.: `equipe`
-   * aparece como "Gestão"). */
+   * que é decisão de marketing e diverge do código: `essencial` é o Básico,
+   * `equipe` é o Pro e `pro` é o Max. */
   codigo: CodigoPlano;
   nome: string;
   descricaoCurta: string;
@@ -158,30 +161,32 @@ export interface PlanoComercial {
 /** Nomes de marketing — mapeiam para os planos reais (essencial/equipe/pro) de
  * `src/lib/planos.ts` usando o mesmo código interno, com rótulos voltados a
  * quem está decidindo assinar. Preço ainda não foi aprovado comercialmente:
- * nunca mostrar valor numérico, só "em definição" ou convite para o piloto. */
+ * nunca mostrar valor numérico, só "em definição" ou convite para o piloto.
+ * Multiunidade não existe no produto: nenhum plano a promete (ver
+ * docs/plans/planos-e-validade-do-acesso.md). */
 export const PLANOS_COMERCIAIS: PlanoComercial[] = [
   {
     codigo: "essencial",
-    nome: "Essencial",
+    nome: "Básico",
     descricaoCurta: "Para quem trabalha sozinho ou com uma equipe pequena.",
     precoTexto: "Preço em definição para o piloto",
-    destaques: ["Agenda", "Agendamento público", "Cadastro de profissionais"],
+    destaques: ["Agenda e agendamento online", "Clientes, equipe e recebimentos", "Até 2 profissionais"],
     ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "equipe",
-    nome: "Gestão",
-    descricaoCurta: "Para negócios que já acompanham clientes e relatórios básicos.",
+    nome: "Pro",
+    descricaoCurta: "Para equipes que estão crescendo.",
     precoTexto: "Participe do piloto",
-    destaques: ["Tudo do Essencial", "Cadastro de clientes", "Relatórios básicos", "Gestão de equipe"],
+    destaques: ["Tudo do Básico", "Até 5 profissionais e acessos de equipe"],
     ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "pro",
-    nome: "Rede",
-    descricaoCurta: "Para negócios com mais de uma unidade.",
+    nome: "Max",
+    descricaoCurta: "Para equipes maiores, com todos os módulos para o cliente.",
     precoTexto: "Participe do piloto",
-    destaques: ["Tudo do Gestão", "Múltiplas unidades", "Personalização avançada"],
+    destaques: ["Tudo do Pro", "Até 20 profissionais e acessos de equipe", "Módulos novos para o cliente incluídos"],
     ctaHref: HREF_DEMONSTRACAO,
   },
 ];

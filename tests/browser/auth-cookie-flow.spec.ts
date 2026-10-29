@@ -67,7 +67,7 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /Estabelecimento/ }).click();
-    await expect(page.getByText("Plano Gestão")).toBeVisible();
+    await expect(page.getByText("Plano Pro")).toBeVisible();
     await page.getByTestId("abrir-menu-conta").click();
     await page.getByTestId("menu-perfil").click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);

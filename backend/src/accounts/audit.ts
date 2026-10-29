@@ -30,7 +30,12 @@ export type AdminAuditAction =
   | 'STAFF_PASSWORD_RESET'
   | 'PASSWORD_CHANGED'
   | 'PAYMENT_RECORDED'
-  | 'PAYMENT_REFUNDED';
+  | 'PAYMENT_REFUNDED'
+  // Validade do acesso (migration CommercialAccess).
+  | 'ACCESS_PAID_PERIOD_RECORDED'
+  | 'ACCESS_TRIAL_EXTENDED'
+  | 'ACCESS_COURTESY_GRANTED'
+  | 'ACCESS_PERIOD_CORRECTED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

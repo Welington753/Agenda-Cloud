@@ -14,6 +14,10 @@ import {
 import type { EstablishmentQuery } from './platform.dto.js';
 import { staffSeatUsage } from '../team/seats.js';
 import { planExcess } from './establishment-admin.service.js';
+import { listAccessPeriods } from './access-validity.service.js';
+import { accessSituation, localDate } from '../commercial/access-periods.js';
+import { loadAccessLegacy, loadAccessPeriods } from '../commercial/commercial-gate.js';
+import { correctionPreview } from './access-correction.service.js';
 import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
@@ -166,6 +170,16 @@ export class PlatformService {
       }
       const status = establishment.status;
       const operando = status === 'TRIAL' || status === 'ACTIVE';
+      // Validade do acesso (assinatura do Agenda Cloud), separada da
+      // situação administrativa acima.
+      const periodos = await loadAccessPeriods(manager, tenantId);
+      const legado = await loadAccessLegacy(manager, tenantId);
+      const situacao = accessSituation(periodos, now, legado);
+      const historico = await listAccessPeriods(manager, tenantId);
+      const ultimoDia = situacao.validUntil
+        ? localDate(new Date(situacao.validUntil.getTime() - 1), establishment.timezone)
+        : null;
+      const registraValidade = caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED');
       return {
         ...establishment,
         ...extra,
@@ -181,12 +195,35 @@ export class PlatformService {
           reactivate:
             caps.manageEstablishmentLifecycle && (status === 'SUSPENDED' || status === 'ARCHIVED') && !!extra.restoreStatus,
           changePlan: caps.manageEstablishmentLifecycle,
+          recordPayment: registraValidade,
+          extendTrial: registraValidade && !periodos.some((p) => p.kind !== 'TRIAL'),
+          grantCourtesy: registraValidade,
+          correctPeriod: registraValidade,
         },
+        access: {
+          state: situacao.state,
+          /** Marcado como anterior ao controle de validade (migration
+           * CommercialAccess). Sem período, "Validade ainda não definida". */
+          legacy: legado.legacy,
+          blocked: situacao.blocked,
+          validUntil: situacao.validUntil,
+          /** Último dia coberto, na data local do estabelecimento. */
+          lastDay: ultimoDia
+            ? `${ultimoDia.year}-${String(ultimoDia.month).padStart(2, '0')}-${String(ultimoDia.day).padStart(2, '0')}`
+            : null,
+          expiredAt: situacao.expiredAt,
+          expiredKind: situacao.expiredKind,
+        },
+        // Cada registro com a prévia da correção (só para quem pode corrigir):
+        // a tela mostra o impacto antes de confirmar.
+        accessPeriods: historico.map((p) => ({
+          ...p,
+          correction: registraValidade ? correctionPreview(periodos, p, now, legado) : null,
+        })),
         trial: {
           ...computeTrialWindow(establishment.createdAt),
           durationDays: TRIAL_DURATION_DAYS,
         },
-        billing: { available: false as const },
       };
     });
   }

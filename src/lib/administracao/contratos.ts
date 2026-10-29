@@ -1,3 +1,7 @@
+import { ehPeriodoDeAcesso, ehSituacaoComercial, type PeriodoDeAcesso, type SituacaoComercial } from "./contratos-validade";
+
+export * from "./contratos-validade";
+
 export const SITUACOES = {
   TRIAL: "Em teste",
   ACTIVE: "Ativo",
@@ -73,7 +77,11 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     };
   };
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
-  billing: { available: false };
+  /** Validade do acesso (assinatura do Agenda Cloud), separada da situação
+   * administrativa (`status`). `UNTRACKED`: validade ainda não definida. */
+  access: SituacaoComercial;
+  /** Histórico, do mais recente ao mais antigo. */
+  accessPeriods: PeriodoDeAcesso[];
   /** Versão que as ações mandam de volta (outra tela mudou: 409). */
   updatedAt: string;
   /** Situação para a qual a reativação devolve (TRIAL ou ACTIVE). */
@@ -81,8 +89,21 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
   suspensionReason: string | null;
   taxDocument: string | null;
   planOptions: OpcaoDePlano[];
-  allowedActions: { edit: boolean; suspend: boolean; archive: boolean; reactivate: boolean; changePlan: boolean };
+  allowedActions: {
+    edit: boolean;
+    suspend: boolean;
+    archive: boolean;
+    reactivate: boolean;
+    changePlan: boolean;
+    recordPayment: boolean;
+    extendTrial: boolean;
+    grantCourtesy: boolean;
+    /** Anular um registro de validade feito por engano. Ausente numa API
+     * anterior. */
+    correctPeriod?: boolean;
+  };
 }
+
 
 function objeto(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -195,7 +216,9 @@ export function ehDetalheEstabelecimento(
     (detail.suspensionReason === null || texto(detail.suspensionReason)) &&
     (detail.taxDocument === null || texto(detail.taxDocument)) &&
     objeto(acoes) &&
-    ["edit", "suspend", "archive", "reactivate", "changePlan"].every((k) => typeof acoes[k] === "boolean") &&
+    ["edit", "suspend", "archive", "reactivate", "changePlan", "recordPayment", "extendTrial", "grantCourtesy"].every(
+      (k) => typeof acoes[k] === "boolean",
+    ) &&
     Array.isArray(detail.planOptions) &&
     detail.planOptions.every(
       (p: unknown) =>
@@ -211,8 +234,9 @@ export function ehDetalheEstabelecimento(
     data(trial.trialStartAt) &&
     data(trial.trialEndAt) &&
     inteiro(trial.durationDays) &&
-    objeto(detail.billing) &&
-    detail.billing.available === false &&
+    ehSituacaoComercial(detail.access) &&
+    Array.isArray(detail.accessPeriods) &&
+    detail.accessPeriods.every(ehPeriodoDeAcesso) &&
     Array.isArray(detail.units) &&
     detail.units.every(
       (unit: unknown) =>

@@ -70,8 +70,8 @@ describe.skipIf(!url)('conferências das migrations do piloto contra PostgreSQL 
     const antes = await comCliente(lerExcessoDePlano);
     await comCliente(async (client) => {
       await client.query(
-        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status)
-         VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', 'plan_essencial', 'ACTIVE')`,
+        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since)
+         VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', 'plan_essencial', 'ACTIVE', now())`,
         [tenant, `limite-${tenant}`],
       );
       for (const [i, p] of profissionais.entries()) {
