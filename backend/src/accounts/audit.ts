@@ -34,7 +34,8 @@ export type AdminAuditAction =
   // Validade do acesso (migration CommercialAccess).
   | 'ACCESS_PAID_PERIOD_RECORDED'
   | 'ACCESS_TRIAL_EXTENDED'
-  | 'ACCESS_COURTESY_GRANTED';
+  | 'ACCESS_COURTESY_GRANTED'
+  | 'ACCESS_PERIOD_CORRECTED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

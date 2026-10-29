@@ -43,7 +43,7 @@ describe.skipIf(!url)('operação diária contra PostgreSQL descartável', () =>
     const tenantId = id();
     const unitId = id();
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', $3, $4, 'ACTIVE')`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', $3, $4, 'ACTIVE', now())`,
       [tenantId, `${marca}-${nome}`, timezone, planoId],
     );
     await db.query(

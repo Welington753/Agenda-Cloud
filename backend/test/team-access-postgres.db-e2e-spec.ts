@@ -106,7 +106,7 @@ describe.skipIf(!url)('equipe, vagas do plano e agenda do funcionário contra Po
     const tenantId = id();
     const unitId = id();
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, $4::tenant_status)`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, $4::tenant_status, now())`,
       [tenantId, `${marca}-${nome}`, planos[maxProfissionais], status],
     );
     await db.query(

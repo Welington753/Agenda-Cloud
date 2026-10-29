@@ -125,3 +125,14 @@ export const grantCourtesySchema = z
   })
   .strict();
 export type GrantCourtesyDto = z.infer<typeof grantCourtesySchema>;
+
+/** Anula um período registrado por engano. Não devolve nem movimenta
+ * dinheiro: só corrige o registro. */
+export const correctAccessPeriodSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    reason: reasonSchema,
+  })
+  .strict();
+export type CorrectAccessPeriodDto = z.infer<typeof correctAccessPeriodSchema>;

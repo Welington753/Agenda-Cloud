@@ -11,8 +11,12 @@
 //   mantido nas renovações; num mês sem esse dia, vale o último dia do mês;
 // - um período novo começa no fim da validade em curso (renovação
 //   antecipada) ou hoje, se não há validade em curso;
-// - sem nenhum período gravado, a validade não é conferida (estabelecimento
-//   anterior a este controle).
+// - sem nenhum período válido, só o estabelecimento marcado como anterior a
+//   este controle (`tenants.access_legacy_since`) opera sem validade
+//   ("Validade ainda não definida"). Qualquer outro fica bloqueado: a falta
+//   do teste nunca vira acesso indefinido;
+// - um período anulado por correção não conta para nada (quem carrega os
+//   períodos já os deixa de fora).
 import { TRIAL_DURATION_DAYS } from '../auth/trial-policy.js';
 import { partesLocais, resolverHoraLocal, type DataLocal } from '../availability/time-zone.js';
 
@@ -39,12 +43,14 @@ export interface NewPeriodDates {
 }
 
 /**
- * - `UNTRACKED`: nenhum período gravado; opera como antes deste controle.
+ * - `UNTRACKED`: estabelecimento anterior a este controle, sem período
+ *   válido: "Validade ainda não definida"; opera como antes.
+ * - `MISSING`: sem período válido e sem a marca de anterior: bloqueado.
  * - `TRIAL`, `PAID`, `COURTESY`: há período cobrindo agora (o pago vence a
  *   cortesia, que vence o teste, quando se sobrepõem).
  * - `EXPIRED`: há períodos, mas nenhum cobre agora.
  */
-export type AccessState = 'UNTRACKED' | 'TRIAL' | 'PAID' | 'COURTESY' | 'EXPIRED';
+export type AccessState = 'UNTRACKED' | 'MISSING' | 'TRIAL' | 'PAID' | 'COURTESY' | 'EXPIRED';
 
 export interface AccessSituation {
   state: AccessState;
@@ -80,9 +86,14 @@ export function coverageEnd(periods: readonly StoredPeriod[], now: Date): Date |
   return fim;
 }
 
-export function accessSituation(periods: readonly StoredPeriod[], now: Date): AccessSituation {
+/** `legacy`: o estabelecimento tem a marca de anterior a este controle. */
+export function accessSituation(
+  periods: readonly StoredPeriod[],
+  now: Date,
+  { legacy }: { legacy: boolean },
+): AccessSituation {
   if (periods.length === 0) {
-    return { state: 'UNTRACKED', blocked: false, validUntil: null, expiredAt: null, expiredKind: null };
+    return { state: legacy ? 'UNTRACKED' : 'MISSING', blocked: !legacy, validUntil: null, expiredAt: null, expiredKind: null };
   }
   const atuais = periods.filter((p) => cobre(p, now));
   if (atuais.length) {
@@ -231,4 +242,40 @@ export function trialExtension(
   }
   const startsAt = coverageEnd(periods, now) ?? inicioSemValidade(periods, now, timeZone, ['TRIAL']);
   return { startsAt, endsAt: startOfLocalDay(addDays(localDate(startsAt, timeZone), days), timeZone), anchorDay: null };
+}
+
+// ------------------------------------------------------------- correção
+
+export interface IdentifiedPeriod extends StoredPeriod {
+  id: string;
+}
+
+export type CorrectionCheck =
+  | { allowed: true; before: AccessSituation; after: AccessSituation }
+  | { allowed: false; blockedBy: string };
+
+/**
+ * Anular um período registrado por engano. Só o último da cadeia: se algum
+ * outro período válido começa no mesmo instante ou depois dele, anular este
+ * deixaria uma lacuna no meio ou exigiria mover os seguintes, e isso nunca
+ * é feito sozinho. Nesse caso a resposta diz qual período corrigir antes.
+ * Anular nunca acrescenta validade: `after` só pode ser igual ou menor.
+ */
+export function correctionImpact(
+  periods: readonly IdentifiedPeriod[],
+  targetId: string,
+  now: Date,
+  legacy: { legacy: boolean },
+): CorrectionCheck {
+  const alvo = periods.find((p) => p.id === targetId);
+  if (!alvo) throw new Error('Período fora da lista de períodos válidos.');
+  const posterior = periods
+    .filter((p) => p.id !== targetId && p.startsAt.getTime() >= alvo.startsAt.getTime())
+    .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime())[0];
+  if (posterior) return { allowed: false, blockedBy: posterior.id };
+  return {
+    allowed: true,
+    before: accessSituation(periods, now, legacy),
+    after: accessSituation(periods.filter((p) => p.id !== targetId), now, legacy),
+  };
 }

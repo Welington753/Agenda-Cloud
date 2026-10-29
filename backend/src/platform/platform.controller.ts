@@ -22,9 +22,11 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   archiveEstablishmentSchema,
   changePlanSchema,
+  correctAccessPeriodSchema,
   extendTrialSchema,
   grantCourtesySchema,
   recordPaidPeriodSchema,
+  type CorrectAccessPeriodDto,
   type ExtendTrialDto,
   type GrantCourtesyDto,
   type RecordPaidPeriodDto,
@@ -43,6 +45,7 @@ import {
 import { PlatformService } from './platform.service.js';
 import { EstablishmentAdminService } from './establishment-admin.service.js';
 import { AccessValidityService } from './access-validity.service.js';
+import { AccessCorrectionService } from './access-correction.service.js';
 
 const tenantIdPipe = new ZodValidationPipe(establishmentIdSchema);
 
@@ -57,6 +60,7 @@ export class PlatformController {
     private readonly platform: PlatformService,
     private readonly admin: EstablishmentAdminService,
     private readonly validity: AccessValidityService,
+    private readonly correction: AccessCorrectionService,
   ) {}
 
   @Get('access')
@@ -173,5 +177,19 @@ export class PlatformController {
     @Body(new ZodValidationPipe(grantCourtesySchema)) dto: GrantCourtesyDto,
   ) {
     return this.validity.grantCourtesy(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  /** Anula um período registrado por engano. Corrige o registro; não
+   * devolve nem movimenta dinheiro. */
+  @Post('establishments/:tenantId/access/periods/:periodId/correction')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  correctPeriod(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Param('periodId', tenantIdPipe) periodId: string,
+    @Body(new ZodValidationPipe(correctAccessPeriodSchema)) dto: CorrectAccessPeriodDto,
+  ) {
+    return this.correction.cancelPeriod(request.auth.userId, request.auth.sessionId, tenantId, periodId, dto);
   }
 }

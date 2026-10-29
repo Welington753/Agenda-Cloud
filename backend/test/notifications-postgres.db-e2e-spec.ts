@@ -122,6 +122,8 @@ describe.skipIf(!DIRECT_URL)('notificações automáticas contra PostgreSQL desc
         status: TenantStatus.ACTIVE,
       }),
     );
+    // Anterior ao controle de validade: opera sem período (commercial/).
+    await manager.query('UPDATE tenants SET access_legacy_since = now() WHERE id = $1', [tenant.id]);
     const unitName = `Estúdio ${nome} & Cia`;
     await manager.save(
       manager.create(Unit, { tenantId: tenant.id, name: unitName, address: '', timezone, isPrimary: true }),

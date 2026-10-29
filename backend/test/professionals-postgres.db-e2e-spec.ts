@@ -83,6 +83,8 @@ describe.skipIf(!DIRECT_URL)('profissionais contra PostgreSQL descartável (Lote
         status,
       }),
     );
+    // Anterior ao controle de validade: opera sem período (commercial/).
+    await manager.query('UPDATE tenants SET access_legacy_since = now() WHERE id = $1', [tenant.id]);
     await manager.save(
       manager.create(Unit, {
         tenantId: tenant.id,

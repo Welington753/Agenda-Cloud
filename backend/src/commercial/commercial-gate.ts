@@ -11,7 +11,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import type { FeatureKey } from '../entities/enums/feature-key.enum.js';
-import { accessSituation, type AccessPeriodKind, type AccessSituation, type StoredPeriod } from './access-periods.js';
+import { accessSituation, type AccessPeriodKind, type AccessSituation, type IdentifiedPeriod } from './access-periods.js';
 
 export const ACCESS_EXPIRED_CODE = 'ACESSO_VENCIDO';
 export const FEATURE_NOT_CONTRACTED_CODE = 'RECURSO_NAO_CONTRATADO';
@@ -21,10 +21,14 @@ export const ACCESS_EXPIRED_MESSAGE =
   'o responsável pode regularizar com a administração do Agenda Cloud.';
 export const FEATURE_NOT_CONTRACTED_MESSAGE = 'Este recurso não faz parte do plano do estabelecimento.';
 
-/** Prefixo estável da leitura dos períodos (os dublês de teste reconhecem
- * a consulta por ele). */
+/** Prefixo estável da leitura dos períodos válidos (os dublês de teste
+ * reconhecem a consulta por ele). Um período anulado por correção nunca
+ * entra. */
 export const ACCESS_PERIODS_SQL =
-  'SELECT kind::text AS kind, starts_at, ends_at, anchor_day FROM tenant_access_periods WHERE tenant_id = $1';
+  'SELECT id, kind::text AS kind, starts_at, ends_at, anchor_day FROM tenant_access_periods WHERE tenant_id = $1 AND canceled_at IS NULL';
+
+/** A marca explícita de estabelecimento anterior ao controle de validade. */
+export const ACCESS_LEGACY_SQL = 'SELECT access_legacy_since IS NOT NULL AS legacy FROM tenants WHERE id = $1';
 
 /** Prefixo estável da conferência de recurso. */
 export const FEATURE_ENABLED_SQL = `SELECT COALESCE(
@@ -35,15 +39,17 @@ export const FEATURE_ENABLED_SQL = `SELECT COALESCE(
 ) AS enabled`;
 
 interface PeriodRow {
+  id: string;
   kind: AccessPeriodKind;
   starts_at: Date | string;
   ends_at: Date | string;
   anchor_day: number | null;
 }
 
-export async function loadAccessPeriods(manager: EntityManager, tenantId: string): Promise<StoredPeriod[]> {
+export async function loadAccessPeriods(manager: EntityManager, tenantId: string): Promise<IdentifiedPeriod[]> {
   const linhas = await manager.query<PeriodRow[]>(`${ACCESS_PERIODS_SQL} ORDER BY starts_at, id`, [tenantId]);
   return linhas.map((l) => ({
+    id: l.id,
     kind: l.kind,
     startsAt: new Date(l.starts_at),
     endsAt: new Date(l.ends_at),
@@ -51,12 +57,18 @@ export async function loadAccessPeriods(manager: EntityManager, tenantId: string
   }));
 }
 
+/** Sem linha (estabelecimento inexistente), não é anterior: bloqueia. */
+export async function loadAccessLegacy(manager: EntityManager, tenantId: string): Promise<{ legacy: boolean }> {
+  const [linha] = await manager.query<{ legacy: boolean }[]>(ACCESS_LEGACY_SQL, [tenantId]);
+  return { legacy: linha?.legacy === true };
+}
+
 export async function tenantAccessSituation(
   manager: EntityManager,
   tenantId: string,
   now: Date,
 ): Promise<AccessSituation> {
-  return accessSituation(await loadAccessPeriods(manager, tenantId), now);
+  return accessSituation(await loadAccessPeriods(manager, tenantId), now, await loadAccessLegacy(manager, tenantId));
 }
 
 export async function featureEnabled(manager: EntityManager, tenantId: string, feature: FeatureKey): Promise<boolean> {

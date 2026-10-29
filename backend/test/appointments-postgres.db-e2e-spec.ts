@@ -121,6 +121,8 @@ describe.skipIf(!DIRECT_URL)('agendamentos contra PostgreSQL descartável (Lote 
         status: TenantStatus.ACTIVE,
       }),
     );
+    // Anterior ao controle de validade: opera sem período (commercial/).
+    await manager.query('UPDATE tenants SET access_legacy_since = now() WHERE id = $1', [tenant.id]);
     const unit = await manager.save(
       manager.create(Unit, {
         tenantId: tenant.id,

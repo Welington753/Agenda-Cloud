@@ -12,9 +12,20 @@
 // nenhuma rota de negócio pode aceitar tenantId arbitrário do cliente sem
 // validar que existe uma Membership correspondente — isso é responsabilidade
 // de cada rota de negócio, nunca do SessionGuard.
-import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import type { TenantStatus } from '../entities/enums/tenant-status.enum.js';
-import type { AccessPeriodKind, AccessState } from '../commercial/access-periods.js';
+import type { AccessPeriodKind, AccessSituation, AccessState } from '../commercial/access-periods.js';
+
+/** Validade do acesso como a sessão mostra. Só o DONO recebe a situação
+ * comercial (tipo, até quando, o que venceu): é ele quem regulariza. Os
+ * outros papéis recebem só se o estabelecimento está bloqueado. */
+export function sessionAccess(situacao: AccessSituation, role: EstablishmentRole): TenantContext['access'] {
+  if (role === EstablishmentRole.DONO) {
+    const { state, blocked, validUntil, expiredAt, expiredKind } = situacao;
+    return { state, blocked, validUntil, expiredAt, expiredKind };
+  }
+  return { state: null, blocked: situacao.blocked, validUntil: null, expiredAt: null, expiredKind: null };
+}
 
 export interface IdentityContext {
   userId: string;
@@ -41,9 +52,10 @@ export interface TenantContext {
   trial: { trialStartAt: Date; trialEndAt: Date; durationDays: number };
   /** Validade do acesso (commercial/access-periods.ts). Com `blocked`, o
    * estabelecimento continua na lista, sem áreas, para a tela mostrar o
-   * motivo e o caminho de regularização. */
+   * motivo e o caminho de regularização. Fora do DONO, só `blocked` vem
+   * preenchido (ver `sessionAccess`). */
   access: {
-    state: AccessState;
+    state: AccessState | null;
     blocked: boolean;
     validUntil: Date | null;
     expiredAt: Date | null;

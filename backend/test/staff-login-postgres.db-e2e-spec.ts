@@ -78,7 +78,7 @@ describe.skipIf(!url)('acesso de funcionário por usuário e senha contra Postgr
   async function estabelecimento(nome: string, maxProfissionais: number) {
     const tenantId = id();
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE')`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now())`,
       [tenantId, `${marca}-${nome}`, planos[maxProfissionais]],
     );
     await db.query(

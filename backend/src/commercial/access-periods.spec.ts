@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   accessSituation,
   addMonths,
+  correctionImpact,
   coverageEnd,
   firstTrial,
   nextCourtesyPeriod,
@@ -14,6 +15,8 @@ const SP = 'America/Sao_Paulo';
 /** Meia-noite em São Paulo (UTC−3, sem horário de verão desde 2019). */
 const meiaNoite = (iso: string) => new Date(`${iso}T03:00:00.000Z`);
 const as = (iso: string) => new Date(iso);
+const LEGADO = { legacy: true };
+const NOVO = { legacy: false };
 
 const pago = (inicio: string, fim: string, anchorDay: number): StoredPeriod => ({
   kind: 'PAID',
@@ -49,8 +52,21 @@ describe('primeiro teste', () => {
 });
 
 describe('situação comercial', () => {
-  it('sem período: não registrado e não bloqueia', () => {
-    expect(accessSituation([], as('2027-01-01T12:00:00Z'))).toMatchObject({ state: 'UNTRACKED', blocked: false });
+  it('sem período e marcado como anterior ao controle: validade ainda não definida, não bloqueia', () => {
+    expect(accessSituation([], as('2027-01-01T12:00:00Z'), LEGADO)).toMatchObject({ state: 'UNTRACKED', blocked: false });
+  });
+
+  it('sem período e sem a marca: bloqueia (a falta do teste nunca vira acesso indefinido)', () => {
+    expect(accessSituation([], as('2027-01-01T12:00:00Z'), NOVO)).toMatchObject({
+      state: 'MISSING',
+      blocked: true,
+      validUntil: null,
+    });
+  });
+
+  it('com período, a marca de anterior não muda nada: o período decide', () => {
+    const p = [pago('2027-01-10', '2027-02-10', 10)];
+    expect(accessSituation(p, as('2027-03-01T12:00:00Z'), LEGADO)).toMatchObject({ state: 'EXPIRED', blocked: true });
   });
 
   it('o pago vale sobre o teste antigo, e a validade segue as renovações', () => {
@@ -59,21 +75,21 @@ describe('situação comercial', () => {
       pago('2027-01-16', '2027-02-16', 16),
       pago('2027-02-16', '2027-03-16', 16),
     ];
-    const s = accessSituation(periodos, as('2027-01-20T12:00:00Z'));
+    const s = accessSituation(periodos, as('2027-01-20T12:00:00Z'), NOVO);
     expect(s).toMatchObject({ state: 'PAID', blocked: false });
     expect(s.validUntil).toEqual(meiaNoite('2027-03-16'));
   });
 
   it('vencido: bloqueia, com a data e o tipo do último período', () => {
-    const s = accessSituation([teste(as('2027-01-01T15:00:00Z'), '2027-01-16')], meiaNoite('2027-01-16'));
+    const s = accessSituation([teste(as('2027-01-01T15:00:00Z'), '2027-01-16')], meiaNoite('2027-01-16'), NOVO);
     expect(s).toMatchObject({ state: 'EXPIRED', blocked: true, expiredKind: 'TRIAL' });
     expect(s.expiredAt).toEqual(meiaNoite('2027-01-16'));
   });
 
   it('o fim é exclusivo: um milissegundo antes ainda vale', () => {
     const p = [pago('2027-01-31', '2027-02-28', 31)];
-    expect(accessSituation(p, new Date(meiaNoite('2027-02-28').getTime() - 1)).blocked).toBe(false);
-    expect(accessSituation(p, meiaNoite('2027-02-28')).blocked).toBe(true);
+    expect(accessSituation(p, new Date(meiaNoite('2027-02-28').getTime() - 1), NOVO).blocked).toBe(false);
+    expect(accessSituation(p, meiaNoite('2027-02-28'), NOVO).blocked).toBe(true);
   });
 });
 
@@ -209,5 +225,39 @@ describe('coverageEnd', () => {
     const p = [pago('2027-01-10', '2027-02-10', 10), pago('2027-03-01', '2027-04-01', 1)];
     expect(coverageEnd(p, as('2027-01-20T12:00:00Z'))).toEqual(meiaNoite('2027-02-10'));
     expect(coverageEnd(p, as('2027-02-20T12:00:00Z'))).toBeNull();
+  });
+});
+
+describe('correção de um registro feito por engano', () => {
+  const comId = (id: string, p: StoredPeriod) => ({ ...p, id });
+  const teste1 = comId('t1', teste(as('2027-01-01T15:00:00Z'), '2027-01-16'));
+  const pago1 = comId('p1', pago('2027-01-16', '2027-02-16', 16));
+  const pago2 = comId('p2', pago('2027-02-16', '2027-03-16', 16));
+  const agora = as('2027-01-20T12:00:00Z');
+
+  it('o último da cadeia pode ser anulado; a validade encurta até o anterior', () => {
+    const r = correctionImpact([teste1, pago1, pago2], 'p2', agora, NOVO);
+    expect(r.allowed).toBe(true);
+    if (!r.allowed) return;
+    expect(r.before.validUntil).toEqual(meiaNoite('2027-03-16'));
+    expect(r.after.validUntil).toEqual(meiaNoite('2027-02-16'));
+  });
+
+  it('um registro com outro depois dele é recusado e aponta o mais recente', () => {
+    expect(correctionImpact([teste1, pago1, pago2], 'p1', agora, NOVO)).toEqual({ allowed: false, blockedBy: 'p2' });
+    expect(correctionImpact([teste1, pago1, pago2], 't1', agora, NOVO)).toEqual({ allowed: false, blockedBy: 'p2' });
+  });
+
+  it('anular nunca acrescenta validade: sem o pago, o teste já acabado não cobre hoje', () => {
+    const r = correctionImpact([teste1, pago1], 'p1', agora, NOVO);
+    expect(r.allowed && r.after).toMatchObject({ state: 'EXPIRED', blocked: true, validUntil: null });
+  });
+
+  it('anular o único registro de um estabelecimento novo bloqueia; de um anterior ao controle, volta a "não definida"', () => {
+    const so = [comId('c1', { ...pago('2027-01-10', '2027-02-10', 10), kind: 'COURTESY' as const, anchorDay: null })];
+    const novo = correctionImpact(so, 'c1', agora, NOVO);
+    expect(novo.allowed && novo.after).toMatchObject({ state: 'MISSING', blocked: true });
+    const antigo = correctionImpact(so, 'c1', agora, LEGADO);
+    expect(antigo.allowed && antigo.after).toMatchObject({ state: 'UNTRACKED', blocked: false });
   });
 });

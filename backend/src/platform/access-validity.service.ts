@@ -31,12 +31,12 @@ import {
   type NewPeriodDates,
   type StoredPeriod,
 } from '../commercial/access-periods.js';
-import { loadAccessPeriods } from '../commercial/commercial-gate.js';
+import { loadAccessLegacy, loadAccessPeriods } from '../commercial/commercial-gate.js';
 import { dataLocalDe } from '../availability/time-zone.js';
 import { lifecycleActor, lockEstablishment, writeEstablishment, type TenantRow } from './establishment-admin.service.js';
 import type { ExtendTrialDto, GrantCourtesyDto, RecordPaidPeriodDto } from './platform.dto.js';
 
-const conflito = (code: string, message: string) => new ConflictException({ code, message });
+export const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
 const REQUEST_KEY_CONSTRAINT = 'uq_tenant_access_periods_request_key';
 const OVERLAP_CONSTRAINTS = ['ex_tenant_access_periods_paid_overlap', 'ex_tenant_access_periods_trial_overlap'];
@@ -61,9 +61,12 @@ export interface AccessPeriodView {
   reason: string | null;
   recordedAt: string;
   recordedBy: { id: string; name: string };
+  /** Anulado por correção da administração: o registro original fica como
+   * estava, com quem anulou, quando e por quê. Não conta para a validade. */
+  canceled: { at: string; by: { id: string; name: string }; reason: string } | null;
 }
 
-interface PeriodRow {
+export interface PeriodRow {
   id: string;
   tenant_id: string;
   kind: AccessPeriodKind;
@@ -82,20 +85,27 @@ interface PeriodRow {
   recorded_at: Date;
   recorded_by_user_id: string;
   recorded_by_name: string;
+  canceled_at: Date | null;
+  canceled_by_user_id: string | null;
+  canceled_by_name: string | null;
+  cancel_reason: string | null;
+  cancel_request_key: string | null;
   timezone: string;
 }
 
-const PERIOD_SELECT = `SELECT ap.id, ap.tenant_id, ap.kind::text AS kind, ap.plan_id, p.name AS plan_name,
+export const PERIOD_SELECT = `SELECT ap.id, ap.tenant_id, ap.kind::text AS kind, ap.plan_id, p.name AS plan_name,
     ap.starts_at, ap.ends_at, ap.billing_cycle::text AS billing_cycle, ap.contracted_price_cents,
     btrim(ap.currency) AS currency, ap.payment_method, to_char(ap.payment_received_on, 'YYYY-MM-DD') AS payment_received_on,
     ap.payment_reference, ap.confirmation_source, ap.reason, ap.recorded_at, ap.recorded_by_user_id,
-    u.name AS recorded_by_name, t.timezone
+    u.name AS recorded_by_name, ap.canceled_at, ap.canceled_by_user_id, cu.name AS canceled_by_name,
+    ap.cancel_reason, ap.cancel_request_key, t.timezone
   FROM tenant_access_periods ap
   JOIN plans p ON p.id = ap.plan_id
   JOIN users u ON u.id = ap.recorded_by_user_id
+  LEFT JOIN users cu ON cu.id = ap.canceled_by_user_id
   JOIN tenants t ON t.id = ap.tenant_id`;
 
-function toView(l: PeriodRow): AccessPeriodView {
+export function toView(l: PeriodRow): AccessPeriodView {
   const fim = new Date(l.ends_at);
   const ultimo = localDate(new Date(fim.getTime() - 1), l.timezone);
   return {
@@ -116,10 +126,18 @@ function toView(l: PeriodRow): AccessPeriodView {
     reason: l.reason,
     recordedAt: new Date(l.recorded_at).toISOString(),
     recordedBy: { id: l.recorded_by_user_id, name: l.recorded_by_name },
+    canceled: l.canceled_at
+      ? {
+          at: new Date(l.canceled_at).toISOString(),
+          by: { id: l.canceled_by_user_id!, name: l.canceled_by_name! },
+          reason: l.cancel_reason!,
+        }
+      : null,
   };
 }
 
-/** Histórico de períodos do estabelecimento, do mais recente ao mais antigo. */
+/** Histórico de períodos do estabelecimento, do mais recente ao mais
+ * antigo, com os anulados (marcados). */
 export async function listAccessPeriods(manager: EntityManager, tenantId: string): Promise<AccessPeriodView[]> {
   const linhas = await manager.query<PeriodRow[]>(
     `${PERIOD_SELECT} WHERE ap.tenant_id = $1 ORDER BY ap.starts_at DESC, ap.recorded_at DESC, ap.id DESC`,
@@ -129,8 +147,8 @@ export async function listAccessPeriods(manager: EntityManager, tenantId: string
 }
 
 /** `"2027-02-28"` -> `"28/02/2027"`. */
-const br = (iso: string) => iso.split('-').reverse().join('/');
-const reais = (centavos: number) =>
+export const br = (iso: string) => iso.split('-').reverse().join('/');
+export const reais = (centavos: number) =>
   (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const CICLO = { MONTHLY: 'mensal', QUARTERLY: 'trimestral' } as const;
 
@@ -293,7 +311,11 @@ export class AccessValidityService {
 
         const [linha] = await manager.query<PeriodRow[]>(`${PERIOD_SELECT} WHERE ap.id = $1`, [id]);
         const periodo = toView(linha);
-        const depois = accessSituation(await loadAccessPeriods(manager, atual.id), now);
+        const depois = accessSituation(
+          await loadAccessPeriods(manager, atual.id),
+          now,
+          await loadAccessLegacy(manager, atual.id),
+        );
         await this.audit(manager, actor, atual, situacao, periodo, depois.validUntil, now);
         return { created: true, updatedAt: versao, period: periodo };
       });

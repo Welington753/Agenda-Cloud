@@ -8,7 +8,12 @@
 //   agendamento público fechado, regularização pela administração;
 // - pagamento não tira suspensão nem arquivamento;
 // - recurso fora do plano não é liberado por concessão do dono;
-// - dono e gerente de um Max não alcançam a administração da plataforma.
+// - dono e gerente de um Max não alcançam a administração da plataforma;
+// - legado só pela marca explícita: sem período e sem marca, bloqueia; a
+//   criação grava estabelecimento e teste juntos, ou nada;
+// - correção de um registro feito por engano: anula sem apagar, recusa a
+//   cadeia, repete sem efeito novo e não mexe em papel global;
+// - funcionário não recebe a situação comercial na sessão.
 import { randomUUID } from 'node:crypto';
 import { globSync } from 'node:fs';
 import path from 'node:path';
@@ -53,7 +58,7 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     return { userId, email };
   }
 
-  // Cada login vem de um IP próprio (pelo cabeçalho do proxy, com o
+  // Cada login (e cada confirmação de senha) vem de um IP próprio (pelo cabeçalho do proxy, com o
   // segredo), para o limite de tentativas por IP não misturar as pessoas.
   let ip = 0;
   async function entrar(email: string): Promise<Agente> {
@@ -69,15 +74,25 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
   }
 
   /** Senha confirmada há pouco nesta sessão (ações sensíveis). */
-  const reautenticar = (agente: Agente) => agente.post('/platform/reauth').send({ password: SENHA }).expect(204);
+  const reautenticar = (agente: Agente) => {
+    ip += 1;
+    return agente
+      .post('/platform/reauth')
+      .set('x-agenda-proxy-secret', SEGREDO_DO_PROXY)
+      .set('x-agenda-client-ip', `10.30.${Math.floor(ip / 250)}.${ip % 250}`)
+      .send({ password: SENHA })
+      .expect(204);
+  };
 
-  async function estabelecimento(nome: string, planId: string) {
+  /** `legado`: marcado como anterior ao controle (como os do piloto na
+   * migration). Sem a marca, é um estabelecimento novo sem período. */
+  async function estabelecimento(nome: string, planId: string, legado = true) {
     const tenantId = id();
     const slug = `${marca}-${nome}`;
     await q(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, created_at)
-       VALUES ($1, $2, 'OTHER', $3, $4, 'TRIAL', now() - interval '200 days')`,
-      [tenantId, slug, TZ, planId],
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, created_at, access_legacy_since)
+       VALUES ($1, $2, 'OTHER', $3, $4, 'TRIAL', now() - interval '200 days', CASE WHEN $5::boolean THEN now() END)`,
+      [tenantId, slug, TZ, planId, legado],
     );
     await q(`INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, $3, '', $4, true)`, [
       id(),
@@ -112,8 +127,16 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
       updatedAt: string;
       status: string;
       restoreStatus: string | null;
-      access: { state: string; blocked: boolean; lastDay: string | null; validUntil: string | null };
-      accessPeriods: { id: string; kind: string; firstDay: string; lastDay: string; amountCents: number | null }[];
+      access: { state: string; legacy: boolean; blocked: boolean; lastDay: string | null; validUntil: string | null };
+      accessPeriods: {
+        id: string;
+        kind: string;
+        firstDay: string;
+        lastDay: string;
+        amountCents: number | null;
+        canceled: { reason: string } | null;
+        correction: { allowed: boolean; after?: { state: string; validUntil: string | null }; blockedByPeriodId?: string } | null;
+      }[];
       allowedActions: Record<string, boolean>;
     };
 
@@ -139,6 +162,9 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     process.env.DIRECT_URL = url!;
     process.env.FRONTEND_URL ??= 'http://localhost:3000';
     process.env.API_PROXY_SECRET = SEGREDO_DO_PROXY;
+    // Nenhuma mensagem sai deste teste: sem provedor de e-mail.
+    delete process.env.EMAIL_PROVIDER;
+    delete process.env.EMAIL_API_KEY;
     // Entidades carregadas como nos outros testes de banco (o glob do
     // runtime aponta para .js compilado); o AppModule inteiro usa ESTE
     // DataSource, ligado ao banco descartável.
@@ -434,6 +460,10 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
       await agente.get(`/tenants/${outro.tenantId}/consumers/page`).expect(404);
     }
 
+    // O gerente não recebe a situação comercial na sessão.
+    const sessaoDoGerente = (await (await entrar(g.email)).get('/auth/me').expect(200)).body.activeContext;
+    expect(sessaoDoGerente.access).toEqual({ state: null, blocked: false, validUntil: null, expiredAt: null, expiredKind: null });
+
     // O dono não concede permissão de plataforma ao gerente.
     const dono = await entrar(est.dono.email);
     await reautenticar(dono);
@@ -448,5 +478,140 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     );
     expect(papeis.every((p) => p.platform_role === null && !p.platform_permissions?.length)).toBe(true);
     expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods`)).toBe(periodosAntes);
+  });
+  it('legado só pela marca: sem período e sem marca bloqueia; a criação grava estabelecimento e teste juntos, ou nada', async () => {
+    // Anterior ao controle: "Validade ainda não definida", opera.
+    const antigo = await estabelecimento('antigo', 'plan_essencial');
+    expect((await ficha(master, antigo.tenantId)).access).toMatchObject({ state: 'UNTRACKED', legacy: true, blocked: false });
+    await (await entrar(antigo.dono.email)).get(`/tenants/${antigo.tenantId}/consumers/page`).expect(200);
+
+    // Sem período e sem a marca (o teste não foi gravado): bloqueado, nunca indefinido.
+    const semTeste = await estabelecimento('semteste', 'plan_essencial', false);
+    expect((await ficha(master, semTeste.tenantId)).access).toMatchObject({ state: 'MISSING', legacy: false, blocked: true });
+    const dono = await entrar(semTeste.dono.email);
+    expect((await dono.get(`/tenants/${semTeste.tenantId}/consumers/page`).expect(403)).body.code).toBe('ACESSO_VENCIDO');
+    expect((await dono.get('/auth/me').expect(200)).body.activeContext.access).toMatchObject({ state: 'MISSING', blocked: true });
+
+    // Criação pela API: estabelecimento e teste na mesma transação.
+    const criar = (requestKey: string, nome: string) =>
+      master.post('/platform/establishments').send({
+        requestKey,
+        businessName: `${marca} ${nome}`,
+        category: 'OTHER',
+        timezone: TZ,
+        planId: 'plan_equipe',
+        owner: { name: `Dono ${nome}`, email: `${marca}-${nome}-dono@example.test` },
+      });
+    const criado = await criar(`chave-${id()}`, 'novo').expect(200);
+    const novoId = criado.body.tenant.id as string;
+    expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods WHERE tenant_id = $1 AND kind = 'TRIAL'`, [novoId])).toBe(1);
+    expect((await ficha(master, novoId)).access).toMatchObject({ state: 'TRIAL', legacy: false, blocked: false });
+
+    // Uma falha ao gravar o teste desfaz o estabelecimento inteiro.
+    await q(`ALTER TABLE tenant_access_periods ADD CONSTRAINT ck_teste_falha CHECK (kind <> 'TRIAL' OR tenant_id = 'x') NOT VALID`);
+    try {
+      await criar(`chave-${id()}`, 'parcial').expect(500);
+    } finally {
+      await q(`ALTER TABLE tenant_access_periods DROP CONSTRAINT ck_teste_falha`);
+    }
+    expect(await n(`SELECT count(*)::int AS n FROM units WHERE name = $1`, [`${marca} parcial`])).toBe(0);
+    expect(await n(`SELECT count(*)::int AS n FROM invites WHERE target_email = $1`, [`${marca}-parcial-dono@example.test`])).toBe(0);
+  });
+
+  it('correção: anula sem apagar, mostra o impacto, recusa a cadeia, repete sem efeito e não toca papel global', async () => {
+    const est = await estabelecimento('corrige', 'plan_pro');
+    const g = await gerente(est.tenantId, 'corrige-gerente', ['AGENDA_VISUALIZAR']);
+    let f = await ficha(master, est.tenantId);
+    const p1 = (await master.post(`/platform/establishments/${est.tenantId}/access/paid`).send(pago(f.updatedAt)).expect(200)).body.period;
+    f = await ficha(master, est.tenantId);
+    const p2 = (
+      await master
+        .post(`/platform/establishments/${est.tenantId}/access/paid`)
+        .send(pago(f.updatedAt, { amountCents: 99999, reference: 'digitado errado' }))
+        .expect(200)
+    ).body.period;
+    f = await ficha(master, est.tenantId);
+    expect(f.allowedActions.correctPeriod).toBe(true);
+
+    // A ficha mostra o impacto antes: só o último pode ser anulado, e a
+    // validade volta ao fim do primeiro.
+    const [maisRecente, anterior] = f.accessPeriods;
+    expect(maisRecente).toMatchObject({ id: p2.id, correction: { allowed: true, after: { state: 'PAID', validUntil: p1.endsAt } } });
+    expect(anterior).toMatchObject({ id: p1.id, correction: { allowed: false, blockedByPeriodId: p2.id } });
+
+    const corrigir = (periodId: string, corpo: Record<string, unknown>, agente: Agente = master) =>
+      agente.post(`/platform/establishments/${est.tenantId}/access/periods/${periodId}/correction`).send(corpo);
+
+    // A cadeia não é desfeita pelo meio.
+    const cadeia = await corrigir(p1.id, { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}`, reason: 'teste' }).expect(409);
+    expect(cadeia.body.code).toBe('CORRECAO_EM_CADEIA');
+    expect(cadeia.body.message).toContain('Corrija primeiro o registro mais recente');
+
+    // Dono, gerente e um MASTER_OWNER sem senha confirmada não corrigem.
+    for (const pessoa of [est.dono, g]) {
+      const agente = await entrar(pessoa.email);
+      await reautenticar(agente);
+      await corrigir(p2.id, { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}`, reason: 'por conta própria' }, agente).expect(403);
+    }
+    const outro = await conta('master-corrige-sem-reauth', 'MASTER_OWNER');
+    const semReauth = await corrigir(
+      p2.id,
+      { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}`, reason: 'sem senha' },
+      await entrar(outro.email),
+    ).expect(403);
+    expect(semReauth.body.code).toBe('REAUTENTICACAO_NECESSARIA');
+    // Motivo é obrigatório.
+    await corrigir(p2.id, { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}` }).expect(400);
+
+    const papeisAntes = await q(`SELECT id, platform_role::text AS r, platform_permissions::text[] AS p FROM users ORDER BY id`);
+    const corpo = { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}`, reason: 'valor digitado errado' };
+    const feita = await corrigir(p2.id, corpo).expect(200);
+    expect(feita.body).toMatchObject({
+      created: true,
+      period: { id: p2.id, amountCents: 99999, canceled: { reason: 'valor digitado errado' } },
+    });
+    // Repetir: a mesma correção, nada novo.
+    const repetida = await corrigir(p2.id, corpo).expect(200);
+    expect(repetida.body).toMatchObject({ created: false, period: { id: p2.id } });
+    // Outra tentativa sobre o já anulado: recusada.
+    f = await ficha(master, est.tenantId);
+    const deNovo = await corrigir(p2.id, { expectedUpdatedAt: f.updatedAt, requestKey: `chave-${id()}`, reason: 'de novo' }).expect(409);
+    expect(deNovo.body.code).toBe('PERIODO_JA_CORRIGIDO');
+
+    // Nada apagado: o registro e o valor ficam, marcados como anulados.
+    const [linha] = await q<{ contracted_price_cents: number; canceled_at: Date | null; cancel_reason: string }>(
+      `SELECT contracted_price_cents, canceled_at, cancel_reason FROM tenant_access_periods WHERE id = $1`,
+      [p2.id],
+    );
+    expect(linha).toMatchObject({ contracted_price_cents: 99999, cancel_reason: 'valor digitado errado' });
+    expect(linha.canceled_at).not.toBeNull();
+    expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods WHERE tenant_id = $1`, [est.tenantId])).toBe(2);
+    expect(f.access.validUntil).toBe(p1.endsAt);
+    expect(f.accessPeriods.find((p) => p.id === p2.id)).toMatchObject({ canceled: { reason: 'valor digitado errado' }, correction: null });
+    expect(f.accessPeriods.find((p) => p.id === p1.id)?.correction).toMatchObject({ allowed: true });
+
+    // Histórico: uma correção, dizendo que nenhum valor foi devolvido.
+    const auditoria = await q<{ summary: string; new_data: Record<string, unknown>; previous_data: Record<string, unknown> }>(
+      `SELECT summary, new_data, previous_data FROM audit_logs WHERE tenant_id = $1 AND action = 'ACCESS_PERIOD_CORRECTED'`,
+      [est.tenantId],
+    );
+    expect(auditoria).toHaveLength(1);
+    expect(auditoria[0].summary).toContain('nenhum valor foi devolvido ou movimentado');
+    expect(auditoria[0].new_data).toMatchObject({ periodId: p2.id, moneyMoved: false, access: { validUntil: p1.endsAt } });
+    expect(auditoria[0].previous_data).toMatchObject({ period: { amountCents: 99999 }, access: { validUntil: p2.endsAt } });
+
+    // O registro certo depois da correção encosta no fim do primeiro, sem
+    // sobrepor nem duplicar: o anulado não ocupa mais as datas.
+    const certo = await master
+      .post(`/platform/establishments/${est.tenantId}/access/paid`)
+      .send(pago(f.updatedAt, { amountCents: 14990 }))
+      .expect(200);
+    expect(certo.body.period.startsAt).toBe(p1.endsAt);
+    expect(certo.body.period.endsAt).toBe(p2.endsAt);
+
+    // Trocar o plano, corrigir e repetir não mexeram em nenhum papel global.
+    f = await ficha(master, est.tenantId);
+    await master.put(`/platform/establishments/${est.tenantId}/plan`).send({ expectedUpdatedAt: f.updatedAt, planId: 'plan_essencial' }).expect(200);
+    expect(await q(`SELECT id, platform_role::text AS r, platform_permissions::text[] AS p FROM users ORDER BY id`)).toEqual(papeisAntes);
   });
 });

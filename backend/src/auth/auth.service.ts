@@ -21,7 +21,7 @@ import { InvalidCredentialsError } from './auth.errors.js';
 import type { ChangePasswordDto, LoginDto } from './login.dto.js';
 import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher.js';
 import { recordAudit } from '../accounts/audit.js';
-import type { SessionContextResult, TenantContext } from './session-context.js';
+import { sessionAccess, type SessionContextResult, type TenantContext } from './session-context.js';
 import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { isTenantUsableForSession } from './tenant-access.js';
 import { isMembershipActive } from '../common/tenant-authorization.js';
@@ -164,7 +164,7 @@ export class AuthService {
         planName: plan.name,
         trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
         tenantStatus: tenant.status,
-        access,
+        access: sessionAccess(access, membership.role),
         // Vencido: nenhuma área (as rotas respondem ACESSO_VENCIDO).
         areas: access.blocked ? [] : await sessionAreas(manager, membership),
       });

@@ -18,22 +18,46 @@
 // - a chave do formulário é única por quem registrou (repetição idempotente);
 // - cada tipo tem exatamente os campos que lhe cabem.
 //
-// ESTABELECIMENTOS EXISTENTES: nenhum período é criado. Sem período, a
-// validade não é conferida (seção 2.6 do plano).
+// ESTABELECIMENTOS EXISTENTES: nenhum período é criado. Cada um é marcado
+// explicitamente (`tenants.access_legacy_since`), e só essa marca dispensa a
+// validade enquanto não houver período: "Validade ainda não definida". Um
+// estabelecimento criado depois desta migration nasce sem a marca e com o
+// teste gravado na mesma transação; sem período e sem a marca, o acesso fica
+// bloqueado, nunca indefinido (seção 2.6 do plano).
 //
 // PLANOS: só `name` e `short_description` mudam, pelas linhas de id e código
 // conhecidos. Códigos e ids continuam `essencial`/`equipe`/`pro`.
 //
 // RECURSOS: o catálogo passa a dizer o que o código já fazia (clientes,
 // equipe e recebimentos no Básico; recebimentos no Pro). Nada é concedido
-// além do que já era usado.
+// além do que já era usado. Antes deste lote nenhum código lia o catálogo:
+// todo estabelecimento usava todos os módulos existentes. Quem estiver num
+// plano que não tenha um deles no catálogo ganha a exceção individual ligada
+// (`tenant_feature_overrides`), para nada ser retirado sem decisão própria.
+//
+// CORREÇÃO: um período registrado por engano é anulado (`canceled_*`), nunca
+// apagado. As constraints de sobreposição só olham os períodos válidos.
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const ACCESS_AUDIT_ACTIONS = [
   'ACCESS_PAID_PERIOD_RECORDED',
   'ACCESS_TRIAL_EXTENDED',
   'ACCESS_COURTESY_GRANTED',
+  'ACCESS_PERIOD_CORRECTED',
 ] as const;
+
+/** Recursos que já existiam no código antes deste lote. */
+export const IMPLEMENTED_FEATURE_IDS = [
+  'feat_agenda',
+  'feat_agendamento_publico',
+  'feat_profissionais',
+  'feat_consumidores',
+  'feat_equipe',
+  'feat_pagamentos',
+] as const;
+
+/** Prefixo das exceções de recurso criadas aqui (o `down()` remove só elas). */
+export const LEGACY_OVERRIDE_PREFIX = 'tfo_ca_';
 
 /** Formas de pagamento aceitas no registro manual da assinatura. */
 export const ACCESS_PAYMENT_METHODS = [
@@ -114,6 +138,10 @@ export class CommercialAccess1793232000000 implements MigrationInterface {
         recorded_at timestamptz(3) NOT NULL DEFAULT now(),
         recorded_by_user_id varchar(30) NOT NULL,
         request_key varchar(80) NULL,
+        canceled_at timestamptz(3) NULL,
+        canceled_by_user_id varchar(30) NULL,
+        cancel_reason varchar(300) NULL,
+        cancel_request_key varchar(80) NULL,
         CONSTRAINT pk_tenant_access_periods PRIMARY KEY (id),
         CONSTRAINT fk_tenant_access_periods_tenant FOREIGN KEY (tenant_id)
           REFERENCES tenants (id) ON DELETE RESTRICT,
@@ -121,6 +149,13 @@ export class CommercialAccess1793232000000 implements MigrationInterface {
           REFERENCES plans (id) ON DELETE RESTRICT,
         CONSTRAINT fk_tenant_access_periods_recorded_by FOREIGN KEY (recorded_by_user_id)
           REFERENCES users (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_tenant_access_periods_canceled_by FOREIGN KEY (canceled_by_user_id)
+          REFERENCES users (id) ON DELETE RESTRICT,
+        CONSTRAINT ck_tenant_access_periods_cancel CHECK (
+          (canceled_at IS NULL AND canceled_by_user_id IS NULL AND cancel_reason IS NULL AND cancel_request_key IS NULL)
+          OR (canceled_at IS NOT NULL AND canceled_by_user_id IS NOT NULL AND cancel_reason IS NOT NULL
+            AND cancel_request_key IS NOT NULL)
+        ),
         CONSTRAINT ck_tenant_access_periods_dates CHECK (ends_at > starts_at),
         CONSTRAINT ck_tenant_access_periods_anchor CHECK (anchor_day IS NULL OR anchor_day BETWEEN 1 AND 31),
         CONSTRAINT ck_tenant_access_periods_method CHECK (
@@ -149,17 +184,21 @@ export class CommercialAccess1793232000000 implements MigrationInterface {
          ON tenant_access_periods (recorded_by_user_id, request_key) WHERE request_key IS NOT NULL`,
     );
     await queryRunner.query(
+      `CREATE UNIQUE INDEX uq_tenant_access_periods_cancel_request_key
+         ON tenant_access_periods (canceled_by_user_id, cancel_request_key) WHERE cancel_request_key IS NOT NULL`,
+    );
+    await queryRunner.query(
       `CREATE INDEX idx_tenant_access_periods_tenant_ends ON tenant_access_periods (tenant_id, ends_at)`,
     );
     await queryRunner.query(`
       ALTER TABLE tenant_access_periods ADD CONSTRAINT ex_tenant_access_periods_paid_overlap
         EXCLUDE USING gist (tenant_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
-        WHERE (kind <> 'TRIAL')
+        WHERE (kind <> 'TRIAL' AND canceled_at IS NULL)
     `);
     await queryRunner.query(`
       ALTER TABLE tenant_access_periods ADD CONSTRAINT ex_tenant_access_periods_trial_overlap
         EXCLUDE USING gist (tenant_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
-        WHERE (kind = 'TRIAL')
+        WHERE (kind = 'TRIAL' AND canceled_at IS NULL)
     `);
 
     for (const plano of PLAN_RENAMES) {
@@ -176,9 +215,27 @@ export class CommercialAccess1793232000000 implements MigrationInterface {
         [linha.id, linha.planId, linha.featureId],
       );
     }
+
+    // Legado: todo estabelecimento que já existe, e só ele.
+    await queryRunner.query(`ALTER TABLE tenants ADD COLUMN access_legacy_since timestamptz(3) NULL`);
+    await queryRunner.query(`UPDATE tenants SET access_legacy_since = now()`);
+    // Direitos anteriores. Nos três planos conhecidos, depois das linhas
+    // acima, nada falta e nenhuma exceção é criada. Uma exceção já gravada
+    // nunca é trocada.
+    await queryRunner.query(
+      `INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled)
+       SELECT $1::text || substr(md5(t.id || ':' || f.id), 1, 22), t.id, f.id, true
+         FROM tenants t CROSS JOIN features f
+        WHERE f.id = ANY($2::text[])
+          AND NOT EXISTS (SELECT 1 FROM plan_features pf WHERE pf.plan_id = t.plan_id AND pf.feature_id = f.id)
+          AND NOT EXISTS (SELECT 1 FROM tenant_feature_overrides o WHERE o.tenant_id = t.id AND o.feature_id = f.id)`,
+      [LEGACY_OVERRIDE_PREFIX, [...IMPLEMENTED_FEATURE_IDS]],
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DELETE FROM tenant_feature_overrides WHERE starts_with(id, $1::text)`, [LEGACY_OVERRIDE_PREFIX]);
+    await queryRunner.query(`ALTER TABLE tenants DROP COLUMN access_legacy_since`);
     await queryRunner.query(`DELETE FROM plan_features WHERE id = ANY($1)`, [
       PLAN_FEATURE_ADDITIONS.map((l) => l.id),
     ]);
