@@ -44,7 +44,7 @@ export interface Resumo {
   servidor: string;
   tabelas: number;
   dumpClaroBytes: number;
-  objetos: Record<'dump' | 'manifesto', { chave: string; bytes: number; sha256: string }>;
+  objetos: Record<'dump' | 'manifesto', { chave: string; versao: string; bytes: number; sha256: string }>;
   duracoesMs: Record<string, number>;
 }
 
@@ -55,7 +55,12 @@ export function segredosDa(config: Configuracao): string[];
 export function limparDetalhe(texto: unknown, segredos: string[], limite?: number): string;
 export function conferirRepositorioPrivado(config: Configuracao, buscar?: Buscar): Promise<void>;
 export function avaliarPapelSomenteLeitura(estado: Record<string, boolean | number> | undefined): string[];
-export function planoDoObjeto(agora: Date, execucao: string): { tipo: 'diario' | 'mensal'; prefixo: string; retencaoAte: Date };
+export function prefixoMensal(agora: Date): string;
+export function planoDoObjeto(
+  agora: Date,
+  execucao: string,
+  opcoes?: { mensalDoMesExiste?: boolean },
+): { tipo: 'diario' | 'mensal'; prefixo: string; retencaoAte: Date };
 export function assinarS3(args: {
   metodo: string;
   url: string;
@@ -71,13 +76,14 @@ export function clienteS3(
   armazenamento: Configuracao['armazenamento'],
   deps?: { buscar?: Buscar; agora?: () => Date },
 ): {
-  enviar(chave: string, corpo: Buffer, opcoes: { retencaoAte: Date; tipo?: string }): Promise<{ status: number; ok: boolean }>;
-  conferir(chave: string): Promise<{ status: number; cabecalhos: Record<string, string> }>;
-  baixar(chave: string): Promise<{ status: number; corpo: Buffer | null }>;
+  enviar(chave: string, corpo: Buffer, opcoes: { retencaoAte: Date; tipo?: string }): Promise<{ status: number; ok: boolean; versao: string | null }>;
+  conferir(chave: string, versao?: string): Promise<{ status: number; cabecalhos: Record<string, string> }>;
+  baixar(chave: string, versao?: string): Promise<{ status: number; corpo: Buffer | null }>;
+  listar(prefixo: string): Promise<{ status: number; chaves: string[] | null }>;
 };
 export function conferirObjetoEnviado(
   head: { status: number | string; cabecalhos: Record<string, string> },
-  esperado: { bytes: number; sha256: string; retencaoAte: Date },
+  esperado: { bytes: number; sha256: string; retencaoAte: Date; versao?: string },
 ): string[];
 export const executar: Executar;
 export function versaoMaior(saida: string | undefined): number | null;
@@ -103,5 +109,6 @@ export function executarBackup(
     log?: (linha: string) => void;
     aoExportarSnapshot?: () => Promise<void>;
     aposRestaurar?: (destino: DestinoLocal) => Promise<void>;
+    esperar?: (ms: number) => Promise<void>;
   },
-): Promise<Resumo>;
+): Promise<Resumo & { monitoramento: 'ok' | 'falhou' }>;

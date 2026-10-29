@@ -10,8 +10,11 @@
 // RECUPERACAO_IDENTIDADE (arquivo da chave privada, nunca impresso),
 // RECUPERACAO_URL (banco de destino), RECUPERACAO_CA (opcional; obrigatório
 // em 127.0.0.1), RECUPERACAO_PASTA (pasta de trabalho fora do repositório),
-// AGE_BIN e PG_BIN.
+// AGE_BIN e PG_BIN. Opcional: RECUPERACAO_RESUMO (o `resumo.json` da mesma
+// pasta), para conferir antes de decifrar que os dois `.age` são exatamente
+// os gravados por aquela execução.
 //
+// 0. com o resumo, sha256 de cada `.age` igual ao do resumo;
 // 1. decifra o manifesto e o dump numa pasta temporária;
 // 2. sha256 do dump igual ao do manifesto;
 // 3. pg_restore numa transação no destino vazio;
@@ -49,6 +52,20 @@ async function principal() {
   const pgRestore = path.join(exigir("PG_BIN"), process.platform === "win32" ? "pg_restore.exe" : "pg_restore");
   const destino = destinoDaRecuperacao(exigir("RECUPERACAO_URL"), env.RECUPERACAO_CA);
   segredos = [destino.password, env.RECUPERACAO_URL, identidade];
+
+  if (env.RECUPERACAO_RESUMO?.trim()) {
+    const arquivo = env.RECUPERACAO_RESUMO.trim();
+    if (!existsSync(arquivo)) parar("ERR_ARQUIVO_AUSENTE");
+    let resumo;
+    try {
+      resumo = JSON.parse(readFileSync(arquivo, "utf8"));
+    } catch {
+      parar("ERR_RESUMO_FORMATO_INESPERADO");
+    }
+    if (resumo?.formato !== "agenda-cloud-backup-resumo/1" || resumo.completo !== true) parar("ERR_RESUMO_FORMATO_INESPERADO");
+    if (sha256DoArquivo(dumpCifrado) !== resumo.objetos?.dump?.sha256 || sha256DoArquivo(manifestoCifrado) !== resumo.objetos?.manifesto?.sha256) parar("ERR_CIFRADO_DIFERENTE_DO_RESUMO");
+    log(`CIFRADOS_CONFEREM_COM_RESUMO: true (${resumo.tipo}, ponto de recuperação ${resumo.pontoDeRecuperacao})`);
+  }
 
   const temp = mkdtempSync(path.join(pasta, "agenda-cloud-recuperacao-"));
   try {

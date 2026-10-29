@@ -5,7 +5,8 @@
 // - restauração: bancos criados e apagados pelo próprio backup no mesmo
 //   servidor descartável;
 // - armazenamento: simulador S3 local que confere a assinatura SigV4, o
-//   Content-MD5 e o sha256 do corpo e guarda a retenção pedida;
+//   Content-MD5 e o sha256 do corpo, guarda a retenção pedida, versiona cada
+//   chave (como um bucket com Object Lock) e lista por prefixo;
 // - cron: simulador local que registra os check-ins.
 //
 // O simulador S3 prova o que o script pede e confere, não o comportamento do
@@ -26,9 +27,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { compararFotografias, fotografar } from '../scripts/operacao-piloto.mjs';
 import {
   ARQUIVOS,
   assinarS3,
+  clienteS3,
   executar,
   executarBackup,
   lerConfiguracao,
@@ -52,6 +55,7 @@ if (process.env.BACKUP_E2E_EXIGIR_FERRAMENTAS === 'true' && (!ferramentas || AGE
 }
 
 const ORIGEM = 'backup_origem_e2e';
+const ESCRITOR = 'backup_escritor_e2e';
 const RECUPERADO = 'backup_recuperado_e2e';
 const LEITOR = 'backup_leitor_e2e';
 const SENHA_LEITOR = `leitor-${randomBytes(9).toString('hex')}`;
@@ -81,12 +85,21 @@ interface Objeto {
   corpo: Buffer;
   cabecalhos: Record<string, string>;
 }
+// `objetos`: a versão atual de cada chave; `versoes`: todas, por
+// `<chave>#<versão>`.
 const s3 = {
   objetos: new Map<string, Objeto>(),
+  versoes: new Map<string, Objeto>(),
+  contador: 0,
   falhaNoPut: 0,
   semRetencao: false,
   corromperDownload: false,
   assinaturasInvalidas: 0,
+  // Grava e derruba a conexão sem responder (timeout depois de receber).
+  perderRespostaDoPut: '',
+  // Com a perda acima, os HEADs seguintes também ficam sem resposta.
+  perderTambemOsHeads: false,
+  headSemResposta: false,
 };
 const cron = { status: [] as string[], recusarOk: false };
 let servidorS3: Server;
@@ -131,7 +144,16 @@ async function iniciarSimuladores() {
       res.writeHead(403).end();
       return;
     }
-    const chave = decodeURIComponent(req.url ?? '');
+    const url = new URL(req.url ?? '/', 'http://simulador');
+    const chave = decodeURIComponent(url.pathname);
+    const versao = url.searchParams.get('versionId');
+    if (req.method === 'GET' && url.searchParams.get('list-type') === '2') {
+      const raiz = `${chave}/`;
+      const prefixo = url.searchParams.get('prefix') ?? '';
+      const chaves = [...s3.objetos.keys()].filter((k) => k.startsWith(raiz + prefixo)).map((k) => k.slice(raiz.length));
+      res.writeHead(200, { 'content-type': 'application/xml' }).end(`<ListBucketResult>${chaves.map((k) => `<Contents><Key>${k}</Key></Contents>`).join('')}</ListBucketResult>`);
+      return;
+    }
     if (req.method === 'PUT') {
       if (s3.falhaNoPut) {
         res.writeHead(s3.falhaNoPut).end();
@@ -142,9 +164,11 @@ async function iniciarSimuladores() {
         res.writeHead(400).end();
         return;
       }
-      s3.objetos.set(chave, {
+      const nova = `v${++s3.contador}`;
+      const objeto = {
         corpo,
         cabecalhos: {
+          'x-amz-version-id': nova,
           'x-amz-meta-sha256': String(req.headers['x-amz-meta-sha256']),
           ...(s3.semRetencao
             ? {}
@@ -153,11 +177,22 @@ async function iniciarSimuladores() {
                 'x-amz-object-lock-retain-until-date': String(req.headers['x-amz-object-lock-retain-until-date']),
               }),
         },
-      });
-      res.writeHead(200).end();
+      };
+      s3.objetos.set(chave, objeto);
+      s3.versoes.set(`${chave}#${nova}`, objeto);
+      if (s3.perderRespostaDoPut && chave.endsWith(s3.perderRespostaDoPut)) {
+        s3.headSemResposta = s3.perderTambemOsHeads;
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(200, { 'x-amz-version-id': nova }).end();
       return;
     }
-    const objeto = s3.objetos.get(chave);
+    if (req.method === 'HEAD' && s3.headSemResposta) {
+      req.socket.destroy();
+      return;
+    }
+    const objeto = versao ? s3.versoes.get(`${chave}#${versao}`) : s3.objetos.get(chave);
     if (!objeto) {
       res.writeHead(404).end();
       return;
@@ -225,7 +260,7 @@ const config = (ajuste?: Record<string, string | undefined>): Configuracao => le
 async function rodarBackup(deps: Parameters<typeof executarBackup>[1] = {}, ajuste?: Record<string, string | undefined>) {
   const linhas: string[] = [];
   try {
-    const resumo = await executarBackup(config(ajuste), { executarProcesso: processoPadrao, log: (l) => linhas.push(l), ...deps });
+    const resumo = await executarBackup(config(ajuste), { executarProcesso: processoPadrao, log: (l) => linhas.push(l), esperar: async () => {}, ...deps });
     return { resumo, linhas, erro: null as string | null };
   } catch (erro) {
     return { resumo: null, linhas, erro: (erro as Error).message };
@@ -268,6 +303,7 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
       await a.query(`DROP DATABASE IF EXISTS ${ORIGEM} WITH (FORCE)`);
       await a.query(`DROP DATABASE IF EXISTS ${RECUPERADO} WITH (FORCE)`);
       await a.query(`DROP ROLE IF EXISTS ${LEITOR}`);
+      await a.query(`DROP ROLE IF EXISTS ${ESCRITOR}`);
       await a.query(`CREATE DATABASE ${ORIGEM}`);
       await a.query(`CREATE DATABASE ${RECUPERADO}`);
       await a.query(`CREATE ROLE ${LEITOR} LOGIN PASSWORD '${SENHA_LEITOR}'`);
@@ -304,6 +340,7 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
       await a.query(`DROP DATABASE IF EXISTS ${ORIGEM} WITH (FORCE)`);
       await a.query(`DROP DATABASE IF EXISTS ${RECUPERADO} WITH (FORCE)`);
       await a.query(`DROP ROLE IF EXISTS ${LEITOR}`);
+      await a.query(`DROP ROLE IF EXISTS ${ESCRITOR}`);
     } finally {
       await a.end();
     }
@@ -312,7 +349,8 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
 
   beforeEach(() => {
     s3.objetos.clear();
-    Object.assign(s3, { falhaNoPut: 0, semRetencao: false, corromperDownload: false, assinaturasInvalidas: 0 });
+    s3.versoes.clear();
+    Object.assign(s3, { falhaNoPut: 0, semRetencao: false, corromperDownload: false, assinaturasInvalidas: 0, perderRespostaDoPut: '', perderTambemOsHeads: false, headSemResposta: false });
     Object.assign(cron, { status: [], recusarOk: false });
   });
 
@@ -342,6 +380,10 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     expect(chaves).toHaveLength(3);
     expect(chaves.every((k) => k.startsWith(`/balde-ficticio-e2e/${resumo!.objetos.dump.chave.split('/').slice(0, -1).join('/')}/`))).toBe(true);
     for (const o of s3.objetos.values()) expect(o.cabecalhos['x-amz-object-lock-mode']).toBe('COMPLIANCE');
+    // O resumo aponta a versão exata de cada arquivo gravado.
+    for (const nome of ['dump', 'manifesto'] as const) {
+      expect(resumo!.objetos[nome].versao).toBe(s3.objetos.get(`/balde-ficticio-e2e/${resumo!.objetos[nome].chave}`)!.cabecalhos['x-amz-version-id']);
+    }
 
     // Nada claro no armazenamento: nem dado de cliente nem nome de tabela.
     for (const o of s3.objetos.values()) {
@@ -364,8 +406,26 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     const { resumo } = await rodarBackup();
     const baixados = path.join(pasta, 'baixados-do-b2');
     mkdirSync(baixados, { recursive: true });
-    for (const nome of [ARQUIVOS.dump, ARQUIVOS.manifesto]) {
-      writeFileSync(path.join(baixados, nome), s3.objetos.get(`/balde-ficticio-e2e/${resumo!.objetos.dump.chave.replace(ARQUIVOS.dump, nome)}`)!.corpo);
+    // Como na emergência: o resumo da pasta diz a versão de cada arquivo, e
+    // os arquivos vêm do armazenamento (GET assinado), não da memória do teste.
+    const armazenamento = clienteS3({
+      endpoint: `http://127.0.0.1:${portaS3}`,
+      regiao: 'us-west-004',
+      bucket: 'balde-ficticio-e2e',
+      chaveId: 'chave-ficticia',
+      chaveSecreta: 'segredo-ficticio-do-simulador',
+    });
+    const resumoGuardado = await armazenamento.baixar(resumo!.objetos.dump.chave.replace(ARQUIVOS.dump, ARQUIVOS.resumo));
+    expect(resumoGuardado.status).toBe(200);
+    writeFileSync(path.join(baixados, ARQUIVOS.resumo), resumoGuardado.corpo!);
+    const doResumo = JSON.parse(resumoGuardado.corpo!.toString());
+    for (const [nome, objeto] of [
+      [ARQUIVOS.dump, doResumo.objetos.dump],
+      [ARQUIVOS.manifesto, doResumo.objetos.manifesto],
+    ] as const) {
+      const baixado = await armazenamento.baixar(objeto.chave, objeto.versao);
+      expect(baixado.status).toBe(200);
+      writeFileSync(path.join(baixados, nome), baixado.corpo!);
     }
     const saida = await new Promise<{ codigo: number | null; texto: string }>((resolve) => {
       const filho = spawn(process.execPath, ['scripts/recuperar-backup-piloto.mjs'], {
@@ -373,6 +433,7 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
           SystemRoot: process.env.SystemRoot,
           RECUPERACAO_DUMP: path.join(baixados, ARQUIVOS.dump),
           RECUPERACAO_MANIFESTO: path.join(baixados, ARQUIVOS.manifesto),
+          RECUPERACAO_RESUMO: path.join(baixados, ARQUIVOS.resumo),
           RECUPERACAO_IDENTIDADE: identidade,
           RECUPERACAO_URL: urlDo(decodeURIComponent(admin.username), decodeURIComponent(admin.password), RECUPERADO),
           RECUPERACAO_CA: CA,
@@ -386,12 +447,27 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
       filho.stderr.on('data', (d) => (texto += d));
       filho.on('close', (codigo) => resolve({ codigo, texto }));
     });
+    expect(saida.texto).toContain('CIFRADOS_CONFEREM_COM_RESUMO: true');
     expect(saida.texto).toContain('SHA256_CONFERE: true');
     expect(saida.texto).toContain('RESULTADO: recuperacao_conferida (3 tabelas, 11 migrations no histórico)');
     expect(saida.texto).toContain('DECIFRADOS_APAGADOS: true');
     expect(saida.codigo).toBe(0);
     semNadaSensivel(saida.texto);
     expect(readFileSync(identidade, 'utf8').split('\n').some((l) => l.startsWith('AGE-SECRET-KEY-') && saida.texto.includes(l))).toBe(false);
+
+    // Prova independente do manifesto: o banco recuperado é igual à origem
+    // (sem escrita desde o backup), tabela por tabela.
+    const [o, r] = [await cliente(ORIGEM), await cliente(RECUPERADO)];
+    try {
+      await o.query('BEGIN TRANSACTION READ ONLY');
+      await r.query('BEGIN TRANSACTION READ ONLY');
+      const [daOrigem, doRecuperado] = [await fotografar(o), await fotografar(r)];
+      expect(compararFotografias(daOrigem, doRecuperado).iguais).toBe(true);
+      expect(doRecuperado.contagens).toEqual({ agendamentos: 2000, clientes: 501, typeorm_migrations: 11 });
+    } finally {
+      await o.end();
+      await r.end();
+    }
 
     // Destino não vazio (como o piloto em uso): recusado antes de restaurar.
     const segunda = spawnSync(process.execPath, ['scripts/recuperar-backup-piloto.mjs'], {
@@ -413,15 +489,32 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
   });
 
   it('escrita depois do snapshot não entra no backup nem quebra a conferência', async () => {
+    const contar = async (banco: string) => {
+      const c = await cliente(banco);
+      try {
+        return (await c.query('SELECT count(*)::int AS n FROM clientes')).rows[0].n as number;
+      } finally {
+        await c.end();
+      }
+    };
+    const antes = await contar(ORIGEM);
+    let restaurados = -1;
     const { resumo, erro } = await rodarBackup({
       aoExportarSnapshot: async () => {
         const o = await cliente(ORIGEM);
         await o.query("INSERT INTO clientes (nome) VALUES ('Escrita concorrente fictícia')");
         await o.end();
       },
+      aposRestaurar: async (destino) => {
+        restaurados = await contar(destino.database);
+      },
     });
     expect(erro).toBeNull();
     expect(resumo!.tabelas).toBe(3);
+    // O dump é do snapshot exportado (o mesmo da fotografia), não do momento
+    // em que o pg_dump rodou.
+    expect(restaurados).toBe(antes);
+    expect(await contar(ORIGEM)).toBe(antes + 1);
     expect(cron.status).toEqual(['in_progress', 'ok']);
   });
 
@@ -429,6 +522,33 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     const r = await rodarBackup({}, { PILOTO_BACKUP_URL: urlDo(decodeURIComponent(admin.username), decodeURIComponent(admin.password), ORIGEM) });
     await esperarFalha(r, 'ERR_PAPEL_NAO_E_SOMENTE_LEITURA');
     expect(r.linhas.find((l) => l.startsWith('PAPEL:'))).toContain('ERR_PAPEL_SUPERUSUARIO');
+  });
+
+  it('recusa escrita efetiva que o nome do papel e o modo da transação não mostram: por coluna e por SET ROLE', async () => {
+    const o = await cliente(ORIGEM);
+    try {
+      await o.query(`GRANT UPDATE (observacao) ON agendamentos TO ${LEITOR}`);
+      const porColuna = await rodarBackup();
+      await esperarFalha(porColuna, 'ERR_PAPEL_NAO_E_SOMENTE_LEITURA');
+      expect(porColuna.linhas).toContain('PAPEL: ERR_PAPEL_PODE_ESCREVER');
+      await o.query(`REVOKE UPDATE (observacao) ON agendamentos FROM ${LEITOR}`);
+
+      cron.status = [];
+      await o.query(`CREATE ROLE ${ESCRITOR} NOLOGIN`);
+      await o.query(`GRANT INSERT ON clientes TO ${ESCRITOR}`);
+      // Sem herança: has_table_privilege do leitor continua falso, mas ele
+      // pode fazer SET ROLE e escrever.
+      await o.query(`GRANT ${ESCRITOR} TO ${LEITOR} WITH INHERIT FALSE`);
+      const porMembro = await rodarBackup();
+      await esperarFalha(porMembro, 'ERR_PAPEL_NAO_E_SOMENTE_LEITURA');
+      expect(porMembro.linhas).toContain('PAPEL: ERR_PAPEL_MEMBRO_DE_OUTRO_PAPEL');
+    } finally {
+      await o.query(`REVOKE UPDATE (observacao) ON agendamentos FROM ${LEITOR}`);
+      await o.query(
+        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ESCRITOR}') THEN REVOKE ALL ON clientes FROM ${ESCRITOR}; REVOKE ${ESCRITOR} FROM ${LEITOR}; DROP ROLE ${ESCRITOR}; END IF; END $$`,
+      );
+      await o.end();
+    }
   });
 
   it('falha do pg_dump: nada é enviado e o detalhe sai sem a senha', async () => {
@@ -488,11 +608,57 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     await esperarFalha(await rodarBackup(), 'ERR_DOWNLOAD_DIFERENTE_DO_ENVIADO');
   });
 
-  it('check-in ok não aceito pelo monitor: a execução falha', async () => {
+  it('check-in ok não aceito: o backup continua concluído; é falha de monitoramento, sem error', async () => {
     cron.recusarOk = true;
     const r = await rodarBackup();
-    expect(r.erro).toBe('ERR_CHECKIN_OK_NAO_CONFIRMADO');
-    expect(cron.status).toEqual(['in_progress', 'ok', 'error']);
+    expect(r.erro).toBeNull();
+    expect(r.resumo!.monitoramento).toBe('falhou');
+    expect(r.linhas).toContain('MONITORAMENTO: ERR_CHECKIN_OK_NAO_CONFIRMADO');
+    expect(r.linhas.at(-1)).toBe('RESULTADO: backup_concluido_monitoramento_falhou');
+    // Uma nova tentativa do ok e nenhum error, que marcaria um backup bom
+    // como falho.
+    expect(cron.status).toEqual(['in_progress', 'ok', 'ok']);
+    const guardado = s3.objetos.get(`/balde-ficticio-e2e/${r.resumo!.objetos.dump.chave.replace(ARQUIVOS.dump, ARQUIVOS.resumo)}`)!;
+    expect(JSON.parse(guardado.corpo.toString())).toMatchObject({ completo: true });
+    expect(sobrasNaTemporaria()).toEqual([]);
+  });
+
+  it('resposta do envio do resumo perdida depois de gravado: confere pela versão e conclui, sem reenviar', async () => {
+    s3.perderRespostaDoPut = ARQUIVOS.resumo;
+    const r = await rodarBackup();
+    expect(r.erro).toBeNull();
+    expect(r.linhas).toContain(`OBJETO ${ARQUIVOS.resumo}: gravado apesar do envio sem resposta`);
+    expect(r.linhas.at(-1)).toBe('RESULTADO: backup_ok');
+    expect(cron.status).toEqual(['in_progress', 'ok']);
+    expect(s3.versoes.size).toBe(3);
+  });
+
+  it('resposta perdida e conferência sem resposta: incerto, nunca ok nem "não gravado"', async () => {
+    s3.perderRespostaDoPut = ARQUIVOS.resumo;
+    s3.perderTambemOsHeads = true;
+    const r = await rodarBackup();
+    expect(r.erro).toBe('ERR_RESUMO_INCERTO');
+    expect(r.linhas).not.toContain('RESULTADO: backup_ok');
+    expect(cron.status).toEqual(['in_progress', 'error']);
+    // O resumo pode estar lá (aqui está): por isso "incerto", e nada tenta
+    // apagá-lo.
+    expect([...s3.objetos.keys()].some((k) => k.endsWith(ARQUIVOS.resumo))).toBe(true);
+    expect(sobrasNaTemporaria()).toEqual([]);
+    semNadaSensivel(r.linhas.join('\n'));
+  });
+
+  it('o primeiro backup completo do mês é o mensal; uma pasta incompleta não conta; o seguinte é diário', async () => {
+    s3.semRetencao = true;
+    expect((await rodarBackup()).erro).toBe('ERR_OBJETO_ENVIADO_NAO_CONFERE');
+    expect([...s3.objetos.keys()].some((k) => k.includes('/piloto/mensal/'))).toBe(true);
+    s3.semRetencao = false;
+    const primeiro = await rodarBackup();
+    const segundo = await rodarBackup();
+    expect([primeiro.resumo!.tipo, segundo.resumo!.tipo]).toEqual(['mensal', 'diario']);
+    expect(primeiro.resumo!.objetos.dump.chave).not.toBe(segundo.resumo!.objetos.dump.chave);
+    const dias = (r: typeof segundo) => (Date.parse(r.resumo!.retencaoAte) - Date.parse(r.resumo!.pontoDeRecuperacao)) / 86_400_000;
+    expect(dias(segundo)).toBe(35);
+    expect(dias(primeiro)).toBeGreaterThanOrEqual(365 + 28 + 1);
   });
 
   it.skipIf(AGE_SIMULADO)('pela linha de comando: sai com 0 só no backup completo; recusa o modo piloto no repositório público', async () => {
@@ -510,6 +676,12 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     expect(ok.stdout.trim().split('\n').at(-1)).toBe('RESULTADO: backup_ok');
     expect(ok.status).toBe(0);
     semNadaSensivel(ok.stdout + ok.stderr);
+
+    cron.recusarOk = true;
+    const semMonitor = await rodarCli(ambiente());
+    expect(semMonitor.stdout.trim().split('\n').at(-1)).toBe('RESULTADO: backup_concluido_monitoramento_falhou');
+    expect(semMonitor.status).toBe(1);
+    cron.recusarOk = false;
 
     s3.objetos.clear();
     cron.status = [];

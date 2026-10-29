@@ -18,6 +18,7 @@ import {
   lerConfiguracao,
   limparDetalhe,
   planoDoObjeto,
+  prefixoMensal,
   segredosDa,
   sinalizarCron,
   versaoMaior,
@@ -82,6 +83,11 @@ describe('lerConfiguracao (travas antes de qualquer rede)', () => {
 
   it('aceita o ensaio só com tudo em 127.0.0.1', () => {
     expect(lerConfiguracao(ENSAIO).modo).toBe('ensaio');
+  });
+
+  it('a execução inclui a tentativa: re-run do mesmo run não reaproveita a pasta', () => {
+    expect(lerConfiguracao({ ...PILOTO, GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2' }).execucao).toBe('123-2');
+    expect(lerConfiguracao({ ...PILOTO, GITHUB_RUN_ID: '123' }).execucao).toBe('123-1');
   });
 
   it.each([
@@ -152,9 +158,12 @@ describe('avaliarPapelSomenteLeitura', () => {
     replicacao: false,
     ignoraRls: false,
     criaNoBanco: false,
-    criaNoSchema: false,
+    schemasComCriacao: 0,
     donoDeObjetos: 0,
+    membroDePapeis: 0,
     tabelasComEscrita: 0,
+    sequenciasComEscrita: 0,
+    funcoesSecurityDefiner: 0,
     tabelasSemLeitura: 0,
     sequenciasSemLeitura: 0,
   };
@@ -165,9 +174,13 @@ describe('avaliarPapelSomenteLeitura', () => {
     [{ superusuario: true }, 'ERR_PAPEL_SUPERUSUARIO'],
     [{ criaPapel: true }, 'ERR_PAPEL_COM_ATRIBUTO_DE_ADMINISTRACAO'],
     [{ ignoraRls: true }, 'ERR_PAPEL_COM_ATRIBUTO_DE_ADMINISTRACAO'],
-    [{ criaNoSchema: true }, 'ERR_PAPEL_PODE_CRIAR_OBJETOS'],
+    [{ criaNoBanco: true }, 'ERR_PAPEL_PODE_CRIAR_OBJETOS'],
+    [{ schemasComCriacao: 1 }, 'ERR_PAPEL_PODE_CRIAR_OBJETOS'],
     [{ donoDeObjetos: 3 }, 'ERR_PAPEL_DONO_DE_OBJETOS'],
+    [{ membroDePapeis: 1 }, 'ERR_PAPEL_MEMBRO_DE_OUTRO_PAPEL'],
     [{ tabelasComEscrita: 1 }, 'ERR_PAPEL_PODE_ESCREVER'],
+    [{ sequenciasComEscrita: 1 }, 'ERR_PAPEL_PODE_ESCREVER'],
+    [{ funcoesSecurityDefiner: 1 }, 'ERR_PAPEL_EXECUTA_FUNCAO_SECURITY_DEFINER'],
     [{ tabelasSemLeitura: 1 }, 'ERR_PAPEL_NAO_LE_TUDO'],
     [{ sequenciasSemLeitura: 1 }, 'ERR_PAPEL_NAO_LE_TUDO'],
   ])('recusa %o', (ajuste, esperado) => {
@@ -179,17 +192,41 @@ describe('avaliarPapelSomenteLeitura', () => {
 });
 
 describe('planoDoObjeto', () => {
+  const comMensal = { mensalDoMesExiste: true };
   it('diário: 35 dias de retenção, pasta por data e execução', () => {
-    const plano = planoDoObjeto(new Date('2026-10-29T03:17:45.123Z'), '987');
+    const plano = planoDoObjeto(new Date('2026-10-29T03:17:45.123Z'), '987-1', comMensal);
     expect(plano.tipo).toBe('diario');
-    expect(plano.prefixo).toBe('piloto/diario/2026/10/29/031745Z-987/');
+    expect(plano.prefixo).toBe('piloto/diario/2026/10/29/031745Z-987-1/');
     expect(plano.retencaoAte.toISOString()).toBe('2026-12-03T03:17:45.123Z');
   });
-  it('dia 1 (UTC) é o mensal: 13 meses e 1 dia', () => {
+  it('diário na virada do mês e do ano: 35 dias corridos', () => {
+    expect(planoDoObjeto(new Date('2026-12-31T06:17:00Z'), '1', comMensal).retencaoAte.toISOString()).toBe('2027-02-04T06:17:00.000Z');
+  });
+  it('primeiro backup completo do mês é o mensal: 13 meses e 1 dia', () => {
     const plano = planoDoObjeto(new Date('2026-11-01T03:00:00Z'), '1');
     expect(plano.tipo).toBe('mensal');
     expect(plano.prefixo).toBe('piloto/mensal/2026/11/01/030000Z-1/');
     expect(plano.retencaoAte.toISOString()).toBe('2027-12-02T03:00:00.000Z');
+  });
+  it('dia 1 que falhou: o mensal é o do primeiro dia que der certo', () => {
+    const plano = planoDoObjeto(new Date('2026-11-02T06:17:30Z'), '2');
+    expect(plano.tipo).toBe('mensal');
+    expect(plano.retencaoAte.toISOString()).toBe('2027-12-03T06:17:30.000Z');
+  });
+  it('reexecução no dia 1 depois de um mensal completo: diário, em pasta própria', () => {
+    const primeira = planoDoObjeto(new Date('2026-11-01T06:17:00Z'), '55-1');
+    const reexecucao = planoDoObjeto(new Date('2026-11-01T06:40:00Z'), '55-2', comMensal);
+    expect(reexecucao.tipo).toBe('diario');
+    expect(reexecucao.prefixo).not.toBe(primeira.prefixo);
+  });
+  it('mensal tardio no fim do mês: o estouro do dia empurra para frente, nunca para trás', () => {
+    // 31/01/2027 + 13 meses = 31/02/2028, normalizado para 02/03; mais 1 dia.
+    expect(planoDoObjeto(new Date('2027-01-31T06:17:00Z'), '1').retencaoAte.toISOString()).toBe('2028-03-03T06:17:00.000Z');
+    expect(planoDoObjeto(new Date('2026-12-01T06:17:00Z'), '1').retencaoAte.toISOString()).toBe('2028-01-02T06:17:00.000Z');
+  });
+  it('prefixoMensal: o mês UTC do ponto de recuperação', () => {
+    expect(prefixoMensal(new Date('2026-11-30T23:59:59Z'))).toBe('piloto/mensal/2026/11/');
+    expect(prefixoMensal(new Date('2026-12-01T00:00:00Z'))).toBe('piloto/mensal/2026/12/');
   });
 });
 
@@ -254,7 +291,7 @@ describe('clienteS3', () => {
     );
     const corpo = Buffer.from('conteudo cifrado ficticio');
     const ate = new Date('2026-12-03T03:00:00Z');
-    expect(await s3.enviar('piloto/diario/2026/10/29/x/a b.age', corpo, { retencaoAte: ate })).toEqual({ status: 200, ok: true });
+    expect(await s3.enviar('piloto/diario/2026/10/29/x/a b.age', corpo, { retencaoAte: ate })).toEqual({ status: 200, ok: true, versao: null });
     const [put] = pedidos;
     expect(put.url).toBe('https://s3.us-west-004.backblazeb2.com/balde-ficticio/piloto/diario/2026/10/29/x/a%20b.age');
     expect(put.method).toBe('PUT');
@@ -267,6 +304,40 @@ describe('clienteS3', () => {
     });
     expect(put.headers?.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=id\/20261029\/us-west-004\/s3\/aws4_request, SignedHeaders=content-md5;content-type;host;x-amz-content-sha256;x-amz-date;x-amz-meta-sha256;x-amz-object-lock-mode;x-amz-object-lock-retain-until-date, Signature=[0-9a-f]{64}$/);
     expect(put.headers).not.toHaveProperty('host');
+  });
+
+  it('HEAD e GET da versão gravada; listagem dos mensais', async () => {
+    const pedidos: { url: string; method?: string; headers?: Record<string, string> }[] = [];
+    const buscar = (async (url: string, init?: { method?: string; headers?: Record<string, string> }) => {
+      pedidos.push({ url, ...init });
+      if (url.includes('list-type=2')) {
+        return new Response('<ListBucketResult><Contents><Key>piloto/mensal/2026/11/01/x/resumo.json</Key></Contents></ListBucketResult>', { status: 200 });
+      }
+      return new Response(init?.method === 'HEAD' ? null : 'x', { status: 200, headers: { 'x-amz-version-id': '4_zversao' } });
+    }) as unknown as Buscar;
+    const s3 = clienteS3(
+      { endpoint: 'https://s3.us-west-004.backblazeb2.com', regiao: 'us-west-004', bucket: 'balde-ficticio', chaveId: 'id', chaveSecreta: 'segredo' },
+      { buscar, agora: () => new Date('2026-10-29T03:00:00Z') },
+    );
+    expect(await s3.enviar('a.age', Buffer.from('c'), { retencaoAte: new Date() })).toMatchObject({ versao: '4_zversao' });
+    await s3.conferir('a.age', '4_z+v/1');
+    await s3.baixar('a.age', '4_z+v/1');
+    expect(await s3.listar('piloto/mensal/2026/11/')).toEqual({ status: 200, chaves: ['piloto/mensal/2026/11/01/x/resumo.json'] });
+    expect(pedidos[1]).toMatchObject({ method: 'HEAD', url: 'https://s3.us-west-004.backblazeb2.com/balde-ficticio/a.age?versionId=4_z%2Bv%2F1' });
+    expect(pedidos[2]).toMatchObject({ method: 'GET', url: 'https://s3.us-west-004.backblazeb2.com/balde-ficticio/a.age?versionId=4_z%2Bv%2F1' });
+    expect(pedidos[3].url).toBe('https://s3.us-west-004.backblazeb2.com/balde-ficticio?list-type=2&prefix=piloto%2Fmensal%2F2026%2F11%2F');
+    // A consulta entra na assinatura: a mesma requisição assinada de novo dá o mesmo valor.
+    const refeita = assinarS3({
+      metodo: 'HEAD',
+      url: pedidos[1].url,
+      cabecalhos: { 'x-amz-content-sha256': HASH_VAZIO },
+      hashDoCorpo: HASH_VAZIO,
+      chaveId: 'id',
+      chaveSecreta: 'segredo',
+      regiao: 'us-west-004',
+      agora: new Date('2026-10-29T03:00:00Z'),
+    });
+    expect(pedidos[1].headers?.authorization).toBe(refeita.authorization);
   });
 });
 
@@ -289,6 +360,10 @@ describe('conferirObjetoEnviado', () => {
     [{ 'x-amz-object-lock-retain-until-date': '2026-12-02T03:00:00Z' }, 'ERR_OBJETO_RETENCAO_MENOR_QUE_A_PEDIDA'],
   ])('aponta %o', (ajuste, falha) => {
     expect(conferirObjetoEnviado({ status: 200, cabecalhos: { ...ok, ...ajuste } as Record<string, string> }, esperado)).toEqual([falha]);
+  });
+  it('HEAD de outra versão da mesma chave', () => {
+    expect(conferirObjetoEnviado({ status: 200, cabecalhos: { ...ok, 'x-amz-version-id': 'outra' } }, { ...esperado, versao: 'gravada' })).toEqual(['ERR_OBJETO_VERSAO_DIFERENTE']);
+    expect(conferirObjetoEnviado({ status: 200, cabecalhos: { ...ok, 'x-amz-version-id': 'gravada' } }, { ...esperado, versao: 'gravada' })).toEqual([]);
   });
   it('objeto ausente', () => {
     expect(conferirObjetoEnviado({ status: 404, cabecalhos: {} }, esperado)).toEqual(['ERR_OBJETO_NAO_ENCONTRADO_APOS_ENVIO']);

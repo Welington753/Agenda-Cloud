@@ -10,12 +10,19 @@
 //   3. snapshot REPEATABLE READ READ ONLY, fotografia e `pg_dump --snapshot`;
 //   4. restauração num PostgreSQL descartável (loopback) e fotografia igual;
 //   5. dump e manifesto criptografados com age, só com a chave PÚBLICA;
-//   6. envio ao B2 com retenção (Object Lock) e conferência do objeto enviado:
-//      tamanho, sha256, modo e data de retenção, e o download do dump;
+//   6. envio ao B2 com retenção (Object Lock) e conferência da MESMA versão
+//      gravada: tamanho, sha256, modo e data de retenção, e o download do
+//      dump e do manifesto;
 //   7. `resumo.json` enviado por último: sem ele, a pasta é um backup
-//      incompleto;
-//   8. check-in `ok` só depois de tudo. Qualquer falha manda `error` e sai
-//      com código diferente de zero.
+//      incompleto. Com ele conferido, o backup está concluído;
+//   8. check-in `ok`. Falha antes do resumo manda `error` e sai com código
+//      diferente de zero. Falha só do `ok`, com o resumo conferido, é falha
+//      de MONITORAMENTO: o backup continua concluído, nada manda `error` e a
+//      saída também é diferente de zero.
+//
+// Resposta perdida de um envio (timeout, rede, 5xx) não é tratada como
+// ausência: o objeto é conferido por HEAD. Nada é apagado no B2 (a chave não
+// pode apagar, e os objetos ficam sob retenção).
 //
 // Nada aqui imprime URL, senha, chave, nome de tabela ou conteúdo de linha.
 // O manifesto completo (contagens e md5 por tabela) só sai criptografado.
@@ -51,6 +58,8 @@ const BUCKET = /^[a-z0-9][a-z0-9-]{4,48}[a-z0-9]$/;
 const SHA_DE_COMMIT = /^[0-9a-f]{40}$/;
 // Nenhuma chamada HTTP fica pendurada até o timeout do job.
 const LIMITE_HTTP_MS = 120_000;
+const TENTATIVAS_DE_CONFERENCIA = 3;
+const ESPERA_ENTRE_TENTATIVAS_MS = 5_000;
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const obrigatorio = (env, nome) => {
@@ -201,7 +210,8 @@ export function lerConfiguracao(env) {
     repositorio: env.GITHUB_REPOSITORY ?? "",
     apiDoGitHub: env.GITHUB_API_URL || "https://api.github.com",
     tokenDoGitHub: env.GITHUB_TOKEN ?? "",
-    execucao: env.GITHUB_RUN_ID || randomBytes(4).toString("hex"),
+    // Reexecução do mesmo run (re-run no GitHub) ganha pasta própria.
+    execucao: env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT || "1"}` : randomBytes(4).toString("hex"),
     origem,
     restauracao,
     armazenamento: conferirArmazenamento(env, modo),
@@ -256,20 +266,38 @@ export async function conferirRepositorioPrivado(config, buscar = fetch) {
   if (repo.private !== true || repo.visibility !== "private") parar("ERR_REPOSITORIO_NAO_PRIVADO");
 }
 
-/** Lê o que o papel conectado pode fazer no banco. */
+/**
+ * Lê o que o papel conectado pode fazer no banco, pelos privilégios EFETIVOS
+ * (herdados de outros papéis e de PUBLIC, inclusive por coluna), em todos os
+ * schemas que não são do sistema. Não depende do nome do papel nem de
+ * `default_transaction_read_only`.
+ */
 export async function lerEstadoDoPapel(client) {
   const [linha] = (
     await client.query(`
+      WITH proprios AS (
+        SELECT oid, nspowner FROM pg_namespace WHERE nspname <> 'information_schema' AND nspname NOT LIKE 'pg\\_%'
+      )
       SELECT r.rolsuper AS superusuario, r.rolcreaterole AS "criaPapel", r.rolcreatedb AS "criaBanco",
              r.rolreplication AS replicacao, r.rolbypassrls AS "ignoraRls",
              has_database_privilege(current_database(), 'CREATE') AS "criaNoBanco",
-             has_schema_privilege('public', 'CREATE') AS "criaNoSchema",
-             (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-               WHERE n.nspname = 'public' AND pg_has_role(current_user, c.relowner, 'USAGE')) AS "donoDeObjetos",
-             (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-               WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
-                 AND (has_table_privilege(c.oid, 'INSERT') OR has_table_privilege(c.oid, 'UPDATE')
-                   OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'TRUNCATE'))) AS "tabelasComEscrita",
+             (SELECT count(*)::int FROM proprios WHERE has_schema_privilege(oid, 'CREATE')) AS "schemasComCriacao",
+             (SELECT count(*)::int FROM proprios WHERE pg_has_role(current_user, nspowner, 'MEMBER'))
+               + (SELECT count(*)::int FROM pg_class c JOIN proprios n ON n.oid = c.relnamespace
+                   WHERE pg_has_role(current_user, c.relowner, 'MEMBER'))
+               + (SELECT count(*)::int FROM pg_proc p JOIN proprios n ON n.oid = p.pronamespace
+                   WHERE pg_has_role(current_user, p.proowner, 'MEMBER')) AS "donoDeObjetos",
+             (SELECT count(*)::int FROM pg_roles g
+               WHERE g.rolname <> current_user AND pg_has_role(current_user, g.oid, 'MEMBER')
+                 AND g.rolname NOT IN ('pg_read_all_data', 'pg_read_all_settings', 'pg_read_all_stats', 'pg_stat_scan_tables', 'pg_monitor')) AS "membroDePapeis",
+             (SELECT count(*)::int FROM pg_class c JOIN proprios n ON n.oid = c.relnamespace
+               WHERE c.relkind IN ('r','p','v','f')
+                 AND (has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+                   OR has_any_column_privilege(c.oid, 'INSERT,UPDATE'))) AS "tabelasComEscrita",
+             (SELECT count(*)::int FROM pg_class c JOIN proprios n ON n.oid = c.relnamespace
+               WHERE c.relkind = 'S' AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege(c.oid, 'USAGE,UPDATE') ELSE false END) AS "sequenciasComEscrita",
+             (SELECT count(*)::int FROM pg_proc p JOIN proprios n ON n.oid = p.pronamespace
+               WHERE p.prosecdef AND has_function_privilege(p.oid, 'EXECUTE')) AS "funcoesSecurityDefiner",
              (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                WHERE n.nspname = 'public' AND c.relkind IN ('r','p') AND NOT has_table_privilege(c.oid, 'SELECT')) AS "tabelasSemLeitura",
              (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -285,23 +313,44 @@ export function avaliarPapelSomenteLeitura(estado) {
   if (!estado) return ["ERR_PAPEL_NAO_ENCONTRADO"];
   if (estado.superusuario) falhas.push("ERR_PAPEL_SUPERUSUARIO");
   if (estado.criaPapel || estado.criaBanco || estado.replicacao || estado.ignoraRls) falhas.push("ERR_PAPEL_COM_ATRIBUTO_DE_ADMINISTRACAO");
-  if (estado.criaNoBanco || estado.criaNoSchema) falhas.push("ERR_PAPEL_PODE_CRIAR_OBJETOS");
+  if (estado.criaNoBanco || estado.schemasComCriacao > 0) falhas.push("ERR_PAPEL_PODE_CRIAR_OBJETOS");
   if (estado.donoDeObjetos > 0) falhas.push("ERR_PAPEL_DONO_DE_OBJETOS");
-  if (estado.tabelasComEscrita > 0) falhas.push("ERR_PAPEL_PODE_ESCREVER");
+  // Membro de outro papel pode fazer SET ROLE, mesmo sem herdar privilégios.
+  if (estado.membroDePapeis > 0) falhas.push("ERR_PAPEL_MEMBRO_DE_OUTRO_PAPEL");
+  if (estado.tabelasComEscrita > 0 || estado.sequenciasComEscrita > 0) falhas.push("ERR_PAPEL_PODE_ESCREVER");
+  if (estado.funcoesSecurityDefiner > 0) falhas.push("ERR_PAPEL_EXECUTA_FUNCAO_SECURITY_DEFINER");
   if (estado.tabelasSemLeitura > 0 || estado.sequenciasSemLeitura > 0) falhas.push("ERR_PAPEL_NAO_LE_TUDO");
   return falhas;
 }
 
+/** Prefixo dos mensais de um mês (UTC), para saber se ele já tem um. */
+export const prefixoMensal = (agora) => `piloto/mensal/${agora.toISOString().slice(0, 7).replace("-", "/")}/`;
+
 /**
- * Onde o backup fica e até quando é imutável. O do dia 1 (UTC) é o mensal,
- * guardado 13 meses; os outros, 35 dias. Um dia a mais de margem no mensal.
+ * Onde o backup fica e até quando é imutável. O primeiro backup completo de
+ * cada mês (UTC) é o mensal, guardado 13 meses e 1 dia: normalmente o do dia
+ * 1, mas, se ele falhar, o do primeiro dia que der certo. Os outros, 35 dias.
+ * `mensalDoMesExiste` vem da listagem do B2 (`resumo.json` em
+ * `prefixoMensal`).
  */
-export function planoDoObjeto(agora, execucao) {
+export function planoDoObjeto(agora, execucao, { mensalDoMesExiste = false } = {}) {
   const iso = agora.toISOString();
   const [dia, hora] = [iso.slice(0, 10), iso.slice(11, 19).replaceAll(":", "")];
-  const mensal = agora.getUTCDate() === 1;
+  const mensal = !mensalDoMesExiste;
+  // Date.UTC normaliza o estouro (31 + 1 em fevereiro vira março): nunca
+  // menos de 13 meses e 1 dia.
   const retencaoAte = mensal
-    ? new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + RETENCAO_MENSAL_MESES, agora.getUTCDate() + 1, agora.getUTCHours(), agora.getUTCMinutes()))
+    ? new Date(
+        Date.UTC(
+          agora.getUTCFullYear(),
+          agora.getUTCMonth() + RETENCAO_MENSAL_MESES,
+          agora.getUTCDate() + 1,
+          agora.getUTCHours(),
+          agora.getUTCMinutes(),
+          agora.getUTCSeconds(),
+          agora.getUTCMilliseconds(),
+        ),
+      )
     : new Date(agora.getTime() + RETENCAO_DIARIA_DIAS * 86_400_000);
   const tipo = mensal ? "mensal" : "diario";
   return { tipo, prefixo: `piloto/${tipo}/${dia.replaceAll("-", "/")}/${hora}Z-${execucao}/`, retencaoAte };
@@ -342,10 +391,14 @@ export function assinarS3({ metodo, url, cabecalhos = {}, hashDoCorpo, chaveId, 
 }
 
 export function clienteS3({ endpoint, regiao, bucket, chaveId, chaveSecreta }, { buscar = fetch, agora = () => new Date() } = {}) {
-  const urlDe = (chave) => `${endpoint}/${rfc3986(bucket)}/${chave.split("/").map(rfc3986).join("/")}`;
-  const pedir = async (metodo, chave, { corpo, cabecalhos = {} } = {}) => {
+  const urlDe = (chave, consulta = {}) => {
+    const base = chave === null ? `${endpoint}/${rfc3986(bucket)}` : `${endpoint}/${rfc3986(bucket)}/${chave.split("/").map(rfc3986).join("/")}`;
+    const partes = Object.entries(consulta).map(([k, v]) => `${rfc3986(k)}=${rfc3986(v)}`);
+    return partes.length ? `${base}?${partes.join("&")}` : base;
+  };
+  const pedir = async (metodo, chave, { corpo, cabecalhos = {}, consulta } = {}) => {
     const hashDoCorpo = corpo ? sha256Hex(corpo) : HASH_VAZIO;
-    const url = urlDe(chave);
+    const url = urlDe(chave, consulta);
     const assinados = assinarS3({
       metodo,
       url,
@@ -372,23 +425,37 @@ export function clienteS3({ endpoint, regiao, bucket, chaveId, chaveSecreta }, {
           "x-amz-object-lock-retain-until-date": retencaoAte.toISOString(),
         },
       });
-      return { status: resposta.status, ok: resposta.ok };
+      // Com Object Lock, o bucket é versionado: a versão gravada identifica
+      // este envio, e as conferências seguintes pedem exatamente ela.
+      return { status: resposta.status, ok: resposta.ok, versao: resposta.headers.get("x-amz-version-id") };
     },
-    async conferir(chave) {
-      const resposta = await pedir("HEAD", chave);
+    /** HEAD de uma versão (ou da atual, sem `versao`). */
+    async conferir(chave, versao) {
+      const resposta = await pedir("HEAD", chave, { consulta: versao ? { versionId: versao } : undefined });
       return { status: resposta.status, cabecalhos: Object.fromEntries(resposta.headers.entries()) };
     },
-    async baixar(chave) {
-      const resposta = await pedir("GET", chave);
+    async baixar(chave, versao) {
+      const resposta = await pedir("GET", chave, { consulta: versao ? { versionId: versao } : undefined });
       return { status: resposta.status, corpo: resposta.ok ? Buffer.from(await resposta.arrayBuffer()) : null };
+    },
+    /** Chaves com o prefixo (ListObjectsV2, até 1000: um mês tem poucas). */
+    async listar(prefixo) {
+      const resposta = await pedir("GET", null, { consulta: { "list-type": "2", prefix: prefixo } });
+      if (!resposta.ok) return { status: resposta.status, chaves: null };
+      const xml = await resposta.text();
+      return { status: resposta.status, chaves: [...xml.matchAll(/<Key>([^<]*)<\/Key>/g)].map((m) => m[1].replaceAll("&amp;", "&")) };
     },
   };
 }
 
-/** Confere o HEAD do objeto enviado contra o arquivo local e a retenção pedida. */
-export function conferirObjetoEnviado({ status, cabecalhos }, { bytes, sha256, retencaoAte }) {
+/**
+ * Confere o HEAD do objeto enviado contra o arquivo local e a retenção
+ * pedida. Com `versao`, exige que o HEAD seja dessa versão.
+ */
+export function conferirObjetoEnviado({ status, cabecalhos }, { bytes, sha256, retencaoAte, versao }) {
   if (status !== 200) return ["ERR_OBJETO_NAO_ENCONTRADO_APOS_ENVIO"];
   const falhas = [];
+  if (versao && cabecalhos["x-amz-version-id"] !== versao) falhas.push("ERR_OBJETO_VERSAO_DIFERENTE");
   if (Number(cabecalhos["content-length"]) !== bytes) falhas.push("ERR_OBJETO_TAMANHO_DIFERENTE");
   if (cabecalhos["x-amz-meta-sha256"] !== sha256) falhas.push("ERR_OBJETO_SHA256_DIFERENTE");
   if ((cabecalhos["x-amz-object-lock-mode"] ?? "").toUpperCase() !== "COMPLIANCE") falhas.push("ERR_OBJETO_SEM_RETENCAO_COMPLIANCE");
@@ -542,7 +609,9 @@ async function criptografar(config, deps, entrada, saida, segredos) {
 
 /**
  * Uma execução completa. `deps` existe para os testes trocarem processos e
- * rede (falhas simuladas); em produção, só os padrões.
+ * rede (falhas simuladas); em produção, só os padrões. Devolve o resumo
+ * gravado e `monitoramento` ("ok" ou "falhou"); lança se o backup não foi
+ * concluído (ou, com ERR_RESUMO_INCERTO, se não dá para saber).
  */
 export async function executarBackup(config, deps = {}) {
   const d = {
@@ -552,6 +621,7 @@ export async function executarBackup(config, deps = {}) {
     log: (linha) => console.log(linha),
     aoExportarSnapshot: async () => {},
     aposRestaurar: undefined,
+    esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     ...deps,
   };
   const log = d.log;
@@ -567,6 +637,8 @@ export async function executarBackup(config, deps = {}) {
     }
   };
   let temp;
+  // Verdadeiro só com o `resumo.json` gravado e conferido.
+  let concluido = false;
   const clientes = new Set();
 
   if (!(await sinalizarCron(config.cron, "in_progress", { buscar: d.buscar }))) log("AVISO: check-in in_progress do cron não confirmado");
@@ -657,8 +729,16 @@ export async function executarBackup(config, deps = {}) {
       }),
     );
 
-    // 3. Criptografia (dump e manifesto completo).
-    const plano = planoDoObjeto(capturado.pontoDeRecuperacao, config.execucao);
+    // 3. Plano: o primeiro backup completo do mês (UTC) é o mensal.
+    const s3 = clienteS3(config.armazenamento, { buscar: d.buscar, agora: d.agora });
+    const mensais = await s3.listar(prefixoMensal(capturado.pontoDeRecuperacao)).catch(() => ({ status: "rede", chaves: null }));
+    // Sem a listagem, fica como mensal: errar para o lado da retenção maior.
+    if (!mensais.chaves) log(`AVISO: listagem dos mensais respondeu ${mensais.status}; este backup fica como mensal`);
+    const plano = planoDoObjeto(capturado.pontoDeRecuperacao, config.execucao, {
+      mensalDoMesExiste: (mensais.chaves ?? []).some((k) => k.endsWith(`/${ARQUIVOS.resumo}`)),
+    });
+
+    // 4. Criptografia (dump e manifesto completo).
     const manifesto = {
       formato: "agenda-cloud-backup/1",
       pontoDeRecuperacao: capturado.pontoDeRecuperacao.toISOString(),
@@ -679,33 +759,67 @@ export async function executarBackup(config, deps = {}) {
     rmSync(manifestoClaro, { force: true });
     log(`CRIPTOGRAFIA_OK: dump=${cifrados.dump.bytes} bytes manifesto=${cifrados.manifesto.bytes} bytes`);
 
-    // 4. Envio e conferência do que ficou no armazenamento.
-    const s3 = clienteS3(config.armazenamento, { buscar: d.buscar, agora: d.agora });
-    const enviarConferido = async (nome, { conteudo, bytes, sha256 }, tipo) => {
+    // 5. Envio e conferência da versão gravada.
+    // HEAD com novas tentativas: rede instável não vira "ausente".
+    const conferirGravado = async (chave, versao) => {
+      let head = null;
+      for (let tentativa = 1; tentativa <= TENTATIVAS_DE_CONFERENCIA; tentativa++) {
+        head = await s3.conferir(chave, versao).catch(() => null);
+        if (head && head.status < 500) return head;
+        if (tentativa < TENTATIVAS_DE_CONFERENCIA) await d.esperar(ESPERA_ENTRE_TENTATIVAS_MS);
+      }
+      return { status: head ? head.status : "rede", cabecalhos: {} };
+    };
+    const enviarConferido = async (nome, { conteudo, bytes, sha256 }, { tipo, naoConfere = "ERR_OBJETO_ENVIADO_NAO_CONFERE", incerto = "ERR_ENVIO_INCERTO" } = {}) => {
       const chave = `${plano.prefixo}${nome}`;
-      const envio = await s3.enviar(chave, conteudo, { retencaoAte: plano.retencaoAte, tipo }).catch(() => ({ ok: false, status: "rede" }));
+      const envio = await s3.enviar(chave, conteudo, { retencaoAte: plano.retencaoAte, tipo }).catch(() => ({ ok: false, status: "rede", versao: null }));
+      let versao = envio.versao;
       if (!envio.ok) {
         log(`DETALHE: envio de ${nome} respondeu ${envio.status}`);
-        parar("ERR_ENVIO");
+        // 4xx é recusa. Sem resposta ou 5xx, o objeto pode ter sido gravado:
+        // só o HEAD diz.
+        if (typeof envio.status === "number" && envio.status < 500) parar("ERR_ENVIO");
+        const atual = await conferirGravado(chave);
+        if (atual.status === 404) parar("ERR_ENVIO");
+        if (atual.status !== 200) {
+          log(`OBJETO ${nome}: estado desconhecido depois do envio sem resposta`);
+          parar(incerto);
+        }
+        versao = atual.cabecalhos["x-amz-version-id"] ?? null;
+        log(`OBJETO ${nome}: gravado apesar do envio sem resposta`);
       }
-      const head = await s3.conferir(chave).catch(() => ({ status: "rede", cabecalhos: {} }));
-      const falhas = conferirObjetoEnviado(head, { bytes, sha256, retencaoAte: plano.retencaoAte });
+      if (!versao) {
+        log(`OBJETO ${nome}: sem x-amz-version-id`);
+        parar(naoConfere);
+      }
+      const head = await conferirGravado(chave, versao);
+      if (typeof head.status !== "number" || head.status >= 500) {
+        log(`OBJETO ${nome}: conferência sem resposta`);
+        parar(incerto);
+      }
+      const falhas = conferirObjetoEnviado(head, { bytes, sha256, retencaoAte: plano.retencaoAte, versao });
       if (falhas.length) {
         log(`OBJETO ${nome}: ${falhas.join(",")}`);
-        parar("ERR_OBJETO_ENVIADO_NAO_CONFERE");
+        parar(naoConfere);
       }
-      return { chave, bytes, sha256 };
+      return { chave, versao, bytes, sha256 };
+    };
+    const baixarConferido = async ({ chave, versao, sha256 }) => {
+      const baixado = await s3.baixar(chave, versao).catch(() => ({ status: "rede", corpo: null }));
+      if (!baixado.corpo || sha256Hex(baixado.corpo) !== sha256) parar("ERR_DOWNLOAD_DIFERENTE_DO_ENVIADO");
     };
     const enviados = await etapa("envio", async () => {
       const objetos = {
         dump: await enviarConferido(ARQUIVOS.dump, cifrados.dump),
         manifesto: await enviarConferido(ARQUIVOS.manifesto, cifrados.manifesto),
       };
-      const baixado = await s3.baixar(objetos.dump.chave).catch(() => ({ status: "rede", corpo: null }));
-      if (!baixado.corpo || sha256Hex(baixado.corpo) !== cifrados.dump.sha256) parar("ERR_DOWNLOAD_DIFERENTE_DO_ENVIADO");
+      await baixarConferido(objetos.dump);
+      await baixarConferido(objetos.manifesto);
       return objetos;
     });
 
+    // Só o necessário para operar e localizar a versão certa: nada de nome
+    // de tabela, contagem por tabela ou dado (isso fica no manifesto cifrado).
     const resumo = {
       formato: "agenda-cloud-backup-resumo/1",
       completo: true,
@@ -722,21 +836,48 @@ export async function executarBackup(config, deps = {}) {
       duracoesMs: duracoes,
     };
     const corpoResumo = Buffer.from(JSON.stringify(resumo, null, 2));
-    // Resumo por último: ele marca a pasta como backup completo.
-    await enviarConferido(ARQUIVOS.resumo, { conteudo: corpoResumo, bytes: corpoResumo.length, sha256: sha256Hex(corpoResumo) }, "application/json");
+    // Resumo por último: ele marca a pasta como backup completo. Depois do
+    // PUT, qualquer dúvida sobre ele é "incerto", nunca "falhou": ele pode
+    // estar gravado e não pode ser apagado.
+    const objetoResumo = await enviarConferido(
+      ARQUIVOS.resumo,
+      { conteudo: corpoResumo, bytes: corpoResumo.length, sha256: sha256Hex(corpoResumo) },
+      { tipo: "application/json", naoConfere: "ERR_RESUMO_INCERTO", incerto: "ERR_RESUMO_INCERTO" },
+    );
+    concluido = true;
+    log(`BACKUP_CONCLUIDO: ${plano.tipo} retencaoAte=${resumo.retencaoAte} resumoVersao=${objetoResumo.versao}`);
 
+    // 6. Monitoramento. Daqui em diante, nada desfaz a conclusão.
     const totalMs = d.agora().getTime() - inicio.getTime();
     resumo.duracoesMs.total = totalMs;
-    if (!(await sinalizarCron(config.cron, "ok", { buscar: d.buscar, duracaoMs: totalMs }))) parar("ERR_CHECKIN_OK_NAO_CONFIRMADO");
-    log(`OBJETOS: ${plano.tipo} retencaoAte=${resumo.retencaoAte}`);
+    let monitoramento = "ok";
+    if (!(await sinalizarCron(config.cron, "ok", { buscar: d.buscar, duracaoMs: totalMs }))) {
+      await d.esperar(ESPERA_ENTRE_TENTATIVAS_MS);
+      if (!(await sinalizarCron(config.cron, "ok", { buscar: d.buscar, duracaoMs: totalMs }))) monitoramento = "falhou";
+    }
     log(`DURACOES_MS: ${JSON.stringify(duracoes)}`);
-    log("RESULTADO: backup_ok");
-    return resumo;
+    if (monitoramento === "ok") {
+      log("RESULTADO: backup_ok");
+    } else {
+      // Sem `error`: o backup está certo. O monitor acusa o timeout do
+      // `in_progress`, e a saída diferente de zero faz o GitHub avisar.
+      log("MONITORAMENTO: ERR_CHECKIN_OK_NAO_CONFIRMADO");
+      log("RESULTADO: backup_concluido_monitoramento_falhou");
+    }
+    return { ...resumo, monitoramento };
   } catch (erro) {
-    await sinalizarCron(config.cron, "error", { buscar: d.buscar });
+    if (!concluido) await sinalizarCron(config.cron, "error", { buscar: d.buscar });
     throw erro;
   } finally {
     for (const c of clientes) await encerrar(c);
-    if (temp) rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // Só os temporários locais. Objetos já gravados no B2 ficam (sob
+    // retenção) mesmo numa falha; sem `resumo.json`, a pasta é incompleta.
+    if (temp) {
+      try {
+        rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      } catch {
+        log("AVISO: LIMPEZA_LOCAL_INCOMPLETA (o passo de limpeza do workflow apaga de novo)");
+      }
+    }
   }
 }
