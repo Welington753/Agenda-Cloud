@@ -2,9 +2,10 @@
 
 Lote que separa plano, recursos e situação comercial do estabelecimento, e
 permite à administração da plataforma registrar à mão o período pago, a
-prorrogação do teste e a cortesia. Sem gateway de pagamento, sem cobrança
-automática e sem relação com os recebimentos dos atendimentos (módulo
-`payments`, que é o dinheiro que o cliente do estabelecimento paga a ele).
+prorrogação do teste e a cortesia, e corrigir um registro feito por engano.
+Sem gateway de pagamento, sem cobrança automática e sem relação com os
+recebimentos dos atendimentos (módulo `payments`, que é o dinheiro que o
+cliente do estabelecimento paga a ele).
 
 Branch `feat/planos-validade-acesso`, a partir da integration em `0c44052`.
 
@@ -23,7 +24,11 @@ deixava registrar período pago:**
    só aparece se alguém gravou direto no banco. A reativação volta para o
    `restore_status` gravado na suspensão.
 4. A ficha (`platform.service.ts`) devolve `billing: { available: false }`
-   fixo, e a tela diz "Ainda não há registro financeiro nesta área".
+   fixo, e a tela diz "Ainda não há registro financeiro nesta área". Esse
+   cartão "Mensalidades e pagamentos" era só esse aviso fixo: não lia nada
+   nem gravava nada. Saiu e deu lugar ao cartão "Validade do acesso". Os
+   recebimentos dos atendimentos (`payments/`, tela Recebimentos do
+   estabelecimento) são outra funcionalidade, real, e não mudaram.
 5. `PAST_DUE` e `CANCELED` existem no enum desde a migration inicial e não
    são usados por nenhum código.
 
@@ -125,7 +130,44 @@ sistema. A administração da plataforma não é recurso de plano: não tem
 
 **Multiunidade:** não prometer. `max_units` fica como está no banco (1, 1,
 5), mas a tela da administração e o site deixam de apresentar unidades
-extras como recurso disponível.
+extras como recurso disponível. Na revisão, o site ainda listava
+"Unidades", "Comissões" e "Personalização" entre as funcionalidades
+disponíveis; as três passaram para "em desenvolvimento", com teste.
+
+**Preservação dos recursos existentes: antes e depois.**
+
+Antes deste lote nenhum código lia `plan_features`: todo estabelecimento
+usava todos os módulos existentes, qualquer que fosse o plano. Agora a rota
+confere o recurso. Isentar da validade não basta, então a comparação é por
+plano:
+
+| Recurso existente | Antes (qualquer plano) | Depois: Básico | Depois: Pro | Depois: Max | Depois: plano fora do catálogo |
+| --- | --- | --- | --- | --- | --- |
+| `AGENDA` | usava | sim | sim | sim | exceção individual ligada |
+| `AGENDAMENTO_PUBLICO` | usava | sim | sim | sim | exceção individual ligada |
+| `PROFISSIONAIS` | usava | sim | sim | sim | exceção individual ligada |
+| `CONSUMIDORES` | usava | sim (linha nova) | sim | sim | exceção individual ligada |
+| `EQUIPE` | usava | sim (linha nova) | sim | sim | exceção individual ligada |
+| `PAGAMENTOS` | usava | sim (linha nova) | sim (linha nova) | sim | exceção individual ligada |
+| serviços, visão geral, avisos | usava | núcleo | núcleo | núcleo | núcleo |
+
+- Nos três planos conhecidos nada é retirado: o catálogo passa a dizer o
+  que já era usado.
+- Para um estabelecimento existente num plano fora dos três (não há prova
+  de que exista no piloto, e o banco real não foi consultado), a migration
+  grava a exceção individual ligada (`tenant_feature_overrides`, id
+  `tfo_ca_…`) para cada recurso existente que o plano dele não tenha. O
+  direito anterior fica até uma mudança individual aprovada; não há tela
+  para removê-la neste lote.
+- Uma exceção já gravada antes (nenhum código as grava; só à mão) nunca é
+  trocada. Uma exceção desligada, que antes não tinha efeito, passa a
+  valer. Antes de publicar, conferir que não existe nenhuma:
+  `SELECT count(*) FROM tenant_feature_overrides WHERE enabled = false`
+  (esperado 0; se houver, decidir caso a caso antes da migration).
+- Ensaio no banco descartável: um estabelecimento no Básico não ganhou
+  exceção; dois num plano fora do catálogo ganharam as seis (o que tinha a
+  exceção manual desligada ficou com ela); o `down()` removeu só as
+  exceções da migration.
 
 ### 2.4 Separação dos conceitos
 
@@ -149,17 +191,23 @@ uso: vencimento é calculado pelas datas, nunca gravado por tarefa.
 **Estabelecimento opera** quando as três coisas valem:
 
 1. `status` é `TRIAL` ou `ACTIVE` (não suspenso, não arquivado);
-2. a validade cobre agora: existe período (de qualquer tipo) com
-   `starts_at <= agora < ends_at`, **ou** o estabelecimento não tem nenhum
-   período registrado (seção 2.6);
+2. a validade cobre agora: existe período válido (de qualquer tipo, não
+   anulado) com `starts_at <= agora < ends_at`, **ou** o estabelecimento não
+   tem nenhum período válido **e** tem a marca explícita de anterior ao
+   controle (`tenants.access_legacy_since`, seção 2.6). Sem período e sem a
+   marca, o acesso fica bloqueado (`MISSING`): a falta do teste nunca vira
+   acesso indefinido;
 3. o recurso da rota está no plano (seção 2.3).
 
 **Períodos** (`tenant_access_periods`, uma linha por período, nunca
-editada nem apagada):
+apagada; a única mudança possível é a anulação por correção, seção 2.9):
 
-- `TRIAL`: teste gratuito. Criado no cadastro de um estabelecimento novo:
-  do instante do cadastro até a meia-noite local do dia de cadastro + 15
-  (vale até o fim do 14º dia depois do cadastro).
+- `TRIAL`: teste gratuito. Criado no cadastro de um estabelecimento novo,
+  na mesma transação do estabelecimento, da unidade, do histórico e do
+  convite: se a gravação do teste falhar, nada é criado (provado no teste de
+  banco forçando a falha). Vai do instante do cadastro até a meia-noite
+  local do dia de cadastro + 15 (vale até o fim do 14º dia depois do
+  cadastro).
 - `PAID`: período pago, com plano, ciclo, valor contratado em centavos e o
   pagamento confirmado manualmente (forma, data do recebimento, referência
   opcional e observação).
@@ -229,22 +277,64 @@ pagos ou cortesias sobrepostos no mesmo estabelecimento.
   administração do Agenda Cloud, que registra o pagamento). Funcionários
   veem que o acesso do estabelecimento está pausado e que o responsável foi
   avisado pelo painel;
+- a pessoa continua entrando, saindo e cuidando da própria conta: Perfil e
+  segurança (troca de senha e saída), a escolha de estabelecimento e a
+  administração da plataforma ficam abertas, e o aviso tem o atalho para
+  Perfil e segurança. `/conta` mostra o aviso no lugar, sem encaminhar
+  (sem ciclo de redirecionamento);
+- se o acesso vence com a página aberta, a próxima leitura recebe
+  `ACESSO_VENCIDO`; o cliente HTTP avisa a sessão, que é relida, e a tela
+  troca a página pelo aviso em vez de ficar com erro;
 - o agendamento público deixa de aceitar reservas novas, com a mesma
   resposta de um estabelecimento indisponível. As reservas já feitas
-  continuam valendo.
+  continuam valendo; nenhum atendimento é cancelado (não existe tarefa de
+  vencimento: a situação é calculada pelas datas a cada requisição).
+
+**Aviso antes de vencer (só dentro do aplicativo):** o DONO vê uma faixa
+nas faixas de 7, 3 e 1 dia antes do fim da validade **efetiva**
+(`validUntil`, o fim da validade contínua com as renovações já
+registradas). Um teste que acaba amanhã, seguido de um período pago já
+registrado, não gera aviso. Sem e-mail, WhatsApp ou push neste lote.
+
+**O que cada papel recebe na sessão:** só o DONO recebe a situação
+comercial (tipo, até quando, o que venceu). Gerente, recepção e
+profissional recebem `state`, datas e tipo `null`, e só `blocked`. Ninguém
+do estabelecimento recebe valor ou histórico da assinatura: isso só existe
+na ficha da administração da plataforma.
 
 ### 2.6 Estabelecimentos existentes
 
-**Nenhum período é criado para quem já existe.** Sem nenhum período
-registrado, a validade não é conferida: o estabelecimento continua operando
-como hoje, e a ficha mostra "Sem validade registrada". O controle passa a
-valer para ele quando a administração registra o primeiro período
-(pagamento, prorrogação ou cortesia), sempre por ação individual e
-auditada.
+**Correção do relatório anterior.** O relatório de entrega anterior e a
+versão anterior desta seção afirmaram que "o teste derivado de todos os
+estabelecimentos do piloto já venceu". Essa afirmação **não tinha base**:
+foi uma suposição de quem escreveu, sem consulta ao banco do piloto (que
+não foi e não será consultado neste lote) e sem vir de dados fictícios do
+seed ou dos testes. A única evidência disponível a contradiz: a captura da
+ficha antiga, que mostrava "Teste previsto até" 06/11/2026, ou seja, um
+estabelecimento cadastrado em 23/10/2026 com o teste derivado ainda em
+curso. O estado real do piloto **não está confirmado**.
 
-Por quê: o teste derivado de todos os estabelecimentos do piloto já venceu.
-Aplicar a validade a eles bloquearia o piloto inteiro na publicação, e
-criar períodos para todos seria conceder teste ou cortesia em massa.
+**Decisão.** A regra não depende da suposição:
+
+- a migration marca **explicitamente** todo estabelecimento que já existe
+  (`tenants.access_legacy_since = now()`). Nenhum período é criado para
+  eles: não há teste nem cortesia em massa;
+- só essa marca dispensa a validade enquanto não houver período. Um
+  estabelecimento criado depois da migration nasce sem a marca e com o
+  teste gravado na mesma transação; sem período e sem a marca, fica
+  bloqueado (`MISSING`, "Sem validade registrada");
+- na ficha e nas configurações do dono, o anterior ao controle aparece
+  como **"Validade ainda não definida"**: nem pago, nem teste renovado. A
+  data do teste derivado aparece só como referência do cadastro, dizendo
+  que não foi aplicada;
+- continua operando como antes, com os mesmos recursos (seção 2.3), até a
+  administração regularizar **individualmente** (pagamento, prorrogação ou
+  cortesia), sempre auditada. Daí em diante vale a validade pelos períodos.
+
+Por quê: aplicar a validade derivada na publicação bloquearia de surpresa
+quem tem teste vencido pelo cálculo, e quem tem teste em curso (como o de
+06/11/2026) passaria a vencer sem nenhuma decisão registrada. Criar
+períodos para todos seria conceder teste ou cortesia em massa.
 
 ### 2.7 Autorização
 
@@ -266,7 +356,19 @@ A administração da plataforma continua separada:
 - não existe rota de estabelecimento que altere a própria validade,
   registre o próprio pagamento ou mexa em papel de plataforma. As
   permissões de equipe aceitas pela API são só as do enum `Permission`;
-- nenhum papel global é criado, promovido ou alterado neste lote.
+- nenhum papel global é criado, promovido ou alterado neste lote. O teste
+  de banco compara `platform_role` e `platform_permissions` de todas as
+  contas antes e depois de corrigir, repetir a correção, registrar de novo
+  e trocar o plano: nada muda.
+
+**Plano por código, nunca por nome.** O mapeamento fica em um lugar só,
+`backend/src/commercial/plan-catalog.ts`, com teste: Básico = `essencial`
+(`plan_essencial`), Pro = `equipe` (`plan_equipe`), Max = `pro`
+(`plan_pro`). O teste também confere que a migration grava os mesmos nomes
+e que nenhum código de runtime compara nome ou código de plano. No site, o
+teste de `PLANOS_COMERCIAIS` confere o mesmo mapeamento. Max libera só os
+recursos do catálogo (`plan_features`), sempre depois do vínculo e antes da
+permissão pessoal; o nome comercial não dá privilégio nenhum.
 
 ### 2.8 O que o registro manual afirma
 
@@ -274,6 +376,41 @@ O registro diz "pagamento confirmado manualmente pela administração". A
 coluna `confirmation_source` só aceita `MANUAL` e a tela diz que não houve
 confirmação automática por banco ou operadora. Não há conciliação, nota
 fiscal nem boleto.
+
+### 2.9 Correção de um registro feito por engano
+
+`POST /platform/establishments/:id/access/periods/:periodId/correction`,
+com `expectedUpdatedAt`, `requestKey` e `reason` (obrigatório).
+
+- **Quem:** só `MASTER_OWNER` (`manageEstablishmentLifecycle`), com senha
+  confirmada há pouco na sessão. Dono, gerente e um `MASTER_OWNER` sem a
+  senha confirmada recebem 403.
+- **O que faz:** anula o registro. A linha original fica intacta (tipo,
+  datas, plano, valor, forma de pagamento, quem registrou) e ganha
+  `canceled_at`, `canceled_by_user_id`, `cancel_reason` e
+  `cancel_request_key`: a relação entre o registro e a correção é a própria
+  linha. Nada é apagado. O período anulado deixa de contar para a validade
+  e para as constraints de sobreposição, então o registro certo pode ser
+  feito em seguida pelas ações normais.
+- **Antes de confirmar:** a ficha traz, em cada registro, a prévia
+  calculada no servidor (`correction`): se pode ser anulado e como fica a
+  validade depois. A tela mostra "Validade agora" e "Depois de anular".
+- **Cadeia:** só o último registro da cadeia é anulado. Se houver outro
+  registro válido começando no mesmo instante ou depois, anular este
+  deixaria uma lacuna ou exigiria mover os seguintes: a API recusa com
+  `CORRECAO_EM_CADEIA` e diz qual corrigir antes. Outros períodos nunca são
+  alterados. Anular nunca acrescenta validade.
+- **Transação e repetição:** a linha do estabelecimento é travada e a
+  versão conferida, como nas outras ações. A mesma chave devolve a mesma
+  correção (`created: false`); um registro já anulado recusa outra
+  correção (`PERIODO_JA_CORRIGIDO`); a mesma chave em outro registro é
+  recusada (`CHAVE_REUTILIZADA`).
+- **Correção não é estorno:** o sistema não devolve nem movimenta dinheiro.
+  O histórico (`ACCESS_PERIOD_CORRECTED`) diz isso no resumo e grava
+  `moneyMoved: false`, o registro original e a validade antes e depois.
+  Um estorno, se houver, acontece fora do Agenda Cloud.
+- Situação administrativa (suspensão, arquivamento) não muda. Num
+  arquivado a correção é recusada, como as outras ações.
 
 ## 3. Schema (migration nova `1793232000000-CommercialAccess`)
 
@@ -291,10 +428,23 @@ As 11 migrations do piloto não mudam. A nova só acrescenta:
 - nomes e descrições novos dos três planos, só nas linhas com os ids
   conhecidos;
 - linhas novas em `plan_features`: `CONSUMIDORES`, `EQUIPE` e `PAGAMENTOS`
-  no Básico, `PAGAMENTOS` no Pro (seção 2.3).
+  no Básico, `PAGAMENTOS` no Pro (seção 2.3);
+- coluna `tenants.access_legacy_since`, preenchida com `now()` em todos os
+  estabelecimentos que existem na hora da migration (seção 2.6);
+- exceções individuais ligadas (`tenant_feature_overrides`, id `tfo_ca_…`)
+  só para estabelecimento existente cujo plano não tenha um recurso
+  existente no catálogo (seção 2.3). Nos três planos conhecidos, nenhuma;
+- colunas de anulação no período (`canceled_at`, `canceled_by_user_id`,
+  `cancel_reason`, `cancel_request_key`), com check de tudo-ou-nada, chave
+  única por quem anulou, e as exclusion constraints passando a olhar só os
+  períodos não anulados;
+- valor novo em `audit_action`: `ACCESS_PERIOD_CORRECTED`.
 
-`down()` remove a tabela e as linhas de `plan_features` que criou e volta
-os nomes antigos. Valores de enum ficam (o PostgreSQL não os remove).
+`down()` remove as exceções `tfo_ca_…`, a coluna `access_legacy_since`, a
+tabela e as linhas de `plan_features` que criou, e volta os nomes antigos.
+Valores de enum ficam (o PostgreSQL não os remove). Como a migration ainda
+não saiu desta branch, as mudanças da revisão entraram nela mesma; as 11
+migrations do piloto continuam intactas.
 
 ## 4. API
 
@@ -306,79 +456,98 @@ Plataforma (`MASTER_OWNER`, reautenticação recente, `expectedUpdatedAt` e
 | `POST /platform/establishments/:id/access/paid` | pagamento confirmado manualmente: ciclo, valor, forma, data do recebimento, referência e observação opcionais |
 | `POST /platform/establishments/:id/access/trial-extension` | prorroga o teste em `days` (1 a 30), com motivo |
 | `POST /platform/establishments/:id/access/courtesy` | cortesia de `days` (1 a 180), com motivo |
+| `POST /platform/establishments/:id/access/periods/:periodId/correction` | anula um registro feito por engano, com motivo (seção 2.9) |
 
-A ficha (`GET /platform/establishments/:id`) passa a trazer `access`
-(situação comercial, validade, início e fim, ciclo e plano do período em
-curso) e `accessPeriods` (histórico), e `allowedActions` ganha
-`recordPayment`, `extendTrial` e `grantCourtesy`.
+A ficha (`GET /platform/establishments/:id`) traz `access` (situação
+comercial, `legacy`, validade, último dia, o que venceu) e `accessPeriods`
+(histórico, com `canceled` e a prévia `correction` de cada registro), e
+`allowedActions` ganha `recordPayment`, `extendTrial`, `grantCourtesy` e
+`correctPeriod`.
 
-Sessão (`/auth/me` e login): cada contexto ganha `access`
-(`state`, `validUntil`, `blocked`). Um estabelecimento vencido continua na
-lista, com `blocked: true` e sem áreas.
+Sessão (`/auth/me` e login): cada contexto ganha `access`. O DONO recebe
+`state`, `validUntil`, `blocked`, `expiredAt` e `expiredKind`; os outros
+papéis, só `blocked` (o resto `null`). Um estabelecimento bloqueado continua
+na lista, com `blocked: true` e sem áreas.
+
+Situações (`state`): `UNTRACKED` (anterior ao controle, sem período:
+"Validade ainda não definida"), `MISSING` (sem período e sem a marca:
+bloqueado), `TRIAL`, `PAID`, `COURTESY` e `EXPIRED`.
 
 ## 5. Testes
 
 - Unitários: cálculo de datas (fim de mês, bissexto, âncora, fuso,
-  renovação antecipada, vencido, sem registro), situação comercial e
-  política de recurso.
-- Banco descartável (`commercial-access-postgres.db-e2e-spec.ts`):
-  migration, registro e repetição, concorrência, suspensão, arquivado,
-  bloqueio e sessão aberta, isolamento entre estabelecimentos, recurso fora
-  do plano com concessão do dono, e dono e gerente de um Max sem acesso à
-  plataforma.
-- Navegador: os specs que citam os nomes antigos dos planos.
+  renovação antecipada, vencido, sem registro), situação comercial com e sem
+  a marca de anterior, impacto da correção (último da cadeia, recusa no
+  meio, nunca acrescenta), mapeamento dos planos e varredura contra decisão
+  por nome de plano.
+- Banco descartável (`commercial-access-postgres.db-e2e-spec.ts`, pela API
+  HTTP real): migration, registro e repetição, concorrência, suspensão,
+  arquivado, bloqueio e sessão aberta, isolamento entre estabelecimentos,
+  recurso fora do plano com concessão do dono, dono e gerente de um Max sem
+  acesso à plataforma (inclusive à correção), sessão do gerente sem a
+  situação comercial, legado só pela marca, criação transacional com falha
+  forçada no teste, e a correção completa (prévia, cadeia, reautenticação,
+  motivo, repetição, já anulado, nada apagado, histórico, registro certo
+  depois e papéis globais intactos depois de trocar o plano).
+- Ensaio da migration com dados anteriores (seção 2.3).
+- Frontend: contratos novos, impacto da correção em texto, faixas do aviso
+  de vencimento, evento do `ACESSO_VENCIDO` no cliente HTTP, site sem
+  recurso futuro como disponível.
+- Navegador: `equipe` (validade ainda não definida, pagamento, correção com
+  impacto e motivo, aviso de 3 dias, vencimento com a página aberta, Perfil
+  e segurança acessível com o acesso pausado, regularização) e
+  `administracao` (rótulo do anterior ao controle).
 
 ## 6. Fora deste lote
 
-- Gateway, cobrança automática, boleto, nota fiscal, conciliação.
-- Estorno ou correção de um período registrado por engano (fica como
-  próximo passo; até lá, a correção é um novo registro com observação, e o
-  erro fica no histórico).
+- Gateway, cobrança automática, boleto, nota fiscal, conciliação, estorno
+  (a correção só anula o registro; seção 2.9).
 - Tela de exceções de recurso por estabelecimento.
-- Aviso de vencimento próximo (e-mail ou WhatsApp).
+- Aviso de vencimento por e-mail, WhatsApp ou push.
 - Aprovação dos preços e gravação deles no catálogo.
+- Correção que reorganize uma cadeia de renovações (mover períodos
+  seguintes): recusada de propósito; anula-se do mais recente para trás.
 
 ## 7. Estado e retomada
 
-**Checkpoint de 2026-10-29, branch `feat/planos-validade-acesso`.**
+**Checkpoint de 2026-10-29, branch `feat/planos-validade-acesso`, revisão
+final do PR #82.**
 
-Commits, em ordem: `30f960c` (plano e merge do O1), `8d88229` (backend),
-`c3e0211` (teste pela API), `acf564d` (frontend), `e704052` (correção
-de sobreposição, sem promessa de multiunidade, fluxo no navegador).
+Commits até a entrega anterior: `30f960c` (plano e merge do O1), `8d88229`
+(backend), `c3e0211` (teste pela API), `acf564d` (frontend), `e704052`
+(correção de sobreposição, sem promessa de multiunidade, fluxo no
+navegador), `4268ad1`, `65d7cd5` e `e07cb45` (checkpoint e ajustes do CI).
+A revisão final entra nos commits seguintes (ver o PR).
 
-**Testes neste PC** (PostgreSQL 18.6 descartável com TLS, porta 55434,
-`IGNORE_DOTENV_FILE=true`; nenhum banco real):
+**Testes da revisão neste PC** (PostgreSQL 18.6 descartável com TLS, porta
+55434, `IGNORE_DOTENV_FILE=true`; nenhum banco real):
 
-- backend: 1.618 unitários, 137 e2e HTTP, `tsc`, `oxlint`, `nest build`;
-- banco: as 20 suítes `db-e2e` (224 testes) num banco novo com as 12
-  migrations, inclusive `commercial-access-postgres` pela API HTTP real;
-- migration: `up`, `down` e `up` de novo no descartável;
-- frontend: 865 unitários, `tsc`, `eslint`, `lint:types`, `next build`;
-- navegador: `test:browser:equipe` (com o fluxo novo de validade, telas
-  em claro e escuro, 1280, 390 e 360 px) e `test:browser:auth`.
+- backend: 1.627 unitários, 137 e2e HTTP, `tsc`, `oxlint`, `nest build`;
+- banco: as 20 suítes `db-e2e` (226 testes) num banco novo com as 12
+  migrations;
+- migration: ensaio com estabelecimentos anteriores, `down` e `up` de novo;
+- frontend: 876 unitários, `tsc`, `eslint`, `lint:types`, `next build`
+  (os dois avisos de lint são de arquivos fora deste lote);
+- navegador: `equipe` (fluxo completo, inclusive correção, aviso de 3 dias, vencimento com a página aberta e Perfil e segurança com o acesso pausado), `administracao`, `auth`, `gerente`, `recebimentos` e `recuperacao`, todos passando. A primeira rodada de `equipe` pegou um defeito real: a verificação da sessão mantinha o estado antigo da mesma pessoa, e o vencimento com a página aberta não aparecia; corrigido em `aplicarVerificacao`, com teste.
 
-Num banco reaproveitado por várias rodadas, o teste do levantamento de
-gerentes (`pilot-team-manager-check`) bate no teto de detalhes e falha;
-num banco novo, como no CI, passa. Não tem relação com este lote.
+**Decisões tomadas na revisão:**
 
-**Decisões tomadas na implementação:**
+- a afirmação sobre os testes do piloto foi retirada (seção 2.6): era
+  suposição; o estado real do piloto não foi consultado;
+- legado só pela marca explícita da migration; sem período e sem marca,
+  bloqueado;
+- correção = anulação do último registro da cadeia, nunca exclusão nem
+  estorno;
+- só o DONO recebe a situação comercial na sessão;
+- o site deixou de listar multiunidade, comissões e personalização como
+  disponíveis.
 
-- estabelecimentos existentes ficam sem período (`UNTRACKED`) e não
-  vencem; o controle começa no primeiro registro individual;
-- a conta de teste dos specs de navegador grava o estabelecimento direto no
-  banco, então também nasce sem período;
-- um período novo nunca começa antes do fim do último do mesmo grupo, mesmo
-  que esse fim não seja meia-noite (troca de fuso); a sobreposição que
-  escapar vira 409 `PERIODO_SOBREPOSTO`;
-- planos criados por testes de banco recebem todos os recursos
-  (`test/support/plano-de-teste.ts`): um plano sem linhas em
-  `plan_features` não tem recurso nenhum.
+**Publicação (quando aprovada):** antes, conferir
+`SELECT count(*) FROM tenant_feature_overrides WHERE enabled = false`
+(esperado 0). Migration nova `CommercialAccess` pelo fluxo protegido; API
+antes do web (o web novo exige `access` na ficha). Nada foi publicado,
+nenhum banco real foi tocado, nenhuma mensagem foi enviada.
 
-**Publicação (quando aprovada):** migration nova `CommercialAccess` pelo
-fluxo protegido; API antes do web (o web novo exige `access` na ficha).
-Nada foi publicado, nenhum banco real foi tocado.
-
-**Próximo passo exato:** aguardar os checks do PR; depois, revisão e decisão
-de merge pelo dono. Pendências de produto: aprovar preços, decidir a
-correção de um período registrado por engano e o aviso de vencimento
-próximo.
+**Próximo passo exato:** revisão e decisão de merge do PR #82 pelo dono.
+Pendências de produto: aprovar os preços; decidir, um a um, a
+regularização dos estabelecimentos com "Validade ainda não definida".

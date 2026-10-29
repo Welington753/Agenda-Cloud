@@ -56,13 +56,12 @@ export function AcessoVencido({ contexto }: { contexto: TenantContextReal }) {
             tudo continua como estava.
           </p>
         )}
-        <p className="text-sm">
-          Sua conta continua com você: em{" "}
-          <Link href={ROTA_PERFIL} className="inline-flex min-h-11 items-center font-medium underline">
-            Perfil e segurança
-          </Link>{" "}
-          você troca a senha e confere seus dados, e pode sair pelo menu da conta.
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm">Sua conta continua com você: troque a senha, confira seus dados ou saia.</p>
+          <Link href={ROTA_PERFIL} className="inline-flex min-h-11 items-center text-sm font-medium underline">
+            Abrir Perfil e segurança
+          </Link>
+        </div>
       </CartaoCorpo>
     </Cartao>
   );
