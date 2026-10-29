@@ -1,0 +1,110 @@
+name: "Test — backup agendado do piloto (dados fictícios)"
+
+# Caminho completo do backup do lote O1 (pg_dump no snapshot, restauração
+# conferida, age, envio e conferência) contra um PostgreSQL descartável e
+# simuladores locais de S3 e de cron. Sem secret nenhum, sem Neon, sem B2,
+# sem Sentry: o script recusa o modo ensaio com qualquer destino fora de
+# 127.0.0.1. O workflow operacional é só um modelo
+# (docs/runbooks/modelos/backup-piloto.yml) e não roda neste repositório.
+on:
+  pull_request:
+    branches:
+      - integration/nestjs-typeorm-frontend
+    paths:
+      - "backend/scripts/backup-agendado*"
+      - "backend/scripts/recuperar-backup-piloto.mjs"
+      - "backend/scripts/operacao-piloto.mjs"
+      - "backend/scripts/entrada-oculta.mjs"
+      - "backend/test/backup-agendado*"
+      - "backend/vitest.config.backup-e2e.ts"
+      - "backend/package.json"
+      - "backend/package-lock.json"
+      - "docs/runbooks/modelos/backup-piloto.yml"
+      - ".github/workflows/test-backup-agendado.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-backup-agendado-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: backup completo com dados fictícios (PostgreSQL 17, age, simuladores)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: PostgreSQL 17 client and age (same packages as the operational model)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          if ! apt-cache show postgresql-client-17 >/dev/null 2>&1; then
+            sudo install -d /usr/share/postgresql-common/pgdg
+            sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+            sudo apt-get update
+          fi
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 age
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          age --version
+
+      - name: Start disposable PostgreSQL 17 with TLS (fictitious credentials)
+        run: |
+          set -euo pipefail
+          docker run -d --name backup-e2e-postgres \
+            -e POSTGRES_USER=disposable_user \
+            -e POSTGRES_PASSWORD=disposable_pass \
+            -e POSTGRES_DB=disposable_db \
+            -p 127.0.0.1:55433:5432 \
+            postgres:17 >/dev/null
+          for i in $(seq 1 30); do
+            docker exec backup-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec -u root backup-e2e-postgres bash -c '
+            set -e
+            command -v openssl >/dev/null || (apt-get update && apt-get install -y --no-install-recommends openssl)
+            cd /var/lib/postgresql/data
+            openssl req -new -x509 -days 1 -nodes -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost" -out server.crt -keyout server.key
+            chown postgres:postgres server.crt server.key
+            chmod 600 server.key
+          '
+          docker exec -u postgres backup-e2e-postgres psql -U disposable_user -d disposable_db -c "ALTER SYSTEM SET ssl = on;" >/dev/null
+          docker restart backup-e2e-postgres >/dev/null
+          for i in $(seq 1 30); do
+            docker exec backup-e2e-postgres pg_isready -U disposable_user >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec backup-e2e-postgres psql -U disposable_user -d disposable_db -c "SHOW ssl;"
+          mkdir -p /tmp/backup-e2e-certs
+          docker cp backup-e2e-postgres:/var/lib/postgresql/data/server.crt /tmp/backup-e2e-certs/server.crt
+
+      - name: Backup e2e (real pg_dump, pg_restore and age; S3 and cron simulators)
+        working-directory: backend
+        env:
+          DB_E2E_DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          BACKUP_E2E_CA: /tmp/backup-e2e-certs/server.crt
+          PG_BIN: /usr/lib/postgresql/17/bin
+          AGE_BIN: /usr/bin/age
+          BACKUP_E2E_EXIGIR_FERRAMENTAS: "true"
+        run: npm run test:backup-e2e
+
+      - name: Remove disposable PostgreSQL
+        if: always()
+        run: docker rm -f backup-e2e-postgres >/dev/null 2>&1 || true

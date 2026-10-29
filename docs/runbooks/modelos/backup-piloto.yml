@@ -1,0 +1,134 @@
+# MODELO. Não é um workflow ativo deste repositório público, e não deve ir
+# para .github/workflows/ aqui. O dono copia este arquivo para
+# .github/workflows/backup-piloto.yml do repositório PRIVADO
+# Welington753/agenda-cloud-operacao, seguindo
+# docs/runbooks/backup-piloto-automatico.md (seção "Configuração pelo dono").
+#
+# Três travas impedem a execução fora do lugar certo:
+#   1. o `if` do job: só no repositório de operação;
+#   2. o script recusa BACKUP_MODO=piloto fora do GitHub Actions, no
+#      repositório público ou em outro repositório;
+#   3. o script pergunta à API do GitHub se o repositório é privado e para
+#      se não for.
+# Nada é enviado como artifact nem guardado em cache. O dump e o manifesto
+# só existem claros em $RUNNER_TEMP, apagados no fim do script e do job.
+name: "Backup diário do piloto"
+
+on:
+  schedule:
+    # 06:17 UTC (03:17 em Brasília), fora da hora cheia, quando o GitHub
+    # atrasa mais os agendamentos.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup-piloto
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: backup, restauração conferida e envio ao B2
+    if: github.repository == 'Welington753/agenda-cloud-operacao'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # SHA completo do commit revisado do Agenda-Cloud (merge do PR do O1 ou
+      # posterior). Trocar só por outro commit revisado.
+      CODIGO_SHA: "SUBSTITUIR_PELO_SHA_REVISADO_DO_AGENDA_CLOUD"
+      # Versão maior do PostgreSQL do Neon (o script recusa pg_dump mais
+      # antigo que o servidor).
+      PG_MAJOR: "17"
+    steps:
+      - name: Checkout do código revisado (repositório público, SHA fixo)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: Welington753/Agenda-Cloud
+          ref: ${{ env.CODIGO_SHA }}
+          path: agenda-cloud
+          persist-credentials: false
+
+      - name: Setup Node (sem cache)
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      - name: Dependências do backend (só produção, sem scripts de instalação)
+        working-directory: agenda-cloud/backend
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Cliente PostgreSQL e age
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          if ! apt-cache show "postgresql-client-${PG_MAJOR}" >/dev/null 2>&1; then
+            sudo install -d /usr/share/postgresql-common/pgdg
+            sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+            sudo apt-get update
+          fi
+          sudo apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}" age
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --version
+          age --version
+
+      - name: PostgreSQL descartável para a restauração (TLS, só 127.0.0.1)
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl rand -hex 24 > "$RUNNER_TEMP/pg-restauracao-senha"
+          echo "::add-mask::$(cat "$RUNNER_TEMP/pg-restauracao-senha")"
+          docker run -d --name backup-restauracao \
+            -e POSTGRES_PASSWORD="$(cat "$RUNNER_TEMP/pg-restauracao-senha")" \
+            -p 127.0.0.1:55433:5432 \
+            "postgres:${PG_MAJOR}" >/dev/null
+          for i in $(seq 1 30); do
+            docker exec backup-restauracao pg_isready -U postgres >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec -u root backup-restauracao bash -c '
+            set -e
+            command -v openssl >/dev/null || (apt-get update && apt-get install -y --no-install-recommends openssl)
+            cd /var/lib/postgresql/data
+            openssl req -new -x509 -days 1 -nodes -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost" -out server.crt -keyout server.key
+            chown postgres:postgres server.crt server.key
+            chmod 600 server.key
+          '
+          docker exec -u postgres backup-restauracao psql -U postgres -c "ALTER SYSTEM SET ssl = on;" >/dev/null
+          docker restart backup-restauracao >/dev/null
+          for i in $(seq 1 30); do
+            docker exec backup-restauracao pg_isready -U postgres >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker cp backup-restauracao:/var/lib/postgresql/data/server.crt "$RUNNER_TEMP/pg-restauracao.crt"
+
+      - name: Backup
+        working-directory: agenda-cloud/backend
+        env:
+          BACKUP_MODO: piloto
+          BACKUP_CODIGO_SHA: ${{ env.CODIGO_SHA }}
+          BACKUP_PASTA_TEMP: ${{ runner.temp }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PILOTO_BACKUP_URL: ${{ secrets.PILOTO_BACKUP_URL }}
+          PILOT_ENDPOINT_ID: ${{ vars.PILOT_ENDPOINT_ID }}
+          PRODUCTION_ENDPOINT_ID: ${{ vars.PRODUCTION_ENDPOINT_ID }}
+          RESTAURACAO_CA: ${{ runner.temp }}/pg-restauracao.crt
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+          AGE_BIN: /usr/bin/age
+          B2_ENDPOINT: ${{ vars.B2_ENDPOINT }}
+          B2_BUCKET: ${{ vars.B2_BUCKET }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          SENTRY_CRON_URL: ${{ secrets.SENTRY_CRON_URL }}
+        run: |
+          set -euo pipefail
+          export PG_BIN="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          export RESTAURACAO_URL="postgresql://postgres:$(cat "$RUNNER_TEMP/pg-restauracao-senha")@127.0.0.1:55433/postgres?sslmode=verify-full"
+          node scripts/backup-agendado.mjs
+
+      - name: Limpeza
+        if: always()
+        run: |
+          docker rm -f backup-restauracao >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP"/agenda-cloud-backup-* "$RUNNER_TEMP"/pg-restauracao-*
