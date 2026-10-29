@@ -221,7 +221,8 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       expect(Number(migrations.rows[0]?.n)).toBe(TODAS_AS_MIGRATIONS.length);
       expect(Number(plans.rows[0]?.n)).toBe(3);
       expect(Number(features.rows[0]?.n)).toBe(13);
-      expect(Number(planFeatures.rows[0]?.n)).toBe(22);
+      // 22 do catálogo inicial + 4 da CommercialAccess, sem duplicar.
+      expect(Number(planFeatures.rows[0]?.n)).toBe(26);
     } finally {
       await client.end();
     }
