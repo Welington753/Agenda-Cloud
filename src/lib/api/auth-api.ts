@@ -22,10 +22,22 @@ export interface TenantContextReal {
   planName: string;
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
   tenantStatus: StatusTenantReal;
+  /** Validade do acesso (assinatura do Agenda Cloud). `blocked`: vencido; o
+   * estabelecimento continua na lista, sem áreas, e a tela mostra o motivo e
+   * o caminho de regularização. Ausente numa API anterior: não vence. */
+  access?: ValidadeDoAcessoReal;
   /** Áreas que este vínculo opera agora, calculadas no servidor pelas mesmas
    * políticas das rotas. Ausente numa API anterior (ver `temArea`). Só para a
    * tela: o servidor refaz a prova em toda requisição. */
   areas?: string[];
+}
+
+export interface ValidadeDoAcessoReal {
+  state: "UNTRACKED" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED";
+  blocked: boolean;
+  validUntil: string | null;
+  expiredAt: string | null;
+  expiredKind: "TRIAL" | "PAID" | "COURTESY" | null;
 }
 
 export interface SessaoRealContexto {
@@ -50,7 +62,16 @@ export type ResultadoAutenticacaoReal<T> = { ok: true; dados: T } | { ok: false;
 function ehTenantContextReal(valor: unknown): valor is TenantContextReal {
   if (typeof valor !== "object" || valor === null) return false;
   const v = valor as Record<string, unknown>;
+  if (v.access !== undefined) {
+    const a = v.access as Record<string, unknown> | null;
+    if (!a || typeof a !== "object" || typeof a.blocked !== "boolean" || typeof a.state !== "string") return false;
+  }
   return typeof v.tenantId === "string" && typeof v.membershipId === "string" && typeof v.role === "string";
+}
+
+/** O estabelecimento deste vínculo está com o acesso vencido. */
+export function acessoVencido(contexto: Pick<TenantContextReal, "access"> | null | undefined): boolean {
+  return contexto?.access?.blocked === true;
 }
 
 function ehSessaoRealContexto(valor: unknown): valor is SessaoRealContexto {

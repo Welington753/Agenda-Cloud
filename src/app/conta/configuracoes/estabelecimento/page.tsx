@@ -14,6 +14,17 @@ import { Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { formatarData } from "@/lib/format";
+import type { ValidadeDoAcessoReal } from "@/lib/api/auth-api";
+
+const ROTULO_VALIDADE = { TRIAL: "Teste gratuito", PAID: "Acesso pago", COURTESY: "Cortesia" } as const;
+
+/** Até quando o acesso vale (último dia coberto). Sem validade registrada
+ * (estabelecimento anterior a este controle), nada a mostrar. */
+function validade(acesso: ValidadeDoAcessoReal | undefined): string | null {
+  if (!acesso || !acesso.validUntil || acesso.state === "UNTRACKED" || acesso.state === "EXPIRED") return null;
+  const ultimo = new Date(Date.parse(acesso.validUntil) - 1);
+  return `${ROTULO_VALIDADE[acesso.state]} até ${formatarData(ultimo)}.`;
+}
 import { ROTA_AGENDA, ROTA_EQUIPE, ROTA_INICIO, ROTA_PROFISSIONAIS, ROTA_SERVICOS } from "@/lib/conta/rotas";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -78,9 +89,7 @@ export default function EstabelecimentoPage() {
                 {contexto.tenantName}
               </p>
               <p className="text-xs text-ink-soft">Plano {contexto.planName}</p>
-              <p className="text-xs text-ink-soft">
-                Período de teste até {formatarData(contexto.trial.trialEndAt)}.
-              </p>
+              {validade(contexto.access) && <p className="text-xs text-ink-soft">{validade(contexto.access)}</p>}
             </div>
           </div>
           <p className="text-xs text-ink-soft">

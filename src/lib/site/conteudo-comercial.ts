@@ -145,8 +145,8 @@ export interface PlanoComercial {
   /** Código interno estável do domínio (`essencial`/`equipe`/`pro`,
    * `CodigoPlano` em src/lib/types.ts) — o mesmo usado em `src/lib/planos.ts`
    * e no catálogo persistido no banco. Nome exibido ao cliente vem de `nome`,
-   * que é decisão de marketing e pode divergir do código (ex.: `equipe`
-   * aparece como "Gestão"). */
+   * que é decisão de marketing e diverge do código: `essencial` é o Básico,
+   * `equipe` é o Pro e `pro` é o Max. */
   codigo: CodigoPlano;
   nome: string;
   descricaoCurta: string;
@@ -158,30 +158,32 @@ export interface PlanoComercial {
 /** Nomes de marketing — mapeiam para os planos reais (essencial/equipe/pro) de
  * `src/lib/planos.ts` usando o mesmo código interno, com rótulos voltados a
  * quem está decidindo assinar. Preço ainda não foi aprovado comercialmente:
- * nunca mostrar valor numérico, só "em definição" ou convite para o piloto. */
+ * nunca mostrar valor numérico, só "em definição" ou convite para o piloto.
+ * Multiunidade não existe no produto: nenhum plano a promete (ver
+ * docs/plans/planos-e-validade-do-acesso.md). */
 export const PLANOS_COMERCIAIS: PlanoComercial[] = [
   {
     codigo: "essencial",
-    nome: "Essencial",
+    nome: "Básico",
     descricaoCurta: "Para quem trabalha sozinho ou com uma equipe pequena.",
     precoTexto: "Preço em definição para o piloto",
-    destaques: ["Agenda", "Agendamento público", "Cadastro de profissionais"],
+    destaques: ["Agenda e agendamento online", "Clientes, equipe e recebimentos", "Até 2 profissionais"],
     ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "equipe",
-    nome: "Gestão",
-    descricaoCurta: "Para negócios que já acompanham clientes e relatórios básicos.",
+    nome: "Pro",
+    descricaoCurta: "Para equipes que estão crescendo.",
     precoTexto: "Participe do piloto",
-    destaques: ["Tudo do Essencial", "Cadastro de clientes", "Relatórios básicos", "Gestão de equipe"],
+    destaques: ["Tudo do Básico", "Até 5 profissionais e acessos de equipe"],
     ctaHref: HREF_DEMONSTRACAO,
   },
   {
     codigo: "pro",
-    nome: "Rede",
-    descricaoCurta: "Para negócios com mais de uma unidade.",
+    nome: "Max",
+    descricaoCurta: "Para equipes maiores, com todos os módulos para o cliente.",
     precoTexto: "Participe do piloto",
-    destaques: ["Tudo do Gestão", "Múltiplas unidades", "Personalização avançada"],
+    destaques: ["Tudo do Pro", "Até 20 profissionais e acessos de equipe", "Módulos novos para o cliente incluídos"],
     ctaHref: HREF_DEMONSTRACAO,
   },
 ];

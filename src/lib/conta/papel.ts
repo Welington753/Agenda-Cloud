@@ -117,6 +117,15 @@ const dentro = (pathname: string, base: string) => pathname === base || pathname
  * (que só encaminha), a escolha de estabelecimento, a administração da
  * plataforma (autorização própria, independente do papel no
  * estabelecimento) e as configurações pessoais. */
+/** Páginas que não dependem do estabelecimento ativo operar: a
+ * administração da plataforma, a escolha de estabelecimento e as
+ * configurações pessoais. Continuam abertas com o acesso vencido. */
+export function paginaForaDoEstabelecimento(pathname: string | null): boolean {
+  if (!pathname) return false;
+  const caminho = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return caminho !== "/conta" && paginaComum(caminho);
+}
+
 function paginaComum(pathname: string): boolean {
   if (pathname === "/conta" || pathname === ROTA_SELECIONAR_ESTABELECIMENTO) return true;
   if (dentro(pathname, "/conta/administracao")) return true;

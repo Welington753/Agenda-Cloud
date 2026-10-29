@@ -79,9 +79,15 @@ describe("planos comerciais", () => {
     }
   });
 
-  it("usa os códigos internos do domínio (essencial/equipe/pro) com nomes comerciais Essencial/Gestão/Rede", () => {
+  it("usa os códigos internos do domínio (essencial/equipe/pro) com nomes comerciais Básico/Pro/Max", () => {
     expect(PLANOS_COMERCIAIS.map((p) => p.codigo)).toEqual(["essencial", "equipe", "pro"]);
-    expect(PLANOS_COMERCIAIS.map((p) => p.nome)).toEqual(["Essencial", "Gestão", "Rede"]);
+    expect(PLANOS_COMERCIAIS.map((p) => p.nome)).toEqual(["Básico", "Pro", "Max"]);
+  });
+
+  it("nenhum plano promete multiunidade, que não existe no produto", () => {
+    for (const plano of PLANOS_COMERCIAIS) {
+      expect([plano.descricaoCurta, ...plano.destaques].join(" ")).not.toMatch(/unidade/i);
+    }
   });
 });
 

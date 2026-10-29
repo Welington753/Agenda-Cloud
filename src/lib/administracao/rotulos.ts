@@ -81,6 +81,9 @@ export const ACOES_HISTORICO: Record<string, string> = {
   PASSWORD_CHANGED: "Senha trocada pela própria pessoa",
   PAYMENT_RECORDED: "Recebimento registrado",
   PAYMENT_REFUNDED: "Recebimento estornado",
+  ACCESS_PAID_PERIOD_RECORDED: "Pagamento confirmado manualmente",
+  ACCESS_TRIAL_EXTENDED: "Teste prorrogado",
+  ACCESS_COURTESY_GRANTED: "Cortesia concedida",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

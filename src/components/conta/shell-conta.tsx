@@ -57,7 +57,9 @@ import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { useSair } from "@/components/conta/use-sair";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 import { emAdministracao } from "@/lib/administracao/rotas";
-import { perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
+import { paginaForaDoEstabelecimento, perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
+import { acessoVencido } from "@/lib/api/auth-api";
+import { AcessoVencido } from "@/components/conta/acesso-vencido";
 import { ROTA_AGENDA, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_PERFIL } from "@/lib/conta/rotas";
 
 /** Classe no `<html>` enquanto o shell está montado: sobe as notificações no
@@ -96,6 +98,9 @@ export function ShellConta({ children }: { children: ReactNode }) {
       : null;
   const semVinculo = estado.status === "autenticado" && !estado.sessao.hasEstablishmentAccess;
   const perfil = perfilDoPapel(contextoAtivo?.role);
+  // Acesso do estabelecimento vencido: as páginas dele dão lugar ao aviso com
+  // o motivo e a regularização; nada é encaminhado.
+  const vencido = acessoVencido(contextoAtivo);
   // Senha temporária: só Perfil e segurança (onde está a troca) até a pessoa
   // escolher a dela. O servidor recusa as outras rotas do mesmo jeito.
   const trocaObrigatoria = estado.status === "autenticado" && estado.sessao.user.mustChangePassword === true;
@@ -104,7 +109,9 @@ export function ShellConta({ children }: { children: ReactNode }) {
       ? null
       : ROTA_PERFIL
     : contextoAtivo
-      ? redirecionamentoDoPerfil(perfil, pathname, contextoAtivo)
+      ? vencido
+        ? null
+        : redirecionamentoDoPerfil(perfil, pathname, contextoAtivo)
       : semVinculo
         ? redirecionamentoDoPerfil("sem-area", pathname)
         : null;
@@ -121,7 +128,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const itens = trocaObrigatoria
     ? []
     : itensDaNavegacao({
-        comEstabelecimento: !!contexto,
+        comEstabelecimento: !!contexto && !vencido,
         comAdministracao: acessoConfirmado(estadoAcesso),
         perfil,
         contexto,
@@ -256,10 +263,14 @@ export function ShellConta({ children }: { children: ReactNode }) {
           itens.length > 0 ? "pb-28 md:pb-8" : undefined,
         )}
       >
-        {destinoDoPerfil ? null : children}
+        {destinoDoPerfil ? null : vencido && contexto && !paginaForaDoEstabelecimento(pathname) ? (
+          <AcessoVencido contexto={contexto} />
+        ) : (
+          children
+        )}
       </main>
 
-      {contexto && ehDono && <AvisosNovasSolicitacoes />}
+      {contexto && ehDono && !vencido && <AvisosNovasSolicitacoes />}
     </div>
   );
 }

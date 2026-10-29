@@ -73,7 +73,11 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     };
   };
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
-  billing: { available: false };
+  /** Validade do acesso (assinatura do Agenda Cloud), separada da situação
+   * administrativa (`status`). `UNTRACKED`: sem período registrado. */
+  access: SituacaoComercial;
+  /** Histórico, do mais recente ao mais antigo. */
+  accessPeriods: PeriodoDeAcesso[];
   /** Versão que as ações mandam de volta (outra tela mudou: 409). */
   updatedAt: string;
   /** Situação para a qual a reativação devolve (TRIAL ou ACTIVE). */
@@ -81,7 +85,92 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
   suspensionReason: string | null;
   taxDocument: string | null;
   planOptions: OpcaoDePlano[];
-  allowedActions: { edit: boolean; suspend: boolean; archive: boolean; reactivate: boolean; changePlan: boolean };
+  allowedActions: {
+    edit: boolean;
+    suspend: boolean;
+    archive: boolean;
+    reactivate: boolean;
+    changePlan: boolean;
+    recordPayment: boolean;
+    extendTrial: boolean;
+    grantCourtesy: boolean;
+  };
+}
+
+export type EstadoComercial = "UNTRACKED" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED";
+export type TipoDePeriodo = "TRIAL" | "PAID" | "COURTESY";
+export interface SituacaoComercial {
+  state: EstadoComercial;
+  blocked: boolean;
+  /** Fim (exclusivo) da validade contínua, com as renovações registradas. */
+  validUntil: string | null;
+  /** Último dia coberto, `YYYY-MM-DD` na data local do estabelecimento. */
+  lastDay: string | null;
+  expiredAt: string | null;
+  expiredKind: TipoDePeriodo | null;
+}
+export interface PeriodoDeAcesso {
+  id: string;
+  kind: TipoDePeriodo;
+  plan: { id: string; name: string };
+  startsAt: string;
+  endsAt: string;
+  firstDay: string;
+  lastDay: string;
+  cycle: "MONTHLY" | "QUARTERLY" | null;
+  amountCents: number | null;
+  currency: string | null;
+  paymentMethod: string | null;
+  receivedOn: string | null;
+  reference: string | null;
+  confirmationSource: "MANUAL" | null;
+  reason: string | null;
+  recordedAt: string;
+  recordedBy: { id: string; name: string };
+}
+
+const ESTADOS_COMERCIAIS = ["UNTRACKED", "TRIAL", "PAID", "COURTESY", "EXPIRED"];
+const TIPOS_DE_PERIODO = ["TRIAL", "PAID", "COURTESY"];
+const dia = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const talvez = <T,>(teste: (v: unknown) => v is T) => (value: unknown): value is T | null => value === null || teste(value);
+
+export function ehSituacaoComercial(value: unknown): value is SituacaoComercial {
+  return (
+    objeto(value) &&
+    ESTADOS_COMERCIAIS.includes(value.state as string) &&
+    typeof value.blocked === "boolean" &&
+    talvez(data)(value.validUntil) &&
+    talvez(dia)(value.lastDay) &&
+    talvez(data)(value.expiredAt) &&
+    (value.expiredKind === null || TIPOS_DE_PERIODO.includes(value.expiredKind as string))
+  );
+}
+
+export function ehPeriodoDeAcesso(value: unknown): value is PeriodoDeAcesso {
+  return (
+    objeto(value) &&
+    texto(value.id) &&
+    TIPOS_DE_PERIODO.includes(value.kind as string) &&
+    objeto(value.plan) &&
+    texto(value.plan.id) &&
+    texto(value.plan.name) &&
+    data(value.startsAt) &&
+    data(value.endsAt) &&
+    dia(value.firstDay) &&
+    dia(value.lastDay) &&
+    (value.cycle === null || value.cycle === "MONTHLY" || value.cycle === "QUARTERLY") &&
+    talvez(inteiro)(value.amountCents) &&
+    talvez(texto)(value.currency) &&
+    talvez(texto)(value.paymentMethod) &&
+    talvez(dia)(value.receivedOn) &&
+    talvez(texto)(value.reference) &&
+    (value.confirmationSource === null || value.confirmationSource === "MANUAL") &&
+    talvez(texto)(value.reason) &&
+    data(value.recordedAt) &&
+    objeto(value.recordedBy) &&
+    texto(value.recordedBy.id) &&
+    texto(value.recordedBy.name)
+  );
 }
 
 function objeto(value: unknown): value is Record<string, unknown> {
@@ -195,7 +284,9 @@ export function ehDetalheEstabelecimento(
     (detail.suspensionReason === null || texto(detail.suspensionReason)) &&
     (detail.taxDocument === null || texto(detail.taxDocument)) &&
     objeto(acoes) &&
-    ["edit", "suspend", "archive", "reactivate", "changePlan"].every((k) => typeof acoes[k] === "boolean") &&
+    ["edit", "suspend", "archive", "reactivate", "changePlan", "recordPayment", "extendTrial", "grantCourtesy"].every(
+      (k) => typeof acoes[k] === "boolean",
+    ) &&
     Array.isArray(detail.planOptions) &&
     detail.planOptions.every(
       (p: unknown) =>
@@ -211,8 +302,9 @@ export function ehDetalheEstabelecimento(
     data(trial.trialStartAt) &&
     data(trial.trialEndAt) &&
     inteiro(trial.durationDays) &&
-    objeto(detail.billing) &&
-    detail.billing.available === false &&
+    ehSituacaoComercial(detail.access) &&
+    Array.isArray(detail.accessPeriods) &&
+    detail.accessPeriods.every(ehPeriodoDeAcesso) &&
     Array.isArray(detail.units) &&
     detail.units.every(
       (unit: unknown) =>

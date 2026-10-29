@@ -338,16 +338,16 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [conta.user.id]);
     await ap.goto(`/conta/administracao/estabelecimentos/${tenantId}`);
     await expect(ap.getByTestId("uso-vagas")).toContainText("2 de 5");
-    // Um terceiro profissional ativo: o plano Essencial (2) não comporta.
+    // Um terceiro profissional ativo: o plano Básico (2) não comporta.
     await db.query(
       `INSERT INTO professionals (id, tenant_id, name, avatar_initials, avatar_color) VALUES ($1, $2, 'Carla Dias', 'CD', '#000000')`,
       [id(), tenantId],
     );
     await ap.reload();
-    const essencial = ap.getByTestId("plano-estabelecimento").getByRole("listitem").filter({ hasText: "Essencial" });
+    const essencial = ap.getByTestId("plano-estabelecimento").getByRole("listitem").filter({ hasText: "Básico" });
     await expect(essencial).toContainText("Não comporta o uso atual");
     await essencial.getByRole("radio").check();
-    await expect(ap.getByRole("button", { name: "Trocar para Essencial" })).toBeDisabled();
+    await expect(ap.getByRole("button", { name: "Trocar para Básico" })).toBeDisabled();
     const ficha = (await (await ap.request.get(`${API_DE_TESTE}/platform/establishments/${tenantId}`)).json()) as {
       updatedAt: string;
       planOptions: { id: string; code: string }[];
