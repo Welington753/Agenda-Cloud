@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reiniciarPedidosDePartida } from "./acordar-api";
-import { apiRequest, mensagemDoBackend } from "./http-client";
+import { EVENTO_ACESSO_VENCIDO, apiRequest, mensagemDoBackend } from "./http-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -178,5 +178,33 @@ describe("apiRequest", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.body).toBe(JSON.stringify({ email: "a@b.com", password: "senha-valida-123" }));
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  });
+});
+
+describe("acesso do estabelecimento vencido com a sessão aberta", () => {
+  it("403 ACESSO_VENCIDO avisa a tela (que relê a sessão); outros 403 não", async () => {
+    const ouvinte = vi.fn();
+    // Ambiente node: um alvo de eventos no lugar de window.
+    const janela = new EventTarget();
+    vi.stubGlobal("window", janela);
+    janela.addEventListener(EVENTO_ACESSO_VENCIDO, ouvinte);
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "ACESSO_VENCIDO", message: "venceu" }), { status: 403 })),
+      );
+      const r = await apiRequest("/tenants/t1/consumers/page");
+      expect(r).toMatchObject({ kind: "http-error", status: 403 });
+      expect(ouvinte).toHaveBeenCalledTimes(1);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "RECURSO_NAO_CONTRATADO" }), { status: 403 })),
+      );
+      await apiRequest("/tenants/t1/payments");
+      expect(ouvinte).toHaveBeenCalledTimes(1);
+    } finally {
+      janela.removeEventListener(EVENTO_ACESSO_VENCIDO, ouvinte);
+    }
   });
 });

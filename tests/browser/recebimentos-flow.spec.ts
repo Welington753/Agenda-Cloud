@@ -158,8 +158,8 @@ test("dono registra e estorna recebimentos; o Início mostra só o que foi regis
     // não lê os recebimentos dele nem quita um atendimento dele pelo daqui.
     const outro = { tenant: id(), unit: id(), professional: id(), consumer: id(), appointment: id() };
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status)
-       SELECT $1, $2, 'OTHER', 'America/Sao_Paulo', plan_id, 'ACTIVE' FROM tenants WHERE id = $3`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since)
+       SELECT $1, $2, 'OTHER', 'America/Sao_Paulo', plan_id, 'ACTIVE', now() FROM tenants WHERE id = $3`,
       [outro.tenant, `${marca}-outro`, tenantId],
     );
     await db.query(

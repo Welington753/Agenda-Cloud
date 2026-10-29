@@ -32,8 +32,11 @@ export interface TenantContextReal {
   areas?: string[];
 }
 
+/** Só o DONO recebe a situação comercial; para os outros papéis, `state`,
+ * as datas e o tipo vêm `null` e só `blocked` diz algo. `MISSING`: sem
+ * período registrado e sem ser anterior ao controle (bloqueado). */
 export interface ValidadeDoAcessoReal {
-  state: "UNTRACKED" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED";
+  state: "UNTRACKED" | "MISSING" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED" | null;
   blocked: boolean;
   validUntil: string | null;
   expiredAt: string | null;
@@ -64,7 +67,8 @@ function ehTenantContextReal(valor: unknown): valor is TenantContextReal {
   const v = valor as Record<string, unknown>;
   if (v.access !== undefined) {
     const a = v.access as Record<string, unknown> | null;
-    if (!a || typeof a !== "object" || typeof a.blocked !== "boolean" || typeof a.state !== "string") return false;
+    if (!a || typeof a !== "object" || typeof a.blocked !== "boolean") return false;
+    if (a.state !== null && typeof a.state !== "string") return false;
   }
   return typeof v.tenantId === "string" && typeof v.membershipId === "string" && typeof v.role === "string";
 }

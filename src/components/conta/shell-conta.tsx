@@ -60,6 +60,7 @@ import { emAdministracao } from "@/lib/administracao/rotas";
 import { paginaForaDoEstabelecimento, perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
 import { acessoVencido } from "@/lib/api/auth-api";
 import { AcessoVencido } from "@/components/conta/acesso-vencido";
+import { AvisoDeVencimento } from "@/components/conta/aviso-vencimento";
 import { ROTA_AGENDA, ROTA_CONFIGURACOES, ROTA_INICIO, ROTA_PERFIL } from "@/lib/conta/rotas";
 
 /** Classe no `<html>` enquanto o shell está montado: sobe as notificações no
@@ -266,7 +267,10 @@ export function ShellConta({ children }: { children: ReactNode }) {
         {destinoDoPerfil ? null : vencido && contexto && !paginaForaDoEstabelecimento(pathname) ? (
           <AcessoVencido contexto={contexto} />
         ) : (
-          children
+          <>
+            {contexto && ehDono && !vencido && <AvisoDeVencimento acesso={contexto.access} />}
+            {children}
+          </>
         )}
       </main>
 

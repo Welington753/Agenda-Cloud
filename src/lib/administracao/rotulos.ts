@@ -84,6 +84,7 @@ export const ACOES_HISTORICO: Record<string, string> = {
   ACCESS_PAID_PERIOD_RECORDED: "Pagamento confirmado manualmente",
   ACCESS_TRIAL_EXTENDED: "Teste prorrogado",
   ACCESS_COURTESY_GRANTED: "Cortesia concedida",
+  ACCESS_PERIOD_CORRECTED: "Registro de validade anulado (correção, sem estorno)",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

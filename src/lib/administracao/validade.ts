@@ -31,3 +31,18 @@ export function centavosDe(texto: string): number | null {
 
 /** Data de hoje (`YYYY-MM-DD`) no fuso do estabelecimento. */
 export const hojeLocal = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+
+const ROTULO_DO_ESTADO: Record<string, string> = { TRIAL: "teste gratuito", PAID: "período pago", COURTESY: "cortesia" };
+
+/** Uma situação da validade em uma linha, para o impacto da correção:
+ * `"período pago até 27/02/2027"`, `"vencido: acesso pausado"`. */
+export function validadeDepoisDaCorrecao(
+  situacao: { state: string; blocked: boolean; validUntil: string | null },
+  timeZone: string,
+): string {
+  if (situacao.state === "UNTRACKED") return "validade ainda não definida (opera como antes)";
+  if (situacao.state === "MISSING") return "sem validade registrada: acesso pausado";
+  if (situacao.blocked || !situacao.validUntil) return "vencido: acesso pausado";
+  const ultimo = new Intl.DateTimeFormat("pt-BR", { timeZone }).format(new Date(Date.parse(situacao.validUntil) - 1));
+  return `${ROTULO_DO_ESTADO[situacao.state] ?? "válido"} até ${ultimo}`;
+}

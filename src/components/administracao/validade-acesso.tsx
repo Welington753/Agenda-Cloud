@@ -30,7 +30,8 @@ import { centavosDe, diaBr, FORMAS_DE_PAGAMENTO, hojeLocal } from "@/lib/adminis
 const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 
 const ESTADO: Record<EstadoComercial, { rotulo: string; cor: CorBadge; icone: ReactNode }> = {
-  UNTRACKED: { rotulo: "Sem validade registrada", cor: "neutro", icone: <Clock aria-hidden className="size-3.5" /> },
+  UNTRACKED: { rotulo: "Validade ainda não definida", cor: "neutro", icone: <Clock aria-hidden className="size-3.5" /> },
+  MISSING: { rotulo: "Sem validade registrada", cor: "aviso", icone: <CircleAlert aria-hidden className="size-3.5" /> },
   TRIAL: { rotulo: "Teste gratuito", cor: "info", icone: <Clock aria-hidden className="size-3.5" /> },
   PAID: { rotulo: "Período pago", cor: "sucesso", icone: <CalendarCheck aria-hidden className="size-3.5" /> },
   COURTESY: { rotulo: "Cortesia", cor: "destaque", icone: <Gift aria-hidden className="size-3.5" /> },
@@ -162,7 +163,7 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
           <p className="text-xs text-ink-soft">Estabelecimento arquivado: reative antes de registrar validade.</p>
         )}
         <Retorno mensagem={mensagem} />
-        <HistoricoDeValidade periodos={item.accessPeriods} />
+        <HistoricoDeValidade item={item} aoMudar={aoMudar} />
         <Modal
           aberto={acao !== null}
           aoFechar={() => setAcao(null)}
@@ -289,10 +290,21 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
 function ResumoDaValidade({ item }: { item: DetalheEstabelecimento }) {
   const { access } = item;
   if (access.state === "UNTRACKED") {
+    // Nem pago nem teste renovado: só a regularização individual define.
     return (
-      <p className="text-sm text-ink-soft">
-        Estabelecimento anterior ao controle de validade: o acesso não vence até a administração registrar um período.
-        Pelo cadastro, o teste de {item.trial.durationDays} dias terminaria em {dataCadastro(item.trial.trialEndAt)}.
+      <p className="text-sm text-ink-soft" data-testid="validade-nao-definida">
+        Estabelecimento anterior ao controle de validade. Continua operando como antes, com os mesmos recursos, até a
+        administração regularizar este estabelecimento individualmente (pagamento, prorrogação do teste ou cortesia).
+        Referência do cadastro: o teste de {item.trial.durationDays} dias terminaria em{" "}
+        {dataCadastro(item.trial.trialEndAt)}; essa data não foi aplicada.
+      </p>
+    );
+  }
+  if (access.state === "MISSING") {
+    return (
+      <p className="text-sm" data-testid="motivo-vencido">
+        Não há período de validade registrado para este estabelecimento, e ele não é anterior ao controle: o acesso fica
+        pausado até um registro. Dados e reservas estão preservados.
       </p>
     );
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centavosDe, diaBr, reais } from "./validade";
+import { centavosDe, diaBr, reais, validadeDepoisDaCorrecao } from "./validade";
 
 describe("validade do acesso: conversões", () => {
   it("valor digitado vira centavos inteiros, sem arredondar por float", () => {
@@ -19,5 +19,19 @@ describe("validade do acesso: conversões", () => {
   it("datas de calendário e moeda", () => {
     expect(diaBr("2027-02-28")).toBe("28/02/2027");
     expect(reais(8990).replace(/\s/g, " ")).toBe("R$ 89,90");
+  });
+});
+
+describe("impacto da correção, em uma linha", () => {
+  const SP = "America/Sao_Paulo";
+  it("mostra o último dia coberto na data do estabelecimento", () => {
+    expect(validadeDepoisDaCorrecao({ state: "PAID", blocked: false, validUntil: "2027-02-28T03:00:00.000Z" }, SP)).toBe(
+      "período pago até 27/02/2027",
+    );
+  });
+  it("vencido, sem validade e anterior ao controle", () => {
+    expect(validadeDepoisDaCorrecao({ state: "EXPIRED", blocked: true, validUntil: null }, SP)).toBe("vencido: acesso pausado");
+    expect(validadeDepoisDaCorrecao({ state: "MISSING", blocked: true, validUntil: null }, SP)).toContain("sem validade registrada");
+    expect(validadeDepoisDaCorrecao({ state: "UNTRACKED", blocked: false, validUntil: null }, SP)).toContain("ainda não definida");
   });
 });

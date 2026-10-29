@@ -107,4 +107,11 @@ describe("navegação", () => {
     expect(HREF_COMO_OBTER_ACESSO).toBe("/cadastro");
     expect(HREF_DEMONSTRACAO).toBe("/onboarding");
   });
+
+  it("recursos futuros da matriz de planos nunca aparecem como disponíveis", () => {
+    const disponiveis = new Set(FUNCIONALIDADES_DISPONIVEIS.map((f) => f.id));
+    for (const futuro of ["unidades", "comissoes", "personalizacao"]) expect(disponiveis.has(futuro)).toBe(false);
+    const textos = FUNCIONALIDADES_DISPONIVEIS.map((f) => `${f.rotulo} ${f.descricao}`).join(" ").toLowerCase();
+    expect(textos).not.toMatch(/unidades|comiss|logo/);
+  });
 });

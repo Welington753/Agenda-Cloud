@@ -15,20 +15,23 @@ import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { formatarData } from "@/lib/format";
 import type { ValidadeDoAcessoReal } from "@/lib/api/auth-api";
-
-const ROTULO_VALIDADE = { TRIAL: "Teste gratuito", PAID: "Acesso pago", COURTESY: "Cortesia" } as const;
-
-/** Até quando o acesso vale (último dia coberto). Sem validade registrada
- * (estabelecimento anterior a este controle), nada a mostrar. */
-function validade(acesso: ValidadeDoAcessoReal | undefined): string | null {
-  if (!acesso || !acesso.validUntil || acesso.state === "UNTRACKED" || acesso.state === "EXPIRED") return null;
-  const ultimo = new Date(Date.parse(acesso.validUntil) - 1);
-  return `${ROTULO_VALIDADE[acesso.state]} até ${formatarData(ultimo)}.`;
-}
 import { ROTA_AGENDA, ROTA_EQUIPE, ROTA_INICIO, ROTA_PROFISSIONAIS, ROTA_SERVICOS } from "@/lib/conta/rotas";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { AgendamentoOnline } from "./agendamento-online";
+
+const ROTULO_VALIDADE = { TRIAL: "Teste gratuito", PAID: "Acesso pago", COURTESY: "Cortesia" } as const;
+
+/** Até quando o acesso vale (último dia coberto). Anterior a este controle:
+ * "Validade ainda não definida", nunca apresentado como pago ou teste. */
+function validade(acesso: ValidadeDoAcessoReal | undefined): string | null {
+  if (acesso?.state === "UNTRACKED") {
+    return "Validade ainda não definida: o estabelecimento continua como antes até a regularização com a administração do Agenda Cloud.";
+  }
+  if (!acesso?.validUntil || (acesso.state !== "TRIAL" && acesso.state !== "PAID" && acesso.state !== "COURTESY")) return null;
+  const ultimo = new Date(Date.parse(acesso.validUntil) - 1);
+  return `${ROTULO_VALIDADE[acesso.state]} até ${formatarData(ultimo)}.`;
+}
 
 const PRIMEIROS_PASSOS = [
   {

@@ -14,6 +14,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { usePathname } from "next/navigation";
 import * as authApi from "@/lib/api/auth-api";
 import type { ResultadoAutenticacaoReal, SessaoRealContexto } from "@/lib/api/auth-api";
+import { EVENTO_ACESSO_VENCIDO } from "@/lib/api/http-client";
 import { lerComRecuperacao } from "@/lib/api/leitura-com-recuperacao";
 import { LIMIAR_RETORNO_MS, aplicarVerificacao, rotaDispensaSessao, type EstadoConexao } from "./conexao";
 import {
@@ -188,14 +189,22 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     const aoVoltarOnline = () => {
       if (estadoRef.current.status === "falha_comunicacao" || conexaoRef.current === "sem_resposta") recarregar();
     };
+    // O acesso do estabelecimento venceu com a sessão aberta: relê a sessão
+    // (que passa a dizer `blocked`) e a tela mostra o aviso de regularização
+    // no lugar da página que falhou. `recarregar` nunca empilha leituras.
+    const aoVencerAcesso = () => {
+      if (sessaoDecididaRef.current) recarregar();
+    };
 
     document.addEventListener("visibilitychange", aoMudarVisibilidade);
     window.addEventListener("pageshow", aoMostrarPagina);
     window.addEventListener("online", aoVoltarOnline);
+    window.addEventListener(EVENTO_ACESSO_VENCIDO, aoVencerAcesso);
     return () => {
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
       window.removeEventListener("pageshow", aoMostrarPagina);
       window.removeEventListener("online", aoVoltarOnline);
+      window.removeEventListener(EVENTO_ACESSO_VENCIDO, aoVencerAcesso);
     };
   }, [precisaDeSessao, recarregar]);
 
