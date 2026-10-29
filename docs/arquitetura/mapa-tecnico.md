@@ -70,7 +70,7 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 | Pasta | O que tem |
 |---|---|
 | `src/app/conta/*` | Área real (dono, gerente, profissional): `agendamentos`, `minha-agenda`, `clientes`, `recebimentos`, `visao-geral`, `configuracoes` (serviços, profissionais, equipe, aparência), `administracao` (plataforma) |
-| `src/app/agendar/[slug]` | Agendamento público real |
+| `src/app/agendar/[slug]` | Agendamento público real. `/agendar/<slug>` é o endereço canônico, o que a tela copia (`linkPublico`). O endereço curto `/<slug>` (demonstração em `src/app/[slug]`) só encaminha para cá quando o slug não é da demonstração; as colisões com rotas e com a demonstração seguem pendentes (R6 da auditoria) |
 | `src/app/login`, `convite`, `redefinir-senha`, `cadastro` | Entrada e ativação de conta |
 | `src/app/agenda_api/[...caminho]` | Proxy de mesma origem |
 | `src/lib/api/*` | Um cliente por área. Cada um valida a forma da resposta (`eh<Coisa>`) e classifica a falha pelo status. `mensagemDoBackend` (em `http-client.ts`) lê o `message` |
@@ -132,8 +132,9 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 
 O CI (`.github/workflows/test-frontend-auth.yml`) roda tudo isso, menos
 `test:db`, começa pelo `npm run typecheck` do backend (specs e testes não
-passam pelo build, e o Vitest só transpila) e é um dos dois checks do processo de merge (a branch não tem
-proteção no GitHub; a regra é de processo). O outro
+passam pelo build, e o Vitest só transpila) e é um dos dois checks do
+processo de merge (a branch não tem proteção no GitHub; a regra é de
+processo). O outro
 (`test-migration-lote6b2.yml`) roda `migration:show/run` quando
 `backend/src/database/**` ou as migrations mudam.
 

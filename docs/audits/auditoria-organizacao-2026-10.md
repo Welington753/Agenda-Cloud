@@ -211,6 +211,9 @@ demonstração.**
   `clinica-sorriso-leve`, `barbearia-jr`, `barbeiro-bastiao`) existem em
   todo navegador, então `/<slug>` de um estabelecimento real com esse nome
   mostra a demonstração. Não conferido no banco do piloto (sem conexão).
+- **Endereço canônico:** `/agendar/<slug>` é o endereço público oficial (o
+  que a tela copia, via `linkPublico`). `/<slug>` é só conveniência e pode
+  falhar nos casos acima. **Pendente:** este risco não foi corrigido no E1.
 - **Consequência:** só o endereço curto falha; `/agendar/<slug>`, que é o
   link que a tela copia, funciona sempre.
 - **Correção proposta:** lista única de slugs reservados (rotas da raiz e
