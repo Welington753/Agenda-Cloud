@@ -31,7 +31,7 @@ export interface ResultadoDoProcesso {
   stderr: string;
 }
 export type Executar = (executavel: string, args: string[], env?: Record<string, string>) => Promise<ResultadoDoProcesso>;
-export type Buscar = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: Buffer }) => Promise<Response>;
+export type Buscar = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: Buffer; signal?: AbortSignal }) => Promise<Response>;
 export interface Resumo {
   formato: string;
   completo: true;

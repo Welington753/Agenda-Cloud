@@ -49,6 +49,8 @@ const DESTINATARIO_AGE = /^age1[02-9ac-hj-np-z]{58}$/;
 const ENDPOINT_B2 = /^https:\/\/s3\.([a-z]{2}-[a-z]+-\d{3})\.backblazeb2\.com$/;
 const BUCKET = /^[a-z0-9][a-z0-9-]{4,48}[a-z0-9]$/;
 const SHA_DE_COMMIT = /^[0-9a-f]{40}$/;
+// Nenhuma chamada HTTP fica pendurada até o timeout do job.
+const LIMITE_HTTP_MS = 120_000;
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const obrigatorio = (env, nome) => {
@@ -246,6 +248,7 @@ export function limparDetalhe(texto, segredos, limite = 400) {
 export async function conferirRepositorioPrivado(config, buscar = fetch) {
   const resposta = await buscar(`${config.apiDoGitHub}/repos/${config.repositorio}`, {
     headers: { Authorization: `Bearer ${config.tokenDoGitHub}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    signal: AbortSignal.timeout(LIMITE_HTTP_MS),
   }).catch(() => parar("ERR_VISIBILIDADE_NAO_CONFERIDA"));
   if (!resposta.ok) parar("ERR_VISIBILIDADE_NAO_CONFERIDA");
   const repo = await resposta.json().catch(() => ({}));
@@ -354,7 +357,7 @@ export function clienteS3({ endpoint, regiao, bucket, chaveId, chaveSecreta }, {
       agora: agora(),
     });
     delete assinados.host;
-    return buscar(url, { method: metodo, headers: assinados, body: corpo });
+    return buscar(url, { method: metodo, headers: assinados, body: corpo, signal: AbortSignal.timeout(LIMITE_HTTP_MS) });
   };
   return {
     /** Grava com retenção COMPLIANCE até `retencaoAte` e o sha256 em metadado. */
@@ -426,7 +429,7 @@ export async function sinalizarCron(url, status, { buscar = fetch, duracaoMs } =
   alvo.searchParams.set("status", status);
   if (duracaoMs !== undefined) alvo.searchParams.set("duration", String(Math.round(duracaoMs)));
   try {
-    const resposta = await buscar(alvo.toString(), { method: "GET" });
+    const resposta = await buscar(alvo.toString(), { method: "GET", signal: AbortSignal.timeout(30_000) });
     return resposta.ok;
   } catch {
     return false;

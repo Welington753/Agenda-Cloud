@@ -354,8 +354,9 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
     expect(sobrasNaTemporaria()).toEqual([]);
     expect(await bancosDeConferencia()).toBe(0);
 
-    console.log(
-      `MEDIDA_BACKUP_E2E: total=${duracao}ms etapas=${JSON.stringify(resumo!.duracoesMs)} dumpClaro=${resumo!.dumpClaroBytes}B dumpCifrado=${resumo!.objetos.dump.bytes}B manifestoCifrado=${resumo!.objetos.manifesto.bytes}B resumo=${resumoGuardado.corpo.length}B ageSimulado=${AGE_SIMULADO}`,
+    // Fora do console do Vitest, para aparecer no log do job.
+    process.stdout.write(
+      `MEDIDA_BACKUP_E2E: total=${duracao}ms etapas=${JSON.stringify(resumo!.duracoesMs)} dumpClaro=${resumo!.dumpClaroBytes}B dumpCifrado=${resumo!.objetos.dump.bytes}B manifestoCifrado=${resumo!.objetos.manifesto.bytes}B resumo=${resumoGuardado.corpo.length}B ageSimulado=${AGE_SIMULADO}\n`,
     );
   });
 
@@ -495,16 +496,24 @@ describe.skipIf(!ferramentas)('backup agendado: caminho completo com dados fict�
   });
 
   it.skipIf(AGE_SIMULADO)('pela linha de comando: sai com 0 só no backup completo; recusa o modo piloto no repositório público', async () => {
+    // Assíncrono: os simuladores rodam neste processo e precisam do event loop.
     const rodarCli = (env: Record<string, string | undefined>) =>
-      spawnSync(process.execPath, ['scripts/backup-agendado.mjs'], { env: { SystemRoot: process.env.SystemRoot, ...env }, encoding: 'utf8' });
-    const ok = rodarCli(ambiente());
+      new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+        const filho = spawn(process.execPath, ['scripts/backup-agendado.mjs'], { env: { SystemRoot: process.env.SystemRoot, ...env } });
+        let stdout = '';
+        let stderr = '';
+        filho.stdout.on('data', (d) => (stdout += d));
+        filho.stderr.on('data', (d) => (stderr += d));
+        filho.on('close', (status) => resolve({ status, stdout, stderr }));
+      });
+    const ok = await rodarCli(ambiente());
     expect(ok.stdout.trim().split('\n').at(-1)).toBe('RESULTADO: backup_ok');
     expect(ok.status).toBe(0);
     semNadaSensivel(ok.stdout + ok.stderr);
 
     s3.objetos.clear();
     cron.status = [];
-    const publico = rodarCli({ ...ambiente(), BACKUP_MODO: 'piloto', GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'Welington753/Agenda-Cloud' });
+    const publico = await rodarCli({ ...ambiente(), BACKUP_MODO: 'piloto', GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'Welington753/Agenda-Cloud' });
     expect(publico.status).toBe(1);
     expect(publico.stdout).toContain('ERRO: ERR_REPOSITORIO_PUBLICO');
     expect(publico.stdout).toContain('RESULTADO: backup_falhou');
