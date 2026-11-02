@@ -224,6 +224,13 @@ export class PlatformService {
           ...computeTrialWindow(establishment.createdAt),
           durationDays: TRIAL_DURATION_DAYS,
         },
+        // Compatibilidade com o web anterior a este lote, que exige este campo
+        // e mostra "Ainda não há registro financeiro nesta área": durante a
+        // publicação (API nova, web anterior) a ficha precisa continuar
+        // abrindo. Significa só que o financeiro da assinatura não vem por
+        // este campo; a validade e os períodos vêm em `access` e
+        // `accessPeriods`. Nunca leva valor nem pagamento.
+        billing: { available: false as const },
       };
     });
   }

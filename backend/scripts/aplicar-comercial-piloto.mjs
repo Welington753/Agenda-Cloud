@@ -280,10 +280,20 @@ async function faseConferir(destino, schema) {
   log(`ESTADO: ${estado}`);
   if (estado === "nao_identificado") parar("ERR_CONFERENCIA_SEM_LEITURA");
   if (estado === "after") await avaliarReversao(destino, schema);
-  await levantarImpacto(destino, schema);
+  const impacto = await levantarImpacto(destino, schema);
+  const violada = estado === "after" && impacto.semMarcaESemPeriodo > 0;
+  if (estado === "after") {
+    log(
+      violada
+        ? `JANELA_SEM_CRIACAO: VIOLADA (${impacto.semMarcaESemPeriodo} estabelecimento(s) sem marca e sem período, bloqueados pela API nova)`
+        : "JANELA_SEM_CRIACAO: ok (nenhum estabelecimento sem marca e sem período)",
+    );
+  }
   registrar(REGISTRO, { ...base, estado, sessoesDaMigration: sessoes, concluidaEm: new Date().toISOString() });
   if (sessoes > 0) {
     log("RESULTADO: há uma sessão da migration ainda ativa no banco; espere alguns minutos e rode conferir de novo");
+  } else if (violada) {
+    log(`RESULTADO: estado after, mas há estabelecimento criado sem validade; não reabra a criação nem publique o web antes da decisão individual (ver o runbook)`);
   } else if (estado === "before") {
     log(`RESULTADO: estado before, ${MIGRATION} NÃO aplicada`);
   } else if (estado === "after") {
@@ -291,10 +301,14 @@ async function faseConferir(destino, schema) {
   } else {
     log("RESULTADO: estado divergente (nem before nem after); não aplique nem publique; investigar");
   }
-  if (estado === "divergente" || sessoes > 0) process.exitCode = 1;
+  if (estado === "divergente" || sessoes > 0 || violada) process.exitCode = 1;
 }
 
 async function faseAplicar(destino, schema, manifesto, pastaExecucao) {
+  // A API em produção continua a ANTERIOR até o deploy da nova: um
+  // estabelecimento criado por ela depois do COMMIT nasce sem a marca e sem
+  // teste, e a API nova o bloqueia. Ver "Janela sem criação" no runbook.
+  log("JANELA_SEM_CRIACAO: a partir da frase, ninguém cria estabelecimento até a API nova estar Live e a fase conferir mostrar JANELA_SEM_CRIACAO: ok");
   let motivo = null;
   try {
     motivo = conferirConfirmacao(await lerConfirmacao(`Para aplicar, digite exatamente "${FRASE}": `), FRASE);

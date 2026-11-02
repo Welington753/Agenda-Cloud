@@ -7,6 +7,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { PlatformService } from '../src/platform/platform.service.js';
 import { TenantStatus } from '../src/entities/enums/tenant-status.enum.js';
+import * as webAnterior from './support/contrato-web-anterior.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (
@@ -164,6 +165,10 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
     // validade): nada é inventado.
     expect(detail.access).toMatchObject({ state: 'UNTRACKED', blocked: false, validUntil: null });
     expect(detail.accessPeriods).toEqual([]);
+    // Contrato do web já publicado (0c44052): a ficha continua abrindo nele
+    // durante a publicação. O campo de compatibilidade não inventa nada.
+    expect(detail.billing).toEqual({ available: false });
+    expect(webAnterior.ehDetalheEstabelecimento(JSON.parse(JSON.stringify(detail)))).toBe(true);
     expect(detail.usage).toEqual({
       professionals: 0,
       services: 0,

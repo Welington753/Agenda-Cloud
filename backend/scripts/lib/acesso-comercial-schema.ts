@@ -389,6 +389,14 @@ export interface ImpactoComercial {
   /** `null` antes da migration (coluna ou tabela ainda não existe). */
   marcadosComoAnteriores: number | null;
   semMarca: number | null;
+  /** Sem a marca de anterior e sem período válido: a API nova bloqueia
+   * ("Sem validade registrada"). Só aparece se um estabelecimento for criado
+   * pela API ANTERIOR depois da migration (janela da publicação). */
+  semMarcaESemPeriodo: number | null;
+  /** Contas ativas que podem criar estabelecimento (`MASTER_OWNER`, ou
+   * `MASTER_ADMIN` com `ESTABLISHMENTS_MANAGE`; platform/platform-access.ts):
+   * quem precisa respeitar a janela sem criação. */
+  contasQueCriamEstabelecimento: number;
   periodos: number | null;
   periodosAnulados: number | null;
 }
@@ -456,12 +464,25 @@ export async function lerImpactoComercial(client: PgClientLike): Promise<Impacto
     );
     const legado = coluna
       ? (
-          await client.query<{ marcados: string; sem: string }>(
+          await client.query<{ marcados: string; sem: string; sem_periodo: string }>(
             `SELECT count(*) FILTER (WHERE access_legacy_since IS NOT NULL)::text AS marcados,
-                    count(*) FILTER (WHERE access_legacy_since IS NULL)::text AS sem FROM tenants`,
+                    count(*) FILTER (WHERE access_legacy_since IS NULL)::text AS sem,
+                    count(*) FILTER (WHERE access_legacy_since IS NULL AND ${
+                      tabela
+                        ? 'NOT EXISTS (SELECT 1 FROM tenant_access_periods a WHERE a.tenant_id = t.id AND a.canceled_at IS NULL)'
+                        : 'true'
+                    })::text AS sem_periodo
+               FROM tenants t`,
           )
         ).rows[0]
       : undefined;
+    const [{ criam }] = (
+      await client.query<{ criam: string }>(
+        `SELECT count(*)::text AS criam FROM users
+          WHERE status = 'ACTIVE' AND (platform_role = 'MASTER_OWNER'
+             OR (platform_role = 'MASTER_ADMIN' AND 'ESTABLISHMENTS_MANAGE' = ANY(coalesce(platform_permissions, '{}'))))`,
+      )
+    ).rows;
     const periodos = tabela
       ? (
           await client.query<{ total: string; anulados: string }>(
@@ -486,6 +507,8 @@ export async function lerImpactoComercial(client: PgClientLike): Promise<Impacto
       recursosNegados: numero(c?.negados, 'features_denied'),
       marcadosComoAnteriores: legado ? numero(legado.marcados, 'tenants_legacy') : null,
       semMarca: legado ? numero(legado.sem, 'tenants_not_legacy') : null,
+      semMarcaESemPeriodo: legado ? numero(legado.sem_periodo, 'tenants_without_validity') : null,
+      contasQueCriamEstabelecimento: numero(criam, 'accounts_creating_tenants'),
       periodos: periodos ? numero(periodos.total, 'access_periods') : null,
       periodosAnulados: periodos ? numero(periodos.anulados, 'access_periods_canceled') : null,
     };
@@ -508,6 +531,8 @@ export function descreverImpactoComercial(impacto: ImpactoComercial): string[] {
     `RECURSOS_EXISTENTES_NEGADOS: ${impacto.recursosNegados}`,
     `MARCADOS_COMO_ANTERIORES: ${nada(impacto.marcadosComoAnteriores)}`,
     `SEM_MARCA_DE_ANTERIOR: ${nada(impacto.semMarca)}`,
+    `SEM_MARCA_E_SEM_PERIODO: ${nada(impacto.semMarcaESemPeriodo)}`,
+    `CONTAS_QUE_CRIAM_ESTABELECIMENTO: ${impacto.contasQueCriamEstabelecimento}`,
     `PERIODOS_DE_ACESSO: ${nada(impacto.periodos)}`,
     `PERIODOS_ANULADOS: ${nada(impacto.periodosAnulados)}`,
   ];

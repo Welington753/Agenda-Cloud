@@ -128,6 +128,10 @@ describe.skipIf(!url)('conferência de CommercialAccess contra PostgreSQL descar
       await comCliente((c) => c.query('UPDATE tenants SET access_legacy_since = NULL WHERE id = $1', [tenant]));
       const depois = await comCliente(async (c) => (await c.query(readFileSync(CONSULTA_DEPOIS, 'utf8'))) as unknown as Resposta[]);
       soLeitura(depois);
+      // O levantamento da fase conferir conta o mesmo caso (janela violada).
+      const comBloqueado = await comLeitor(lerImpactoComercial);
+      expect(comBloqueado.semMarcaESemPeriodo).toBeGreaterThanOrEqual(1);
+      expect(descreverImpactoComercial(comBloqueado)).toContainEqual(expect.stringMatching(/^CONTAS_QUE_CRIAM_ESTABELECIMENTO: \d+$/));
       expect(depois.flatMap((r) => r.rows).find((l) => l.tenant_id === tenant)).toMatchObject({
         marcado_como_anterior: false,
         validade: 'sem_validade',
