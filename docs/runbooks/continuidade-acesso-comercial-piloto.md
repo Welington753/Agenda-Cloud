@@ -1,5 +1,10 @@
 # Continuidade: kit de publicação de CommercialAccess (planos e validade)
 
+**Atualização (2ª rodada, PR #83):** o PR também corrige a compatibilidade
+da aplicação (`billing` de volta na ficha, que o web publicado exige) e
+define a janela sem criação de estabelecimento entre a migration e a API
+nova. Ver "Estado depois da 2ª rodada" no fim.
+
 Estado entre sessões da preparação da publicação do PR #82 (planos Básico, Pro
 e Max e validade do acesso), migration `CommercialAccess1793232000000`. Nada
 foi executado no piloto, no Neon ou em `agenda_dev`; nenhuma consulta ao
@@ -96,3 +101,46 @@ Detalhes e tabelas em `publicacao-acesso-comercial-piloto.md` ("Ensaio" e
   alterado.
 - Cluster PostgreSQL 17.11 descartável, harness de ensaio e saídas no
   scratchpad da sessão (só dados fictícios; nada vai para o repositório).
+
+## Estado depois da 2ª rodada
+
+- Commits novos no PR #83:
+  - `4c10a2e`: `billing: { available: false }` de volta na ficha
+    administrativa; contrato congelado do web `0c44052` em
+    `backend/test/support/contrato-web-anterior.ts`, rodado nos db-e2e
+    `platform-postgres` e `commercial-access-postgres`; levantamento com
+    `SEM_MARCA_E_SEM_PERIODO` e `CONTAS_QUE_CRIAM_ESTABELECIMENTO`; `aplicar`
+    anuncia a janela e `conferir` a confere (`ok` ou `VIOLADA`, saída 1).
+    **Commit dos ensaios da rodada 2;**
+  - o commit seguinte: runbook (janela, recuperação, rodadas e SHAs) e esta
+    nota. Só documentação.
+- **Janela sem criação:** começa antes da frase da `aplicar`; só criar
+  estabelecimento fica indisponível (único caminho na API anterior:
+  `POST /platform/establishments`); termina com a API nova Live e
+  `JANELA_SEM_CRIACAO: ok` na `conferir`. Violação: regularização individual
+  pelo dono (prorrogar teste ou cortesia), nunca a marca de anterior.
+- **Recuperação:** voltar só o web passou a ser alternativa (ficha abre);
+  defeito da API = corrigir para frente ou interrupção controlada (suspender a
+  API no Render; não ensaiado); API anterior não é retorno seguro; `down` e
+  restauração sobre o piloto não são recuperação padrão.
+- **Comprovado localmente (rodada 2):** sequência com a API anterior no ar
+  durante a migration, troca para a nova, `conferir` ok, criação com teste
+  pela nova, ficha no **navegador** com o web anterior, violação detectada e
+  regularizada. Detalhes no runbook, "Sequência da publicação".
+- **Depende do Render e não foi ensaiado:** momento e duração da troca de
+  instância no deploy, suspensão/retomada do serviço.
+- **Testes:** backend 1.656 unitários, 137 e2e HTTP, `tsc`, `oxlint`, build;
+  db-e2e afetados (`platform-postgres`, `commercial-access-postgres`,
+  `pilot-commercial-access-check`, `pilot-team-manager-check`); conferido que
+  tirar `billing` faz o contrato falhar.
+- Nada no piloto, no Neon ou no Render; `0c44052` segue só candidata.
+
+## Próximo passo exato (atualizado)
+
+1. Revisão e decisão de merge do PR #83 pelo dono.
+2. Depois do merge: SHA operacional = o merge na integration; confirmar no
+   Render o SHA Live dos dois serviços; listar com o dono as contas com
+   `manageEstablishments` (o `preparar` mostra quantas).
+3. Com autorização própria para cada uma: `preparar` → `restauracao` →
+   janela sem criação + `aplicar` → API → `conferir` (`JANELA_SEM_CRIACAO:
+   ok`) → web, pelo runbook.

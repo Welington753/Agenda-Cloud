@@ -1,7 +1,9 @@
 # Runbook — Publicar planos e validade do acesso no piloto (PR #82)
 
 Este runbook leva o piloto das onze migrations atuais até
-`CommercialAccess1793232000000` e depois publica a API e o web do PR #82.
+`CommercialAccess1793232000000` e depois publica a API e o web do PR #82,
+com a correção de compatibilidade do PR #83 (a ficha administrativa volta a
+trazer `billing`, que o web já publicado exige).
 Regras do lote em `docs/plans/planos-e-validade-do-acesso.md`; estado entre
 sessões em `continuidade-acesso-comercial-piloto.md`.
 
@@ -25,6 +27,13 @@ ele cobre só as duas migrations do Lote 6B.2, por um workflow próprio.
 - Consultas só leitura para revisão: `consultas/impacto-comercial-somente-leitura.sql`
   (antes e depois) e `consultas/validade-depois-somente-leitura.sql` (só
   depois).
+- **Compatibilidade da aplicação (PR #83):** a API nova devolve de novo
+  `billing: { available: false }` na ficha do estabelecimento, junto de
+  `access` e `accessPeriods`. Com isso o web já publicado abre a ficha
+  durante a publicação (ensaiado no navegador). Teste de contrato:
+  `backend/test/support/contrato-web-anterior.ts`, rodado nos db-e2e.
+- **Janela sem criação de estabelecimento** entre a migration e a API nova
+  (seção própria), conferida pela fase `conferir`.
 - Ensaio completo em PostgreSQL 17.11 descartável (seção "Ensaio"), ensaio
   de compatibilidade com a candidata `0c44052` e ensaio do `down` numa cópia
   (seção "Recuperação").
@@ -54,6 +63,42 @@ este kit** (definido depois da aprovação e do merge deste PR). Use **o mesmo
 SHA** em todas as fases e nos dois deploys. A fase `restauracao` recusa backup
 de outro commit; a fase `aplicar` recusa backup ou restauração de outro
 commit. Backups e comprovantes de ensaio feitos em outros SHAs não valem.
+
+## Janela sem criação de estabelecimento
+
+**Por quê:** entre o COMMIT da migration e a API nova estar Live, a API em
+produção é a **anterior**. Ela cria estabelecimento sem a marca de anterior e
+sem teste gravado; com a API nova, esse estabelecimento fica **bloqueado**
+("Sem validade registrada"; ensaiado). Publicar rápido não resolve.
+
+**Caminho de criação na API anterior** (lido em `0c44052`): um só,
+`POST /platform/establishments` (Administração → novo estabelecimento),
+em `accounts/invites.service.ts` (único `INSERT INTO tenants`), com a
+capacidade `manageEstablishments`: `MASTER_OWNER`, ou `MASTER_ADMIN` com
+`ESTABLISHMENTS_MANAGE`. Não há cadastro aberto ao público. Convites,
+equipe, agenda, reservas, recebimentos, suspensão, reativação e troca de plano
+não criam estabelecimento e **podem continuar** (ensaiado: o dono lê e grava
+pela API anterior antes e depois da migration).
+
+| | |
+| --- | --- |
+| **Começa** | antes de digitar a frase do passo 3 (a fase `aplicar` imprime `JANELA_SEM_CRIACAO: ...`). Antes disso, confira no levantamento `CONTAS_QUE_CRIAM_ESTABELECIMENTO` e combine com cada uma dessas contas que ninguém cria estabelecimento até o fim da janela. Se não for possível combinar com todas, não comece |
+| **Fica indisponível** | só criar estabelecimento (`POST /platform/establishments`) |
+| **Como conferir** | passo 4 depois da API nova Live: `JANELA_SEM_CRIACAO: ok` e `SEM_MARCA_E_SEM_PERIODO: 0`. Com `VIOLADA` (saída 1), há estabelecimento criado sem validade |
+| **Termina** | quando a API nova estiver Live **e** a fase `conferir` mostrar `JANELA_SEM_CRIACAO: ok`. Daí em diante a criação pela API nova grava o teste junto (ensaiado) |
+
+**Com `VIOLADA`:** não reabra a criação e não publique o web. A fase lista
+só a contagem; os ids saem da consulta `consultas/validade-depois-somente-leitura.sql`
+(linha `sem_validade`), com autorização para a leitura. A regularização é
+**individual e decidida pelo dono**, pela administração da API nova
+(prorrogar o teste ou conceder cortesia; ensaiado: prorrogar o teste levou o
+estabelecimento de `MISSING` a `TRIAL`). **Nunca** grave a marca de
+anterior num estabelecimento novo: ela dispensa a validade sem prazo.
+
+**O que depende do Render e não foi ensaiado:** que a API anterior pare de
+atender e a nova comece no momento do deploy (troca de instância), e quanto
+tempo isso leva. A janela não depende dessa duração: ela só termina com a
+conferência.
 
 ## Pré-requisitos (uma vez)
 
@@ -191,7 +236,8 @@ O que cada linha prova:
 
 ### 3. Aplicar: única etapa que escreve no piloto
 
-Escolha um momento de pouco uso. A migration leva cerca de um segundo, mas
+**A janela sem criação começa aqui** (seção acima). Escolha um momento de
+pouco uso. A migration leva cerca de um segundo, mas
 precisa de lock exclusivo curto em `tenants` (coluna nova e marca em todas as
 linhas) e escreve em `plans`, `plan_features` e `tenant_feature_overrides`. Se
 uma requisição segurar `tenants`, a migration desiste em 10 s
@@ -209,8 +255,9 @@ wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -F
    novo com exceção desligada).
 3. Faz um **backup novo** e confere que vem do mesmo servidor do backup
    conferido.
-4. Pede a frase. Confira `RESULT: SUCCESS`, `BACKUP_OK` e
-   `MESMO_SERVIDOR_DO_BACKUP_CONFERIDO: sim`, e digite:
+4. Imprime `JANELA_SEM_CRIACAO: ...` e pede a frase. Confira
+   `RESULT: SUCCESS`, `BACKUP_OK` e `MESMO_SERVIDOR_DO_BACKUP_CONFERIDO: sim`,
+   confirme que ninguém vai criar estabelecimento, e digite:
 
    ```text
    APLICAR CommercialAccess1793232000000
@@ -236,6 +283,8 @@ CONTAGENS_DESDE_O_BACKUP: iguais
 ...
 MARCADOS_COMO_ANTERIORES: <todos>
 SEM_MARCA_DE_ANTERIOR: 0
+SEM_MARCA_E_SEM_PERIODO: 0
+CONTAS_QUE_CRIAM_ESTABELECIMENTO: ...
 PERIODOS_DE_ACESSO: 0
 RESULTADO: CommercialAccess1793232000000 aplicada e conferida
 ```
@@ -260,6 +309,8 @@ wt.exe --window new powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -F
 | `ESTADO: divergente` | nem before nem after (ex.: exceção desligada antiga, nome de plano editado): não aplique nem publique |
 | `ERRO: ERR_CONFERENCIA_SEM_LEITURA` / `ERR_SEM_CONEXAO` | o banco não foi lido; repita |
 | `SESSOES_DA_MIGRATION_ATIVAS: n>0` | a migration ainda roda; espere e repita |
+| `JANELA_SEM_CRIACAO: ok` | em `after`: nenhum estabelecimento sem marca e sem período |
+| `JANELA_SEM_CRIACAO: VIOLADA (n ...)` (saída 1) | estabelecimento criado sem validade (pela API anterior): não reabra a criação nem publique o web; ver "Janela sem criação" |
 
 ### 5. Publicar a API
 
@@ -268,14 +319,16 @@ Deploy → Deploy a specific commit → `<sha>`**. Espere **Live** e confira:
 
 - `GET $WEB/agenda_api/auth/me` sem cookie: `401`;
 - o dono entra pelo e-mail (com o web atual) e a agenda e os serviços abrem;
-- a lista de estabelecimentos da administração abre.
+- a lista e a **ficha** de um estabelecimento na administração abrem no web
+  atual (a ficha continua mostrando "Mensalidades e pagamentos: ainda não há
+  registro financeiro nesta área", o texto do web anterior para
+  `billing.available = false`; ensaiado no navegador);
+- **fase `conferir` (passo 4): `JANELA_SEM_CRIACAO: ok`.** Só então a
+  criação de estabelecimento pode voltar.
 
-**Entre este passo e o 6, a ficha de um estabelecimento na administração não
-abre no web atual** (ensaiado: o validador do web anterior exige o campo
-`billing`, que a API nova não devolve mais; a tela mostra o erro de leitura e
-nada é gravado). Publique o web logo em seguida e não use a ficha nesse
-intervalo. Nenhum estabelecimento fica bloqueado nesse momento: todos estão
-marcados como anteriores e não há período.
+Nenhum estabelecimento fica bloqueado nesse momento: todos estão marcados como
+anteriores e não há período. O web atual não mostra validade nem períodos; o
+aviso de validade e o registro manual só existem no web novo (passo 6).
 
 Não há variável nova.
 
@@ -321,6 +374,8 @@ do plano.
 | `EXCECOES_PREVISTAS_DA_MIGRATION` | exceções ligadas `tfo_ca_*` que a migration grava: recurso já usado que o plano do estabelecimento não tem no catálogo |
 | `RECURSOS_EXISTENTES_NEGADOS` | precisa ser 0: nenhum recurso já usado é retirado |
 | `MARCADOS_COMO_ANTERIORES` / `SEM_MARCA_DE_ANTERIOR` | depois da migration: todos marcados; um sem marca só existe se criado depois (pela API nova, com teste, ou pela anterior, sem teste) |
+| `SEM_MARCA_E_SEM_PERIODO` | depois da migration: precisa ser 0; acima de 0, a janela sem criação foi violada |
+| `CONTAS_QUE_CRIAM_ESTABELECIMENTO` | contas ativas com `manageEstablishments`: quem precisa respeitar a janela |
 | `PERIODOS_DE_ACESSO` | depois da migration: 0 até a administração registrar algo |
 
 ## Códigos de parada próprios deste lote
@@ -355,9 +410,17 @@ do piloto. **Nenhuma dessas é recuperação padrão.** O backup serve para
 restaurar numa cópia e consultar, ou para uma decisão excepcional e explícita
 do dono, sabendo que tudo gravado depois dele se perde.
 
-**Ordem:** publicar é **migration → API → web**; um retorno conjunto é
-**web → API**. Nunca deixe o web novo no ar com a API anterior (não
-validado: o web novo exige `access` na ficha).
+**Ordem:** publicar é **migration → API → web**. Nunca deixe o web novo no
+ar com a API anterior (não validado: o web novo exige `access` na ficha).
+Nada aqui é automático: cada ação é manual, no Render ou pelo procedimento, e
+nenhuma garante disponibilidade além do que está marcado como ensaiado.
+
+| Sintoma | Ação | Pare e não siga se |
+| --- | --- | --- |
+| defeito de tela do web novo, API nova sã | **voltar só o web** (abaixo) | o defeito envolve validade, bloqueio ou registro comercial |
+| defeito da API nova | **corrigir para frente**: commit novo que preserve as regras comerciais, revisado e com os checks, publicado como API → web | a correção não estiver pronta: use a **interrupção controlada** |
+| defeito grave da API nova sem correção imediata | **interrupção controlada** (abaixo) | — |
+| migration aplicada com problema de dados | **parar** e investigar numa cópia restaurada; decisão do dono | sempre: `down` e restauração sobre o piloto não são recuperação padrão |
 
 Ensaio de 02/11/2026, no schema novo, com dados gravados pela API nova:
 pago em curso (Pro), cortesia vencida (Max, deslocada para o passado no banco
@@ -370,46 +433,60 @@ a versão Live do Render).**
 
 ### Voltar só o web para a versão anterior (API nova continua)
 
-- **Administração:** a ficha de estabelecimento não abre (o web anterior
-  recusa a resposta sem `billing`). Suspender, reativar, arquivar e trocar de
-  plano pela ficha ficam indisponíveis; registrar pagamento, prorrogação e
-  cortesia não existem no web anterior.
+Alternativa válida **depois da correção de contrato do PR #83** (ensaiado
+com a API de `4c10a2e` e o web `0c44052` no navegador):
+
+- **Administração:** a lista e a ficha abrem; suspender, reativar, arquivar e
+  trocar de plano continuam na ficha. Validade, períodos, registro de
+  pagamento, prorrogação, cortesia e correção **não existem** no web anterior:
+  a ficha mostra o texto antigo "ainda não há registro financeiro nesta área"
+  mesmo quando há período registrado (o web anterior não sabe mostrá-lo; nada
+  foi apagado).
 - **Estabelecimento vencido:** a API nova continua bloqueando (403
-  `ACESSO_VENCIDO`); o web anterior não conhece o código e mostra a mensagem
-  genérica de falta de permissão. Nada é liberado nem apagado.
-- Os demais (dono em validade, gerente, profissional, link público) seguem
-  funcionando: a API nova só **acrescenta** campos à sessão (`access`).
+  `ACESSO_VENCIDO`); o web anterior trata 403 como falta de permissão
+  (pelo código dele; não aberto no navegador nesse caso). Nada é liberado.
+- **Dono em validade, gerente, profissional, link público:** seguem; a API
+  nova só acrescenta campos à sessão (`access`).
+- As regras comerciais continuam valendo, porque a API é a nova.
 
-Use só para defeito de tela fora da administração e do aviso de validade.
+Pare se o defeito for de validade ou registro comercial: no web anterior não
+há como agir sobre eles.
 
-### Voltar a API (e o web) para a versão anterior
+### Interrupção controlada da API (até a correção)
 
-O web novo depende das rotas novas; volte os dois, **o web antes da API**.
+Para um defeito grave da API nova sem correção pronta, a alternativa à API
+anterior é **deixar a API fora do ar de propósito** (no Render, suspender o
+serviço `agenda-cloud-piloto-api`) até publicar a correção. O web continua
+abrindo e mostra que o servidor não respondeu; leituras tentam de novo sozinhas
+e escritas nunca são reenviadas (`leitura-com-recuperacao.ts`). Ninguém
+grava nada, e nenhuma regra comercial é contornada.
+
+**Não ensaiado:** a suspensão e a retomada no Render, o tempo de cada uma e a
+mensagem exata que o web mostra com a API suspensa. Ao retomar, o Render sobe
+o último deploy: confira que é o commit corrigido antes de reabrir o uso.
+
+### Voltar a API para a versão anterior: não é retorno seguro
+
 Comprovado com a API `0c44052` no schema novo:
 
 - **Estabelecimento vencido volta a ter acesso total** (agenda, serviços,
   recebimentos, 200 em tudo) e **grava** dados (no ensaio, criou um serviço).
   A API anterior não lê validade nem catálogo: o bloqueio comercial some para
-  todos, e o recurso fora do plano também deixa de ser conferido (como era
-  antes do lote).
-- **Registros comerciais continuam gravados, mas ficam invisíveis:** a ficha
-  da API anterior mostra `billing: { available: false }`; ninguém vê, registra
-  nem anula período nesse intervalo.
-- **Estabelecimento criado pela API anterior nasce sem a marca e sem teste.**
-  Com a API nova de volta, ele fica **bloqueado** ("Sem validade registrada",
-  `MISSING`; ensaiado). Precisa de regularização individual pela
-  administração. Liste-os com `consultas/validade-depois-somente-leitura.sql`
-  (linha `sem_validade`), com autorização para a leitura.
-- Os planos aparecem com os nomes novos (Básico, Pro, Max) na API anterior:
-  o catálogo foi renomeado no banco.
+  todos, e o recurso fora do plano também deixa de ser conferido.
+- **Registros comerciais continuam gravados, mas ficam invisíveis:** ninguém
+  vê, registra nem anula período nesse intervalo.
+- **Estabelecimento criado pela API anterior nasce sem a marca e sem teste**
+  e fica **bloqueado** quando a API nova volta (`MISSING`; ensaiado). Se,
+  ainda assim, o dono decidir voltar a API, a **janela sem criação** vale de
+  novo durante todo o retorno, e a volta da API nova termina com a fase
+  `conferir` (`JANELA_SEM_CRIACAO: ok`).
 - **Com a API nova de volta:** quem estava vencido volta a ser bloqueado; o
-  que foi gravado no meio-tempo continua (ensaiado); os períodos continuam
-  iguais.
+  que foi gravado no meio-tempo continua; os períodos continuam iguais
+  (ensaiado).
 
-**Não é uma combinação segura**: tira o controle de validade de todos
-enquanto durar e cria estabelecimentos que depois ficam bloqueados. Só para
-um defeito grave da API nova que impeça o uso geral, com decisão do dono e
-consciência dessas consequências.
+Por isso a recuperação de um defeito da API é **corrigir para frente** ou
+**interromper**; a API anterior só com decisão explícita do dono, sabendo que
+ela tira o controle de validade de todos enquanto estiver no ar.
 
 ### Migration
 
@@ -449,11 +526,19 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
   profissional com acesso, reservas passadas e futuras, recebimentos (um
   estornado), uma exceção manual **ligada** (fica intocada) e um registro de
   auditoria.
-- **Commit do procedimento:** `9d542aedf2f941e1b60c663fe89f4798ce6c5c65`.
-  Os commits seguintes só mudam documentação e testes; os scripts do
-  procedimento e a migration são iguais no SHA final do PR (conferir com
-  `git diff 9d542ae <sha> -- backend/scripts backend/src/migrations`, que
-  deve listar só testes).
+- **Duas rodadas, cada uma num SHA:**
+  - **Rodada 1, `9d542aedf2f941e1b60c663fe89f4798ce6c5c65`:** a matriz de
+    casos do procedimento (tabela "Resultados") e a compatibilidade com a API
+    nova **antes** da correção de contrato (a2d123b na aplicação).
+  - **Rodada 2, `4c10a2e6f4556611c7e306b284b31b5c67e39baf`:** depois da
+    correção de `billing` e da conferência da janela. Mudaram só o
+    levantamento (duas contagens novas), duas linhas de saída da `aplicar`, a
+    conferência da janela na `conferir` e a ficha da API; a lógica de
+    destino, TLS, backup, comprovante, frase, aplicação e resultado incerto é
+    a mesma da rodada 1, cujos resultados valem para ela. Rodada 2 em
+    "Sequência da publicação".
+  - Os commits depois de `4c10a2e` só mudam documentação: conferir com
+    `git diff 4c10a2e <sha> -- backend`, que deve sair vazio.
 
 ### Execução oficial, harness e limitações
 
@@ -509,16 +594,41 @@ contra o mesmo banco descartável com CommercialAccess:
 | --- | --- | --- |
 | dono de estabelecimento vencido: serviços, agenda, recebimentos | 403 `ACESSO_VENCIDO` | **200** (e grava) |
 | dono em validade, anterior ao controle ou fora do catálogo | 200 | 200 |
-| ficha da administração | campos novos (`access`, `accessPeriods`), sem `billing` | sem períodos, `billing.available=false` |
-| ficha da API nova no validador do web anterior | **recusada** | aceita |
+| ficha da administração | campos novos (`access`, `accessPeriods`); `billing.available=false` de novo desde `4c10a2e` | sem períodos, `billing.available=false` |
+| ficha da API nova no validador do web anterior | **recusada** em `9d542ae`; **aceita** depois da correção (`4c10a2e`, também no navegador) | aceita |
 | sessão (`/auth/me`) | só acrescenta `access` | — |
 | estabelecimento criado | com teste gravado | **sem marca e sem teste** (bloqueado ao voltar a API nova) |
 | API nova sobre o schema **anterior** (cópia em `before`) | dono e profissional: login 500; ficha: 500 | — |
 
-O web anterior não foi aberto no navegador: a recusa da ficha foi provada com
-a função de validação do próprio web anterior
-(`src/lib/administracao/contratos.ts`) sobre as respostas reais das duas APIs,
-e o resto pela comparação das formas das respostas.
+Na rodada 1, a recusa da ficha foi provada com a função de validação do
+próprio web anterior (`src/lib/administracao/contratos.ts`) sobre as
+respostas reais das duas APIs. Na rodada 2, o web anterior rodou no navegador
+contra a API corrigida (abaixo).
+
+### Sequência da publicação (rodada 2, `4c10a2e`)
+
+API anterior `0c44052` no ar (simulando o Live) contra o banco descartável em
+`before`; o "deploy" foi parar essa API e subir a nova no mesmo banco. Pasta
+de operações própria.
+
+| Passo | Como | Resultado |
+| --- | --- | --- |
+| dono lê e grava pela API anterior (antes da janela) | harness HTTP | 200 / 201 |
+| `preparar` | terminal simulado | `before` SUCCESS; `CONTAS_QUE_CRIAM_ESTABELECIMENTO: 1`; backup de 144 KB |
+| `restauracao` | **lançador oficial**, binários 17.11 | todas as linhas `ENSAIO_*` `true`; descartável apagado |
+| `aplicar` com a API anterior no ar | terminal simulado | imprime `JANELA_SEM_CRIACAO`; só CommercialAccess; `after` 12, 28/28; `SEM_MARCA_E_SEM_PERIODO: 0` |
+| dono lê e grava pela API anterior **no schema novo** | harness HTTP | 200 / 201 (operações fora da criação seguem na janela) |
+| troca para a API nova; `conferir` | terminal simulado | `ESTADO: after`; `JANELA_SEM_CRIACAO: ok` |
+| dono pela API nova; administração cria estabelecimento e registra pago | harness HTTP | 200 / 201; criado com teste; `conferir` segue `ok` (`SEM_MARCA_DE_ANTERIOR: 1`, `SEM_MARCA_E_SEM_PERIODO: 0`) |
+| **web anterior no navegador** (next dev de `0c44052` apontando para a API nova; Chromium do Playwright) | harness de navegador | ficha de um estabelecimento anterior ao controle e de um com período pago: abrem, com o cartão "Mensalidades e pagamentos" |
+| janela violada: a API anterior cria estabelecimento no schema novo | harness HTTP | 200; `conferir`: `JANELA_SEM_CRIACAO: VIOLADA (1 ...)`, saída 1; a consulta "validade depois" mostra `sem_validade` |
+| regularização individual pela API nova | harness HTTP | prorrogar o teste: `MISSING` → `TRIAL`, `legado=false`; `conferir`: `ok` |
+| senhas do banco nas saídas e registros | — | nenhuma ocorrência |
+
+Testes automáticos da correção: `platform-postgres` e
+`commercial-access-postgres` (db-e2e) rodam o contrato congelado do web
+anterior sobre a ficha (sem e com período pago), a lista e `/platform/access`;
+retirar `billing` da API faz os dois falharem (conferido).
 
 ### Limitações
 
@@ -528,8 +638,16 @@ e o resto pela comparação das formas das respostas.
   simulado. A colagem real com Ctrl+V é a ensaiada nas publicações
   anteriores.
 - O banco descartável é PostgreSQL local no Windows, não o Neon.
-- O web anterior não rodou no navegador contra a API nova (ver acima); o web
-  novo com a API anterior não foi validado.
+- O web anterior rodou no navegador só nas telas da administração (lista e
+  ficha); a área do dono no web anterior com a API nova foi conferida pela
+  forma das respostas, não no navegador. O web novo com a API anterior não
+  foi validado.
+- A troca de API no Render (quando a anterior para de atender, quanto tempo
+  leva) e a suspensão do serviço para a interrupção controlada **não** foram
+  ensaiadas: o "deploy" local foi parar um processo e subir outro.
+- A janela sem criação depende das pessoas com `manageEstablishments`: o
+  procedimento conta essas contas e confere o resultado, mas não impede
+  tecnicamente a criação pela API anterior.
 - `0c44052` não está confirmada como a versão Live.
 - Os dados reais do piloto não foram lidos: quantas exceções desligadas,
   planos fora do catálogo e estabelecimentos existem só o `preparar` dirá.
