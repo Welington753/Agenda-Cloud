@@ -542,12 +542,19 @@ A revisão final entra nos commits seguintes (ver o PR).
 - o site deixou de listar multiunidade, comissões e personalização como
   disponíveis.
 
-**Publicação (quando aprovada):** antes, conferir
-`SELECT count(*) FROM tenant_feature_overrides WHERE enabled = false`
-(esperado 0). Migration nova `CommercialAccess` pelo fluxo protegido; API
-antes do web (o web novo exige `access` na ficha). Nada foi publicado,
+**Publicação (quando aprovada):** pelo procedimento protegido próprio,
+`docs/runbooks/publicacao-acesso-comercial-piloto.md` (não pelo
+`migrations-production.md`, que é só do Lote 6B.2). A fase `preparar`
+confere as exceções de recurso desligadas (esperado 0; com alguma, para
+antes do backup) e só então faz o backup. Migration, depois API, depois web,
+do mesmo commit (o web novo exige `access` na ficha). Nada foi publicado,
 nenhum banco real foi tocado, nenhuma mensagem foi enviada.
 
-**Próximo passo exato:** revisão e decisão de merge do PR #82 pelo dono.
+**Atualização de 02/11/2026:** PR #82 mesclado na integration
+(`a2d123b`), sem publicação. O kit protegido de publicação está em
+`docs/runbooks/publicacao-acesso-comercial-piloto.md`, com o estado em
+`docs/runbooks/continuidade-acesso-comercial-piloto.md`.
+
+**Próximo passo exato (antes do merge do #82):** revisão e decisão de merge do PR #82 pelo dono.
 Pendências de produto: aprovar os preços; decidir, um a um, a
 regularização dos estabelecimentos com "Validade ainda não definida".

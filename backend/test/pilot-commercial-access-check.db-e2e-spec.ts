@@ -27,10 +27,17 @@ const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
   throw new Error('Este teste exige PostgreSQL descartável local.');
 }
-const CONSULTA = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../docs/runbooks/consultas/impacto-comercial-somente-leitura.sql',
-);
+const CONSULTAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/runbooks/consultas');
+const CONSULTA = path.join(CONSULTAS, 'impacto-comercial-somente-leitura.sql');
+const CONSULTA_DEPOIS = path.join(CONSULTAS, 'validade-depois-somente-leitura.sql');
+
+type Resposta = { command: string; rows: Record<string, unknown>[] };
+const soLeitura = (respostas: Resposta[]) => {
+  const comandos = respostas.map((r) => r.command);
+  expect(comandos[0]).toBe('BEGIN');
+  expect(comandos.at(-1)).toBe('ROLLBACK');
+  expect(comandos.filter((c) => !['BEGIN', 'SELECT', 'ROLLBACK', 'SET'].includes(c))).toEqual([]);
+};
 
 describe.skipIf(!url)('conferência de CommercialAccess contra PostgreSQL descartável', () => {
   async function comCliente<T>(fn: (client: Client) => Promise<T>): Promise<T> {
@@ -110,16 +117,21 @@ describe.skipIf(!url)('conferência de CommercialAccess contra PostgreSQL descar
       expect(linhas.join('\n')).not.toContain('Plano sem recursos');
 
       const sql = readFileSync(CONSULTA, 'utf8');
-      const resultado = await comCliente(
-        async (c) => (await c.query(sql)) as unknown as { command: string; rows: Record<string, unknown>[] }[],
-      );
-      const comandos = resultado.map((r) => r.command);
-      expect(comandos[0]).toBe('BEGIN');
-      expect(comandos.at(-1)).toBe('ROLLBACK');
-      expect(comandos.filter((c) => !['BEGIN', 'SELECT', 'ROLLBACK', 'SET'].includes(c))).toEqual([]);
+      const resultado = await comCliente(async (c) => (await c.query(sql)) as unknown as Resposta[]);
+      soLeitura(resultado);
       const linhasDoEstabelecimento = resultado.flatMap((r) => r.rows).filter((l) => l.tenant_id === tenant);
       expect(linhasDoEstabelecimento).toContainEqual(expect.objectContaining({ feature_id: 'feat_agenda', efeito: 'NEGADO' }));
       expect(linhasDoEstabelecimento).toContainEqual(expect.objectContaining({ feature_id: 'feat_equipe', efeito: 'excecao_da_migration' }));
+
+      // Depois da migration: um estabelecimento sem a marca e sem período
+      // (como os criados pela API anterior num retorno) aparece bloqueado.
+      await comCliente((c) => c.query('UPDATE tenants SET access_legacy_since = NULL WHERE id = $1', [tenant]));
+      const depois = await comCliente(async (c) => (await c.query(readFileSync(CONSULTA_DEPOIS, 'utf8'))) as unknown as Resposta[]);
+      soLeitura(depois);
+      expect(depois.flatMap((r) => r.rows).find((l) => l.tenant_id === tenant)).toMatchObject({
+        marcado_como_anterior: false,
+        validade: 'sem_validade',
+      });
     } finally {
       await comCliente(async (c) => {
         await c.query('DELETE FROM tenant_feature_overrides WHERE id = $1', [excecao]);
