@@ -1,0 +1,259 @@
+// CONTRATO DO WEB JÁ PUBLICADO, congelado: cópia literal de
+// src/lib/administracao/contratos.ts no commit 0c44052 (integration antes do
+// PR #82; candidata de ensaio, NÃO confirmada como a versão Live do Render).
+// Durante uma publicação, a API nova fica no ar com o web anterior; estes
+// validadores são os que o web anterior aplica às respostas da
+// administração. Os testes de banco os rodam sobre as respostas reais da API
+// nova: se um campo que o web anterior exige sumir ou mudar de forma, o teste
+// quebra. Não edite para "passar": a cópia só muda quando o web publicado
+// mudar (troque pelo arquivo do novo commit Live e registre o SHA aqui).
+/* eslint-disable */
+
+export const SITUACOES = {
+  TRIAL: "Em teste",
+  ACTIVE: "Ativo",
+  SUSPENDED: "Suspenso",
+  PAST_DUE: "Acesso restrito",
+  CANCELED: "Cancelado",
+  ARCHIVED: "Arquivado",
+} as const;
+export type SituacaoEstabelecimento = keyof typeof SITUACOES;
+export interface EstabelecimentoAdministrado {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  timezone: string;
+  status: SituacaoEstabelecimento;
+  createdAt: string;
+  plan: {
+    id: string;
+    code: string;
+    name: string;
+    catalogPriceCents: number | null;
+    maxProfessionals: number;
+    maxUnits: number;
+  };
+  owners: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    status: string;
+  }[];
+}
+export interface ListaEstabelecimentos {
+  items: EstabelecimentoAdministrado[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: { total: number; active: number; trial: number; restricted: number };
+  plans: { id: string; name: string }[];
+}
+export interface ExcessoDoPlano {
+  kind: "PROFESSIONALS" | "STAFF_ACCESSES" | "UNITS";
+  used: number;
+  limit: number;
+  /** O que ajustar para caber, redigido pelo servidor. */
+  action: string;
+}
+export interface OpcaoDePlano {
+  id: string;
+  code: string;
+  name: string;
+  catalogPriceCents: number | null;
+  maxProfessionals: number;
+  maxUnits: number;
+  /** Vazio: o uso atual cabe neste plano. */
+  excess: ExcessoDoPlano[];
+}
+export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
+  units: { id: string; name: string; address: string; isPrimary: boolean }[];
+  usage: {
+    professionals: number;
+    services: number;
+    consumers: number;
+    units: number;
+    staffSeats: {
+      limit: number;
+      activeAccesses: number;
+      pendingInvites: number;
+      suspendedAccesses: number;
+      used: number;
+      available: number;
+    };
+  };
+  trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
+  billing: { available: false };
+  /** Versão que as ações mandam de volta (outra tela mudou: 409). */
+  updatedAt: string;
+  /** Situação para a qual a reativação devolve (TRIAL ou ACTIVE). */
+  restoreStatus: string | null;
+  suspensionReason: string | null;
+  taxDocument: string | null;
+  planOptions: OpcaoDePlano[];
+  allowedActions: { edit: boolean; suspend: boolean; archive: boolean; reactivate: boolean; changePlan: boolean };
+}
+
+function objeto(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+const inteiro = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const texto = (value: unknown): value is string => typeof value === "string";
+const data = (value: unknown): value is string =>
+  texto(value) && Number.isFinite(Date.parse(value));
+export interface AcessoPlataforma {
+  canViewEstablishments: boolean;
+  /** O que mostrar na tela; o servidor confere de novo em cada operação.
+   * Ausente (API anterior) conta como "só consulta". */
+  capabilities?: {
+    viewDirectory: boolean;
+    manageEstablishments: boolean;
+    managePlatformAccess: boolean;
+    manageEstablishmentLifecycle?: boolean;
+  };
+  platformRole?: string | null;
+}
+export function ehAcesso(value: unknown): value is AcessoPlataforma {
+  if (!objeto(value) || typeof value.canViewEstablishments !== "boolean")
+    return false;
+  const caps = value.capabilities;
+  if (caps === undefined) return true;
+  return (
+    objeto(caps) &&
+    typeof caps.viewDirectory === "boolean" &&
+    typeof caps.manageEstablishments === "boolean" &&
+    typeof caps.managePlatformAccess === "boolean" &&
+    (caps.manageEstablishmentLifecycle === undefined || typeof caps.manageEstablishmentLifecycle === "boolean")
+  );
+}
+export function ehEstabelecimento(
+  value: unknown,
+): value is EstabelecimentoAdministrado {
+  if (
+    !objeto(value) ||
+    ![value.id, value.name, value.slug, value.category, value.timezone].every(
+      texto,
+    ) ||
+    !texto(value.status) ||
+    !Object.hasOwn(SITUACOES, value.status) ||
+    !data(value.createdAt)
+  )
+    return false;
+  const plan = value.plan;
+  return (
+    objeto(plan) &&
+    [plan.id, plan.code, plan.name].every(texto) &&
+    (plan.catalogPriceCents === null || inteiro(plan.catalogPriceCents)) &&
+    inteiro(plan.maxProfessionals) &&
+    inteiro(plan.maxUnits) &&
+    Array.isArray(value.owners) &&
+    value.owners.every(
+      (owner: unknown) =>
+        objeto(owner) &&
+        [owner.id, owner.name, owner.email, owner.status].every(texto) &&
+        (owner.phone === null || texto(owner.phone)),
+    )
+  );
+}
+export function ehListaEstabelecimentos(
+  value: unknown,
+): value is ListaEstabelecimentos {
+  if (
+    !objeto(value) ||
+    !Array.isArray(value.items) ||
+    !value.items.every(ehEstabelecimento) ||
+    !inteiro(value.total) ||
+    !inteiro(value.page) ||
+    value.page < 1 ||
+    !inteiro(value.pageSize) ||
+    value.pageSize < 1 ||
+    value.pageSize > 100
+  )
+    return false;
+  const summary = value.summary;
+  return (
+    objeto(summary) &&
+    [summary.total, summary.active, summary.trial, summary.restricted].every(
+      inteiro,
+    ) &&
+    value.items.length <= value.pageSize &&
+    value.items.length <= value.total &&
+    Array.isArray(value.plans) &&
+    value.plans.every(
+      (plan: unknown) => objeto(plan) && texto(plan.id) && texto(plan.name),
+    )
+  );
+}
+export function ehDetalheEstabelecimento(
+  value: unknown,
+): value is DetalheEstabelecimento {
+  if (!ehEstabelecimento(value)) return false;
+  const detail = value as unknown as Record<string, unknown>;
+  const usage = detail.usage,
+    trial = detail.trial,
+    acoes = detail.allowedActions;
+  return (
+    objeto(usage) &&
+    [usage.professionals, usage.services, usage.consumers, usage.units].every(inteiro) &&
+    objeto(usage.staffSeats) &&
+    ["limit", "activeAccesses", "pendingInvites", "suspendedAccesses", "used", "available"].every((k) =>
+      inteiro((usage.staffSeats as Record<string, unknown>)[k]),
+    ) &&
+    data(detail.updatedAt) &&
+    (detail.restoreStatus === null || texto(detail.restoreStatus)) &&
+    (detail.suspensionReason === null || texto(detail.suspensionReason)) &&
+    (detail.taxDocument === null || texto(detail.taxDocument)) &&
+    objeto(acoes) &&
+    ["edit", "suspend", "archive", "reactivate", "changePlan"].every((k) => typeof acoes[k] === "boolean") &&
+    Array.isArray(detail.planOptions) &&
+    detail.planOptions.every(
+      (p: unknown) =>
+        objeto(p) &&
+        [p.id, p.code, p.name].every(texto) &&
+        (p.catalogPriceCents === null || inteiro(p.catalogPriceCents)) &&
+        inteiro(p.maxProfessionals) &&
+        inteiro(p.maxUnits) &&
+        Array.isArray(p.excess) &&
+        p.excess.every((e: unknown) => objeto(e) && texto(e.kind) && inteiro(e.used) && inteiro(e.limit) && texto(e.action)),
+    ) &&
+    objeto(trial) &&
+    data(trial.trialStartAt) &&
+    data(trial.trialEndAt) &&
+    inteiro(trial.durationDays) &&
+    objeto(detail.billing) &&
+    detail.billing.available === false &&
+    Array.isArray(detail.units) &&
+    detail.units.every(
+      (unit: unknown) =>
+        objeto(unit) &&
+        [unit.id, unit.name, unit.address].every(texto) &&
+        typeof unit.isPrimary === "boolean",
+    )
+  );
+}
+
+export function precoCatalogo(centavos: number | null): string {
+  return centavos === null
+    ? "Não definido"
+    : new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(centavos / 100);
+}
+export function dataCadastro(instant: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(instant));
+}
+export const SEGMENTOS: Record<string, string> = {
+  BARBERSHOP: "Barbearia",
+  HAIR_SALON: "Salão",
+  CLINIC: "Clínica",
+  DENTAL_CLINIC: "Consultório odontológico",
+  AESTHETICS: "Estética",
+  TATTOO: "Estúdio de tatuagem",
+  PET_SHOP: "Pet shop",
+  OTHER: "Outro / não informado",
+};

@@ -114,8 +114,11 @@ pendente (nota `docs/runbooks/continuidade-publicacao-contas.md`, na branch
 ## Sequência de PRs
 
 Cada PR é pequeno, tem testes de banco e de navegador próprios e só mostra
-botão do que já funciona. Migrations seguem o fluxo protegido
-(`docs/runbooks/migrations-production.md`).
+botão do que já funciona. Cada migration nova no piloto ganha o seu próprio
+procedimento protegido, no molde dos anteriores (`publicacao-equipe-piloto.md`,
+`publicacao-gerente-piloto.md`, `publicacao-acesso-comercial-piloto.md`).
+`docs/runbooks/migrations-production.md` cobre só as duas migrations do Lote
+6B.2 e não serve para outras.
 
 ### A. Operação e confiabilidade
 

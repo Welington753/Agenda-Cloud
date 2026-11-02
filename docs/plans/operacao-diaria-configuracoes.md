@@ -147,8 +147,8 @@ Nenhuma linha existente é reescrita.
 
 1. Backup e conferência, como nas migrations anteriores (o procedimento
    protegido de aplicação precisa ser preparado para esta migration antes de
-   rodar no piloto: ver `docs/runbooks/migrations-production.md` e o modelo
-   de `publicacao-equipe-piloto.md`).
+   rodar no piloto, no modelo de `publicacao-equipe-piloto.md`;
+   `docs/runbooks/migrations-production.md` é só do Lote 6B.2).
 2. Aplicar `StaffLogin`. A API em produção (anterior) continua funcionando:
    ela não lê as colunas novas, e nenhuma conta sem e-mail existe ainda.
 3. Publicar a API nova.
@@ -256,9 +256,9 @@ O piloto está nas 8 migrations até `TeamAccess`. Os PRs 2 e 3 trazem duas
 migrations novas, que entram nesta ordem, cada passo com autorização
 explícita:
 
-1. Backup e conferência do banco do piloto (procedimento de
-   `docs/runbooks/migrations-production.md`, preparado para cada migration
-   nova como em `publicacao-equipe-piloto.md`).
+1. Backup e conferência do banco do piloto (procedimento próprio de cada
+   migration nova, como em `publicacao-equipe-piloto.md`;
+   `docs/runbooks/migrations-production.md` é só do Lote 6B.2).
 2. Aplicar `StaffLogin1792972800000` (9ª). Publicar a API do PR 2 e depois
    o web do PR 2. Conferir login por e-mail e por usuário.
 3. Backup e conferência de novo. Aplicar

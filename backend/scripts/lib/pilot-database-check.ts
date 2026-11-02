@@ -40,6 +40,13 @@ import {
   objetosGerentePresentes,
   TOTAL_OBJETOS_GERENTE,
 } from './gerente-acessos-schema.js';
+import {
+  falhasAntesDeComercial,
+  falhasDepoisDeComercial,
+  lerEstadoComercial,
+  objetosComercialPresentes,
+  TOTAL_OBJETOS_COMERCIAL,
+} from './acesso-comercial-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -57,7 +64,9 @@ export type PilotExpectation =
   | 'before-team-access'
   | 'after-team-access'
   | 'before-team-manager'
-  | 'after-team-manager';
+  | 'after-team-manager'
+  | 'before-commercial-access'
+  | 'after-commercial-access';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -70,6 +79,8 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'after-team-access',
   'before-team-manager',
   'after-team-manager',
+  'before-commercial-access',
+  'after-commercial-access',
 ];
 
 interface EnvLike {
@@ -243,6 +254,17 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosGerentePresentes(estado)}/${TOTAL_OBJETOS_GERENTE}`);
       log(`LOGIN_IDENTIFIER_COLLISIONS: ${estado.colisoesCruzadas}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    if (expectation === 'before-commercial-access' || expectation === 'after-commercial-access') {
+      const estado = await lerEstadoComercial(client);
+      const falhas =
+        expectation === 'before-commercial-access' ? falhasAntesDeComercial(estado) : falhasDepoisDeComercial(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosComercialPresentes(estado)}/${TOTAL_OBJETOS_COMERCIAL}`);
+      log(`DISABLED_FEATURE_OVERRIDES: ${estado.excecoesDesligadas}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }

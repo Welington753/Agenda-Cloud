@@ -26,6 +26,7 @@ import { DataSource } from 'typeorm';
 import { hashPassword } from '../src/auth/password-hasher.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { comTodosOsRecursos } from './support/plano-de-teste.js';
+import * as webAnterior from './support/contrato-web-anterior.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -239,6 +240,16 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
       created: true,
       period: { kind: 'PAID', cycle: 'MONTHLY', amountCents: 14990, currency: 'BRL', confirmationSource: 'MANUAL', plan: { name: 'Max' } },
     });
+
+    // O web já publicado (0c44052) continua abrindo a ficha e a lista com
+    // período pago registrado: os campos novos vêm junto, sem tirar nenhum
+    // dos que ele exige.
+    const fichaCrua = (await master.get(`/platform/establishments/${est.tenantId}`).expect(200)).body;
+    expect(fichaCrua.accessPeriods).toHaveLength(1);
+    expect(fichaCrua.billing).toEqual({ available: false });
+    expect(webAnterior.ehDetalheEstabelecimento(fichaCrua)).toBe(true);
+    expect(webAnterior.ehListaEstabelecimentos((await master.get('/platform/establishments').expect(200)).body)).toBe(true);
+    expect(webAnterior.ehAcesso((await master.get('/platform/access').expect(200)).body)).toBe(true);
 
     // A mesma requisição de novo (resposta perdida, clique duplo): nada novo.
     const repetida = await master.post(`/platform/establishments/${est.tenantId}/access/paid`).send(corpo).expect(200);
