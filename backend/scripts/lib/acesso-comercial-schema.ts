@@ -380,8 +380,11 @@ export interface ImpactoComercial {
   linhasDoCatalogoPrevistas: number;
   /** Exceções `tfo_ca_*` gravadas (antes: 0). */
   excecoesDaMigration: number;
-  /** Pares (estabelecimento, recurso existente) negados pela regra nova com o
-   * catálogo de depois da migration. Precisa ser 0: nada é retirado. */
+  /** Pares (estabelecimento existente, recurso existente) negados pela regra
+   * nova depois da migration. Antes dela: os que nem o catálogo novo nem a
+   * exceção que a migration grava cobririam (só exceção desligada). Depois:
+   * os estabelecimentos marcados como anteriores sem o recurso. Precisa ser
+   * 0: nada é retirado. */
   recursosNegados: number;
   /** `null` antes da migration (coluna ou tabela ainda não existe). */
   marcadosComoAnteriores: number | null;
@@ -415,6 +418,11 @@ export async function lerImpactoComercial(client: PgClientLike): Promise<Impacto
          FROM plans p ORDER BY p.id`,
     );
     const catalogo = LINHAS_DO_CATALOGO.map((l) => `${l.planId}:${l.featureId}`);
+    // Antes da migration todo estabelecimento é existente e ela grava a
+    // exceção ligada onde falta catálogo; depois, só os marcados contam e
+    // nenhuma exceção nova virá. Trechos fixos, escolhidos aqui.
+    const existente = coluna ? 't.access_legacy_since IS NOT NULL' : 'true';
+    const cobertoPelaMigration = coluna ? 'false' : 'true';
     const [c] = (
       await client.query<Record<string, string>>(
         `WITH catalogo AS (
@@ -423,7 +431,8 @@ export async function lerImpactoComercial(client: PgClientLike): Promise<Impacto
          ), pares AS (
            SELECT t.id AS tenant_id, f.id AS feature_id,
                   (SELECT o.enabled FROM tenant_feature_overrides o WHERE o.tenant_id = t.id AND o.feature_id = f.id) AS excecao,
-                  EXISTS (SELECT 1 FROM catalogo k WHERE k.plan_id = t.plan_id AND k.feature_id = f.id) AS no_plano
+                  EXISTS (SELECT 1 FROM catalogo k WHERE k.plan_id = t.plan_id AND k.feature_id = f.id) AS no_plano,
+                  ${existente} AS existente
              FROM tenants t CROSS JOIN features f WHERE f.id = ANY($2)
          )
          SELECT
@@ -436,7 +445,8 @@ export async function lerImpactoComercial(client: PgClientLike): Promise<Impacto
            (SELECT count(*) FROM unnest($1::text[]) x
               JOIN plans p ON p.id = split_part(x, ':', 1) JOIN features f ON f.id = split_part(x, ':', 2)
              WHERE NOT EXISTS (SELECT 1 FROM plan_features pf WHERE pf.plan_id = p.id AND pf.feature_id = f.id))::text AS catalogo_previsto,
-           (SELECT count(*) FROM pares WHERE NOT coalesce(excecao, no_plano))::text AS negados`,
+           (SELECT count(*) FROM pares WHERE existente
+              AND (excecao IS FALSE OR (excecao IS NULL AND NOT no_plano AND NOT ${cobertoPelaMigration})))::text AS negados`,
         [catalogo, [...RECURSOS_EXISTENTES], PLANOS_COMERCIAL.map((p) => p.id), PREFIXO_DAS_EXCECOES],
       )
     ).rows;
