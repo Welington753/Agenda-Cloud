@@ -30,6 +30,8 @@ import {
 } from '../common/tenant-authorization.js';
 import type { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { requireCommercialAccess } from '../commercial/commercial-gate.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import { isOperational } from './seats.js';
 import {
   OWN_AGENDA_FORBIDDEN_MESSAGE,
@@ -117,6 +119,8 @@ export class MyAgendaService {
     );
     if (!linha || !isOperational(linha.tenant_status)) throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
     if (linha.status !== 'ACTIVE') throw new ForbiddenException(MEMBERSHIP_SUSPENDED_MESSAGE);
+    // Validade e recurso: mesma regra de common/tenant-authorization.ts.
+    await requireCommercialAccess(manager, tenantId, FeatureKey.EQUIPE);
     if (!canViewOwnAgenda(linha.role, linha.permissions_confirmed)) {
       throw new ForbiddenException(OWN_AGENDA_FORBIDDEN_MESSAGE);
     }

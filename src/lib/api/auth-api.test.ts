@@ -85,6 +85,24 @@ describe("login", () => {
 });
 
 describe("buscarSessaoAtual", () => {
+  it("validade na sessão: o dono recebe a situação; o funcionário recebe só se está bloqueado (state null)", async () => {
+    const contexto = SESSAO_VALIDA.contexts[0];
+    const dono = { ...contexto, access: { state: "MISSING", blocked: true, validUntil: null, expiredAt: null, expiredKind: null } };
+    const gerente = {
+      ...contexto,
+      membershipId: "membership_2",
+      tenantId: "tenant_2",
+      role: "GERENTE",
+      access: { state: null, blocked: false, validUntil: null, expiredAt: null, expiredKind: null },
+    };
+    mockFetch(200, { ...SESSAO_VALIDA, contexts: [dono, gerente] });
+    const resultado = await buscarSessaoAtual();
+    expect(resultado.ok && resultado.dados?.contexts.map((c) => c.access?.state)).toEqual(["MISSING", null]);
+
+    mockFetch(200, { ...SESSAO_VALIDA, contexts: [{ ...contexto, access: { state: 3, blocked: false } }] });
+    expect(await buscarSessaoAtual()).toEqual({ ok: false, falha: { tipo: "indisponivel" } });
+  });
+
   it("401 vira ok:true com dados null — não autenticado nunca é uma falha de comunicação", async () => {
     mockFetch(401, { message: "Não autenticado." });
 

@@ -66,7 +66,8 @@ export function PlanoDoEstabelecimento({ item, aoMudar }: { item: DetalheEstabel
           <div>
             <dt className="text-xs text-ink-soft">Unidades</dt>
             <dd className="mt-1 text-sm font-medium">
-              {item.usage.units} de {item.plan.maxUnits}
+              {item.usage.units}
+              <span className="block text-xs font-normal text-ink-soft">Multiunidade ainda não disponível</span>
             </dd>
           </div>
         </dl>
@@ -93,7 +94,7 @@ export function PlanoDoEstabelecimento({ item, aoMudar }: { item: DetalheEstabel
                         {p.id === item.plan.id ? " (atual)" : ""}
                       </span>
                       <span className="block text-xs text-ink-soft">
-                        Até {p.maxProfessionals} profissional(is) e {p.maxUnits} unidade(s) · catálogo{" "}
+                        Até {p.maxProfessionals} profissional(is) e acessos de equipe · catálogo{" "}
                         {precoCatalogo(p.catalogPriceCents)}
                       </span>
                       {p.excess.length > 0 && (

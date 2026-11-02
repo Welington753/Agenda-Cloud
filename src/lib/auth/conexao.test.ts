@@ -29,6 +29,20 @@ function sessao(userId: string): SessaoRealContexto {
 const AUTENTICADO: EstadoAutenticacaoReal = { status: "autenticado", sessao: sessao("user_1"), tenantIdAtivo: "tenant_1" };
 
 describe("aplicarVerificacao (volta ao aplicativo / internet de volta)", () => {
+  it("mesma pessoa, mas o acesso do estabelecimento pausou (ou voltou): adota a sessão nova", () => {
+    const vencida = sessao("user_1");
+    const contexto = { ...CONTEXTO, access: { state: "EXPIRED" as const, blocked: true, validUntil: null, expiredAt: null, expiredKind: null } };
+    vencida.contexts = [contexto];
+    vencida.activeContext = contexto;
+    const r = aplicarVerificacao(AUTENTICADO, { ok: true, dados: vencida }, "tenant_1");
+    expect(r.estado).not.toBe(AUTENTICADO);
+    expect(r.estado).toMatchObject({ status: "autenticado", tenantIdAtivo: "tenant_1" });
+    const volta = aplicarVerificacao(r.estado, { ok: true, dados: sessao("user_1") }, "tenant_1");
+    expect(volta.estado).not.toBe(r.estado);
+    // Sem mudança de bloqueio: o mesmo objeto.
+    expect(aplicarVerificacao(r.estado, { ok: true, dados: vencida }, "tenant_1").estado).toBe(r.estado);
+  });
+
   it("API sem resposta: mantém exatamente o estado atual e só sinaliza a conexão", () => {
     const r = aplicarVerificacao(AUTENTICADO, { ok: false, falha: { tipo: "falha_comunicacao" } }, null);
     expect(r.estado).toBe(AUTENTICADO);

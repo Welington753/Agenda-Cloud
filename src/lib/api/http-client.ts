@@ -95,7 +95,25 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
     return { kind: "network-error" };
   }
   if (!response.ok) {
+    if (response.status === 403 && codigoDoBackend(data) === CODIGO_ACESSO_VENCIDO) avisarAcessoVencido();
     return { kind: "http-error", status: response.status, data };
   }
   return { kind: "success", status: response.status, data: data as T };
+}
+
+/** Código do servidor para o estabelecimento com o acesso vencido. */
+export const CODIGO_ACESSO_VENCIDO = "ACESSO_VENCIDO";
+/** Evento de `window` quando uma rota responde ACESSO_VENCIDO: a sessão
+ * aberta antes do vencimento é relida, e a tela troca a página pelo aviso
+ * de regularização em vez de ficar com erro (real-auth-context.tsx). */
+export const EVENTO_ACESSO_VENCIDO = "agenda:acesso-vencido";
+
+function codigoDoBackend(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const codigo = (data as Record<string, unknown>).code;
+  return typeof codigo === "string" ? codigo : null;
+}
+
+function avisarAcessoVencido() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENTO_ACESSO_VENCIDO));
 }

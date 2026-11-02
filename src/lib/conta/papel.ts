@@ -113,6 +113,15 @@ export function inicioDoPerfil(
 
 const dentro = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
 
+/** Páginas que não dependem do estabelecimento ativo operar: a
+ * administração da plataforma, a escolha de estabelecimento e as
+ * configurações pessoais. Continuam abertas com o acesso vencido. */
+export function paginaForaDoEstabelecimento(pathname: string | null): boolean {
+  if (!pathname) return false;
+  const caminho = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return caminho !== "/conta" && paginaComum(caminho);
+}
+
 /** Páginas de `/conta` que valem para qualquer perfil: a entrada `/conta`
  * (que só encaminha), a escolha de estabelecimento, a administração da
  * plataforma (autorização própria, independente do papel no

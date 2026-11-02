@@ -202,6 +202,8 @@ describe.skipIf(!DIRECT_URL)('Web Push de novas solicitações contra PostgreSQL
     const tenant = await m.save(
       m.create(Tenant, { slug, category: BusinessCategory.OTHER, timezone: SP, planId, status: TenantStatus.ACTIVE }),
     );
+    // Anterior ao controle de validade: opera sem período (commercial/).
+    await m.query('UPDATE tenants SET access_legacy_since = now() WHERE id = $1', [tenant.id]);
     await m.save(m.create(Unit, { tenantId: tenant.id, name: `Clínica ${contador}`, address: 'Rua X', timezone: SP, isPrimary: true }));
     const dono = await novoUsuario(`Dono ${contador}`, tenant.id);
     const servico = await servicos.create(dono.userId, tenant.id, {

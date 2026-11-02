@@ -92,7 +92,35 @@ describe("contrato da administração", () => {
         trialEndAt: "2026-10-15T12:00:00Z",
         durationDays: 14,
       },
-      billing: { available: false },
+      access: {
+        state: "PAID",
+        blocked: false,
+        validUntil: "2026-11-29T03:00:00.000Z",
+        lastDay: "2026-11-28",
+        expiredAt: null,
+        expiredKind: null,
+      },
+      accessPeriods: [
+        {
+          id: "per_1",
+          kind: "PAID",
+          plan: { id: "plan_1", name: "Básico" },
+          startsAt: "2026-10-29T03:00:00.000Z",
+          endsAt: "2026-11-29T03:00:00.000Z",
+          firstDay: "2026-10-29",
+          lastDay: "2026-11-28",
+          cycle: "MONTHLY",
+          amountCents: 4990,
+          currency: "BRL",
+          paymentMethod: "PIX",
+          receivedOn: "2026-10-29",
+          reference: null,
+          confirmationSource: "MANUAL",
+          reason: null,
+          recordedAt: "2026-10-29T15:00:00.000Z",
+          recordedBy: { id: "user_1", name: "Pessoa" },
+        },
+      ],
       updatedAt: "2026-10-20T12:00:00Z",
       restoreStatus: null,
       suspensionReason: null,
@@ -108,7 +136,16 @@ describe("contrato da administração", () => {
           excess: [{ kind: "PROFESSIONALS", used: 2, limit: 1, action: "Desative 1 profissional." }],
         },
       ],
-      allowedActions: { edit: true, suspend: true, archive: true, reactivate: false, changePlan: true },
+      allowedActions: {
+        edit: true,
+        suspend: true,
+        archive: true,
+        reactivate: false,
+        changePlan: true,
+        recordPayment: true,
+        extendTrial: false,
+        grantCourtesy: true,
+      },
     };
     expect(ehDetalheEstabelecimento(detail)).toBe(true);
     expect(ehDetalheEstabelecimento({ ...detail, status: "ARCHIVED" })).toBe(true);
@@ -116,8 +153,17 @@ describe("contrato da administração", () => {
     expect(
       ehDetalheEstabelecimento({ ...detail, usage: { ...detail.usage, staffSeats: { used: 1 } } }),
     ).toBe(false);
+    // Validade e histórico são obrigatórios e conferidos campo a campo.
+    expect(ehDetalheEstabelecimento({ ...detail, access: undefined })).toBe(false);
+    expect(ehDetalheEstabelecimento({ ...detail, access: { ...detail.access, state: "ACTIVE" } })).toBe(false);
     expect(
-      ehDetalheEstabelecimento({ ...detail, billing: { available: true } }),
+      ehDetalheEstabelecimento({
+        ...detail,
+        accessPeriods: [{ ...detail.accessPeriods[0], confirmationSource: "BANCO" }],
+      }),
+    ).toBe(false);
+    expect(
+      ehDetalheEstabelecimento({ ...detail, accessPeriods: [{ ...detail.accessPeriods[0], lastDay: "28/11/2026" }] }),
     ).toBe(false);
     expect(
       ehDetalheEstabelecimento({ ...detail, usage: { professionals: null } }),

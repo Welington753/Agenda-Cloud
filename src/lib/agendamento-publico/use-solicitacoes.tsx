@@ -34,6 +34,7 @@ import {
 import { usePathname } from "next/navigation";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { temArea } from "@/lib/conta/papel";
+import { acessoVencido } from "@/lib/api/auth-api";
 import {
   listarSolicitacoes,
   type FalhaPrivada,
@@ -93,7 +94,9 @@ export function SolicitacoesProvider({ children }: { children: ReactNode }) {
   const ativo = sessao.status === "autenticado" && sessao.tenantIdAtivo
     ? sessao.sessao.contexts.find((c) => c.tenantId === sessao.tenantIdAtivo)
     : undefined;
-  const tenantId = ativo && (ativo.role === "DONO" || temArea(ativo, "SOLICITACOES_VER")) ? ativo.tenantId : null;
+  // Acesso vencido: nada a consultar (a rota responderia ACESSO_VENCIDO).
+  const tenantId =
+    ativo && !acessoVencido(ativo) && (ativo.role === "DONO" || temArea(ativo, "SOLICITACOES_VER")) ? ativo.tenantId : null;
   const userId = sessao.status === "autenticado" ? sessao.sessao.user.id : null;
   const chave = tenantId && userId ? `${userId}:${tenantId}` : null;
 

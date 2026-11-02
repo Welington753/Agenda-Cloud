@@ -30,6 +30,7 @@ import { TeamService } from '../src/team/team.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { dataLocalDe } from '../src/availability/time-zone.js';
 import { staffAccountSchema, staffInviteSchema } from '../src/team/team.dto.js';
+import { comTodosOsRecursos } from './support/plano-de-teste.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -93,7 +94,7 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
     const tenantId = id();
     const unitId = id();
     await db.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE')`,
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now())`,
       [tenantId, `${marca}-${nome}`, planos[max]],
     );
     await db.query(
@@ -208,7 +209,7 @@ describe.skipIf(!url)('gerente e login interno contra PostgreSQL descartável', 
     for (const max of [1, 2, 3]) {
       planos[max] = id();
       await db.query(
-        `INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, $3, '', $4, 1)`,
+        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $2, $3, '', $4, 1)`),
         [planos[max], `${marca}-${max}`, `Plano ${max}`, max],
       );
     }

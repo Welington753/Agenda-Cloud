@@ -38,7 +38,7 @@ import type {
 const conflito = (code: string, message: string, extra: Record<string, unknown> = {}) =>
   new ConflictException({ code, message, ...extra });
 
-interface TenantRow {
+export interface TenantRow {
   id: string;
   slug: string;
   status: string;
@@ -49,6 +49,8 @@ interface TenantRow {
   plan_id: string;
   name: string;
   unit_id: string | null;
+  timezone: string;
+  created_at: Date;
 }
 
 /** `updated_at` do estabelecimento é a versão comparada pelas telas: sempre
@@ -109,7 +111,7 @@ export class EstablishmentAdminService {
     return this.dataSource.transaction(async (manager) => {
       const actor = await loadActor(manager, actorId);
       requireCapability(actor, 'manageEstablishments');
-      const atual = await this.lockTenant(manager, tenantId, dto.expectedUpdatedAt);
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
       const novo = {
         name: dto.name ?? atual.name,
         category: dto.category ?? atual.category,
@@ -125,7 +127,7 @@ export class EstablishmentAdminService {
           atual.id,
         ]);
       }
-      const versao = await this.gravar(
+      const versao = await writeEstablishment(
         manager,
         atual.id,
         now,
@@ -150,12 +152,12 @@ export class EstablishmentAdminService {
 
   async suspend(actorId: string, sessionId: string, tenantId: string, dto: SuspendEstablishmentDto, now = new Date()) {
     return this.dataSource.transaction(async (manager) => {
-      const actor = await this.lifecycleActor(manager, actorId, sessionId, now);
-      const atual = await this.lockTenant(manager, tenantId, dto.expectedUpdatedAt);
+      const actor = await lifecycleActor(manager, actorId, sessionId, now);
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
       if (!isOperational(atual.status)) {
         throw conflito('SITUACAO_INVALIDA', 'Só um estabelecimento em operação (teste ou ativo) pode ser suspenso.');
       }
-      const versao = await this.gravar(
+      const versao = await writeEstablishment(
         manager,
         atual.id,
         now,
@@ -180,8 +182,8 @@ export class EstablishmentAdminService {
 
   async archive(actorId: string, sessionId: string, tenantId: string, dto: ArchiveEstablishmentDto, now = new Date()) {
     return this.dataSource.transaction(async (manager) => {
-      const actor = await this.lifecycleActor(manager, actorId, sessionId, now);
-      const atual = await this.lockTenant(manager, tenantId, dto.expectedUpdatedAt);
+      const actor = await lifecycleActor(manager, actorId, sessionId, now);
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
       if (atual.status === 'ARCHIVED') throw conflito('JA_ARQUIVADO', 'Este estabelecimento já está arquivado.');
       if (!isOperational(atual.status) && atual.status !== 'SUSPENDED') {
         throw conflito('SITUACAO_INVALIDA', 'Esta situação não pode ser arquivada por aqui.');
@@ -190,7 +192,7 @@ export class EstablishmentAdminService {
         throw conflito('CONFIRMACAO_DIFERENTE', 'Digite o endereço do estabelecimento exatamente como aparece para confirmar.');
       }
       const restaurar = isOperational(atual.status) ? atual.status : atual.restore_status;
-      const versao = await this.gravar(
+      const versao = await writeEstablishment(
         manager,
         atual.id,
         now,
@@ -221,8 +223,8 @@ export class EstablishmentAdminService {
     now = new Date(),
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const actor = await this.lifecycleActor(manager, actorId, sessionId, now);
-      const atual = await this.lockTenant(manager, tenantId, dto.expectedUpdatedAt);
+      const actor = await lifecycleActor(manager, actorId, sessionId, now);
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
       if (atual.status !== 'SUSPENDED' && atual.status !== 'ARCHIVED') {
         throw conflito('SITUACAO_INVALIDA', 'Só um estabelecimento suspenso ou arquivado pode ser reativado.');
       }
@@ -232,7 +234,7 @@ export class EstablishmentAdminService {
           'Não há registro da situação anterior deste estabelecimento; a reativação não vai inventar uma.',
         );
       }
-      const versao = await this.gravar(
+      const versao = await writeEstablishment(
         manager,
         atual.id,
         now,
@@ -257,11 +259,11 @@ export class EstablishmentAdminService {
 
   async changePlan(actorId: string, sessionId: string, tenantId: string, dto: ChangePlanDto, now = new Date()) {
     return this.dataSource.transaction(async (manager) => {
-      const actor = await this.lifecycleActor(manager, actorId, sessionId, now);
+      const actor = await lifecycleActor(manager, actorId, sessionId, now);
       // `lockTenant` pega o mesmo lock das vagas (seats.ts): um convite ou um
       // profissional novo em paralelo fica em fila e é contado aqui (ou vê o
       // plano novo).
-      const atual = await this.lockTenant(manager, tenantId, dto.expectedUpdatedAt);
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
       if (atual.plan_id === dto.planId) return { updatedAt: atual.updated_at, planId: atual.plan_id };
       const [plano] = await manager.query<{ id: string; code: string; name: string; max_professionals: number; max_units: number }[]>(
         'SELECT id, code, name, max_professionals, max_units FROM plans WHERE id = $1',
@@ -280,7 +282,7 @@ export class EstablishmentAdminService {
           { excess: excesso },
         );
       }
-      const versao = await this.gravar(manager, atual.id, now, `plan_id = $3`, [plano.id]);
+      const versao = await writeEstablishment(manager, atual.id, now, `plan_id = $3`, [plano.id]);
       await recordAudit(
         manager,
         {
@@ -296,45 +298,57 @@ export class EstablishmentAdminService {
       return { updatedAt: versao, planId: plano.id };
     });
   }
+}
 
-  // ---------------------------------------------------------------- internos
+/** Quem muda situação, plano ou validade: `MASTER_OWNER` com senha
+ * confirmada há pouco nesta sessão. */
+export async function lifecycleActor(manager: EntityManager, actorId: string, sessionId: string, now: Date): Promise<Actor> {
+  await requireRecentReauth(manager, sessionId, now);
+  const actor = await loadActor(manager, actorId);
+  requireCapability(actor, 'manageEstablishmentLifecycle');
+  return actor;
+}
 
-  private async lifecycleActor(manager: EntityManager, actorId: string, sessionId: string, now: Date): Promise<Actor> {
-    await requireRecentReauth(manager, sessionId, now);
-    const actor = await loadActor(manager, actorId);
-    requireCapability(actor, 'manageEstablishmentLifecycle');
-    return actor;
+/** Trava a linha do estabelecimento (o mesmo lock das vagas) e confere a
+ * versão lida pela tela. */
+export async function lockEstablishment(
+  manager: EntityManager,
+  tenantId: string,
+  expectedUpdatedAt: string,
+): Promise<TenantRow> {
+  const [linha] = await manager.query<TenantRow[]>(
+    `SELECT t.id, t.slug::text AS slug, t.status::text AS status, t.restore_status::text AS restore_status,
+            t.category::text AS category, t.tax_document, t.updated_at, t.plan_id, t.timezone, t.created_at,
+            COALESCE(u.name, t.slug::text) AS name, u.id AS unit_id
+       FROM tenants t
+       LEFT JOIN LATERAL (
+         SELECT id, name FROM units WHERE tenant_id = t.id AND is_primary = true ORDER BY created_at, id LIMIT 1
+       ) u ON true
+      WHERE t.id = $1 FOR NO KEY UPDATE OF t`,
+    [tenantId],
+  );
+  if (!linha) throw new NotFoundException('Estabelecimento não encontrado.');
+  if (new Date(linha.updated_at).getTime() !== new Date(expectedUpdatedAt).getTime()) {
+    throw conflito('ALTERADO_POR_OUTRA_TELA', 'O estabelecimento mudou desde que você abriu a tela. Recarregue e confira.');
   }
+  return linha;
+}
 
-  private async lockTenant(manager: EntityManager, tenantId: string, expectedUpdatedAt: string): Promise<TenantRow> {
-    const [linha] = await manager.query<TenantRow[]>(
-      `SELECT t.id, t.slug::text AS slug, t.status::text AS status, t.restore_status::text AS restore_status,
-              t.category::text AS category, t.tax_document, t.updated_at, t.plan_id,
-              COALESCE(u.name, t.slug::text) AS name, u.id AS unit_id
-         FROM tenants t
-         LEFT JOIN LATERAL (
-           SELECT id, name FROM units WHERE tenant_id = t.id AND is_primary = true ORDER BY created_at, id LIMIT 1
-         ) u ON true
-        WHERE t.id = $1 FOR NO KEY UPDATE OF t`,
-      [tenantId],
-    );
-    if (!linha) throw new NotFoundException('Estabelecimento não encontrado.');
-    if (new Date(linha.updated_at).getTime() !== new Date(expectedUpdatedAt).getTime()) {
-      throw conflito('ALTERADO_POR_OUTRA_TELA', 'O estabelecimento mudou desde que você abriu a tela. Recarregue e confira.');
-    }
-    return linha;
-  }
-
-  /** Atualiza o estabelecimento e devolve a nova versão. `$1` é o id, `$2` o
-   * instante; os demais parâmetros começam em `$3`. */
-  private async gravar(manager: EntityManager, tenantId: string, now: Date, sets: string, valores: unknown[]): Promise<Date> {
-    const [linha] = linhasDe<{ updated_at: Date }>(
-      await manager.query(`UPDATE tenants SET ${sets}, ${AVANCAR} WHERE id = $1 RETURNING updated_at`, [
-        tenantId,
-        now,
-        ...valores,
-      ]),
-    );
-    return linha.updated_at;
-  }
+/** Atualiza o estabelecimento e devolve a nova versão. `$1` é o id, `$2` o
+ * instante; os demais parâmetros começam em `$3`. */
+export async function writeEstablishment(
+  manager: EntityManager,
+  tenantId: string,
+  now: Date,
+  sets: string,
+  valores: unknown[],
+): Promise<Date> {
+  const [linha] = linhasDe<{ updated_at: Date }>(
+    await manager.query(`UPDATE tenants SET ${sets}, ${AVANCAR} WHERE id = $1 RETURNING updated_at`, [
+      tenantId,
+      now,
+      ...valores,
+    ]),
+  );
+  return linha.updated_at;
 }

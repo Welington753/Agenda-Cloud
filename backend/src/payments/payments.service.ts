@@ -37,6 +37,7 @@ import {
   canViewPayments,
 } from './payment-access.js';
 import type { PaymentPeriodDto, RecordPaymentDto, RefundPaymentDto } from './payments.dto.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
@@ -138,6 +139,7 @@ export class PaymentsService {
     const autorizado = await resolveAuthorizedTenant(this.dataSource.manager, userId, tenantId, {
       permitido: canRecordPayments,
       mensagemProibido: PAYMENT_RECORD_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.PAGAMENTOS,
     });
     const repetido = await this.porChave(this.dataSource.manager, autorizado.tenantId, userId, dto.requestKey);
     if (repetido) return { created: false, payment: repetido };
@@ -209,6 +211,7 @@ export class PaymentsService {
       const autorizado = await resolveAuthorizedTenant(manager, userId, tenantId, {
         permitido: canRefundPayments,
         mensagemProibido: PAYMENT_REFUND_FORBIDDEN_MESSAGE,
+        recurso: FeatureKey.PAGAMENTOS,
       });
       const [linha] = linhasDe<{ refunded_at: Date | null; amount_cents: string; timezone: string; received_on: string }>(
         await manager.query(
@@ -251,6 +254,7 @@ export class PaymentsService {
     const autorizado = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewPayments,
       mensagemProibido: PAYMENTS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.PAGAMENTOS,
     });
     const timezone = await this.fuso(manager, autorizado.tenantId);
     const periodo = query.from && query.to ? { from: query.from, to: query.to } : mesDaData(dataLocalDe(now, timezone));

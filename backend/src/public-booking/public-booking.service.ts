@@ -53,6 +53,7 @@ import {
 } from '../appointments/appointments.service.js';
 import { normalizePhone } from '../auth/phone-normalizer.js';
 import { isTenantUsableForSession } from '../auth/tenant-access.js';
+import { featureEnabled, tenantAccessSituation } from '../commercial/commercial-gate.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import { AvailabilityService } from '../availability/availability.service.js';
 import type { MotivoSemHorario } from '../availability/availability-rules.js';
@@ -89,6 +90,7 @@ import {
   travarProfissional,
   travarTelefone,
 } from './public-booking.repository.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 export const PUBLIC_NOT_FOUND_MESSAGE = 'Página de agendamento não encontrada.';
 export const SLOT_TAKEN_PUBLIC_MESSAGE =
@@ -343,6 +345,7 @@ export class PublicBookingService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canManagePublicBooking,
       mensagemProibido: PUBLIC_BOOKING_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDAMENTO_PUBLICO,
     });
     const config = await configuracaoDo(manager, authorized.tenantId);
     return this.settingsView(manager, authorized.tenantId, config);
@@ -353,6 +356,7 @@ export class PublicBookingService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canManagePublicBooking,
       mensagemProibido: PUBLIC_BOOKING_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.AGENDAMENTO_PUBLICO,
     });
     const config = await gravarConfiguracao(manager, authorized.tenantId, enabled, userId);
     return this.settingsView(manager, authorized.tenantId, config);
@@ -405,6 +409,12 @@ export class PublicBookingService {
   private async tenantPublico(manager: EntityManager, slug: string, travar = false): Promise<Tenant> {
     const tenant = await manager.findOne(Tenant, { where: { slug } });
     if (!tenant || !isTenantUsableForSession(tenant.status)) {
+      throw new NotFoundException(PUBLIC_NOT_FOUND_MESSAGE);
+    }
+    // Acesso vencido ou agendamento público fora do plano: a mesma resposta
+    // de indisponível. As reservas já feitas continuam valendo.
+    const situacao = await tenantAccessSituation(manager, tenant.id, new Date());
+    if (situacao.blocked || !(await featureEnabled(manager, tenant.id, FeatureKey.AGENDAMENTO_PUBLICO))) {
       throw new NotFoundException(PUBLIC_NOT_FOUND_MESSAGE);
     }
     const config = await configuracaoDo(manager, tenant.id, travar);

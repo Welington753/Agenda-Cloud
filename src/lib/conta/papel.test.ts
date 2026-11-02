@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inicioDoPerfil, perfilDoPapel, redirecionamentoDoPerfil, temArea } from "./papel";
+import { inicioDoPerfil, paginaForaDoEstabelecimento, perfilDoPapel, redirecionamentoDoPerfil, temArea } from "./papel";
+import { acessoVencido } from "@/lib/api/auth-api";
 import { itensDaNavegacao } from "./navegacao";
 
 describe("perfil da área real por papel", () => {
@@ -118,5 +119,23 @@ describe("gerente: só as áreas que o servidor liberou", () => {
     expect(
       itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: g }).map((i) => i.rotulo),
     ).toEqual(["Solicitações", "Configurações"]);
+  });
+});
+
+describe("acesso do estabelecimento vencido", () => {
+  it("só o bloqueio informado pelo servidor conta; API anterior (sem a validade) não vence", () => {
+    expect(acessoVencido({ access: { state: "EXPIRED", blocked: true, validUntil: null, expiredAt: null, expiredKind: "TRIAL" } })).toBe(true);
+    expect(acessoVencido({ access: { state: "PAID", blocked: false, validUntil: null, expiredAt: null, expiredKind: null } })).toBe(false);
+    expect(acessoVencido({})).toBe(false);
+    expect(acessoVencido(null)).toBe(false);
+  });
+
+  it("continuam abertas: administração, escolha de estabelecimento e configurações pessoais", () => {
+    for (const aberta of ["/conta/administracao", "/conta/administracao/estabelecimentos/x", "/conta/selecionar-estabelecimento", "/conta/configuracoes/perfil", "/conta/configuracoes"]) {
+      expect(paginaForaDoEstabelecimento(aberta)).toBe(true);
+    }
+    for (const doEstabelecimento of ["/conta", "/conta/agendamentos", "/conta/clientes", "/conta/recebimentos", "/conta/visao-geral", "/conta/configuracoes/estabelecimento", "/conta/configuracoes/equipe"]) {
+      expect(paginaForaDoEstabelecimento(doEstabelecimento)).toBe(false);
+    }
   });
 });

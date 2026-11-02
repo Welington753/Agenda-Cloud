@@ -22,6 +22,14 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   archiveEstablishmentSchema,
   changePlanSchema,
+  correctAccessPeriodSchema,
+  extendTrialSchema,
+  grantCourtesySchema,
+  recordPaidPeriodSchema,
+  type CorrectAccessPeriodDto,
+  type ExtendTrialDto,
+  type GrantCourtesyDto,
+  type RecordPaidPeriodDto,
   establishmentIdSchema,
   establishmentQuerySchema,
   reactivateEstablishmentSchema,
@@ -36,6 +44,8 @@ import {
 } from './platform.dto.js';
 import { PlatformService } from './platform.service.js';
 import { EstablishmentAdminService } from './establishment-admin.service.js';
+import { AccessValidityService } from './access-validity.service.js';
+import { AccessCorrectionService } from './access-correction.service.js';
 
 const tenantIdPipe = new ZodValidationPipe(establishmentIdSchema);
 
@@ -49,6 +59,8 @@ export class PlatformController {
   constructor(
     private readonly platform: PlatformService,
     private readonly admin: EstablishmentAdminService,
+    private readonly validity: AccessValidityService,
+    private readonly correction: AccessCorrectionService,
   ) {}
 
   @Get('access')
@@ -129,5 +141,55 @@ export class PlatformController {
     @Body(new ZodValidationPipe(changePlanSchema)) dto: ChangePlanDto,
   ) {
     return this.admin.changePlan(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  // Validade do acesso (assinatura do Agenda Cloud). Registro manual pela
+  // administração; nenhuma confirmação automática de banco ou operadora.
+
+  @Post('establishments/:tenantId/access/paid')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  recordPaid(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(recordPaidPeriodSchema)) dto: RecordPaidPeriodDto,
+  ) {
+    return this.validity.recordPaid(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  @Post('establishments/:tenantId/access/trial-extension')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  extendTrial(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(extendTrialSchema)) dto: ExtendTrialDto,
+  ) {
+    return this.validity.extendTrial(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  @Post('establishments/:tenantId/access/courtesy')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  grantCourtesy(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(grantCourtesySchema)) dto: GrantCourtesyDto,
+  ) {
+    return this.validity.grantCourtesy(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  /** Anula um período registrado por engano. Corrige o registro; não
+   * devolve nem movimenta dinheiro. */
+  @Post('establishments/:tenantId/access/periods/:periodId/correction')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  correctPeriod(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Param('periodId', tenantIdPipe) periodId: string,
+    @Body(new ZodValidationPipe(correctAccessPeriodSchema)) dto: CorrectAccessPeriodDto,
+  ) {
+    return this.correction.cancelPeriod(request.auth.userId, request.auth.sessionId, tenantId, periodId, dto);
   }
 }

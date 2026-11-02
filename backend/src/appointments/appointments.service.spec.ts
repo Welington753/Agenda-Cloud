@@ -42,6 +42,7 @@ import {
   LIMITE_DO_DIA,
   OVERLAP_CONSTRAINT,
 } from './appointments.service.js';
+import { commercialQueryFake } from '../commercial/testing/commercial-fake.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -80,6 +81,8 @@ class FakeManager {
   readonly consultas: { sql: string; parametros: unknown[] }[] = [];
 
   async query(sql: string, parametros: unknown[] = []): Promise<unknown[]> {
+    const comercial = commercialQueryFake(sql);
+    if (comercial) return comercial;
     this.consultas.push({ sql, parametros });
     return [];
   }

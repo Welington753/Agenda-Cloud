@@ -79,9 +79,15 @@ describe("planos comerciais", () => {
     }
   });
 
-  it("usa os códigos internos do domínio (essencial/equipe/pro) com nomes comerciais Essencial/Gestão/Rede", () => {
+  it("usa os códigos internos do domínio (essencial/equipe/pro) com nomes comerciais Básico/Pro/Max", () => {
     expect(PLANOS_COMERCIAIS.map((p) => p.codigo)).toEqual(["essencial", "equipe", "pro"]);
-    expect(PLANOS_COMERCIAIS.map((p) => p.nome)).toEqual(["Essencial", "Gestão", "Rede"]);
+    expect(PLANOS_COMERCIAIS.map((p) => p.nome)).toEqual(["Básico", "Pro", "Max"]);
+  });
+
+  it("nenhum plano promete multiunidade, que não existe no produto", () => {
+    for (const plano of PLANOS_COMERCIAIS) {
+      expect([plano.descricaoCurta, ...plano.destaques].join(" ")).not.toMatch(/unidade/i);
+    }
   });
 });
 
@@ -100,5 +106,12 @@ describe("navegação", () => {
     expect(HREF_ENTRAR).toBe("/login");
     expect(HREF_COMO_OBTER_ACESSO).toBe("/cadastro");
     expect(HREF_DEMONSTRACAO).toBe("/onboarding");
+  });
+
+  it("recursos futuros da matriz de planos nunca aparecem como disponíveis", () => {
+    const disponiveis = new Set(FUNCIONALIDADES_DISPONIVEIS.map((f) => f.id));
+    for (const futuro of ["unidades", "comissoes", "personalizacao"]) expect(disponiveis.has(futuro)).toBe(false);
+    const textos = FUNCIONALIDADES_DISPONIVEIS.map((f) => `${f.rotulo} ${f.descricao}`).join(" ").toLowerCase();
+    expect(textos).not.toMatch(/unidades|comiss|logo/);
   });
 });

@@ -48,6 +48,7 @@ const FAKE_TENANT_CONTEXT: TenantContext = {
     durationDays: 14,
   },
   tenantStatus: TenantStatus.TRIAL,
+  access: { state: 'UNTRACKED', blocked: false, validUntil: null, expiredAt: null, expiredKind: null },
   areas: ['AGENDA_VER', 'AGENDA_CRIAR'],
 };
 

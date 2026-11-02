@@ -22,6 +22,7 @@ import { Tenant } from '../entities/tenant.entity.js';
 import { Plan } from '../entities/plan.entity.js';
 import { Appointment } from '../entities/appointment.entity.js';
 import { ProfessionalsService } from './professionals.service.js';
+import { commercialQueryFake } from '../commercial/testing/commercial-fake.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -34,6 +35,13 @@ function proximoId(prefixo: string): string {
 }
 
 class FakeManager {
+  /** Só a validade e o recurso do plano (commercial-gate.ts). */
+  async query(sql: string): Promise<unknown[]> {
+    const comercial = commercialQueryFake(sql);
+    if (comercial) return comercial;
+    throw new Error(`Consulta inesperada no teste: ${sql}`);
+  }
+
   constructor(
     public tenants: Registro[],
     public memberships: Registro[],

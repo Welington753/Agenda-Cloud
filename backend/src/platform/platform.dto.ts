@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
+import { requestKeySchema } from '../accounts/accounts.dto.js';
+import { MAX_COURTESY_DAYS, MAX_TRIAL_EXTENSION_DAYS } from '../commercial/access-periods.js';
+import { ACCESS_PAYMENT_METHODS } from '../migrations/1793232000000-CommercialAccess.js';
 
 export const establishmentIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,30}$/);
 
@@ -76,3 +79,60 @@ export const changePlanSchema = z
   .object({ expectedUpdatedAt: expectedUpdatedAtSchema, planId: establishmentIdSchema })
   .strict();
 export type ChangePlanDto = z.infer<typeof changePlanSchema>;
+
+// ------------------------------------------------- validade do acesso
+// Assinatura do Agenda Cloud, registrada à mão pela administração. Nada
+// aqui é recebimento de atendimento (`payments/`).
+
+/** Chave do formulário: repetir a mesma requisição nunca grava duas vezes. */
+const accessRequestKeySchema = requestKeySchema;
+
+export const recordPaidPeriodSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    cycle: z.enum(['MONTHLY', 'QUARTERLY']),
+    /** Valor contratado do período, em centavos. */
+    amountCents: z.number().int().min(1).max(100_000_000),
+    paymentMethod: z.enum(ACCESS_PAYMENT_METHODS),
+    /** Data em que o pagamento foi recebido (data local, `YYYY-MM-DD`). */
+    receivedOn: z.iso.date(),
+    reference: z.string().trim().min(1).max(120).optional(),
+    notes: z.string().trim().min(3).max(300).optional(),
+    /** A pessoa declara que conferiu o pagamento à mão: o registro nunca
+     * afirma confirmação automática por banco ou operadora. */
+    manualConfirmation: z.literal(true),
+  })
+  .strict();
+export type RecordPaidPeriodDto = z.infer<typeof recordPaidPeriodSchema>;
+
+export const extendTrialSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    days: z.number().int().min(1).max(MAX_TRIAL_EXTENSION_DAYS),
+    reason: reasonSchema,
+  })
+  .strict();
+export type ExtendTrialDto = z.infer<typeof extendTrialSchema>;
+
+export const grantCourtesySchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    days: z.number().int().min(1).max(MAX_COURTESY_DAYS),
+    reason: reasonSchema,
+  })
+  .strict();
+export type GrantCourtesyDto = z.infer<typeof grantCourtesySchema>;
+
+/** Anula um período registrado por engano. Não devolve nem movimenta
+ * dinheiro: só corrige o registro. */
+export const correctAccessPeriodSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    reason: reasonSchema,
+  })
+  .strict();
+export type CorrectAccessPeriodDto = z.infer<typeof correctAccessPeriodSchema>;

@@ -338,16 +338,16 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [conta.user.id]);
     await ap.goto(`/conta/administracao/estabelecimentos/${tenantId}`);
     await expect(ap.getByTestId("uso-vagas")).toContainText("2 de 5");
-    // Um terceiro profissional ativo: o plano Essencial (2) não comporta.
+    // Um terceiro profissional ativo: o plano Básico (2) não comporta.
     await db.query(
       `INSERT INTO professionals (id, tenant_id, name, avatar_initials, avatar_color) VALUES ($1, $2, 'Carla Dias', 'CD', '#000000')`,
       [id(), tenantId],
     );
     await ap.reload();
-    const essencial = ap.getByTestId("plano-estabelecimento").getByRole("listitem").filter({ hasText: "Essencial" });
+    const essencial = ap.getByTestId("plano-estabelecimento").getByRole("listitem").filter({ hasText: "Básico" });
     await expect(essencial).toContainText("Não comporta o uso atual");
     await essencial.getByRole("radio").check();
-    await expect(ap.getByRole("button", { name: "Trocar para Essencial" })).toBeDisabled();
+    await expect(ap.getByRole("button", { name: "Trocar para Básico" })).toBeDisabled();
     const ficha = (await (await ap.request.get(`${API_DE_TESTE}/platform/establishments/${tenantId}`)).json()) as {
       updatedAt: string;
       planOptions: { id: string; code: string }[];
@@ -383,6 +383,94 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
     await expect(ap.getByTestId("situacao-estabelecimento")).toContainText("Em teste");
     expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(200);
+
+    // ------------------------------------------ 5. validade do acesso
+    // A conta de teste grava o estabelecimento direto no banco, marcado como
+    // anterior ao controle de validade: "Validade ainda não definida".
+    const validade = ap.getByTestId("validade-acesso");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Validade ainda não definida");
+    await validade.getByRole("button", { name: "Registrar pagamento" }).click();
+    const formularioPagamento = ap.getByTestId("form-pagamento");
+    await formularioPagamento.getByLabel("Valor contratado (R$)").fill("89,90");
+    await expect(ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" })).toBeDisabled();
+    await formularioPagamento.getByRole("checkbox").check();
+    await capturar(ap, "registrar-pagamento");
+    await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
+    await expect(validade.getByTestId("historico-validade")).toContainText("Confirmado manualmente pela administração");
+    await expect(validade.getByTestId("historico-validade")).toContainText("R$ 89,90");
+
+    // Correção de um registro feito por engano: um segundo pagamento com o
+    // valor errado é anulado, com o impacto mostrado antes e sem apagar nada.
+    await validade.getByRole("button", { name: "Registrar pagamento" }).click();
+    await ap.getByTestId("form-pagamento").getByLabel("Valor contratado (R$)").fill("999,99");
+    await ap.getByTestId("form-pagamento").getByRole("checkbox").check();
+    await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("historico-validade")).toContainText("R$ 999,99");
+    await validade.getByRole("button", { name: "Corrigir registro" }).click();
+    const correcao = ap.getByTestId("form-correcao");
+    await expect(correcao.getByTestId("impacto-correcao")).toContainText("Depois de anular:");
+    await expect(correcao).toContainText("não devolve nem movimenta dinheiro");
+    await expect(ap.getByRole("dialog").getByRole("button", { name: "Anular registro" })).toBeDisabled();
+    await correcao.getByLabel("Motivo da correção (fica no histórico)").fill("valor digitado errado");
+    await capturar(ap, "corrigir-registro");
+    await ap.getByRole("dialog").getByRole("button", { name: "Anular registro" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("registro-anulado")).toContainText("valor digitado errado");
+    await expect(validade.getByTestId("historico-validade")).toContainText("R$ 999,99");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
+
+    // Perto do fim: o dono vê o aviso da faixa de 3 dias, dentro do app.
+    await db.query(
+      `UPDATE tenant_access_periods SET starts_at = now() - interval '28 days', ends_at = now() + interval '2 days'
+        WHERE tenant_id = $1 AND kind = 'PAID' AND canceled_at IS NULL`,
+      [tenantId],
+    );
+    await page.goto("/conta/visao-geral");
+    await expect(page.getByTestId("aviso-vencimento")).toHaveAttribute("data-faixa", "3");
+    await expect(page.getByTestId("aviso-vencimento")).toContainText("O período pago vale até");
+    await capturar(page, "aviso-vencimento");
+
+    // O período vence com a página aberta (simulado no banco): a próxima
+    // leitura recebe ACESSO_VENCIDO e a tela troca pelo aviso, sem quebrar.
+    await db.query(
+      `UPDATE tenant_access_periods SET starts_at = now() - interval '30 days', ends_at = now() - interval '1 minute'
+        WHERE tenant_id = $1 AND kind = 'PAID'`,
+      [tenantId],
+    );
+    await page.getByRole("link", { name: "Clientes" }).first().click();
+    const aviso = page.getByTestId("acesso-vencido");
+    await expect(aviso).toContainText("O período pago");
+    await expect(aviso).toContainText("Como regularizar");
+    await expect(aviso).toContainText("Nada foi apagado");
+    await semRolagemHorizontal(page);
+    await capturar(page, "acesso-vencido");
+    expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(403);
+    // A conta continua com a pessoa: Perfil e segurança abre, sem ciclo de
+    // encaminhamento, e a saída fica lá.
+    await aviso.getByRole("link", { name: "Perfil e segurança" }).click();
+    await expect(page).toHaveURL(/\/conta\/configuracoes\/perfil$/);
+    await expect(page.getByRole("heading", { name: "Perfil e segurança" })).toBeVisible();
+    await expect(page.getByTestId("acesso-vencido")).toHaveCount(0);
+    await page.goto("/conta");
+    await expect(page.getByTestId("acesso-vencido")).toBeVisible();
+    await expect(page).toHaveURL(/\/conta$/);
+
+    // Regularização: um novo pagamento confirmado manualmente libera na hora.
+    await ap.reload();
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Vencido");
+    await validade.getByRole("button", { name: "Registrar pagamento" }).click();
+    await ap.getByTestId("form-pagamento").getByLabel("Valor contratado (R$)").fill("89,90");
+    await ap.getByTestId("form-pagamento").getByRole("checkbox").check();
+    await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
+    await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
+    await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
+    await page.goto("/conta/visao-geral");
+    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await expect(page.getByTestId("acesso-vencido")).toHaveCount(0);
+
     const historico = (
       await db.query(`SELECT action::text FROM audit_logs WHERE tenant_id = $1 ORDER BY occurred_at`, [tenantId])
     ).rows.map((r: { action: string }) => r.action);
@@ -396,6 +484,8 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
         "MEMBERSHIP_REACTIVATED",
         "TENANT_SUSPENDED",
         "TENANT_REACTIVATED",
+        "ACCESS_PAID_PERIOD_RECORDED",
+        "ACCESS_PERIOD_CORRECTED",
       ]),
     );
     await admin.contexto.close();

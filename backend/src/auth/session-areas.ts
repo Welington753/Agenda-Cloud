@@ -4,9 +4,13 @@
 // (gerente sem confirmação do dono: nenhum `GRANTED`). Não autorizam nada:
 // cada rota refaz a prova no banco a cada requisição, então uma permissão
 // retirada vale na próxima requisição mesmo que o menu ainda a mostre.
+//
+// Áreas de recurso fora do plano do estabelecimento também ficam de fora
+// (commercial/feature-areas.ts).
 import type { EntityManager } from 'typeorm';
 import { tenantEffectiveAccess, type OverrideLike } from '../accounts/tenant-effective-access.js';
 import { effectiveOverrides, permissionsConfirmed } from '../common/tenant-authorization.js';
+import { areaFeature, ENABLED_FEATURES_SQL } from '../commercial/feature-areas.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { canViewOwnAgenda } from '../team/staff-access.js';
 
@@ -26,5 +30,11 @@ export async function sessionAreas(
     .map((a) => a.key);
   // A agenda própria depende também do profissional ligado.
   if (membership.professionalId && canViewOwnAgenda(membership.role, confirmado)) areas.push('AGENDA_PROPRIA_VER');
-  return areas;
+  const ligados = new Set(
+    (await manager.query<{ key: string }[]>(ENABLED_FEATURES_SQL, [membership.tenantId])).map((l) => l.key),
+  );
+  return areas.filter((area) => {
+    const recurso = areaFeature(area);
+    return !recurso || ligados.has(recurso);
+  });
 }

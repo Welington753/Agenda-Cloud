@@ -23,6 +23,7 @@ import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { TimeBlock } from '../entities/time-block.entity.js';
 import { AvailabilityService } from './availability.service.js';
+import { commercialQueryFake } from '../commercial/testing/commercial-fake.js';
 
 interface Registro {
   [campo: string]: unknown;
@@ -40,6 +41,13 @@ const DATA = '2026-09-20';
 const AGORA = new Date('2026-09-19T12:00:00Z');
 
 class FakeManager {
+  /** Só a validade e o recurso do plano (commercial-gate.ts). */
+  async query(sql: string): Promise<unknown[]> {
+    const comercial = commercialQueryFake(sql);
+    if (comercial) return comercial;
+    throw new Error(`Consulta inesperada no teste: ${sql}`);
+  }
+
   constructor(private readonly colecoes: Map<unknown, Registro[]>) {}
 
   private colecaoDe(entity: unknown): Registro[] {

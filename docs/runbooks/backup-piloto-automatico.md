@@ -6,7 +6,8 @@ A escolha e os custos estão em `docs/plans/backup-e-monitoramento.md`
 (alternativa 1: repositório privado + Backblaze B2 + monitor de cron do
 Sentry).
 
-**Estado:** código e testes prontos (PR #81). Nada configurado: não existem
+**Estado:** código e testes prontos, mesclados na integration pelo PR #81
+(`0c44052`, 2026-10-29). Nada configurado: não existem
 ainda o repositório de operação, o bucket, a chave age, o papel
 `agenda_backup` nem o monitor de cron.
 

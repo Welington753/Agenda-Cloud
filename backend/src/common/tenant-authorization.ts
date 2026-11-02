@@ -12,10 +12,12 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { isTenantUsableForSession } from '../auth/tenant-access.js';
+import { requireCommercialAccess } from '../commercial/commercial-gate.js';
 import { Membership } from '../entities/membership.entity.js';
 import { MembershipPermissionOverride } from '../entities/membership-permission-override.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import type { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import type { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 
@@ -92,11 +94,17 @@ export interface PoliticaDeAcesso {
   permitido: (role: EstablishmentRole, overrides: readonly PermissionOverrideLike[]) => boolean;
   /** Mensagem do 403 — cada módulo fala da sua área. */
   mensagemProibido: string;
+  /** Recurso do plano que a área usa (ver commercial/feature-areas.ts).
+   * Sem recurso: núcleo, presente em todo plano. */
+  recurso?: FeatureKey | null;
 }
 
 /**
  * Prova, no servidor e a cada requisição, que este usuário pode operar neste
- * tenant.
+ * tenant. Ordem: vínculo, situação do vínculo, situação administrativa do
+ * estabelecimento, validade do acesso, recurso do plano e, por último, a
+ * permissão pessoal (papel e ajustes). Um ajuste do dono nunca libera o que
+ * o plano não tem.
  *
  * `NotFoundException` (não 403) quando não há vínculo ou o tenant está
  * inativo: um 403 confirmaria que o estabelecimento existe.
@@ -121,6 +129,7 @@ export async function resolveAuthorizedTenant(
   if (!tenant || !isTenantUsableForSession(tenant.status)) {
     throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
   }
+  await requireCommercialAccess(manager, tenantId, politica.recurso ?? null);
 
   const gravados = await manager.find(MembershipPermissionOverride, {
     where: { tenantId, membershipId: membership.id },

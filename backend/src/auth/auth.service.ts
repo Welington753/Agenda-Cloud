@@ -21,11 +21,12 @@ import { InvalidCredentialsError } from './auth.errors.js';
 import type { ChangePasswordDto, LoginDto } from './login.dto.js';
 import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password-hasher.js';
 import { recordAudit } from '../accounts/audit.js';
-import type { SessionContextResult, TenantContext } from './session-context.js';
+import { sessionAccess, type SessionContextResult, type TenantContext } from './session-context.js';
 import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } from './session-token.js';
 import { isTenantUsableForSession } from './tenant-access.js';
 import { isMembershipActive } from '../common/tenant-authorization.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
+import { tenantAccessSituation } from '../commercial/commercial-gate.js';
 import { sessionAreas } from './session-areas.js';
 
 export interface LoginContext {
@@ -150,6 +151,7 @@ export class AuthService {
       }
 
       const { trialStartAt, trialEndAt } = computeTrialWindow(tenant.createdAt);
+      const access = await tenantAccessSituation(manager, tenant.id, new Date());
 
       contexts.push({
         membershipId: membership.id,
@@ -162,7 +164,9 @@ export class AuthService {
         planName: plan.name,
         trial: { trialStartAt, trialEndAt, durationDays: TRIAL_DURATION_DAYS },
         tenantStatus: tenant.status,
-        areas: await sessionAreas(manager, membership),
+        access: sessionAccess(access, membership.role),
+        // Vencido: nenhuma área (as rotas respondem ACESSO_VENCIDO).
+        areas: access.blocked ? [] : await sessionAreas(manager, membership),
       });
     }
 

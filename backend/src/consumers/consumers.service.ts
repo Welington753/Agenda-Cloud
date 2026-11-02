@@ -30,6 +30,7 @@ import {
 } from './consumer-access.js';
 import type { ConsumerPageDto, CreateConsumerDto } from './consumer.dto.js';
 import { linhasDe } from '../common/linhas-de.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 /** Teto duro da busca. Existe para a rota nunca virar um dump da base de
  * clientes — quem procura alguém específico acha nas primeiras linhas. */
@@ -106,6 +107,7 @@ export class ConsumersService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewConsumers,
       mensagemProibido: CONSUMERS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.CONSUMIDORES,
     });
 
     const digitos = termo.replace(/\D/g, '');
@@ -144,6 +146,7 @@ export class ConsumersService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canViewConsumers,
       mensagemProibido: CONSUMERS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.CONSUMIDORES,
     });
 
     const parametros: unknown[] = [authorized.tenantId];
@@ -207,6 +210,7 @@ export class ConsumersService {
     const authorized = await resolveAuthorizedTenant(manager, userId, tenantId, {
       permitido: canManageConsumers,
       mensagemProibido: CONSUMERS_FORBIDDEN_MESSAGE,
+      recurso: FeatureKey.CONSUMIDORES,
     });
 
     return this.createWith(manager, authorized.tenantId, dto);

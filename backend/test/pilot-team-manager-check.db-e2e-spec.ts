@@ -76,7 +76,7 @@ describe.skipIf(!url)('conferência de TeamManagerAccess contra PostgreSQL desca
         [plano, marca],
       );
       await c.query(
-        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE')`,
+        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since) VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now())`,
         [tenant, marca, plano],
       );
       for (const [i, pessoa] of pessoas.entries()) {
