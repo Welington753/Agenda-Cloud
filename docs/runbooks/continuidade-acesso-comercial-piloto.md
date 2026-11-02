@@ -1,5 +1,46 @@
 # Continuidade: kit de publicação de CommercialAccess (planos e validade)
 
+
+## Estado em 02/11/2026, depois do merge do PR #83
+
+**Este é o estado atual; as seções abaixo são o histórico.**
+
+- **Kit mesclado:** PR #83 mesclado na integration (merge normal, condicionado
+  ao head `6e588c27e57665ed683aad62c2de757a06738632`).
+- **SHA operacional:** `99242a662cfa2a8bb3b144b62c2fe5fe000ee222` (merge do
+  #83; pais `a2d123b` e `6e588c2`; árvore igual à do head validado). Todas as
+  fases (`preparar`, `restauracao`, `aplicar`, `conferir`) e os dois
+  deploys usam este SHA. O commit desta nota, numa branch de documentação,
+  **não** é o SHA operacional e não deve ser usado na operação.
+- **Backups e comprovantes dos ensaios** (`9d542ae`, `4c10a2e`) não valem
+  para a operação real; o procedimento os recusa por commit.
+- **CommercialAccess continua pendente no piloto.** Onze migrations; nenhuma
+  deve ser repetida.
+- **SHA Live da API e do web: não confirmado.** `0c44052` foi só a
+  candidata ensaiada. Confirmar no painel do Render antes de começar.
+- **Janela sem criação de estabelecimento:** baseada em **acordo** com todas
+  as contas com `manageEstablishments` (o `preparar` mostra quantas). Não há
+  bloqueio técnico; a fase `conferir` só detecta a violação depois.
+- **API anterior não é retorno seguro:** ignora a validade e grava; um
+  estabelecimento criado nela fica bloqueado quando a API nova volta.
+- **Web anterior** abre a ficha com a API nova, mas **não apresenta** o
+  histórico comercial novo (validade, períodos, pagamentos): mostra o texto
+  antigo "ainda não há registro financeiro nesta área".
+- Preços continuam como proposta; regularização de estabelecimentos não
+  feita; backup automático não ativado; PR #74 separado.
+
+### Próximas fases (cada uma com autorização própria, ainda pendente)
+
+1. Confirmar no Render o SHA Live da API e do web.
+2. Listar com o dono as contas que podem criar estabelecimento e combinar a
+   janela com todas.
+3. Worktree limpa em `99242a6` e `npm ci` (passo 0 do runbook).
+4. `preparar` (primeira leitura do piloto, inclui as exceções desligadas).
+5. `restauracao`.
+6. Janela sem criação + `aplicar`.
+7. API no Render (mesmo SHA) → `conferir` com `JANELA_SEM_CRIACAO: ok`.
+8. Web no Render (mesmo SHA) e testes manuais do runbook.
+
 **Atualização (2ª rodada, PR #83):** o PR também corrige a compatibilidade
 da aplicação (`billing` de volta na ficha, que o web publicado exige) e
 define a janela sem criação de estabelecimento entre a migration e a API
