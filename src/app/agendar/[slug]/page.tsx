@@ -34,7 +34,6 @@ import {
   mensagemFalhaPublica,
   nomeDoFuso,
   nomePlausivel,
-  precoPublico,
   whatsappPlausivel,
 } from "@/lib/agendamento-publico/agendamento-publico";
 import {

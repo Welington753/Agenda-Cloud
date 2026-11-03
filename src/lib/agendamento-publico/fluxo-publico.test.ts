@@ -131,7 +131,9 @@ describe("vários serviços no pedido público", () => {
   it("Corte + Barba: R$ 67,50 e 60 min; um preço escondido vira sob consulta", () => {
     const corte = { id: "corte", name: "Corte", description: "", durationMinutes: 30, priceCents: 4250, priceVisible: true };
     const barba = { id: "barba", name: "Barba", description: "", durationMinutes: 30, priceCents: 2500, priceVisible: true };
-    expect(resumoPublico([corte, barba])).toEqual({ rotulo: "Corte + Barba", minutos: 60, preco: expect.stringContaining("67,50") });
+    const resumo = resumoPublico([corte, barba]);
+    expect([resumo.rotulo, resumo.minutos]).toEqual(["Corte + Barba", 60]);
+    expect(resumo.preco).toContain("67,50");
     expect(resumoPublico([corte, { ...barba, priceVisible: false }]).preco).toBe("Sob consulta");
   });
 });

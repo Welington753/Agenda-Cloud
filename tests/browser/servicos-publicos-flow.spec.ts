@@ -55,7 +55,10 @@ const servicoBase = {
 async function servicosPublicos(p: Page) {
   const lista = p.getByTestId("lista-servicos-publicos");
   await expect(lista).toBeVisible();
-  return lista.getByRole("button").evaluateAll((botoes) => botoes.map((b) => b.querySelector("span")?.textContent ?? ""));
+  // Só o botão principal de cada cartão (o "Adicionar" monta a combinação).
+  return lista
+    .locator('button:not([data-testid="alternar-servico"])')
+    .evaluateAll((botoes) => botoes.map((b) => b.querySelector("span")?.textContent ?? ""));
 }
 
 const cartaoDoServico = (page: Page, nome: string) => page.getByTestId("lista-servicos").getByRole("article", { name: nome });
@@ -83,8 +86,9 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
     expect(r.status).toBe(201);
     return r.corpo.service.id;
   };
-  const corte = await criar("Corte");
-  const barba = await criar("Barba");
+  // Valores do exemplo de aceitação dos vários serviços (fictícios).
+  const corte = await criar("Corte", { priceCents: 4250 });
+  const barba = await criar("Barba", { priceCents: 2500 });
   const rafa = await api<{ professional: { id: string } }>(page, `${base}/professionals`, "POST", {
     name: "Rafa Barbeiro",
     serviceIds: [corte, barba],
@@ -218,6 +222,41 @@ test("serviço novo só vai ao público com profissional elegível; o dono vê o
   await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
   await expect(p.getByTestId("lista-horarios-publicos").getByRole("button", { name: "09:00", exact: true })).toBeVisible();
   await expect(p.getByTestId("lista-horarios-publicos").getByRole("button", { name: "14:00", exact: true })).toHaveCount(0);
+
+  // ------------------------------------------- vários serviços: Barba + Corte com quem faz os dois
+  await p.getByTestId("voltar-etapa").click();
+  await p.getByTestId("voltar-etapa").click();
+  await expect(p.getByTestId("titulo-etapa")).toHaveText("Escolha o serviço");
+  const cartao = (nome: string) =>
+    p
+      .getByTestId("lista-servicos-publicos")
+      .locator(":scope > div")
+      .filter({ has: p.getByRole("button", { name: new RegExp(`^${nome}`) }) });
+  await cartao("Corte").getByTestId("alternar-servico").click();
+  const combinacao = p.getByTestId("resumo-combinacao");
+  await expect(combinacao).toContainText("Barba + Corte");
+  await expect(combinacao).toContainText("60 min no total");
+  await expect(combinacao).toContainText("R$ 67,50");
+  await expect(cartao("Corte").getByTestId("alternar-servico")).toHaveAttribute("aria-pressed", "true");
+  await p.getByTestId("continuar-servicos").click();
+  // Duda faz Corte, mas não Barba: só o Rafa, já escolhido.
+  await expect(profissionais).toHaveCount(1);
+  await expect(p.getByTestId("profissional-unico")).toContainText("Rafa Barbeiro");
+  await p.getByTestId("continuar-profissional").click();
+  await expect(p.getByTestId("contexto-escolhas")).toContainText("Barba + Corte · com Rafa Barbeiro");
+  await p.getByTestId("lista-dias").getByRole("button", { name: rotuloDoDia }).click();
+  // Jornada até 12:00: 60 min cabem às 11:00, não às 11:30 (o intervalo inteiro conta).
+  await expect(p.getByTestId("lista-horarios-publicos").getByRole("button", { name: "11:00", exact: true })).toBeVisible();
+  await expect(p.getByTestId("lista-horarios-publicos").getByRole("button", { name: "11:30", exact: true })).toHaveCount(0);
+  await p.getByTestId("voltar-etapa").click();
+  await p.getByTestId("voltar-etapa").click();
+  // Retirar o Corte volta à Barba sozinha (sem resumo de combinação).
+  await cartao("Corte").getByTestId("alternar-servico").click();
+  await expect(combinacao).toHaveCount(0);
+  await expect(cartao("Barba").getByRole("button", { name: /^Barba/ })).toHaveAttribute("aria-pressed", "true");
+  await cartao("Barba").getByRole("button", { name: /^Barba/ }).click();
+  await p.getByTestId("continuar-profissional").click();
+  await expect(p.getByTestId("titulo-etapa")).toHaveText("Escolha o dia e o horário");
 
   // Sem horário no dia é diferente de sem profissional.
   const outroDia = p.getByTestId("lista-dias").getByRole("button").first();

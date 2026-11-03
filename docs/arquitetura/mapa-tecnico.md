@@ -92,6 +92,7 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Estabelecimento utilizável para sessão | `backend/src/auth/tenant-access.ts` |
 | Permissões do gerente e dependências | `backend/src/common/manager-permissions.ts`; a tela recebe o catálogo da API (`team.service.ts`), e `src/lib/equipe/contratos.ts` espelha só o tipo |
 | Quem vê e faz o quê em cada área | `backend/src/<area>/<area>-access.ts` |
+| Serviços de uma reserva (um ou mais, mesmo profissional) | `appointments/service-selection.ts` (escolha), `AvailabilityService.calcular` (soma e maior intervalo), `appointment-items-sql.ts` (leituras em SQL) |
 | Que status ocupam horário | `STATUS_QUE_OCUPAM` em `availability/availability.service.ts`, igual à constraint `appointments_no_overlap_excl` |
 | Transições de andamento | `appointments/appointment-status-transitions.ts` |
 | Fuso e dia local | `availability/time-zone.ts` (sempre o fuso do estabelecimento) |

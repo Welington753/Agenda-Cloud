@@ -9,7 +9,6 @@ import {
   dataPorExtenso,
   mensagemFalhaPublica,
   nomePlausivel,
-  precoPublico,
   whatsappPlausivel,
   type DiaOferecido,
 } from "@/lib/agendamento-publico/agendamento-publico";

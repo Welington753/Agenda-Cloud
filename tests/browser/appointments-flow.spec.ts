@@ -820,3 +820,59 @@ test.describe("agendamentos reais", () => {
     expect(envios).toEqual(["confirm", "no-show", "complete", "start"]);
   });
 });
+
+test("vários serviços com o mesmo profissional: resumo do servidor e uma reserva com os itens", async ({
+  page,
+  request,
+}) => {
+  const conta = await criarConta(request, "multiplos");
+  await entrar(page, conta);
+  const tenantId = await tenantDe(page);
+  const corte = await criarServico(page, tenantId, "Corte", 30);
+  const barba = await criarServico(page, tenantId, "Barba", 30);
+  const profissionalId = await criarProfissional(page, tenantId, "Ana Souza", [corte, barba]);
+  await definirJornada(page, tenantId, profissionalId);
+
+  await page.goto("/conta/agendamentos");
+  await page.getByLabel("Dia", { exact: true }).fill(DATA);
+  await abrirNovoAgendamento(page);
+  const servicos = page.getByTestId("servicos-da-reserva");
+  // O primeiro serviço do profissional já vem marcado; a Barba entra depois dele.
+  await expect(servicos.getByRole("checkbox", { name: "Corte" })).toBeChecked();
+  await servicos.getByRole("checkbox", { name: "Barba" }).check();
+  await expect(page.getByTestId("ordem-dos-servicos")).toContainText("Corte + Barba");
+  await page.getByRole("button", { name: "Cadastrar novo" }).click();
+  await page.getByLabel("Nome do cliente").fill("Paula Combo");
+  await page.getByLabel("WhatsApp").fill("(11) 90000-0101");
+
+  // 60 min seguidos: o último início que cabe até 12:00 é 11:00.
+  await page.getByRole("button", { name: "Ver horários livres" }).click();
+  await expect.poll(() => horariosLivres(page)).toContain("11:00");
+  expect(await horariosLivres(page)).not.toContain("11:15");
+  await page.locator('[data-testid="horario-livre"]').first().click();
+  const resumo = page.getByTestId("resumo-servicos");
+  await expect(resumo).toContainText("Corte");
+  await expect(resumo).toContainText("Barba");
+  await expect(page.getByTestId("total-da-reserva")).toHaveText(/Total: 1 h · R\$\s?100,00/);
+
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByTestId("painel-novo-agendamento")).toHaveCount(0);
+  const itens = page.getByTestId("itens-da-reserva");
+  await expect(itens.getByRole("listitem")).toHaveCount(2);
+  await expect(itens).toContainText("Corte · 30 min");
+  await expect(itens).toContainText("Barba · 30 min");
+
+  // Uma reserva só, com os dois itens e os totais calculados no servidor.
+  const dia = await page.evaluate(
+    async ({ tenantId, data }) => {
+      const r = await fetch(`http://localhost:3001/tenants/${tenantId}/appointments?date=${data}`, { credentials: "include" });
+      return (await r.json()) as {
+        appointments: { durationMinutes: number; priceCents: number | null; service: { name: string }; services: { id: string }[] }[];
+      };
+    },
+    { tenantId, data: DATA },
+  );
+  expect(dia.appointments).toHaveLength(1);
+  expect(dia.appointments[0]).toMatchObject({ durationMinutes: 60, priceCents: 10000, service: { name: "Corte + Barba" } });
+  expect(dia.appointments[0].services.map((s) => s.id)).toEqual([corte, barba]);
+});
