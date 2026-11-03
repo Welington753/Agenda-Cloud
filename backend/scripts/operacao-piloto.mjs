@@ -214,12 +214,14 @@ export function compararFotografias(antes, depois, { ignorarSomas = [], ignorarT
 /**
  * Só a migration pendente esperada: o histórico precisa ser EXATAMENTE
  * `esperadasAntes` e as migrations compiladas, exatamente essas mais a
- * pendente. Devolve o código do problema ou null.
+ * pendente e, depois dela, as `posteriores` (opcional: migrations do mesmo
+ * commit que ficam para uma etapa seguinte e NÃO são carregadas). Devolve o
+ * código do problema ou null.
  */
-export function conferirPendentes({ executadas, carregadas, esperadasAntes, pendente }) {
+export function conferirPendentes({ executadas, carregadas, esperadasAntes, pendente, posteriores = [] }) {
   const igual = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   if (!igual(executadas, esperadasAntes)) return "ERR_HISTORICO_DE_MIGRATIONS_INESPERADO";
-  if (!igual(carregadas, [...esperadasAntes, pendente])) return "ERR_MIGRATIONS_COMPILADAS_INESPERADAS";
+  if (!igual(carregadas, [...esperadasAntes, pendente, ...posteriores])) return "ERR_MIGRATIONS_COMPILADAS_INESPERADAS";
   return null;
 }
 
@@ -231,7 +233,7 @@ export function conferirPendentes({ executadas, carregadas, esperadasAntes, pend
  * chamado logo antes do primeiro comando da migration: uma falha antes dele
  * garante que nada foi enviado.
  */
-export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, aplicacao, log, aoIniciar = () => {} }) {
+export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendente, posteriores = [], aplicacao, log, aoIniciar = () => {} }) {
   const { DataSource } = await import("typeorm");
   const { buildMigrationsDataSourceOptions } = await import("../dist-migrations/database/migrations-data-source.js");
   const ds = new DataSource({
@@ -263,9 +265,18 @@ export async function aplicarSomenteAPendente(destino, { esperadasAntes, pendent
         const carregadas = ds.migrations.map((m) => m.name ?? m.constructor.name);
         log(`MIGRATIONS_NO_HISTORICO: ${executadas.length}`);
         log(`MIGRATIONS_COMPILADAS: ${carregadas.length}`);
-        const problema = conferirPendentes({ executadas, carregadas, esperadasAntes, pendente });
+        const problema = conferirPendentes({ executadas, carregadas, esperadasAntes, pendente, posteriores });
         if (problema) parar(problema);
         log(`PENDENTE: ${pendente}`);
+        if (posteriores.length) {
+          // As posteriores (já conferidas pelo nome, no fim da lista) saem do
+          // DataSource: `runMigrations` aplica tudo o que estiver carregado e
+          // pendente, e elas ficam para a etapa seguinte.
+          ds.migrations.splice(ds.migrations.length - posteriores.length, posteriores.length);
+          const restantes = ds.migrations.map((m) => m.name ?? m.constructor.name);
+          if (restantes.at(-1) !== pendente || restantes.length !== esperadasAntes.length + 1) parar("ERR_MIGRATIONS_COMPILADAS_INESPERADAS");
+          log(`FORA_DESTA_ETAPA: ${posteriores.join(",")}`);
+        }
       } finally {
         liberar();
       }

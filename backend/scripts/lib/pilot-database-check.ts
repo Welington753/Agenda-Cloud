@@ -47,6 +47,14 @@ import {
   objetosComercialPresentes,
   TOTAL_OBJETOS_COMERCIAL,
 } from './acesso-comercial-schema.js';
+import {
+  falhasAntesDoPortal,
+  falhasDepoisDoPortal,
+  falhasDepoisDosNomesCongelados,
+  lerEstadoPortalMultisservicos,
+  objetosPortalMultisservicosPresentes,
+  TOTAL_OBJETOS_PORTAL_MULTISSERVICOS,
+} from './portal-multisservicos-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -66,7 +74,10 @@ export type PilotExpectation =
   | 'before-team-manager'
   | 'after-team-manager'
   | 'before-commercial-access'
-  | 'after-commercial-access';
+  | 'after-commercial-access'
+  | 'before-platform-portal'
+  | 'after-platform-portal'
+  | 'after-appointment-snapshots';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -81,6 +92,9 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'after-team-manager',
   'before-commercial-access',
   'after-commercial-access',
+  'before-platform-portal',
+  'after-platform-portal',
+  'after-appointment-snapshots',
 ];
 
 interface EnvLike {
@@ -265,6 +279,26 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosComercialPresentes(estado)}/${TOTAL_OBJETOS_COMERCIAL}`);
       log(`DISABLED_FEATURE_OVERRIDES: ${estado.excecoesDesligadas}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    // Três estados das migrations do portal e dos nomes congelados:
+    // antes (12), intermediário (13) e final (14). Exatamente um passa.
+    if (
+      expectation === 'before-platform-portal' ||
+      expectation === 'after-platform-portal' ||
+      expectation === 'after-appointment-snapshots'
+    ) {
+      const estado = await lerEstadoPortalMultisservicos(client);
+      const falhas =
+        expectation === 'before-platform-portal'
+          ? falhasAntesDoPortal(estado)
+          : expectation === 'after-platform-portal'
+            ? falhasDepoisDoPortal(estado)
+            : falhasDepoisDosNomesCongelados(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosPortalMultisservicosPresentes(estado)}/${TOTAL_OBJETOS_PORTAL_MULTISSERVICOS}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }

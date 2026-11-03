@@ -1,4 +1,4 @@
-// Tipos de operacao-piloto.mjs, para o spec em TypeScript (só as funções puras).
+// Tipos de operacao-piloto.mjs, para os testes em TypeScript.
 export interface Destino {
   url: string;
   host: string;
@@ -28,9 +28,21 @@ export function conferirPendentes(args: {
   carregadas: string[];
   esperadasAntes: string[];
   pendente: string;
+  posteriores?: string[];
 }): string | null;
 export function ambienteLibpq(
   destino: Destino & { ca?: string },
   raizes: string,
   aplicacao: string,
 ): Record<string, string>;
+export function aplicarSomenteAPendente(
+  destino: Destino & { ca?: string },
+  args: {
+    esperadasAntes: string[];
+    pendente: string;
+    posteriores?: string[];
+    aplicacao: string;
+    log: (linha: string) => void;
+    aoIniciar?: () => void;
+  },
+): Promise<string[]>;
