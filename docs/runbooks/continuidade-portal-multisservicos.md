@@ -228,7 +228,7 @@ Antes do passo 1:
 4. **Merge do #86:** feito com autorização, merge normal condicionado ao head
    `677b515`, `[skip render]`: `8916f180cad7397074e54c25ef237ffc7c797681`.
    Nenhuma operação no piloto nem publicação.
-7. **Espaço em disco para a operação:** insuficiente neste PC (seção 6).
+7. **Espaço em disco para a operação:** ~3,2 GB livres depois da limpeza (seção 6); medir o banco do piloto antes do backup.
 5. **Limitações que continuam:**
    - as quedas de conexão foram simuladas no cliente;
    - o lançador rodou num pseudoconsole com entrada digitada pelo driver, não
@@ -245,18 +245,21 @@ Antes do passo 1:
 ## 6. O que fica só no PC do trabalho
 
 Nada de código fora do GitHub. Ficam localmente, descartáveis:
-- worktrees:
-  - `C:\Projetos\Agenda-Cloud-pr84`: merge feito; sem `backend/node_modules`
-    nem `backend/dist`;
-  - `C:\Projetos\Agenda-Cloud-pr85`: na branch do kit, com dependências; sem
-    `.next`;
-  - `C:\Projetos\Agenda-Cloud-continuidade-pm`;
-  - `C:\Projetos\Agenda-Cloud-combo`: ensaio antigo de merge, superado, com
-    conflitos não resolvidos de propósito; sem `backend/node_modules`,
-    `dist` nem `dist-migrations`;
-  - `C:\Projetos\Agenda-Cloud-anterior-99242a6`: versão publicada, só para os
-    ensaios de compatibilidade; sem nenhum `node_modules` nem `.next`. Para
-    rodar de novo, `npm ci` nos dois projetos;
+- worktrees (limpeza autorizada em 2026-11-03, `git worktree remove` sem
+  `--force`; removidas `-anterior-99242a6`, `-pr84`, `-ensaio`,
+  `-ensaio-pr2`, `-o1`, `-planos`, `-publicacao`, `-publicacao-gerente`,
+  todas com o HEAD contido na integration e só arquivos ignorados
+  recriáveis; liberaram ~2,2 GB). Ficaram:
+  - `C:\Projetos\Agenda-Cloud-pr85`: na branch do kit (`677b515`, mesma
+    árvore do SHA operacional), com dependências;
+  - `C:\Projetos\Agenda-Cloud-continuidade-pm`: esta nota;
+  - `C:\Projetos\Agenda-Cloud-recebimentos` (PR #74) e
+    `C:\Projetos\Agenda-Cloud-reserva`: protegidas;
+  - `C:\Projetos\Agenda-Cloud-combo`: ensaio antigo de merge, com conflitos
+    não resolvidos e HEAD local `5237ecb` fora do remoto; preservada;
+  - `C:\Projetos\Agenda-Cloud-promocao`: branch sem PR e fora da
+    integration; preservada (só os builds recriáveis foram apagados). O
+    `backend/node_modules` dela é junction para o do repositório principal;
 - no scratchpad da sessão:
   - PostgreSQL 18 (porta 55434, parado);
   - PostgreSQL 17.11: binários, mais o cluster na porta 55435, parado. O
@@ -295,8 +298,9 @@ separado). Estimativa para a operação no SHA operacional:
 | margem para sistema, WAL e logs | ≥ 1 GB |
 
 Total recomendado livre antes de começar: **≥ 2 GB**, mais duas vezes o
-tamanho do dump do piloto. Hoje **não há espaço suficiente com margem**: não
-instalar dependências nem iniciar restauração neste estado.
+tamanho do dump do piloto. Depois da limpeza das worktrees ficaram livres
+**~3,2 GB**: comporta a operação com a margem, desde que o dump do piloto
+fique abaixo de ~0,5 GB. Medir o tamanho do banco antes do backup real.
 
 Opções viáveis, sem apagar arquivos pessoais, backups ou evidências (decisão
 do dono do PC):
