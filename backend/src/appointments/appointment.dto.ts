@@ -15,6 +15,7 @@
 // não é motivo para aceitar.
 import { z } from 'zod';
 import { createConsumerSchema } from '../consumers/consumer.dto.js';
+import { conferirEscolha, serviceSelectionShape } from './service-selection.js';
 
 /** `varchar(30)` das colunas de id — limite da coluna, não de negócio. */
 const ID_MAXIMO = 30;
@@ -57,7 +58,10 @@ const consumerSchema = z.union([
 export const createAppointmentSchema = z
   .object({
     professionalId: idSchema,
-    serviceId: idSchema,
+    // Um serviço (`serviceId`) ou vários (`serviceIds`), na ordem do
+    // atendimento, todos com o MESMO profissional. Preço, duração e
+    // ocupação são somados no servidor.
+    ...serviceSelectionShape,
     startAt: instanteSchema,
     consumer: consumerSchema,
     // Observação interna do estabelecimento. Opcional; string vazia vira
@@ -71,7 +75,8 @@ export const createAppointmentSchema = z
       .transform((valor) => (valor === '' ? undefined : valor))
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(conferirEscolha);
 
 export type CreateAppointmentDto = z.infer<typeof createAppointmentSchema>;
 

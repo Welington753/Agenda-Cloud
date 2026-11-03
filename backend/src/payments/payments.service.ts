@@ -38,6 +38,7 @@ import {
 } from './payment-access.js';
 import type { PaymentPeriodDto, RecordPaymentDto, RefundPaymentDto } from './payments.dto.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
+import { ITENS_DA_RESERVA_SQL } from '../appointments/appointment-items-sql.js';
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
@@ -89,16 +90,13 @@ const SELECT_PAGAMENTO = `
          ru.name AS recorded_by_name, pg.notes, pg.refunded_at, to_char(pg.refunded_on, 'YYYY-MM-DD') AS refunded_on,
          pg.refund_reason, pg.refunded_by_user_id, fu.name AS refunded_by_name,
          a.start_at, a.status::text AS status, a.consumer_name_snapshot AS consumer_name,
-         s.name AS service_name, p.name AS professional_name
+         i.service_name, p.name AS professional_name
     FROM appointment_payments pg
     JOIN appointments a ON a.tenant_id = pg.tenant_id AND a.id = pg.appointment_id
     JOIN users ru ON ru.id = pg.recorded_by_user_id
     LEFT JOIN users fu ON fu.id = pg.refunded_by_user_id
     LEFT JOIN professionals p ON p.tenant_id = a.tenant_id AND p.id = a.professional_id
-    LEFT JOIN LATERAL (
-      SELECT service_id FROM appointment_items WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-    ) i ON true
-    LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id`;
+    ${ITENS_DA_RESERVA_SQL}`;
 
 function toView(linha: PaymentRow, timezone: string): PaymentView {
   const inicio = new Date(linha.start_at);
@@ -269,14 +267,11 @@ export class PaymentsService {
     );
     const aQuitar = linhasDe<{ id: string; start_at: Date; status: string; consumer_name: string; service_name: string | null; professional_name: string | null; price_cents: string | null }>(
       await manager.query(
-        `SELECT a.id, a.start_at, a.status::text AS status, a.consumer_name_snapshot AS consumer_name, s.name AS service_name,
-                p.name AS professional_name, i.price_cents_snapshot::text AS price_cents
+        `SELECT a.id, a.start_at, a.status::text AS status, a.consumer_name_snapshot AS consumer_name, i.service_name,
+                p.name AS professional_name, i.price_cents::text AS price_cents
            FROM appointments a
            LEFT JOIN professionals p ON p.tenant_id = a.tenant_id AND p.id = a.professional_id
-           LEFT JOIN LATERAL (
-             SELECT service_id, price_cents_snapshot FROM appointment_items WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-           ) i ON true
-           LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+           ${ITENS_DA_RESERVA_SQL}
           WHERE a.tenant_id = $1 AND a.status = 'COMPLETED'
             AND a.start_at >= ($2::date)::timestamp AT TIME ZONE $4::text
             AND a.start_at < ($3::date + 1)::timestamp AT TIME ZONE $4::text

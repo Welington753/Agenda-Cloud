@@ -7,6 +7,7 @@
 // `tenantId` e `professionalId` vêm do caminho, e o tenant só é aceito depois
 // de provado pela autorização — nunca do corpo ou da query.
 import { z } from 'zod';
+import { conferirEscolha, serviceIdsQuerySchema } from '../appointments/service-selection.js';
 
 /** `varchar(30)` das colunas de id — o limite da coluna, não um de negócio. */
 const ID_MAXIMO = 30;
@@ -37,11 +38,14 @@ const dateSchema = z
     );
   }, 'Data inexistente no calendário.');
 
-export const availabilityQuerySchema = z
-  .object({
-    serviceId: idSchema,
-    date: dateSchema,
-  })
-  .strict();
+/** Um serviço (`serviceId`, como sempre) ou vários (`serviceIds=a,b`), na
+ * ordem do atendimento. Exatamente uma das duas formas. */
+export const availabilityQueryShape = {
+  serviceId: idSchema.optional(),
+  serviceIds: serviceIdsQuerySchema.optional(),
+  date: dateSchema,
+};
+
+export const availabilityQuerySchema = z.object(availabilityQueryShape).strict().superRefine(conferirEscolha);
 
 export type AvailabilityQueryDto = z.infer<typeof availabilityQuerySchema>;

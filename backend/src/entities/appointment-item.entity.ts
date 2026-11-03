@@ -64,6 +64,12 @@ export class AppointmentItem {
   @Column({ type: 'int', default: 0 })
   position!: number;
 
+  /** Nome do serviço no momento da reserva (migration
+   * AppointmentServiceSnapshots). `null` nos itens anteriores: o nome daquela
+   * época não foi gravado e a tela usa o nome atual, como antes. */
+  @Column({ type: 'varchar', nullable: true })
+  serviceNameSnapshot?: string | null;
+
   // FK real é a composta de classe (fk_appointment_items_tenant_appointment)
   // acima.
   @ManyToOne('Appointment', (appointment: Appointment) => appointment.items, {

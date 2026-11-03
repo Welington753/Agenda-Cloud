@@ -49,6 +49,7 @@ import {
   type ResultadoDeCalculo,
 } from './availability-rules.js';
 import type { AvailabilityQueryDto } from './availability.dto.js';
+import { servicosDaEscolha } from '../appointments/service-selection.js';
 import { ErroDeFuso, janelaDeCarregamento, type DataLocal } from './time-zone.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
@@ -57,6 +58,8 @@ const SERVICE_NOT_FOUND_MESSAGE = 'Serviço não encontrado.';
 const INACTIVE_PROFESSIONAL_MESSAGE = 'Este profissional está desativado.';
 const INACTIVE_SERVICE_MESSAGE = 'Este serviço está desativado.';
 const MISSING_LINK_MESSAGE = 'Este profissional não realiza o serviço selecionado.';
+const MISSING_LINK_ALL_MESSAGE = 'Este profissional não realiza todos os serviços selecionados.';
+const DUPLICATED_SERVICE_MESSAGE = 'O mesmo serviço foi escolhido mais de uma vez.';
 const INVALID_DURATION_MESSAGE =
   'O serviço não tem duração válida cadastrada — corrija a duração antes de consultar.';
 const TENANT_TIMEZONE_MESSAGE =
@@ -99,7 +102,14 @@ export interface HorarioDisponivelView {
  * locks, podendo divergir do que foi validado. */
 export interface DisponibilidadeCalculada {
   professional: Professional;
+  /** O PRIMEIRO serviço escolhido (compatibilidade com quem só usa um). */
   service: Service;
+  /** Todos os serviços escolhidos, na ordem do atendimento. */
+  services: Service[];
+  /** Soma das durações dos serviços (ou a congelada, na remarcação). */
+  duracaoMinutos: number;
+  /** Maior buffer entre os serviços (ou o congelado, na remarcação). */
+  bufferMinutos: number;
   timezone: string;
   data: DataLocal;
   policy: BookingPolicy | null;
@@ -147,7 +157,10 @@ export interface OpcoesDeCalculo {
 
 export interface AvailabilityView {
   professionalId: string;
+  /** O primeiro serviço escolhido (compatibilidade). */
   serviceId: string;
+  /** Todos os serviços escolhidos, na ordem do atendimento. */
+  serviceIds: string[];
   /** Data de calendário consultada, no fuso abaixo. */
   date: string;
   timezone: string;
@@ -195,7 +208,7 @@ export class AvailabilityService {
       manager,
       authorized.tenantId,
       professionalId,
-      query.serviceId,
+      servicosDaEscolha(query),
       query.date,
     );
     const { professional, service, policy, resultado } = calculo;
@@ -203,10 +216,11 @@ export class AvailabilityService {
     return {
       professionalId: professional.id,
       serviceId: service.id,
+      serviceIds: calculo.services.map((s) => s.id),
       date: query.date,
       timezone: calculo.timezone,
-      durationMinutes: service.durationMinutes,
-      bufferAfterMinutes: service.bufferAfterMinutes,
+      durationMinutes: calculo.duracaoMinutos,
+      bufferAfterMinutes: calculo.bufferMinutos,
       slotStepMinutes: PASSO_PADRAO_MINUTOS,
       minLeadMinutes: policy?.minLeadMinutes ?? null,
       maxFutureDays: policy?.maxFutureDays ?? null,
@@ -254,18 +268,28 @@ export class AvailabilityService {
     manager: EntityManager,
     tenantId: string,
     professionalId: string,
-    serviceId: string,
+    servicos: string | readonly string[],
     date: string,
     opcoes: OpcoesDeCalculo = {},
   ): Promise<DisponibilidadeCalculada> {
     const lock = opcoes.travar ? ({ lock: { mode: 'pessimistic_read' as const } } as const) : {};
+    const serviceIds = typeof servicos === 'string' ? [servicos] : [...servicos];
+    if (serviceIds.length === 0) throw new BadRequestException(SERVICE_NOT_FOUND_MESSAGE);
+    if (new Set(serviceIds).size !== serviceIds.length) throw new BadRequestException(DUPLICATED_SERVICE_MESSAGE);
 
-    const service = await manager.findOne(Service, {
-      where: { id: serviceId, tenantId },
-      ...lock,
-    });
-    if (!service) throw new NotFoundException(SERVICE_NOT_FOUND_MESSAGE);
-    if (!service.active) throw new BadRequestException(INACTIVE_SERVICE_MESSAGE);
+    // Vários serviços: travados em ordem de id (sempre a mesma), para duas
+    // reservas com os mesmos serviços em outra ordem nunca travarem em
+    // sentidos opostos. Serviço de outro estabelecimento não casa com o
+    // `tenantId` e vira "não encontrado".
+    const porId = new Map<string, Service>();
+    for (const id of [...serviceIds].sort()) {
+      const encontrado = await manager.findOne(Service, { where: { id, tenantId }, ...lock });
+      if (!encontrado) throw new NotFoundException(SERVICE_NOT_FOUND_MESSAGE);
+      if (!encontrado.active) throw new BadRequestException(INACTIVE_SERVICE_MESSAGE);
+      porId.set(id, encontrado);
+    }
+    const services = serviceIds.map((id) => porId.get(id)!);
+    const service = services[0];
 
     const professional = await manager.findOne(Professional, {
       where: { id: professionalId, tenantId },
@@ -274,19 +298,20 @@ export class AvailabilityService {
     if (!professional) throw new NotFoundException(PROFESSIONAL_NOT_FOUND_MESSAGE);
     if (!professional.active) throw new BadRequestException(INACTIVE_PROFESSIONAL_MESSAGE);
 
-    // O vínculo é elegibilidade: sem ele, o profissional não realiza o
-    // serviço e não há horário nenhum a oferecer.
-    const vinculo = await manager.findOne(ProfessionalService, {
-      where: { tenantId, professionalId: professional.id, serviceId: service.id },
-      ...lock,
-    });
-    if (!vinculo) throw new BadRequestException(MISSING_LINK_MESSAGE);
+    // O mesmo profissional atende TODOS os serviços: um vínculo faltando
+    // recusa a combinação inteira.
+    for (const id of [...serviceIds].sort()) {
+      const vinculo = await manager.findOne(ProfessionalService, {
+        where: { tenantId, professionalId: professional.id, serviceId: id },
+        ...lock,
+      });
+      if (!vinculo) throw new BadRequestException(serviceIds.length > 1 ? MISSING_LINK_ALL_MESSAGE : MISSING_LINK_MESSAGE);
+    }
 
-    // A coluna é NOT NULL, mas nada no banco impede `0` ou negativo: uma
-    // duração assim geraria horários infinitos ou sem sentido, então é
-    // recusada explicitamente em vez de virar lista vazia silenciosa.
-    if (!Number.isInteger(service.durationMinutes) || service.durationMinutes <= 0) {
-      throw new BadRequestException(INVALID_DURATION_MESSAGE);
+    for (const s of services) {
+      if (!Number.isInteger(s.durationMinutes) || s.durationMinutes <= 0) {
+        throw new BadRequestException(INVALID_DURATION_MESSAGE);
+      }
     }
 
     const timezone = await this.timezoneDoTenant(manager, tenantId);
@@ -304,8 +329,13 @@ export class AvailabilityService {
 
     // Catálogo atual por padrão; ocupação congelada da reserva quando quem
     // chama é a remarcação (ver `OpcoesDeCalculo.ocupacaoCongelada`).
-    const duracaoMinutos = opcoes.ocupacaoCongelada?.duracaoMinutos ?? service.durationMinutes;
-    const bufferMinutos = opcoes.ocupacaoCongelada?.bufferMinutos ?? service.bufferAfterMinutes;
+    // Serviços em sequência com o mesmo profissional: a duração é a soma, e
+    // o intervalo depois do atendimento é o MAIOR entre os escolhidos (não a
+    // soma: entre um serviço e o seguinte não há troca de cliente).
+    const duracaoMinutos =
+      opcoes.ocupacaoCongelada?.duracaoMinutos ?? services.reduce((total, s) => total + s.durationMinutes, 0);
+    const bufferMinutos =
+      opcoes.ocupacaoCongelada?.bufferMinutos ?? Math.max(...services.map((s) => s.bufferAfterMinutes ?? 0));
 
     try {
       const resultado = calcularHorariosDisponiveis({
@@ -320,7 +350,18 @@ export class AvailabilityService {
         antecedenciaMinimaMinutos: policy?.minLeadMinutes ?? 0,
         limiteDiasFuturos: policy?.maxFutureDays ?? null,
       });
-      return { professional, service, timezone, data, policy, resultado, ocupados };
+      return {
+        professional,
+        service,
+        services,
+        duracaoMinutos,
+        bufferMinutos,
+        timezone,
+        data,
+        policy,
+        resultado,
+        ocupados,
+      };
     } catch (erro) {
       if (erro instanceof ErroDeFuso) throw new BadRequestException(TENANT_TIMEZONE_MESSAGE);
       throw erro;

@@ -8,8 +8,9 @@
 // um formulário anônimo.
 import { z } from 'zod';
 import { normalizePhone } from '../auth/phone-normalizer.js';
-import { availabilityQuerySchema } from '../availability/availability.dto.js';
+import { availabilityQueryShape } from '../availability/availability.dto.js';
 import { createAppointmentSchema } from '../appointments/appointment.dto.js';
+import { conferirEscolha, serviceSelectionShape } from '../appointments/service-selection.js';
 
 const idSchema = z.string().trim().min(1).max(30);
 
@@ -20,15 +21,16 @@ export const publicSlugSchema = z
   .toLowerCase()
   .regex(/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/);
 
-export const publicAvailabilityQuerySchema = availabilityQuerySchema
-  .extend({ professionalId: idSchema })
-  .strict();
+export const publicAvailabilityQuerySchema = z
+  .object({ ...availabilityQueryShape, professionalId: idSchema })
+  .strict()
+  .superRefine(conferirEscolha);
 
 export type PublicAvailabilityQueryDto = z.infer<typeof publicAvailabilityQuerySchema>;
 
 export const publicBookingRequestSchema = z
   .object({
-    serviceId: idSchema,
+    ...serviceSelectionShape,
     professionalId: idSchema,
     startAt: createAppointmentSchema.shape.startAt,
     name: z.string().trim().min(2, 'Informe seu nome.').max(80),
@@ -42,6 +44,7 @@ export const publicBookingRequestSchema = z
   })
   .strict()
   .superRefine((valor, ctx) => {
+    conferirEscolha(valor, ctx);
     try {
       normalizePhone(valor.whatsapp);
     } catch {

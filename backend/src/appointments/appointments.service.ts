@@ -1,9 +1,12 @@
 // Agendamentos reais: criação (Lote 6D.5), pedido público, listagem do dia e
 // do período, cancelamento, andamento e remarcação.
 //
-// ESCOPO: um profissional e um serviço por agendamento. Recebimentos ficam
-// em payments/, e a rota pública em public-booking/, que chama
-// `criarPedidoPublico` daqui.
+// ESCOPO: um profissional e UM OU MAIS serviços por agendamento, todos com o
+// mesmo profissional, em sequência (ver
+// docs/plans/agendamento-multiplos-servicos.md). Cada serviço vira um item
+// (`appointment_items`) com nome, preço e duração congelados; a reserva é uma
+// só, nunca várias parciais. Recebimentos ficam em payments/, e a rota
+// pública em public-booking/, que chama `criarPedidoPublico` daqui.
 //
 // O QUE O SERVIDOR DECIDE (nunca o navegador): tenant, unidade, duração,
 // fim, buffer, preço, snapshots e estado inicial. O DTO nem tem esses campos
@@ -119,6 +122,7 @@ import type {
   RescheduleOptionsDto,
 } from './appointment.dto.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
+import { servicosDaEscolha } from './service-selection.js';
 
 /** Nome exato da constraint do banco (ver 1788782400000-InitialSchema.ts).
  * Só ela vira 409 — qualquer outro erro sobe como está. */
@@ -178,6 +182,16 @@ export const STATUS_ALTERAVEIS: readonly AppointmentStatus[] = [
   AppointmentStatus.CONFIRMED,
 ];
 
+/** Um serviço da reserva, como contratado (snapshots do item). */
+export interface AppointmentServiceItemView {
+  id: string;
+  /** Nome congelado na reserva; nos itens antigos (sem snapshot), o atual. */
+  name: string;
+  /** `null` = sob consulta (ou escondido de quem não vê preço). */
+  priceCents: number | null;
+  durationMinutes: number;
+}
+
 export interface AppointmentView {
   id: string;
   /** Início do atendimento (instante inequívoco, ISO 8601 em UTC). */
@@ -198,7 +212,12 @@ export interface AppointmentView {
   priceCents: number | null;
   notes: string | null;
   professional: { id: string; name: string };
+  /** Compatibilidade: o primeiro serviço, com o nome de TODOS ("Corte +
+   * Barba") para quem só mostra um rótulo. */
   service: { id: string; name: string };
+  /** Os serviços da reserva, na ordem do atendimento. `durationMinutes` e
+   * `priceCents` acima são os totais deles. */
+  services: AppointmentServiceItemView[];
   /** Snapshot congelado no momento da reserva — nunca relido do cadastro
    * atual do cliente. */
   /** `whatsapp` é `null` quando quem pediu não pode ver o contato do
@@ -288,7 +307,7 @@ export class AppointmentsService {
           tx,
           authorized.tenantId,
           dto.professionalId,
-          dto.serviceId,
+          servicosDaEscolha(dto),
           date,
           { travar: true },
         );
@@ -303,8 +322,8 @@ export class AppointmentsService {
         const consumer = await this.resolverCliente(tx, authorized.tenantId, dto);
         const unitId = await this.resolverUnidade(tx, authorized.tenantId, calculo.professional);
 
-        const duracao = calculo.service.durationMinutes;
-        const buffer = calculo.service.bufferAfterMinutes;
+        const duracao = calculo.duracaoMinutos;
+        const buffer = calculo.bufferMinutos;
 
         const appointment = await tx.save(
           tx.create(Appointment, {
@@ -317,27 +336,16 @@ export class AppointmentsService {
             professionalId: calculo.professional.id,
             startAt,
             endAt: new Date(startAt.getTime() + (duracao + buffer) * 60_000),
-            // Estado inicial vem de uma coluna REAL do serviço, não de uma
-            // regra inventada aqui.
-            status: calculo.service.requiresManualConfirmation
+            // Estado inicial vem de uma coluna REAL dos serviços, não de uma
+            // regra inventada aqui: basta um exigir confirmação manual.
+            status: calculo.services.some((s) => s.requiresManualConfirmation)
               ? AppointmentStatus.PENDING
               : AppointmentStatus.CONFIRMED,
             notes: dto.notes,
           }),
         );
 
-        await tx.save(
-          tx.create(AppointmentItem, {
-            tenantId: authorized.tenantId,
-            appointmentId: appointment.id,
-            serviceId: calculo.service.id,
-            // `priceCents` nulo é "sob consulta" e continua nulo: zero seria
-            // afirmar que o atendimento é gratuito.
-            priceCentsSnapshot: calculo.service.priceCents ?? undefined,
-            durationMinutesSnapshot: duracao,
-            position: 0,
-          }),
-        );
+        await this.gravarItens(tx, authorized.tenantId, appointment.id, calculo.services);
 
         // Nasceu confirmada: mesma política da ação "confirmar", sem exigir
         // um clique a mais. Pendente não programa nada ainda.
@@ -393,7 +401,7 @@ export class AppointmentsService {
     dados: {
       tenantId: string;
       professionalId: string;
-      serviceId: string;
+      serviceIds: readonly string[];
       startAt: Date;
       consumerId: string;
       nomeInformado: string;
@@ -409,7 +417,7 @@ export class AppointmentsService {
         tx,
         dados.tenantId,
         dados.professionalId,
-        dados.serviceId,
+        dados.serviceIds,
         date,
         { travar: true },
       );
@@ -419,7 +427,7 @@ export class AppointmentsService {
       }
       throw erro;
     }
-    if (!calculo.service.activeInPublicBooking || !calculo.professional.onlineBookingActive) {
+    if (!calculo.services.every((s) => s.activeInPublicBooking) || !calculo.professional.onlineBookingActive) {
       throw new BadRequestException(PUBLIC_UNAVAILABLE_MESSAGE);
     }
 
@@ -429,8 +437,8 @@ export class AppointmentsService {
     if (!slot) throw this.recusaDeHorario(dados.startAt, calculo);
 
     const unitId = await this.resolverUnidade(tx, dados.tenantId, calculo.professional);
-    const duracao = calculo.service.durationMinutes;
-    const buffer = calculo.service.bufferAfterMinutes;
+    const duracao = calculo.duracaoMinutos;
+    const buffer = calculo.bufferMinutos;
 
     const appointment = await tx.save(
       tx.create(Appointment, {
@@ -448,23 +456,37 @@ export class AppointmentsService {
       }),
     );
 
-    await tx.save(
-      tx.create(AppointmentItem, {
-        tenantId: dados.tenantId,
-        appointmentId: appointment.id,
-        serviceId: calculo.service.id,
-        priceCentsSnapshot: calculo.service.priceCents ?? undefined,
-        durationMinutesSnapshot: duracao,
-        position: 0,
-      }),
-    );
+    await this.gravarItens(tx, dados.tenantId, appointment.id, calculo.services);
 
     return {
       appointment,
       timezone,
-      serviceName: calculo.service.name,
+      serviceName: nomeDosServicos(calculo.services.map((s) => s.name)),
       professionalName: calculo.professional.name,
     };
+  }
+
+  /**
+   * Um item por serviço, na ordem do atendimento, com nome, preço e duração
+   * CONGELADOS: mudar ou desativar o serviço depois não reescreve a reserva.
+   * Preço nulo é "sob consulta" e continua nulo: zero seria afirmar que o
+   * atendimento é gratuito. Mesma transação da reserva: nunca sobra reserva
+   * sem item nem item sem reserva.
+   */
+  private async gravarItens(tx: EntityManager, tenantId: string, appointmentId: string, services: Service[]) {
+    for (const [position, s] of services.entries()) {
+      await tx.save(
+        tx.create(AppointmentItem, {
+          tenantId,
+          appointmentId,
+          serviceId: s.id,
+          serviceNameSnapshot: s.name,
+          priceCentsSnapshot: s.priceCents ?? undefined,
+          durationMinutesSnapshot: s.durationMinutes,
+          position,
+        }),
+      );
+    }
   }
 
   /** Reservas `PENDING` com início no futuro, para o painel de solicitações.
@@ -970,7 +992,7 @@ export class AppointmentsService {
           tx,
           authorized.tenantId,
           appointment.professionalId,
-          congelada.serviceId,
+          congelada.serviceIds,
           date,
           {
             travar: true,
@@ -1064,7 +1086,7 @@ export class AppointmentsService {
       manager,
       authorized.tenantId,
       appointment.professionalId,
-      congelada.serviceId,
+      congelada.serviceIds,
       query.date,
       {
         ignorarAgendamentoId: appointment.id,
@@ -1152,25 +1174,27 @@ export class AppointmentsService {
     tenantId: string,
     appointment: Appointment,
   ): Promise<{
-    serviceId: string;
+    serviceIds: string[];
     duracaoMinutos: number;
     bufferMinutos: number;
     ocupacaoMinutos: number;
   }> {
-    const item = await manager.findOne(AppointmentItem, {
+    const itens = await manager.find(AppointmentItem, {
       where: { tenantId, appointmentId: appointment.id },
-      order: { position: 'ASC' },
+      order: { position: 'ASC', id: 'ASC' },
     });
-    if (!item) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
+    if (itens.length === 0) throw new NotFoundException(APPOINTMENT_NOT_FOUND_MESSAGE);
 
     const ocupacaoMinutos = Math.round(
       (appointment.endAt.getTime() - appointment.startAt.getTime()) / 60_000,
     );
-    // A duração do snapshot nunca pode passar da ocupação gravada; se passar,
-    // a ocupação manda (é ela que a constraint aplica) e o buffer é zero.
-    const duracaoMinutos = Math.min(item.durationMinutesSnapshot, ocupacaoMinutos);
+    // A soma das durações congeladas nunca pode passar da ocupação gravada;
+    // se passar, a ocupação manda (é ela que a constraint aplica) e o buffer
+    // é zero. Com um item só, é exatamente a regra de antes.
+    const soma = itens.reduce((total, item) => total + item.durationMinutesSnapshot, 0);
+    const duracaoMinutos = Math.min(soma, ocupacaoMinutos);
     return {
-      serviceId: item.serviceId,
+      serviceIds: itens.map((item) => item.serviceId),
       duracaoMinutos,
       bufferMinutos: ocupacaoMinutos - duracaoMinutos,
       ocupacaoMinutos,
@@ -1235,13 +1259,13 @@ export class AppointmentsService {
 
     const items = await manager.find(AppointmentItem, {
       where: { tenantId, appointmentId: In(ids) },
-      order: { position: 'ASC' },
+      order: { position: 'ASC', id: 'ASC' },
     });
-    const itemPorAgendamento = new Map<string, AppointmentItem>();
+    const itensPorAgendamento = new Map<string, AppointmentItem[]>();
     for (const item of items) {
-      if (!itemPorAgendamento.has(item.appointmentId)) {
-        itemPorAgendamento.set(item.appointmentId, item);
-      }
+      const lista = itensPorAgendamento.get(item.appointmentId) ?? [];
+      lista.push(item);
+      itensPorAgendamento.set(item.appointmentId, lista);
     }
 
     const professionals = await manager.find(Professional, {
@@ -1257,8 +1281,14 @@ export class AppointmentsService {
     const nomeDoServico = new Map(services.map((s) => [s.id, s.name]));
 
     return appointments.map((appointment) => {
-      const item = itemPorAgendamento.get(appointment.id);
-      const duracao = item?.durationMinutesSnapshot ?? 0;
+      const itens = itensPorAgendamento.get(appointment.id) ?? [];
+      const servicos: AppointmentServiceItemView[] = itens.map((item) => ({
+        id: item.serviceId,
+        name: item.serviceNameSnapshot ?? nomeDoServico.get(item.serviceId) ?? '',
+        priceCents: item.priceCentsSnapshot ?? null,
+        durationMinutes: item.durationMinutesSnapshot,
+      }));
+      const duracao = servicos.reduce((total, s) => total + s.durationMinutes, 0);
       const serviceEndAt = new Date(appointment.startAt.getTime() + duracao * 60_000);
 
       return {
@@ -1271,16 +1301,17 @@ export class AppointmentsService {
         timezone,
         status: appointment.status,
         durationMinutes: duracao,
-        priceCents: item?.priceCentsSnapshot ?? null,
+        priceCents: precoTotal(servicos),
         notes: appointment.notes ?? null,
         professional: {
           id: appointment.professionalId,
           name: nomeDoProfissional.get(appointment.professionalId) ?? '',
         },
         service: {
-          id: item?.serviceId ?? '',
-          name: item ? (nomeDoServico.get(item.serviceId) ?? '') : '',
+          id: servicos[0]?.id ?? '',
+          name: nomeDosServicos(servicos.map((s) => s.name)),
         },
+        services: servicos,
         consumer: {
           id: appointment.consumerId,
           name: appointment.consumerNameSnapshot,
@@ -1313,9 +1344,23 @@ export function recortarParaQuemPediu(view: AppointmentView, quem: Pick<Authoriz
     ...view,
     hidden,
     priceCents: dinheiro ? view.priceCents : null,
+    services: dinheiro ? view.services : view.services.map((s) => ({ ...s, priceCents: null })),
     notes: contato ? view.notes : null,
     consumer: { ...view.consumer, whatsapp: contato ? view.consumer.whatsapp : null },
   };
+}
+
+/** Rótulo de uma reserva: "Corte" ou "Corte + Barba". */
+export function nomeDosServicos(nomes: readonly string[]): string {
+  return nomes.filter((nome) => nome !== '').join(' + ');
+}
+
+/** Soma dos preços congelados. Um item sob consulta (preço nulo) deixa o
+ * total sob consulta: somar só os outros mostraria um valor menor que o
+ * real. */
+export function precoTotal(servicos: readonly { priceCents: number | null }[]): number | null {
+  if (servicos.length === 0 || servicos.some((s) => s.priceCents === null)) return null;
+  return servicos.reduce((total, s) => total + (s.priceCents ?? 0), 0);
 }
 
 /** Reexportado para os testes conferirem que a listagem e o motor de
