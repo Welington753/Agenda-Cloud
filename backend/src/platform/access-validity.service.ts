@@ -31,8 +31,10 @@ import {
   type NewPeriodDates,
   type StoredPeriod,
 } from '../commercial/access-periods.js';
-import { loadAccessLegacy, loadAccessPeriods } from '../commercial/commercial-gate.js';
+import { loadAccessFlags, loadAccessPeriods } from '../commercial/commercial-gate.js';
 import { dataLocalDe } from '../availability/time-zone.js';
+import { amountSource, type AmountSource, type CyclePricing } from '../commercial/pricing.js';
+import { insertContractPrice, pricingFor } from './pricing.service.js';
 import { lifecycleActor, lockEstablishment, writeEstablishment, type TenantRow } from './establishment-admin.service.js';
 import type { ExtendTrialDto, GrantCourtesyDto, RecordPaidPeriodDto } from './platform.dto.js';
 
@@ -53,6 +55,9 @@ export interface AccessPeriodView {
   lastDay: string;
   cycle: 'MONTHLY' | 'QUARTERLY' | null;
   amountCents: number | null;
+  /** Origem do valor (contrato, catálogo ou ajuste só deste pagamento).
+   * `null` nos períodos registrados antes do portal: não foi gravada. */
+  amountSource: AmountSource | null;
   currency: string | null;
   paymentMethod: string | null;
   receivedOn: string | null;
@@ -76,6 +81,7 @@ export interface PeriodRow {
   ends_at: Date;
   billing_cycle: 'MONTHLY' | 'QUARTERLY' | null;
   contracted_price_cents: number | null;
+  amount_source: AmountSource | null;
   currency: string | null;
   payment_method: string | null;
   payment_received_on: string | null;
@@ -94,7 +100,7 @@ export interface PeriodRow {
 }
 
 export const PERIOD_SELECT = `SELECT ap.id, ap.tenant_id, ap.kind::text AS kind, ap.plan_id, p.name AS plan_name,
-    ap.starts_at, ap.ends_at, ap.billing_cycle::text AS billing_cycle, ap.contracted_price_cents,
+    ap.starts_at, ap.ends_at, ap.billing_cycle::text AS billing_cycle, ap.contracted_price_cents, ap.amount_source,
     btrim(ap.currency) AS currency, ap.payment_method, to_char(ap.payment_received_on, 'YYYY-MM-DD') AS payment_received_on,
     ap.payment_reference, ap.confirmation_source, ap.reason, ap.recorded_at, ap.recorded_by_user_id,
     u.name AS recorded_by_name, ap.canceled_at, ap.canceled_by_user_id, cu.name AS canceled_by_name,
@@ -118,6 +124,7 @@ export function toView(l: PeriodRow): AccessPeriodView {
     lastDay: `${ultimo.year}-${String(ultimo.month).padStart(2, '0')}-${String(ultimo.day).padStart(2, '0')}`,
     cycle: l.billing_cycle,
     amountCents: l.contracted_price_cents === null ? null : Number(l.contracted_price_cents),
+    amountSource: l.amount_source,
     currency: l.currency,
     paymentMethod: l.payment_method,
     receivedOn: l.payment_received_on,
@@ -151,6 +158,11 @@ export const br = (iso: string) => iso.split('-').reverse().join('/');
 export const reais = (centavos: number) =>
   (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const CICLO = { MONTHLY: 'mensal', QUARTERLY: 'trimestral' } as const;
+const ORIGEM: Readonly<Record<AmountSource, string>> = {
+  CONTRACT: 'valor contratado do cliente',
+  CATALOG: 'preço do catálogo',
+  ADJUSTED: 'ajustado só neste pagamento',
+};
 
 export interface AccessChangeResult {
   created: boolean;
@@ -169,6 +181,9 @@ interface NewPeriod {
     method: string;
     receivedOn: string;
     reference: string | null;
+    source: AmountSource;
+    pricing: CyclePricing;
+    updateContract: boolean;
   };
 }
 
@@ -187,6 +202,10 @@ export class AccessValidityService {
       if (dto.receivedOn < minimo) {
         throw conflito('DATA_ANTIGA', 'A data do recebimento é de mais de um ano atrás. Confira antes de registrar.');
       }
+      // Valor sugerido no servidor (contrato vigente, senão catálogo): a
+      // origem do valor digitado nunca vem do navegador.
+      const pricing = await pricingFor(manager, atual.id, atual.plan_id, dto.cycle);
+      const source = amountSource(dto.amountCents, pricing);
       return {
         kind: 'PAID',
         dates: nextPaidPeriod(periodos, now, atual.timezone, dto.cycle),
@@ -198,6 +217,9 @@ export class AccessValidityService {
           method: dto.paymentMethod,
           receivedOn: dto.receivedOn,
           reference: dto.reference ?? null,
+          source,
+          pricing,
+          updateContract: dto.updateContract === true && pricing.contractCents !== dto.amountCents,
         },
       };
     });
@@ -269,9 +291,9 @@ export class AccessValidityService {
           `INSERT INTO tenant_access_periods
              (id, tenant_id, kind, plan_id, starts_at, ends_at, anchor_day, billing_cycle, contracted_price_cents,
               currency, payment_method, payment_received_on, payment_reference, confirmation_source, reason,
-              recorded_at, recorded_by_user_id, request_key)
+              recorded_at, recorded_by_user_id, request_key, amount_source)
            VALUES ($1, $2, $3::access_period_kind, $4, $5, $6, $7, $8::billing_cycle, $9, $10, $11, $12::date, $13, $14, $15,
-                   $16, $17, $18)`,
+                   $16, $17, $18, $19)`,
           [
             id,
             atual.id,
@@ -291,8 +313,25 @@ export class AccessValidityService {
             now,
             actor.id,
             novo.requestKey,
+            novo.paid?.source ?? null,
           ],
         );
+        // "Alterar o preço contratado": o valor deste pagamento vale para as
+        // próximas renovações deste ciclo. Sem isso, o ajuste é só deste
+        // pagamento e o contrato fica como estava.
+        if (novo.paid?.updateContract) {
+          await insertContractPrice(manager, {
+            tenantId: atual.id,
+            planId: atual.plan_id,
+            cycle: novo.paid.cycle,
+            amountCents: novo.paid.amountCents,
+            reason: novo.reason,
+            accessPeriodId: id,
+            requestKey: null,
+            actorId: actor.id,
+            now,
+          });
+        }
 
         // Primeiro pago ou cortesia: a situação administrativa deixa de
         // ser "teste". Suspensão e arquivamento nunca saem daqui.
@@ -314,9 +353,9 @@ export class AccessValidityService {
         const depois = accessSituation(
           await loadAccessPeriods(manager, atual.id),
           now,
-          await loadAccessLegacy(manager, atual.id),
+          await loadAccessFlags(manager, atual.id),
         );
-        await this.audit(manager, actor, atual, situacao, periodo, depois.validUntil, now);
+        await this.audit(manager, actor, atual, situacao, periodo, depois.validUntil, now, novo.paid);
         return { created: true, updatedAt: versao, period: periodo };
       });
     } catch (erro) {
@@ -361,6 +400,7 @@ export class AccessValidityService {
     periodo: AccessPeriodView,
     validUntil: Date | null,
     now: Date,
+    paid?: NewPeriod['paid'],
   ): Promise<void> {
     const vigencia = `de ${br(periodo.firstDay)} a ${br(periodo.lastDay)}`;
     const base = {
@@ -381,7 +421,8 @@ export class AccessValidityService {
       summary =
         `Pagamento confirmado manualmente pela administração para ${atual.name} (sem confirmação automática): ` +
         `plano ${periodo.plan.name}, ${CICLO[periodo.cycle!]}, ${reais(periodo.amountCents!)}, ` +
-        `recebido em ${br(periodo.receivedOn!)}. Período ${vigencia}.`;
+        `recebido em ${br(periodo.receivedOn!)}. Período ${vigencia}. Origem do valor: ${ORIGEM[periodo.amountSource ?? 'ADJUSTED']}` +
+        `${paid?.updateContract ? '; passa a ser o valor contratado nas próximas renovações' : ''}.`;
     } else if (periodo.kind === 'TRIAL') {
       action = 'ACCESS_TRIAL_EXTENDED';
       summary = `Teste de ${atual.name} prorrogado: ${vigencia}. Motivo: ${periodo.reason}`;
@@ -408,6 +449,10 @@ export class AccessValidityService {
                 receivedOn: periodo.receivedOn,
                 reference: periodo.reference,
                 confirmationSource: 'MANUAL',
+                amountSource: periodo.amountSource,
+                catalogCents: paid?.pricing.catalogCents ?? null,
+                contractCents: paid?.pricing.contractCents ?? null,
+                contractUpdated: paid?.updateContract ?? false,
               }
             : base,
       },

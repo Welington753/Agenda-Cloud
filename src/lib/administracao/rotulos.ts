@@ -13,10 +13,14 @@ export const SITUACOES_CONTA: Record<SituacaoConta, string> = {
 };
 
 export const PAPEIS_PLATAFORMA: Record<PapelPlataforma, string> = {
-  MASTER_OWNER: "Responsável pela plataforma (MASTER_OWNER)",
-  MASTER_ADMIN: "Administração delegada (MASTER_ADMIN)",
-  MASTER_SUPPORT: "Suporte, só consulta (MASTER_SUPPORT)",
+  MASTER_OWNER: "Proprietário da plataforma (MASTER_OWNER)",
+  MASTER_ADMIN: "Administração delegada (MASTER_ADMIN, sem acesso ao portal)",
+  MASTER_SUPPORT: "Suporte (MASTER_SUPPORT, sem acesso ao portal)",
 };
+
+/** Único papel que o portal atribui: o de proprietário. Os demais só aparecem
+ * em contas antigas que já os tinham, e não abrem nada. */
+export const PAPEL_ATRIBUIVEL = "MASTER_OWNER" as const;
 
 export const PAPEIS_ESTABELECIMENTO: Record<string, string> = {
   DONO: "Dono(a)",
@@ -85,6 +89,10 @@ export const ACOES_HISTORICO: Record<string, string> = {
   ACCESS_TRIAL_EXTENDED: "Teste prorrogado",
   ACCESS_COURTESY_GRANTED: "Cortesia concedida",
   ACCESS_PERIOD_CORRECTED: "Registro de validade anulado (correção, sem estorno)",
+  PLAN_PRICE_CHANGED: "Preço do catálogo alterado",
+  CONTRACT_PRICE_CHANGED: "Valor contratado alterado",
+  ACCESS_NO_EXPIRY_GRANTED: "Acesso sem vencimento concedido",
+  ACCESS_NO_EXPIRY_REVOKED: "Acesso sem vencimento retirado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

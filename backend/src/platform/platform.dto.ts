@@ -4,6 +4,7 @@ import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
 import { requestKeySchema } from '../accounts/accounts.dto.js';
 import { MAX_COURTESY_DAYS, MAX_TRIAL_EXTENSION_DAYS } from '../commercial/access-periods.js';
 import { ACCESS_PAYMENT_METHODS } from '../migrations/1793232000000-CommercialAccess.js';
+import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
 
 export const establishmentIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,30}$/);
 
@@ -102,6 +103,10 @@ export const recordPaidPeriodSchema = z
     /** A pessoa declara que conferiu o pagamento à mão: o registro nunca
      * afirma confirmação automática por banco ou operadora. */
     manualConfirmation: z.literal(true),
+    /** `true`: o valor digitado passa a ser o contratado deste cliente para
+     * as próximas renovações deste ciclo. Ausente ou `false`: ajusta só este
+     * pagamento. A origem do valor é decidida no servidor. */
+    updateContract: z.boolean().optional(),
   })
   .strict();
 export type RecordPaidPeriodDto = z.infer<typeof recordPaidPeriodSchema>;
@@ -136,3 +141,68 @@ export const correctAccessPeriodSchema = z
   })
   .strict();
 export type CorrectAccessPeriodDto = z.infer<typeof correctAccessPeriodSchema>;
+
+// ------------------------------------------------------- preços e acesso
+// Portal da plataforma (docs/plans/portal-da-plataforma.md).
+
+export const billingCycleSchema = z.enum(['MONTHLY', 'QUARTERLY']);
+const priceCentsSchema = z.number().int().min(1).max(MAX_PRICE_CENTS);
+
+/** Novo preço do catálogo. `expectedCurrentCents` é o preço que a tela leu
+ * (`null`: pendente): se outra tela mudou antes, 409. */
+export const catalogPriceSchema = z
+  .object({
+    requestKey: accessRequestKeySchema,
+    expectedCurrentCents: priceCentsSchema.nullable(),
+    amountCents: priceCentsSchema,
+    reason: reasonSchema.optional(),
+  })
+  .strict();
+export type CatalogPriceDto = z.infer<typeof catalogPriceSchema>;
+
+/** Valor contratado com o cliente para o plano atual dele. `null` volta a
+ * seguir o catálogo. */
+export const contractPriceSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    cycle: billingCycleSchema,
+    amountCents: priceCentsSchema.nullable(),
+    reason: reasonSchema,
+  })
+  .strict();
+export type ContractPriceDto = z.infer<typeof contractPriceSchema>;
+
+export const subscriptionPaymentsQuerySchema = z
+  .object({
+    tenantId: establishmentIdSchema.optional(),
+    page: z
+      .string()
+      .regex(/^[1-9]\d{0,5}$/)
+      .transform(Number)
+      .default(1),
+    pageSize: z
+      .string()
+      .regex(/^\d{1,3}$/)
+      .transform(Number)
+      .pipe(z.number().int().min(1).max(100))
+      .default(30),
+  })
+  .strict();
+export type SubscriptionPaymentsQuery = z.infer<typeof subscriptionPaymentsQuerySchema>;
+
+/** Conceder "sem vencimento": motivo e confirmação explícita. */
+export const grantNoExpirySchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    reason: reasonSchema,
+    confirm: z.literal(true),
+  })
+  .strict();
+export type GrantNoExpiryDto = z.infer<typeof grantNoExpirySchema>;
+
+/** Retirar "sem vencimento": motivo e confirmação de que a pessoa viu a
+ * consequência calculada pelo servidor. */
+export const revokeNoExpirySchema = grantNoExpirySchema;
+export type RevokeNoExpiryDto = z.infer<typeof revokeNoExpirySchema>;

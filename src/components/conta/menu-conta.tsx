@@ -272,7 +272,7 @@ export function MenuConta({
                 data-testid="menu-administracao"
               >
                 <ShieldCheck size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
-                Administração da plataforma
+                Portal da plataforma
               </Link>
             )}
             <button

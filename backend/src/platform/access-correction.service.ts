@@ -27,7 +27,7 @@ import type { EntityManager } from 'typeorm';
 import { recordAudit } from '../accounts/audit.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import { correctionImpact, type AccessSituation, type IdentifiedPeriod } from '../commercial/access-periods.js';
-import { loadAccessLegacy, loadAccessPeriods } from '../commercial/commercial-gate.js';
+import { loadAccessFlags, loadAccessPeriods } from '../commercial/commercial-gate.js';
 import {
   PERIOD_SELECT,
   br,
@@ -120,7 +120,7 @@ export class AccessCorrectionService {
         }
 
         const periodos = await loadAccessPeriods(manager, atual.id);
-        const legado = await loadAccessLegacy(manager, atual.id);
+        const legado = await loadAccessFlags(manager, atual.id);
         const impacto = correctionImpact(periodos, original.id, now, legado);
         if (!impacto.allowed) {
           const [seguinte] = await manager.query<PeriodRow[]>(`${PERIOD_SELECT} WHERE ap.id = $1`, [impacto.blockedBy]);

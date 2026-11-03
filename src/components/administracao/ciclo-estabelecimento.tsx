@@ -124,17 +124,21 @@ type AcaoDeSituacao = "suspend" | "archive" | "reactivate";
 
 const TEXTO_SITUACAO: Record<AcaoDeSituacao, { titulo: string; botao: string; efeito: ReactNode }> = {
   suspend: {
-    titulo: "Suspender o estabelecimento?",
-    botao: "Suspender",
+    titulo: "Inativar o estabelecimento?",
+    botao: "Inativar",
     efeito: (
       <>
+        <p>
+          Inativo prevalece sobre pagamento, teste e acesso sem vencimento: enquanto estiver inativo, o
+          estabelecimento não opera, mesmo com validade em dia.
+        </p>
         <p>
           A equipe deixa de usar este estabelecimento (agenda, clientes, configurações) e o agendamento público para de
           receber pedidos. Os avisos de novas solicitações param.
         </p>
         <p>
           Nada é apagado: agenda, reservas, clientes, vínculos e histórico ficam. As pessoas continuam entrando nos outros
-          estabelecimentos a que têm acesso. Dá para reativar depois.
+          estabelecimentos a que têm acesso. Nenhum agendamento é cancelado. Dá para ativar de novo depois.
         </p>
       </>
     ),
@@ -156,13 +160,19 @@ const TEXTO_SITUACAO: Record<AcaoDeSituacao, { titulo: string; botao: string; ef
     ),
   },
   reactivate: {
-    titulo: "Reativar o estabelecimento?",
-    botao: "Reativar",
+    titulo: "Ativar o estabelecimento?",
+    botao: "Ativar",
     efeito: (
-      <p>
-        O estabelecimento volta à situação anterior à restrição, com a equipe, a agenda e o agendamento público como
-        estavam (o agendamento público só volta se estava ligado).
-      </p>
+      <>
+        <p>
+          O estabelecimento volta à situação anterior à restrição, com a equipe, a agenda e o agendamento público como
+          estavam (o agendamento público só volta se estava ligado).
+        </p>
+        <p>
+          A validade comercial não muda: se o acesso estiver vencido, continua vencido até um registro de pagamento,
+          cortesia ou acesso sem vencimento.
+        </p>
+      </>
     ),
   },
 };
@@ -193,7 +203,7 @@ export function SituacaoDoEstabelecimento({ item, aoMudar }: { item: DetalheEsta
     setPergunta(null);
     await executar(
       () => executarSensivel(() => acaoAdministrativa(`/platform/establishments/${encodeURIComponent(item.id)}/${acao}`, "POST", corpo)),
-      acao === "suspend" ? "Estabelecimento suspenso." : acao === "archive" ? "Estabelecimento arquivado." : "Estabelecimento reativado.",
+      acao === "suspend" ? "Estabelecimento inativado." : acao === "archive" ? "Estabelecimento arquivado." : "Estabelecimento ativado.",
     );
   }
 
@@ -207,28 +217,36 @@ export function SituacaoDoEstabelecimento({ item, aoMudar }: { item: DetalheEsta
     <Cartao>
       <CartaoCorpo className="space-y-3" data-testid="situacao-estabelecimento">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold">Situação</h2>
-          <Badge cor={item.status === "SUSPENDED" || item.status === "ARCHIVED" ? "aviso" : "sucesso"}>
-            {SITUACOES[item.status]}
+          <h2 className="font-semibold">Situação operacional</h2>
+          <Badge
+            cor={item.status === "SUSPENDED" || item.status === "ARCHIVED" ? "aviso" : "sucesso"}
+            data-testid="situacao-operacional"
+          >
+            {item.status === "SUSPENDED" || item.status === "ARCHIVED" ? "Inativo" : "Ativo"}
           </Badge>
+          {item.status === "ARCHIVED" && <Badge cor="neutro">{SITUACOES.ARCHIVED}</Badge>}
         </div>
+        <p className="text-xs text-ink-soft">
+          Separada da validade comercial (abaixo) e dos papéis da plataforma. Inativo prevalece sobre pagamento, teste e
+          acesso sem vencimento.
+        </p>
         {item.suspensionReason && (item.status === "SUSPENDED" || item.status === "ARCHIVED") && (
           <p className="break-words text-sm text-ink-soft">Motivo registrado: {item.suspensionReason}</p>
         )}
         {(item.status === "SUSPENDED" || item.status === "ARCHIVED") && item.restoreStatus && (
           <p className="text-xs text-ink-soft">
-            Ao reativar, volta para: {SITUACOES[item.restoreStatus as keyof typeof SITUACOES] ?? item.restoreStatus}.
+            Ao ativar, volta para: {SITUACOES[item.restoreStatus as keyof typeof SITUACOES] ?? item.restoreStatus}.
           </p>
         )}
         <div className="flex flex-wrap gap-2">
           {acoes.suspend && (
             <Botao variante="secundaria" className="min-h-11" onClick={() => abrir("suspend")}>
-              Suspender
+              Inativar
             </Botao>
           )}
           {acoes.reactivate && (
             <Botao className="min-h-11" onClick={() => abrir("reactivate")}>
-              Reativar
+              Ativar
             </Botao>
           )}
           {acoes.archive && (

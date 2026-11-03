@@ -21,7 +21,7 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 - **API** (`backend/src/`): um módulo Nest por domínio, TypeORM com
   `snake-naming-strategy`, sessão por cookie `HttpOnly`.
 - **Banco**: o schema nasce só das migrations em `backend/src/migrations/`
-  (11 aplicadas no piloto). Prisma (`prisma/`, `src/generated/prisma`) é
+  (12 aplicadas no piloto; `PlatformPortal1793318400000` ainda não). Prisma (`prisma/`, `src/generated/prisma`) é
   legado congelado e só serve aos testes antigos de `test:db`.
 
 ## 2. Backend: módulos
@@ -42,7 +42,7 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 | `push/` | Web Push: inscrições, alertas de pedido, entregas, retomada ao subir | `common/` |
 | `notifications/` | Base do WhatsApp automático: política, agendador na transação da reserva, fila, executor e provedor **simulado**. Nada chama o executor em produção | `appointments/` (chamado por ele) |
 | `accounts/` | Administração de contas da plataforma, convites, redefinição de senha, auditoria (`audit_logs`) | `email/`, `auth/` |
-| `platform/` | Administração de estabelecimentos (master) | `accounts/` |
+| `platform/` | Portal da plataforma (só `MASTER_OWNER`, `platform-access.ts`): estabelecimentos, Ativo/Inativo, validade, sem vencimento (`no-expiry.service.ts`), preços do catálogo e contratados (`pricing.service.ts`), pagamentos das assinaturas | `accounts/`, `commercial/` |
 | `email/` | Envio de e-mail (opcional; desligado sem variáveis) | — |
 | `config/` | Validação de ambiente, cookie, IP do cliente | — |
 | `database/` | DataSource de runtime (logger que omite segredos) e de migrations (logger padrão) | — |
@@ -69,7 +69,8 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 
 | Pasta | O que tem |
 |---|---|
-| `src/app/conta/*` | Área real (dono, gerente, profissional): `agendamentos`, `minha-agenda`, `clientes`, `recebimentos`, `visao-geral`, `configuracoes` (serviços, profissionais, equipe, aparência), `administracao` (plataforma) |
+| `src/app/conta/*` | Área real (dono, gerente, profissional): `agendamentos`, `minha-agenda`, `clientes`, `recebimentos`, `visao-geral`, `configuracoes` (serviços, profissionais, equipe, aparência) |
+| `src/app/plataforma/*` | Portal da plataforma, layout e menu próprios (`components/administracao/shell-plataforma.tsx`); `/administracao/**` e `/conta/administracao/**` encaminham para cá |
 | `src/app/agendar/[slug]` | Agendamento público real. `/agendar/<slug>` é o endereço canônico, o que a tela copia (`linkPublico`). O endereço curto `/<slug>` (demonstração em `src/app/[slug]`) só encaminha para cá quando o slug não é da demonstração; as colisões com rotas e com a demonstração seguem pendentes (R6 da auditoria) |
 | `src/app/login`, `convite`, `redefinir-senha`, `cadastro` | Entrada e ativação de conta |
 | `src/app/agenda_api/[...caminho]` | Proxy de mesma origem |

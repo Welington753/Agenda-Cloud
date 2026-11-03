@@ -16,8 +16,10 @@ import { staffSeatUsage } from '../team/seats.js';
 import { planExcess } from './establishment-admin.service.js';
 import { listAccessPeriods } from './access-validity.service.js';
 import { accessSituation, localDate } from '../commercial/access-periods.js';
-import { loadAccessLegacy, loadAccessPeriods } from '../commercial/commercial-gate.js';
+import { loadAccessFlags, loadAccessPeriods } from '../commercial/commercial-gate.js';
 import { correctionPreview } from './access-correction.service.js';
+import { listNoExpiryGrants, noExpiryRevokePreview } from './no-expiry.service.js';
+import { tenantPricing } from './pricing.service.js';
 import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
@@ -173,13 +175,19 @@ export class PlatformService {
       // Validade do acesso (assinatura do Agenda Cloud), separada da
       // situação administrativa acima.
       const periodos = await loadAccessPeriods(manager, tenantId);
-      const legado = await loadAccessLegacy(manager, tenantId);
+      const legado = await loadAccessFlags(manager, tenantId);
       const situacao = accessSituation(periodos, now, legado);
       const historico = await listAccessPeriods(manager, tenantId);
       const ultimoDia = situacao.validUntil
         ? localDate(new Date(situacao.validUntil.getTime() - 1), establishment.timezone)
         : null;
       const registraValidade = caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED');
+      const concessoes = await listNoExpiryGrants(manager, tenantId);
+      const concessaoVigente = concessoes.find((c) => !c.revoked) ?? null;
+      const depoisDeRetirar = concessaoVigente ? noExpiryRevokePreview(periodos, now) : null;
+      const ultimoDiaDepois = depoisDeRetirar?.validUntil
+        ? localDate(new Date(depoisDeRetirar.validUntil.getTime() - 1), establishment.timezone)
+        : null;
       return {
         ...establishment,
         ...extra,
@@ -199,12 +207,41 @@ export class PlatformService {
           extendTrial: registraValidade && !periodos.some((p) => p.kind !== 'TRIAL'),
           grantCourtesy: registraValidade,
           correctPeriod: registraValidade,
+          grantNoExpiry: registraValidade && !concessaoVigente,
+          revokeNoExpiry: registraValidade && !!concessaoVigente,
+          changeContract: registraValidade,
         },
+        /** Ativo/Inativo: a situação administrativa, separada da validade
+         * comercial e dos papéis da plataforma. Inativo (suspenso ou
+         * arquivado) prevalece sobre pagamento, teste e "sem vencimento". */
+        operational: operando ? 'ACTIVE' : 'INACTIVE',
+        /** Concessões "sem vencimento" (em vigor e retiradas, nunca apagadas)
+         * e, com uma em vigor, como fica a validade se for retirada agora. */
+        noExpiry: {
+          active: concessaoVigente,
+          history: concessoes,
+          revokePreview: depoisDeRetirar
+            ? {
+                state: depoisDeRetirar.state,
+                blocked: depoisDeRetirar.blocked,
+                validUntil: depoisDeRetirar.validUntil,
+                lastDay: ultimoDiaDepois
+                  ? `${ultimoDiaDepois.year}-${String(ultimoDiaDepois.month).padStart(2, '0')}-${String(ultimoDiaDepois.day).padStart(2, '0')}`
+                  : null,
+                expiredAt: depoisDeRetirar.expiredAt,
+              }
+            : null,
+        },
+        /** Preço do plano atual: catálogo, contrato do cliente e o valor que o
+         * formulário "Registrar pagamento" preenche, com a origem. */
+        pricing: await tenantPricing(manager, tenantId, establishment.plan.id),
         access: {
           state: situacao.state,
           /** Marcado como anterior ao controle de validade (migration
            * CommercialAccess). Sem período, "Validade ainda não definida". */
           legacy: legado.legacy,
+          /** Concessão "sem vencimento" em vigor. */
+          noExpiry: legado.noExpiry,
           blocked: situacao.blocked,
           validUntil: situacao.validUntil,
           /** Último dia coberto, na data local do estabelecimento. */

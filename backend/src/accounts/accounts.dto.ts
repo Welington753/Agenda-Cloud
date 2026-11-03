@@ -6,8 +6,8 @@ import { emailSchema } from '../auth/login.dto.js';
 import { normalizePhone } from '../auth/phone-normalizer.js';
 import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { PlatformRole } from '../entities/enums/platform-role.enum.js';
+import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
 import { UserStatus } from '../entities/enums/user-status.enum.js';
-import { EFFECTIVE_PLATFORM_PERMISSIONS } from '../platform/platform-access.js';
 import { EFFECTIVE_TENANT_PERMISSIONS } from './tenant-effective-access.js';
 import { isValidAccountTokenFormat } from './account-token.js';
 
@@ -60,11 +60,21 @@ export const createEstablishmentSchema = z
     category: z.enum(BusinessCategory),
     timezone: z.string().refine(fusoValido).default('America/Sao_Paulo'),
     planId: idSchema,
+    /** Ciclo combinado com o cliente. Escolher plano e preço não registra
+     * pagamento: só o contrato para os próximos registros. */
+    billingCycle: z.enum(['MONTHLY', 'QUARTERLY']).optional(),
+    /** Valor contratado específico para este cliente, em centavos. Ausente:
+     * segue o preço do catálogo (ou fica pendente, se não houver). */
+    contractAmountCents: z.number().int().min(1).max(MAX_PRICE_CENTS).optional(),
     owner: z
       .object({ name: nameSchema, email: emailSchema, phone: phoneSchema.optional() })
       .strict(),
   })
-  .strict();
+  .strict()
+  .refine((dto) => dto.contractAmountCents === undefined || dto.billingCycle !== undefined, {
+    message: 'Escolha o ciclo do valor contratado.',
+    path: ['billingCycle'],
+  });
 export type CreateEstablishmentDto = z.infer<typeof createEstablishmentSchema>;
 
 /** Só DONO: é o único papel que alguma rota de estabelecimento libera. */
@@ -78,17 +88,20 @@ export const inviteMemberSchema = z
   .strict();
 export type InviteMemberDto = z.infer<typeof inviteMemberSchema>;
 
-const platformPermissionsSchema = z
-  .array(z.enum(EFFECTIVE_PLATFORM_PERMISSIONS as [string, ...string[]]))
-  .max(EFFECTIVE_PLATFORM_PERMISSIONS.length)
-  .refine((lista) => new Set(lista).size === lista.length);
+/** Nenhuma permissão avulsa tem efeito nesta versão (o portal é só do
+ * proprietário): a lista só é aceita vazia. */
+const platformPermissionsSchema = z.array(z.string()).max(0);
+
+/** Só o papel de proprietário da plataforma é atribuível
+ * (`ASSIGNABLE_PLATFORM_ROLES` em platform/platform-access.ts). */
+const assignablePlatformRoleSchema = z.literal(PlatformRole.MASTER_OWNER);
 
 export const platformInviteSchema = z
   .object({
     requestKey: requestKeySchema,
     name: nameSchema,
     email: emailSchema,
-    platformRole: z.enum(PlatformRole),
+    platformRole: assignablePlatformRoleSchema,
     permissions: platformPermissionsSchema,
   })
   .strict();
@@ -145,7 +158,7 @@ export type StatusChangeDto = z.infer<typeof statusChangeSchema>;
 export const platformAccessSchema = z
   .object({
     expectedUpdatedAt: expectedUpdatedAtSchema,
-    role: z.enum(PlatformRole).nullable(),
+    role: assignablePlatformRoleSchema.nullable(),
     permissions: platformPermissionsSchema,
   })
   .strict();

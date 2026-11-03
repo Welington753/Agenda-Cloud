@@ -48,7 +48,7 @@ describe.skipIf(!url)('recebimentos manuais contra PostgreSQL descartável', () 
     ]);
     const sessionId = id();
     await db.query(
-      `INSERT INTO sessions (id, user_id, token_hash, expires_at, reauthenticated_at) VALUES ($1, $2, $3, now() + interval '1 day', now())`,
+      `INSERT INTO sessions (id, user_id, token_hash, expires_at, reauthenticated_at) VALUES ($1, $2, $3, now() + interval '1 day', now() - interval '1 second')`,
       [sessionId, userId, id() + id()],
     );
     return { userId, sessionId };

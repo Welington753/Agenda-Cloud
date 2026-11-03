@@ -43,7 +43,14 @@ import {
   linkExpiresAt,
 } from './account-token.js';
 import type { CreateEstablishmentDto, InviteMemberDto, PlatformInviteDto } from './accounts.dto.js';
-import { PLATFORM_ACCOUNT_MESSAGE, SELF_MESSAGE, loadActor, requireCapability, type Actor } from './actor.js';
+import {
+  PLATFORM_ACCOUNT_MESSAGE,
+  SELF_MESSAGE,
+  assertAssignablePlatformRole,
+  loadActor,
+  requireCapability,
+  type Actor,
+} from './actor.js';
 import { recordAudit } from './audit.js';
 import { loadInviteView, type InviteView } from './invite-views.js';
 import { avancarVersao } from './user-version.js';
@@ -58,6 +65,7 @@ import {
 import { resolveTeamManager } from '../team/team-authorization.js';
 import type { StaffInviteDto } from '../team/team.dto.js';
 import { firstTrial } from '../commercial/access-periods.js';
+import { currentCatalogPrice, insertContractPrice } from '../platform/pricing.service.js';
 
 export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
   'Este e-mail não está disponível para convite. Use outro e-mail.';
@@ -117,7 +125,12 @@ export class InvitesService {
         );
         return await this.finish(issued);
       } catch (error) {
-        if (isUniqueViolation(error, 'uq_invites_created_by_request_key')) {
+        // Com ciclo combinado, o contrato é gravado com a mesma chave ANTES do
+        // convite: um envio repetido em paralelo esbarra primeiro nele.
+        if (
+          isUniqueViolation(error, 'uq_invites_created_by_request_key') ||
+          isUniqueViolation(error, 'uq_tenant_contract_prices_request_key')
+        ) {
           const repetido = await this.replay(actorId, dto.requestKey);
           if (repetido) return repetido;
         }
@@ -165,6 +178,28 @@ export class InvitesService {
        VALUES ($1, $2, 'TRIAL', $3, $4, $5, $6, $7)`,
       [generateId(), tenantId, plan.id, teste.startsAt, teste.endsAt, now, actor.id],
     );
+    // Plano e ciclo combinados com o cliente: só o contrato para os próximos
+    // registros. Nenhum pagamento é registrado nem dado por recebido aqui.
+    const contrato = dto.billingCycle
+      ? {
+          cycle: dto.billingCycle,
+          amountCents: dto.contractAmountCents ?? null,
+          catalogCents: await currentCatalogPrice(manager, plan.id, dto.billingCycle),
+        }
+      : null;
+    if (contrato) {
+      await insertContractPrice(manager, {
+        tenantId,
+        planId: plan.id,
+        cycle: contrato.cycle,
+        amountCents: contrato.amountCents,
+        reason: 'Combinado na criação do estabelecimento.',
+        accessPeriodId: null,
+        requestKey: dto.requestKey,
+        actorId: actor.id,
+        now,
+      });
+    }
     await recordAudit(
       manager,
       {
@@ -179,6 +214,10 @@ export class InvitesService {
           timezone: dto.timezone,
           status: 'TRIAL',
           trialEndsAt: teste.endsAt.toISOString(),
+          billingCycle: contrato?.cycle ?? null,
+          contractAmountCents: contrato?.amountCents ?? null,
+          catalogPriceCents: contrato?.catalogCents ?? null,
+          paymentRecorded: false,
         },
       },
       now,
@@ -233,6 +272,7 @@ export class InvitesService {
       const issued = await this.dataSource.transaction(async (manager) => {
         const actor = await loadActor(manager, actorId);
         requireCapability(actor, 'managePlatformAccess');
+        assertAssignablePlatformRole(dto.platformRole);
         const [existente] = await manager.query<unknown[]>('SELECT 1 FROM users WHERE email = $1', [dto.email]);
         if (existente) {
           throw conflito(
@@ -557,7 +597,7 @@ export class InvitesService {
                   ${avancarVersao('$4')} WHERE id = $1`,
           [user.id, alvo.platform_role, alvo.platform_permissions, context.now],
         );
-        destination = '/conta/administracao';
+        destination = '/plataforma';
       }
       await manager.query(
         `UPDATE invites SET status = 'ACCEPTED', accepted_at = $2, updated_at = $2 WHERE id = $1`,

@@ -36,7 +36,7 @@ export interface TenantContextReal {
  * as datas e o tipo vêm `null` e só `blocked` diz algo. `MISSING`: sem
  * período registrado e sem ser anterior ao controle (bloqueado). */
 export interface ValidadeDoAcessoReal {
-  state: "UNTRACKED" | "MISSING" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED" | null;
+  state: "NO_EXPIRY" | "UNTRACKED" | "MISSING" | "TRIAL" | "PAID" | "COURTESY" | "EXPIRED" | null;
   blocked: boolean;
   validUntil: string | null;
   expiredAt: string | null;

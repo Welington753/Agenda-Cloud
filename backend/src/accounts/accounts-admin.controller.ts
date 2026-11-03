@@ -230,6 +230,9 @@ export class AccountsAdminController {
     @Req() req: AuthenticatedRequest,
     @Param('requestKey', new ZodValidationPipe(requestKeySchema)) requestKey: string,
   ) {
+    // Só para quem ainda é proprietário: uma conta que perdeu o papel não
+    // consulta nem o que criou antes.
+    await this.directory.assertViewer(req.auth.userId);
     const invite = await this.invites.findByRequestKey(req.auth.userId, requestKey);
     if (invite) return { kind: 'invite', ...invite };
     const reset = await this.resets.findByRequestKey(req.auth.userId, requestKey);
@@ -246,6 +249,10 @@ export class AccountsAdminController {
   @Post('reauth')
   @HttpCode(204)
   async reauth(@Req() req: AuthenticatedRequest, @Body(new ZodValidationPipe(reauthSchema)) dto: { password: string }) {
+    // NÃO é rota exclusiva do portal: o dono do estabelecimento também
+    // confirma a senha por aqui antes das ações sensíveis da equipe e dos
+    // recebimentos. Só marca a confirmação na PRÓPRIA sessão e não concede
+    // nada: cada ação confere papel e vínculo de novo.
     await this.admin.reauthenticate(req.auth.userId, req.auth.sessionId, dto.password);
   }
 }
