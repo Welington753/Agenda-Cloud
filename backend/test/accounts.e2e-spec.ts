@@ -3,7 +3,7 @@
 // validação estrita (campos forjados nunca chegam ao serviço) e o cookie só
 // depois de um aceite bem-sucedido.
 import { Test } from '@nestjs/testing';
-import { GoneException, UnauthorizedException, type INestApplication } from '@nestjs/common';
+import { ForbiddenException, GoneException, UnauthorizedException, type INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -29,6 +29,7 @@ describe('gestão de contas — HTTP', () => {
     establishmentMembers: vi.fn(),
     listInvites: vi.fn(),
     listAudit: vi.fn(),
+    assertViewer: vi.fn(),
   };
   const admin = {
     updateUser: vi.fn(),
@@ -141,6 +142,11 @@ describe('gestão de contas — HTTP', () => {
     invites.findByRequestKey.mockResolvedValue({ created: false, invite: { id: 'i1' } });
     const resposta = await request(server()).get(`/platform/requests/${KEY}`).expect(200);
     expect(resposta.body).toMatchObject({ kind: 'invite', created: false });
+    // Só para quem ainda é proprietário: a consulta nem chega a procurar.
+    directory.assertViewer.mockRejectedValueOnce(new ForbiddenException());
+    invites.findByRequestKey.mockClear();
+    await request(server()).get(`/platform/requests/${KEY}`).expect(403);
+    expect(invites.findByRequestKey).not.toHaveBeenCalled();
   });
 
   it('aceite: token no corpo, cookie só depois do sucesso, nunca na falha', async () => {
