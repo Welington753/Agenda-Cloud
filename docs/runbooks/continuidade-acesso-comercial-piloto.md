@@ -1,5 +1,58 @@
 # Continuidade: kit de publicação de CommercialAccess (planos e validade)
 
+## Estado em 03/11/2026: CommercialAccess aplicada e conferida no piloto
+
+**Este é o estado atual; as seções abaixo são o histórico.**
+
+- **SHA operacional e publicado:** `99242a662cfa2a8bb3b144b62c2fe5fe000ee222`.
+  API e web do piloto Live nesse SHA (deploy manual do dono, informado em
+  02/11/2026).
+- **Ordem real (fora do runbook):** API e web foram publicados **antes** da
+  migration. A `conferir` de 02/11 23:46Z mostrou `ESTADO: before` (11
+  migrations, 0/28). Entre o deploy e a migration, a API nova rodou sobre o
+  schema anterior (pelo ensaio, login do dono e dos funcionários com 500). A
+  API anterior não foi republicada.
+- **CommercialAccess1793232000000 aplicada e conferida. Não repetir nem
+  reverter** (`migration:revert` apaga períodos; ver "Recuperação" do runbook).
+  - `preparar` (02/11 23:52Z): `before` SUCCESS, nenhuma exceção desligada,
+    `CONTAS_QUE_CRIAM_ESTABELECIMENTO: 3`.
+  - `restauracao` (03/11 00:01Z), lançador oficial, PostgreSQL 17.11 local:
+    SHA256, contagens e md5 iguais (40 tabelas); todas as linhas `ENSAIO_*`
+    `true`; descartável apagado.
+  - `aplicar` 1 (`2026-11-03T00-08-18-376Z`): **abortada** por frase
+    digitada errada (`ERR_CONFIRMACAO_DIFERENTE`), antes de
+    `migration_iniciada`. **Nada gravado.**
+  - `aplicar` 2 (`2026-11-03T00-11-12-439Z`): COMMIT às 00:12:03Z;
+    `aplicada_e_conferida`; 12 migrations, 28/28, contagens iguais ao backup.
+  - `conferir` (03/11 00:14Z): `ESTADO: after`, 12 migrations, 28/28,
+    `BASELINE_FAILURES: none`, `SESSOES_DA_MIGRATION_ATIVAS: 0`,
+    `JANELA_SEM_CRIACAO: ok`.
+- **Janela sem criação:** combinada com as três contas antes da frase;
+  terminou com a API nova Live e `JANELA_SEM_CRIACAO: ok`.
+- **Estabelecimentos:** os três existentes (todos no plano de código
+  `equipe`, agora "Pro") marcados como anteriores ao controle; nenhum
+  período, pagamento ou cortesia criado; nenhuma exceção gravada pela
+  migration; 4 linhas novas no catálogo.
+- **Backups preservados** em `%USERPROFILE%\AgendaCloud-operacoes` (fora do
+  Git; contêm hashes de senha):
+  - `comercial-preparar-2026-11-02T23-52-52-490Z`: sha256
+    `58d5e7f71c9e3c1ac810a1f912e6dbc3fa23ceec06791f1e45d0ab2d2112a60d`, com
+    `restauracao-conferida.json`;
+  - `comercial-aplicar-2026-11-03T00-08-18-376Z`: backup da tentativa
+    abortada;
+  - `comercial-aplicar-2026-11-03T00-11-12-439Z`: sha256
+    `e02f4cd0c99f00ca37023c71613623bcee41350aa18c99b924ac7c7e380ca9e9`,
+    imediatamente antes da migration.
+- **Pendente:** testes manuais do site (passos 5 e 6 do runbook: `/auth/me`
+  sem cookie 401, login do dono, gerente e profissional, ficha da
+  administração com "Validade do acesso", nomes Básico, Pro e Max,
+  Configurações do dono, link público). **Sem resultado até o dono informar.**
+  Não registrar pagamento, prorrogação ou cortesia só para testar.
+- **Backup automático continua desativado.** Preços continuam como proposta;
+  regularização de estabelecimentos não feita; PR #74 separado.
+- Worktree limpa da operação: `C:\Projetos\Agenda-Cloud-publicacao-comercial`
+  (HEAD destacado em `99242a6`); remover só depois dos testes manuais.
+
 
 ## Estado em 02/11/2026, depois do merge do PR #83
 
