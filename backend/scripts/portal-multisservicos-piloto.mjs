@@ -181,3 +181,35 @@ export function decidirAplicacao(etapaEscolhida, estado) {
 export function conferirContas(etapaEscolhida, impacto) {
   if (etapaEscolhida.nome === "portal" && impacto.proprietariosAtivos === 0) throw new Parada("ERR_SEM_PROPRIETARIO_ATIVO");
 }
+
+/**
+ * Desfecho da execução: uma linha fixa (`DESFECHO`) e o código de saída. O
+ * código, sozinho, não comprova aplicação: a prova é o `ESTADO` conferido
+ * (no fim da fase ou na fase `conferir`) e o registro em operacoes.jsonl.
+ *   0  a fase terminou como esperado (preparado; aplicada e conferida; estado identificado)
+ *   1  parou ou abortou SEM gravar nada (inclui a recusa do banco com o estado antes intacto)
+ *   2  a migration FOI aplicada (COMMIT confirmado), mas a conferência posterior falhou
+ *   3  resultado INCERTO: não repita; rode conferir
+ */
+export const CODIGOS_DE_DESFECHO = Object.freeze({
+  preparado_sem_gravacao: 0,
+  aplicada_e_conferida: 0,
+  estado_identificado: 0,
+  abortado_sem_gravacao: 1,
+  parado_sem_gravacao: 1,
+  conferencia_sem_estado_valido: 1,
+  aplicada_conferencia_falhou: 2,
+  resultado_incerto: 3,
+});
+
+/**
+ * Desfecho de um erro que chegou ao fim do script. `execucao` diz até onde a
+ * fase `aplicar` chegou: null (a migration não começou ou comprovadamente não
+ * entrou), "iniciada" (pode ter entrado) ou "aplicada" (COMMIT confirmado).
+ * Um erro depois do início nunca vira "nada gravado".
+ */
+export function desfechoDoErro(codigo, execucao) {
+  if (codigo === "ERR_RESULTADO_INCERTO" || execucao === "iniciada") return "resultado_incerto";
+  if (execucao === "aplicada") return "aplicada_conferencia_falhou";
+  return "parado_sem_gravacao";
+}

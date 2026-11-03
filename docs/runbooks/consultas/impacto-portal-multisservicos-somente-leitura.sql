@@ -51,7 +51,7 @@ SELECT u.id, u.platform_role::text AS papel, u.status::text AS situacao,
        to_char(u.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS criada
   FROM users u
  WHERE u.platform_role IS NOT NULL
- ORDER BY u.platform_role::text, u.created_at, u.id;
+ ORDER BY (u.platform_role <> 'MASTER_OWNER'), u.platform_role::text, u.created_at, u.id;
 
 -- 4. Convites de plataforma pendentes, por papel. Um convite pendente com
 --    papel delegado, se aceito, grava um papel que a API nova não reconhece.

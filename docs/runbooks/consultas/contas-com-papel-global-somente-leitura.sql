@@ -28,6 +28,6 @@ SELECT u.id,
        u.created_at AS criada_em
   FROM users u
  WHERE u.platform_role IS NOT NULL
- ORDER BY u.platform_role::text, u.created_at, u.id;
+ ORDER BY (u.platform_role <> 'MASTER_OWNER'), u.platform_role::text, u.created_at, u.id;
 
 ROLLBACK;

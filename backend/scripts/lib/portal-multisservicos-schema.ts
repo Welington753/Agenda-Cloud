@@ -275,6 +275,9 @@ export function objetosPortalMultisservicosPresentes(estado: EstadoPortalMultiss
 
 // ------------------------------------------------------------ levantamento
 
+/** Só a listagem detalhada (`CONTA_COM_PAPEL_GLOBAL`) é cortada; contagens e
+ * a proteção de proprietário ativo usam `count(*)` sem limite. Os
+ * proprietários vêm primeiro, para não ficarem fora do corte. */
 export const MAXIMO_DE_CONTAS_LISTADAS = 50;
 
 export interface ContaDaPlataforma {
@@ -383,7 +386,8 @@ export async function lerImpactoPortalMultisservicos(client: PgClientLike): Prom
               (SELECT count(*) FROM memberships m WHERE m.user_id = u.id AND m.role = 'DONO')::text AS dono,
               to_char(u.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS criada
          FROM users u WHERE u.platform_role IS NOT NULL
-        ORDER BY u.platform_role::text, u.created_at, u.id LIMIT ${MAXIMO_DE_CONTAS_LISTADAS}`,
+        ORDER BY (u.platform_role <> 'MASTER_OWNER'), u.platform_role::text, u.created_at, u.id
+        LIMIT ${MAXIMO_DE_CONTAS_LISTADAS}`,
     );
     const contar = (rows: { n: string }[], chave: (r: never) => string, campo: string) =>
       Object.fromEntries(rows.map((r) => [chave(r as never), numero(r.n, campo)]));
@@ -452,8 +456,12 @@ export function descreverImpactoPortalMultisservicos(impacto: ImpactoPortalMulti
     linhas.push(`CONTA_COM_PAPEL_GLOBAL: id=${c.id} papel=${c.papel} situacao=${c.situacao} vinculos_de_dono=${c.vinculosDeDono} criada=${c.criadaEm}`);
   }
   const total = Object.values(impacto.contasPorPapel).reduce((a, b) => a + b, 0);
+  linhas.push(
+    `CONTAS_LISTADAS: ${impacto.contas.length} de ${total}${impacto.contas.length < total ? ` (LISTAGEM_TRUNCADA; limite ${MAXIMO_DE_CONTAS_LISTADAS}, proprietários primeiro; contagens acima completas)` : ''}`,
+  );
   if (impacto.contas.length < total) linhas.push(`CONTAS_NAO_LISTADAS: ${total - impacto.contas.length}`);
   linhas.push('CONTAS_NOTA: só leitura; a conferência das identidades é autorizada e feita fora deste procedimento; nenhum papel é alterado aqui');
+  linhas.push('PROPRIETARIOS_NOTA: ter MASTER_OWNER ativo não confirma quem são; a conferência das identidades autorizadas continua pendente');
   return linhas;
 }
 

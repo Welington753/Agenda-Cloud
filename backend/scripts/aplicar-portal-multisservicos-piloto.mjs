@@ -56,6 +56,7 @@ import {
 } from "./operacao-piloto.mjs";
 import {
   APLICACOES_DAS_MIGRATIONS,
+  CODIGOS_DE_DESFECHO,
   ESTADOS,
   ESTADO_FINAL,
   ESTADO_INTERMEDIARIO,
@@ -69,6 +70,7 @@ import {
   conferirContas,
   conferirModo as conferirModoDeExecucao,
   decidirAplicacao,
+  desfechoDoErro,
   destinoDoModo,
   escolherEtapa,
   execucaoPendente,
@@ -96,6 +98,9 @@ const inicio = new Date();
 const carimbo = inicio.toISOString().replace(/[:.]/g, "-");
 const log = (linha) => console.log(linha);
 let podeRegistrar = false;
+// Até onde a fase `aplicar` chegou, para o desfecho de um erro que escape:
+// "iniciada" (a migration pode ter entrado) ou "aplicada" (COMMIT confirmado).
+let execucaoDaMigration = null;
 let base = {};
 let ensaio = null;
 
@@ -311,7 +316,7 @@ async function faseConferir(destino, schema) {
   } else {
     log("RESULTADO: estado divergente (nenhum dos três); não aplique nem publique; investigar");
   }
-  if (estado === "divergente" || sessoes > 0) process.exitCode = 1;
+  desfecho(estado === "divergente" || sessoes > 0 ? "conferencia_sem_estado_valido" : "estado_identificado");
 }
 
 async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
@@ -326,6 +331,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
     registrar(REGISTRO, { ...base, resultado: "abortado_sem_confirmacao", motivo, backup: manifesto.backup, concluidaEm: new Date().toISOString() });
     log(`MOTIVO: ${MOTIVOS[motivo]}`);
     log("RESULTADO: abortado, nada gravado");
+    desfecho("abortado_sem_gravacao");
     return;
   }
 
@@ -334,6 +340,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
   // desfecho e para.
   registrar(REGISTRO, { ...base, resultado: "migration_iniciada", backup: { pasta: path.basename(pastaExecucao), ...manifesto.backup } });
   let iniciou = false;
+  execucaoDaMigration = "iniciada";
   const esperadasAntes = etapa.nome === "portal" ? schema.MIGRATIONS_ATE_COMERCIAL : schema.MIGRATIONS_ATE_PORTAL;
   try {
     await aplicarSomenteAPendente(destino, {
@@ -353,6 +360,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
     if (tipo === "nada_aplicado") {
       log("ESTADO_APOS_FALHA: a migration não começou; nada foi enviado ao banco");
       registrar(REGISTRO, { ...base, resultado: "nao_aplicada", motivo: "falha_antes_de_iniciar", concluidaEm: new Date().toISOString() });
+      execucaoDaMigration = null;
       return parar(erro instanceof Parada ? erro.message : "ERR_MIGRATION_NAO_INICIADA");
     }
     if (tipo === "recusada_pelo_banco") {
@@ -362,6 +370,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
       if (intacto) {
         log(`ESTADO_APOS_FALHA: ${etapa.esperadoAntes} intacto; o banco recusou e desfez a transação (nada aplicado)`);
         registrar(REGISTRO, { ...base, resultado: "nao_aplicada", motivo: erro?.code ?? null, concluidaEm: new Date().toISOString() });
+        execucaoDaMigration = null;
         return parar("ERR_MIGRATION_FALHOU");
       }
     }
@@ -372,6 +381,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
   }
 
   // Daqui em diante a migration ESTÁ gravada (COMMIT confirmado pelo banco).
+  execucaoDaMigration = "aplicada";
   const aplicadaEm = new Date().toISOString();
   registrar(REGISTRO, { ...base, resultado: "aplicada", aplicadaEm });
   log("COMMIT: ok");
@@ -414,11 +424,18 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
     log(`ESTADO: ${etapa.esperadoDepois}`);
     log(`RESULTADO: ${etapa.migration} aplicada e conferida; estado ${ROTULO[etapa.esperadoDepois]}`);
     if (etapa.esperadoDepois === ESTADO_INTERMEDIARIO) log("PROXIMO_PASSO: etapa multisservicos (preparar, restauracao, aplicar); a API e o web atuais continuam no ar");
+    desfecho("aplicada_e_conferida");
   } else {
     log(`RESULTADO: ${etapa.migration} FOI APLICADA (COMMIT confirmado), mas a conferência posterior falhou`);
     log("NAO_REPITA: não rode aplicar de novo; rode a fase conferir antes de qualquer outro passo");
-    process.exitCode = 2;
+    desfecho("aplicada_conferencia_falhou");
   }
+}
+
+/** Linha `DESFECHO` e código de saída (ver CODIGOS_DE_DESFECHO). */
+function desfecho(nome) {
+  log(`DESFECHO: ${nome}`);
+  process.exitCode = CODIGOS_DE_DESFECHO[nome];
 }
 
 async function principal() {
@@ -505,6 +522,7 @@ async function principal() {
   if (FASE === "preparar") {
     registrar(REGISTRO, { ...base, resultado: "backup_feito", backup: { pasta: path.basename(pastaExecucao), ...manifesto.backup }, concluidaEm: new Date().toISOString() });
     log("RESULTADO: preparado, nada gravado no banco");
+    desfecho("preparado_sem_gravacao");
     log(`PROXIMO_PASSO: fase restauracao da etapa ${etapa.nome}, pasta ${path.basename(pastaExecucao)}`);
     return;
   }
@@ -518,6 +536,15 @@ principal()
     if (MOTIVOS[codigo]) log(`MOTIVO: ${MOTIVOS[codigo]}`);
     if (!(erro instanceof Parada)) log(`DETALHE: ${erro?.code ? `${erro.code} ` : ""}${String(erro?.message ?? erro).slice(0, 300)}`);
     for (const e of errosDeConexao) log(`ORIGEM: conexão encerrada antes (${e?.code ?? "sem código"})`);
+    // Um erro que escape depois do início da migration (por exemplo, disco
+    // cheio ao registrar) não vira "nada gravado".
+    const nome = desfechoDoErro(codigo, execucaoDaMigration);
+    if (nome === "resultado_incerto" && codigo !== "ERR_RESULTADO_INCERTO") {
+      log("NAO_REPITA: não rode aplicar de novo; rode a fase conferir para saber se a migration entrou");
+    } else if (nome === "aplicada_conferencia_falhou") {
+      log("NAO_REPITA: a migration FOI APLICADA (COMMIT confirmado); rode a fase conferir antes de qualquer outro passo");
+    }
+    desfecho(nome);
     if (podeRegistrar) {
       try {
         registrar(REGISTRO, { ...base, resultado: "falhou", codigo, codigoDriver: erro?.code ?? null, concluidaEm: new Date().toISOString() });
@@ -525,7 +552,6 @@ principal()
         // O erro original é o que importa.
       }
     }
-    process.exitCode = 1;
   })
   .finally(async () => {
     await encerrarTodas();

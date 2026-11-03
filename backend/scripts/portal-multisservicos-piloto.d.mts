@@ -55,3 +55,5 @@ export function execucaoPendente(
 export function identificarEstado(args: { resultados: Record<string, boolean>; codigos?: (string | undefined)[] }): string;
 export function decidirAplicacao(etapa: Etapa, estado: string): string;
 export function conferirContas(etapa: Etapa, impacto: { proprietariosAtivos: number }): void;
+export const CODIGOS_DE_DESFECHO: Readonly<Record<string, 0 | 1 | 2 | 3>>;
+export function desfechoDoErro(codigo: string, execucao: null | "iniciada" | "aplicada"): string;

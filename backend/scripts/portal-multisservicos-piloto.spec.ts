@@ -11,6 +11,7 @@ import * as gerente from './gerente-piloto.mjs';
 import * as comercial from './comercial-piloto.mjs';
 import {
   APLICACOES_DAS_MIGRATIONS,
+  CODIGOS_DE_DESFECHO,
   ESTADOS,
   ETAPAS,
   OPERACAO_CONFERIR,
@@ -18,6 +19,7 @@ import {
   classificarFalha,
   conferirContas,
   decidirAplicacao,
+  desfechoDoErro,
   escolherEtapa,
   execucaoPendente,
   identificarEstado,
@@ -221,5 +223,43 @@ describe('conferirContas', () => {
     expect(codigoDe(() => conferirContas(portal, { proprietariosAtivos: 0 }))).toBe('ERR_SEM_PROPRIETARIO_ATIVO');
     expect(codigoDe(() => conferirContas(portal, { proprietariosAtivos: 1 }))).toBeNull();
     expect(codigoDe(() => conferirContas(multisservicos, { proprietariosAtivos: 0 }))).toBeNull();
+  });
+  it('decide pela contagem completa, nunca pela listagem cortada', () => {
+    const dono = { id: 'd1', papel: 'MASTER_OWNER', situacao: 'ACTIVE', vinculosDeDono: 0, criadaEm: '2026-01-01' };
+    // Listagem sem nenhum proprietário (cortada) e contagem com um: segue.
+    const cortada = { proprietariosAtivos: 1, contas: [] };
+    expect(codigoDe(() => conferirContas(portal, cortada))).toBeNull();
+    // Proprietário só na listagem e contagem zero: para.
+    const soNaListagem = { proprietariosAtivos: 0, contas: [dono] };
+    expect(codigoDe(() => conferirContas(portal, soNaListagem))).toBe('ERR_SEM_PROPRIETARIO_ATIVO');
+  });
+});
+
+describe('desfecho', () => {
+  it('sucesso, parada sem gravação, aplicada sem conferência e incerto têm códigos de saída distintos', () => {
+    expect(CODIGOS_DE_DESFECHO).toEqual({
+      preparado_sem_gravacao: 0,
+      aplicada_e_conferida: 0,
+      estado_identificado: 0,
+      abortado_sem_gravacao: 1,
+      parado_sem_gravacao: 1,
+      conferencia_sem_estado_valido: 1,
+      aplicada_conferencia_falhou: 2,
+      resultado_incerto: 3,
+    });
+  });
+
+  it.each([
+    ['ERR_SEM_BACKUP_COM_RESTAURACAO_CONFERIDA', null, 'parado_sem_gravacao'],
+    ['ERR_ESTADO_ANTES_DIVERGENTE', null, 'parado_sem_gravacao'],
+    ['ERR_MIGRATION_NAO_INICIADA', null, 'parado_sem_gravacao'],
+    ['ERR_MIGRATION_FALHOU', null, 'parado_sem_gravacao'],
+    ['ERR_RESULTADO_INCERTO', 'iniciada', 'resultado_incerto'],
+    ['ERR_RESULTADO_INCERTO', null, 'resultado_incerto'],
+    // Erro inesperado depois do início (disco cheio ao registrar, por exemplo).
+    ['ERR_INESPERADO', 'iniciada', 'resultado_incerto'],
+    ['ENOSPC', 'aplicada', 'aplicada_conferencia_falhou'],
+  ] as const)('%s com a execução em %s: %s', (codigo, execucao, esperado) => {
+    expect(desfechoDoErro(codigo, execucao)).toBe(esperado);
   });
 });

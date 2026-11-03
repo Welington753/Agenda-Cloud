@@ -88,9 +88,12 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
     const nome = `Pessoa fictícia ${delegado.slice(0, 6)}`;
     const email = `${delegado}@example.test`;
     // Mais contas globais que o limite da listagem (outras suítes também
-    // criam contas): a conta conferida é a mais antiga do primeiro papel na
-    // ordem, então aparece sempre; as demais ficam em CONTAS_NAO_LISTADAS.
+    // criam contas). Os extras são MASTER_ADMIN mais antigos que tudo: na
+    // ordem alfabética do papel, viriam antes de qualquer MASTER_OWNER e o
+    // empurrariam para fora do corte. O proprietário novo (o mais recente)
+    // tem de aparecer mesmo assim, e as contagens não podem ser cortadas.
     const extras = Array.from({ length: MAXIMO_DE_CONTAS_LISTADAS + 5 }, () => id());
+    const dono = id();
     await comCliente(async (c) => {
       await c.query(
         `INSERT INTO users (id, name, email, status, email_verified, platform_role, platform_permissions, created_at)
@@ -98,23 +101,41 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
         [delegado, nome, email],
       );
       await c.query(
-        `INSERT INTO users (id, name, email, status, email_verified, platform_role)
-         SELECT x, 'Conta fictícia', x || '@example.test', 'ACTIVE', true, 'MASTER_SUPPORT' FROM unnest($1::text[]) x`,
+        `INSERT INTO users (id, name, email, status, email_verified, platform_role, created_at)
+         SELECT x, 'Conta fictícia', x || '@example.test', 'ACTIVE', true, 'MASTER_ADMIN', '1999-01-01T00:00:00Z' FROM unnest($1::text[]) x`,
         [extras],
+      );
+      await c.query(
+        `INSERT INTO users (id, name, email, status, email_verified, platform_role)
+         VALUES ($1::text, 'Dono fictício', $1::text || '@example.test', 'ACTIVE', true, 'MASTER_OWNER')`,
+        [dono],
       );
     });
     try {
       const impacto = await comLeitor(lerImpactoPortalMultisservicos);
       expect(impacto.delegadosAtivos).toBeGreaterThanOrEqual(1 + extras.length);
-      expect(impacto.contas).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_ADMIN', situacao: 'ACTIVE' }));
       const total = Object.values(impacto.contasPorPapel).reduce((a, b) => a + b, 0);
       expect(impacto.contas).toHaveLength(MAXIMO_DE_CONTAS_LISTADAS);
+      // Contagens completas, sem o corte da listagem.
+      expect(impacto.contasPorPapel['MASTER_ADMIN:ACTIVE']).toBeGreaterThanOrEqual(1 + extras.length);
+      const donos = impacto.contasPorPapel['MASTER_OWNER:ACTIVE'] ?? 0;
+      expect(impacto.proprietariosAtivos).toBe(donos);
+      expect(donos).toBeGreaterThanOrEqual(1);
+      // Proprietários primeiro; o delegado mais novo que os extras fica fora.
+      const primeiros = Math.min(donos, MAXIMO_DE_CONTAS_LISTADAS);
+      expect(impacto.contas.slice(0, primeiros).every((c) => c.papel === 'MASTER_OWNER')).toBe(true);
+      if (donos < MAXIMO_DE_CONTAS_LISTADAS) expect(impacto.contas.map((c) => c.id)).toContain(dono);
+      expect(impacto.contas.map((c) => c.id)).not.toContain(delegado);
       for (const campo of ['precosDoCatalogo', 'precosContratados', 'semVencimento', 'pagosSemOrigem', 'itensSemNomeCongelado'] as const) {
         expect(impacto[campo]).not.toBeNull();
       }
       const linhas = descreverImpactoPortalMultisservicos(impacto);
-      expect(linhas).toContainEqual(expect.stringMatching(new RegExp(`^CONTA_COM_PAPEL_GLOBAL: id=${delegado} papel=MASTER_ADMIN situacao=ACTIVE `)));
+      expect(linhas).toContain(
+        `CONTAS_LISTADAS: ${MAXIMO_DE_CONTAS_LISTADAS} de ${total} (LISTAGEM_TRUNCADA; limite ${MAXIMO_DE_CONTAS_LISTADAS}, proprietários primeiro; contagens acima completas)`,
+      );
       expect(linhas).toContain(`CONTAS_NAO_LISTADAS: ${total - MAXIMO_DE_CONTAS_LISTADAS}`);
+      expect(linhas).toContain(`PROPRIETARIOS_ATIVOS: ${donos}`);
+      expect(linhas.join('\n')).not.toContain(`id=${delegado} `);
       expect(linhas).toContainEqual(expect.stringMatching(/^DELEGADOS_ATIVOS_QUE_PERDEM_O_PORTAL: [1-9]\d*$/));
       expect(linhas.join('\n')).not.toContain(nome);
       expect(linhas.join('\n')).not.toContain(email);
@@ -127,6 +148,10 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
       expect(linhasSql).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_ADMIN' }));
       // A consulta do runbook lista todas, sem limite.
       expect(linhasSql.filter((l) => extras.includes(l.id as string))).toHaveLength(extras.length);
+      const contasSql = linhasSql.filter((l) => 'vinculos_de_dono' in l);
+      const primeiroDelegado = contasSql.findIndex((l) => l.papel !== 'MASTER_OWNER');
+      expect(contasSql.slice(primeiroDelegado).some((l) => l.papel === 'MASTER_OWNER')).toBe(false);
+      expect(contasSql.findIndex((l) => l.id === dono)).toBeLessThan(primeiroDelegado);
       expect(JSON.stringify(linhasSql)).not.toContain(email);
 
       const identificadas = await comCliente(
@@ -135,7 +160,7 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
       soLeitura(identificadas);
       expect(identificadas.flatMap((r) => r.rows)).toContainEqual(expect.objectContaining({ id: delegado, nome, email }));
     } finally {
-      await comCliente((c) => c.query('DELETE FROM users WHERE id = ANY($1)', [[delegado, ...extras]]));
+      await comCliente((c) => c.query('DELETE FROM users WHERE id = ANY($1)', [[delegado, dono, ...extras]]));
     }
   });
 });
