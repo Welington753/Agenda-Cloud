@@ -138,4 +138,17 @@ try {
   Remove-Item Env:PILOT_ENDPOINT_ID, Env:PRODUCTION_ENDPOINT_ID, Env:AGENDA_ENSAIO_CA, Env:AGENDA_ENSAIO_ENDERECO, Env:AGENDA_OPS_MODO -ErrorAction SilentlyContinue
   Write-Host ''
   Write-Host "Script terminou com codigo $codigo. A janela continua aberta. Modo: $($modo.ToUpper())."
+  # O codigo sozinho nao comprova aplicacao: leia RESULTADO, DESFECHO e ESTADO acima.
+  if ($Fase -eq 'restauracao') {
+    if ($codigo -eq 0) { Write-Host 'Codigo 0: restauracao conferida (confira a linha RESULTADO).' }
+    else { Write-Host 'Codigo diferente de 0: restauracao NAO conferida; nada foi gravado no piloto.' }
+  } else {
+    switch ($codigo) {
+      0 { Write-Host 'Codigo 0: a fase terminou como esperado. Confira RESULTADO e ESTADO; so o ESTADO conferido prova o que esta no banco.' }
+      1 { Write-Host 'Codigo 1: parou ou abortou SEM gravar nada (veja ERRO e MOTIVO).' }
+      2 { Write-Host 'Codigo 2: a migration FOI aplicada, mas a conferencia posterior falhou. NAO repita; rode a fase conferir.' }
+      3 { Write-Host 'Codigo 3: resultado INCERTO. NAO repita; rode a fase conferir.' }
+      default { Write-Host 'Codigo inesperado: trate como INCERTO e rode a fase conferir.' }
+    }
+  }
 }
