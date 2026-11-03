@@ -1,10 +1,10 @@
 # Continuidade: portal da plataforma (#84), vários serviços (#85) e kit de publicação (#86)
 
-Checkpoint de 2026-11-03 (PC do trabalho), depois dos merges de #84, #85 e
-#86 (kit de publicação, revisado na seção 3.1). **Nada foi publicado nem
-aplicado em banco real.** Nenhuma conexão com o piloto, nenhuma mensagem
-enviada, nada alterado no Render, nenhum papel real alterado. Os preços
-continuam sem aprovação.
+Checkpoint de 2026-11-03 (PC do trabalho). **Publicação feita** (seção 8):
+as duas migrations aplicadas e conferidas no piloto (14 migrations, 36/36) e
+API e web no ar em `8916f18`. Validação manual pós-publicação feita sem
+gravar nada (seção 8.3). Os preços continuam sem aprovação. As seções 0 a 7
+abaixo são o registro de antes da operação e ficam como histórico.
 
 ## 0. SHA operacional da futura publicação
 
@@ -34,7 +34,7 @@ documentação e **não** muda o SHA operacional.
   alteração; depois do commit ensaiado `65fa44b` só mudaram o runbook e o
   teste db-e2e da conferência (nenhuma mudança de execução).
 
-## 1. Estado de produção e do piloto (não mudou)
+## 1. Estado de produção e do piloto antes da operação (superado pela seção 8)
 
 - API e web publicados em `99242a662cfa2a8bb3b144b62c2fe5fe000ee222`
   (registrado; confira o Live no painel do Render antes de publicar).
@@ -348,3 +348,116 @@ worktrees. Este PC não tem stash (o `stash@{0}` é do PC de casa).
   - CI em `677b515`: os três verdes. Web 891, backend 1.714, e2e 137,
     db-e2e **248/248** nas duas rodadas; migration show/run 530 + 7; backup
     verde.
+
+## 8. Publicação no piloto (2026-11-03)
+
+Operação autorizada, toda no SHA operacional
+**`8916f180cad7397074e54c25ef237ffc7c797681`** (não mudou). Nenhum
+rollback, nenhum `down`, nenhuma outra publicação.
+
+### 8.1 Migrations aplicadas e conferidas
+
+Registro em `%USERPROFILE%\AgendaCloud-operacoes\operacoes.jsonl` (horários
+em UTC; endpoint `ep-orange-bread-b7f8iike`, banco `neondb`, modo `piloto`,
+commit `8916f18` em todas as linhas):
+
+| Horário | Fase | Resultado |
+| --- | --- | --- |
+| 18:17 | `conferir` | `before-platform-portal` (12) |
+| 18:27 | portal, `preparar` | `backup_feito` |
+| 18:30 | portal, `restauracao` | falhou com `ERR_INITDB` (local, antes de qualquer escrita no piloto); repetida em seguida |
+| 18:31 | portal, `restauracao` | `restauracao_e_ensaio_ok`: 41 tabelas, contagens e md5 iguais, ensaio da migration ok, 3 estabelecimentos, 1 período, 19 reservas |
+| 18:57 | portal, `aplicar` | `PlatformPortal1793318400000` `aplicada_e_conferida` |
+| 18:58 | `conferir` | `after-platform-portal` (13), 0 sessões da migration |
+| 19:07 | multisservicos, `preparar` | `backup_feito` |
+| 19:09 | multisservicos, `restauracao` | `restauracao_e_ensaio_ok`: 44 tabelas, contagens e md5 iguais, ensaio ok, mesmas contagens |
+| 19:13 | multisservicos, `aplicar` | `AppointmentServiceSnapshots1793404800000` `aplicada_e_conferida` |
+| 19:17 | `conferir` | **`after-appointment-snapshots`**: 14 migrations, 36/36 objetos, 0 sessões da migration |
+
+### 8.2 Versões publicadas
+
+- `agenda-cloud-piloto-api` e `agenda-cloud-piloto-web`: **Live em
+  `8916f18`**, segundo duas capturas do painel do Render fornecidas pelo
+  operador, uma por serviço, associadas pela identificação do serviço na
+  captura (não pelo horário). As capturas não estão no repositório.
+- Verificações públicas (sem sessão): API `/` 200; web `/login` 200;
+  `/agenda_api/auth/me` 401.
+- Evidência independente de que as duas versões novas estão no ar (feita
+  nesta validação, só GET sem sessão):
+  - API: `GET /platform/prices` (rota nova do #84/#85) devolve 401, enquanto
+    uma rota inexistente sob `/platform` devolve 404; o mesmo 401 pelo proxy
+    do web;
+  - web: `/plataforma/planos` (página nova) 200; `/conta/administracao`
+    redireciona (307) para `/plataforma/estabelecimentos`.
+- Nenhum endpoint expõe o SHA; a associação com o commit vem das capturas.
+
+### 8.3 Validação manual (runbook, passo 8)
+
+Chrome instalado, perfil temporário, controlado por Playwright só para
+navegar e ler; o operador digitou as credenciais na própria janela. Nenhum
+formulário salvo, nenhuma reserva criada, nenhuma suíte executada contra o
+piloto. Histórico administrativo sem registro novo depois de 02/11/2026.
+
+| Item | Resultado |
+| --- | --- |
+| Login (`MASTER_OWNER`, que também é dono de um estabelecimento) | **passou**: `POST /auth/login` 200, entrada em `/conta/visao-geral` |
+| Navegação | **passou**: visão geral, agenda, clientes, equipe, recebimentos, portal e as abas do portal |
+| Logout | **passou**: "Sair" no portal, `POST /auth/logout` 204; depois `auth/me` 401 e `/plataforma` e `/conta/*` levam a `/login?next=...` |
+| Portal: lista | **passou**: 3 estabelecimentos, contadores, filtros, preço do catálogo "Não definido" |
+| Portal: ficha | **passou**: situação operacional, validade ("ainda não definida" no estabelecimento anterior ao controle), sem vencimento "Não concedido", preço mensal e trimestral **Pendente**, plano e uso, troca de plano, dados cadastrais, pessoas |
+| Formulários abertos e cancelados, sem salvar | **passou**: Conceder sem vencimento, Registrar pagamento, Prorrogar teste, Conceder cortesia, Alterar contratado; botões de confirmar desabilitados até preencher; nenhuma chamada de escrita |
+| Planos e preços | **passou**: os 3 planos × 2 ciclos "Pendente"; "Nenhum preço foi definido ainda" |
+| Pagamentos das assinaturas | **passou**: nenhum registrado |
+| Histórico administrativo | **passou**: 26 registros, últimos de 02/11/2026 |
+| Recusa a conta sem papel global (URL e API) | **pendente**: não havia conta disponível; nenhuma conta criada ou alterada |
+| Agenda (lista, por profissional, calendário mensal) | **passou**; o calendário mensal mostra um bloco de carregamento por alguns segundos antes da grade (lento, sem erro; `appointments/range` 200) |
+| Reservas antigas | **passou**: reservas anteriores à migration (ex.: 30/10, 26–28/10, 16/10) abrem com nome do serviço, duração, valor, profissional e situação |
+| Clientes | **passou**: 9 clientes |
+| Equipe e acessos | **passou**: 1 de 5 acessos, profissionais sem acesso listados |
+| Recebimentos | **passou**: período sem recebimentos (R$ 0,00) |
+| Link público, dois serviços | **passou**: Barba (30 min, R$ 25,00) + Corte (30 min, R$ 42,50) = "60 min no total · R$ 67,50"; profissionais oferecidos só Ana luiza e Divanei, os únicos que fazem os dois (conferido contra `public/<slug>`); disponibilidade pedida com os dois `serviceIds`; horários listados |
+| Link público em celular (390 px) | **passou**: etapas de serviço, dia/horário e dados sem rolagem horizontal |
+| Criação real de reserva no piloto | **não testada**: parou na etapa "Seus dados", sem preencher nem enviar |
+| Gerente e profissional | **pendente**: sem credenciais nesta validação |
+
+Nenhum erro encontrado. Capturas de tela ficaram só no scratchpad da sessão
+(contêm dados pessoais; não vão para o repositório).
+
+### 8.4 Backups preservados
+
+Em `%USERPROFILE%\AgendaCloud-operacoes\`, conferidos pelo sha256 nesta
+validação (iguais ao registro):
+
+| Pasta | Bytes | sha256 |
+| --- | --- | --- |
+| `portal-preparar-2026-11-03T18-26-28-520Z` (+ `restauracao-conferida.json`) | 174.327 | `cb9e0b42797c335a4ad16d29a9b133a449750bfaa45d77e3b037b48a8e16da44` |
+| `portal-aplicar-2026-11-03T18-56-44-988Z` | 174.327 | `ceadf0e15593873790f6dc9d88bd130d87575aad0a7c3cb4900ca1edd81323a0` |
+| `multisservicos-preparar-2026-11-03T19-05-31-675Z` (+ `restauracao-conferida.json`) | 187.504 | `5a5cc4e70f6e5698c4de0335c02a087129a9ef2ce44aaeccea62ea7ff0615361` |
+| `multisservicos-aplicar-2026-11-03T19-12-11-305Z` | 187.504 | `96ffd59f57bb99a6eb1a87ae057309728eff7348e63d0773932c8e5956c7cd24` |
+
+Cada pasta tem `manifesto.json` e `raizes-tls-node.pem`. Manter a pasta de
+operações e os backups anteriores. Ficam só neste PC: copiar para outro
+lugar é decisão do operador.
+
+**Backup automático do piloto continua desativado.**
+
+### 8.5 Pendências depois da publicação
+
+1. Recusa ao portal por conta sem papel global (URL e API): precisa de uma
+   conta existente; não criar conta para isso.
+2. Gerente e profissional (runbook, passo 8.4): sem credenciais nesta
+   validação.
+3. Criação real de reserva de dois serviços no piloto: não testada
+   (só no ensaio local).
+4. Preços: sem aprovação; cadastrar só preço aprovado.
+5. Conferência das identidades dos proprietários (seção 5, item 1): esta
+   validação não a fez nem a substitui.
+6. Backup automático desativado; cópia dos backups fora deste PC por decisão
+   do operador.
+7. Limpeza do runbook (passo 9): a worktree `C:\Projetos\Agenda-Cloud-pr85`
+   (HEAD destacado em `8916f18`) fica até decisão do operador; a pasta de
+   operações fica.
+
+Preservados: `CLAUDE.md` modificado no repositório principal, PR #74,
+worktree `-reserva` e o trabalho local de `-combo`. Nenhum merge desta
+documentação.
