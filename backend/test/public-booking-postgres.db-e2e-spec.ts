@@ -327,6 +327,10 @@ describe.skipIf(!DIRECT_URL)('agendamento público contra PostgreSQL descartáve
       localStart: '10:00',
       timezone: SP,
       serviceName: 'Sessão de fisioterapia',
+      // Itens e totais vêm dos snapshots da reserva (vários serviços).
+      services: [{ name: 'Sessão de fisioterapia', durationMinutes: 60, priceCents: 12000, priceVisible: true }],
+      totalDurationMinutes: 60,
+      totalPriceCents: 12000,
       professionalName: expect.stringMatching(/^Profissional /),
       establishmentName: c.unitName,
       replayed: false,
@@ -483,7 +487,20 @@ describe.skipIf(!DIRECT_URL)('agendamento público contra PostgreSQL descartáve
     const semHorario = (r: PublicReceiptView) => ({ ...r, startAt: '', localStart: '' });
     expect(semHorario(reciboExistente)).toEqual(semHorario(reciboNovo));
     expect(Object.keys(reciboExistente).sort()).toEqual(
-      ['establishmentName', 'localDate', 'localStart', 'professionalName', 'replayed', 'serviceName', 'startAt', 'status', 'timezone'],
+      [
+        'establishmentName',
+        'localDate',
+        'localStart',
+        'professionalName',
+        'replayed',
+        'serviceName',
+        'services',
+        'startAt',
+        'status',
+        'timezone',
+        'totalDurationMinutes',
+        'totalPriceCents',
+      ],
     );
 
     const [linha] = (await dataSource.query(

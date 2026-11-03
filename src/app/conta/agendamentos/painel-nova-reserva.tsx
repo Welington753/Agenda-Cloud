@@ -33,7 +33,7 @@ interface PainelNovaReservaProps {
   erro: string | null;
   aoConfirmar: (dados: {
     professionalId: string;
-    serviceId: string;
+    serviceIds: string[];
     startAt: string;
     consumer: SelecaoDeCliente;
   }) => Promise<AgendamentoReal | null>;

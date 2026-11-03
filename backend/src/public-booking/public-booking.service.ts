@@ -91,6 +91,8 @@ import {
   travarTelefone,
 } from './public-booking.repository.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
+import { servicosDaEscolha } from '../appointments/service-selection.js';
+import { nomeDosServicos, precoTotal } from '../appointments/appointments.service.js';
 
 export const PUBLIC_NOT_FOUND_MESSAGE = 'Página de agendamento não encontrada.';
 export const SLOT_TAKEN_PUBLIC_MESSAGE =
@@ -135,7 +137,13 @@ export interface PublicReceiptView {
   localDate: string;
   localStart: string;
   timezone: string;
+  /** "Corte" ou "Corte + Barba". */
   serviceName: string;
+  /** Os serviços pedidos, com os valores congelados na reserva. */
+  services: { name: string; durationMinutes: number; priceCents: number | null; priceVisible: boolean }[];
+  totalDurationMinutes: number;
+  /** `null` quando algum serviço não mostra preço ou é sob consulta. */
+  totalPriceCents: number | null;
   professionalName: string;
   establishmentName: string;
   /** `true` quando este envio repetiu uma chave já gravada: é o MESMO
@@ -252,9 +260,18 @@ export class PublicBookingService {
     const agora = this.agora();
     const telefone = normalizePhone(dto.whatsapp);
     const startAt = new Date(dto.startAt);
+    const servicos = servicosDaEscolha(dto);
+    // Um serviço: o mesmo formato de antes (uma chave enviada antes da
+    // publicação continua reconhecida). Vários: a lista, na ordem.
     const payloadHash = createHash('sha256')
       .update(
-        JSON.stringify([dto.serviceId, dto.professionalId, startAt.toISOString(), dto.name, telefone]),
+        JSON.stringify([
+          servicos.length === 1 ? servicos[0] : servicos,
+          dto.professionalId,
+          startAt.toISOString(),
+          dto.name,
+          telefone,
+        ]),
       )
       .digest('hex');
 
@@ -294,7 +311,7 @@ export class PublicBookingService {
         const criado = await this.appointments.criarPedidoPublico(tx, {
           tenantId: tenant.id,
           professionalId: dto.professionalId,
-          serviceId: dto.serviceId,
+          serviceIds: servicos,
           startAt,
           consumerId,
           nomeInformado: dto.name,
@@ -312,17 +329,7 @@ export class PublicBookingService {
 
         await registrarAlerta(tx, { tenantId: tenant.id, appointmentId: criado.appointment.id, inicio: startAt }, agora);
 
-        return {
-          status: criado.appointment.status,
-          startAt: startAt.toISOString(),
-          localDate: dataLocalDe(startAt, criado.timezone),
-          localStart: horaLocalDe(startAt, criado.timezone),
-          timezone: criado.timezone,
-          serviceName: criado.serviceName,
-          professionalName: criado.professionalName,
-          establishmentName: await this.nomeDo(tx, tenant),
-          replayed: false,
-        };
+        return this.recibo(tx, tenant, criado.appointment.id, false);
       });
     } catch (error) {
       // Só a constraint de sobreposição vira "horário ocupado"; só a chave
@@ -427,21 +434,22 @@ export class PublicBookingService {
     tenantId: string,
     query: PublicAvailabilityQueryDto,
   ) {
-    const [service, professional] = await Promise.all([
-      manager.findOne(Service, { where: { id: query.serviceId, tenantId } }),
+    const servicos = servicosDaEscolha(query);
+    const [services, professional] = await Promise.all([
+      manager.find(Service, { where: { id: In(servicos), tenantId } }),
       manager.findOne(Professional, { where: { id: query.professionalId, tenantId } }),
     ]);
-    if (!service?.activeInPublicBooking || !professional?.onlineBookingActive) {
+    // Todos os serviços precisam estar no online (e ser deste
+    // estabelecimento); um só fora recusa a combinação, com a mesma mensagem.
+    if (
+      services.length !== servicos.length ||
+      !services.every((s) => s.activeInPublicBooking) ||
+      !professional?.onlineBookingActive
+    ) {
       throw new BadRequestException(PUBLIC_UNAVAILABLE_MESSAGE);
     }
     try {
-      return await this.availability.calcular(
-        manager,
-        tenantId,
-        query.professionalId,
-        query.serviceId,
-        query.date,
-      );
+      return await this.availability.calcular(manager, tenantId, query.professionalId, servicos, query.date);
     } catch (erro) {
       if (erro instanceof NotFoundException || erro instanceof BadRequestException) {
         throw new BadRequestException(PUBLIC_UNAVAILABLE_MESSAGE);
@@ -466,22 +474,39 @@ export class PublicBookingService {
     const appointment = await manager.findOne(Appointment, {
       where: { id: appointmentId, tenantId: tenant.id },
     });
-    const item = await manager.findOne(AppointmentItem, {
+    const itens = await manager.find(AppointmentItem, {
       where: { tenantId: tenant.id, appointmentId },
-      order: { position: 'ASC' },
+      order: { position: 'ASC', id: 'ASC' },
     });
-    if (!appointment || !item) throw new NotFoundException(RESERVA_NAO_ENCONTRADA);
-    const [service, professional] = await Promise.all([
-      manager.findOne(Service, { where: { id: item.serviceId, tenantId: tenant.id } }),
+    if (!appointment || itens.length === 0) throw new NotFoundException(RESERVA_NAO_ENCONTRADA);
+    const [services, professional] = await Promise.all([
+      manager.find(Service, { where: { id: In(itens.map((i) => i.serviceId)), tenantId: tenant.id } }),
       manager.findOne(Professional, { where: { id: appointment.professionalId, tenantId: tenant.id } }),
     ]);
+    const porId = new Map(services.map((s) => [s.id, s]));
+    // Os valores do recibo vêm dos SNAPSHOTS da reserva. O preço só aparece
+    // para quem pediu quando o serviço mostra preço no online; o total, só se
+    // todos mostram e nenhum é sob consulta.
+    const itensDoRecibo = itens.map((item) => {
+      const atual = porId.get(item.serviceId);
+      const visivel = atual?.priceVisible === true;
+      return {
+        name: item.serviceNameSnapshot ?? atual?.name ?? '',
+        durationMinutes: item.durationMinutesSnapshot,
+        priceCents: visivel ? (item.priceCentsSnapshot ?? null) : null,
+        priceVisible: visivel,
+      };
+    });
     return {
       status: appointment.status,
       startAt: appointment.startAt.toISOString(),
       localDate: dataLocalDe(appointment.startAt, tenant.timezone),
       localStart: horaLocalDe(appointment.startAt, tenant.timezone),
       timezone: tenant.timezone,
-      serviceName: service?.name ?? '',
+      serviceName: nomeDosServicos(itensDoRecibo.map((i) => i.name)),
+      services: itensDoRecibo,
+      totalDurationMinutes: itensDoRecibo.reduce((total, i) => total + i.durationMinutes, 0),
+      totalPriceCents: itensDoRecibo.every((i) => i.priceVisible) ? precoTotal(itensDoRecibo) : null,
       professionalName: professional?.name ?? '',
       establishmentName: await this.nomeDo(manager, tenant),
       replayed,

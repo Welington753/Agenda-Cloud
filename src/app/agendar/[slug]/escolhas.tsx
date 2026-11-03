@@ -52,24 +52,90 @@ function MarcaEscolhido({ ativo }: { ativo: boolean }) {
   );
 }
 
-export function CartaoServico({ servico: s, ativo, aoEscolher }: { servico: Servico; ativo: boolean; aoEscolher: () => void }) {
+/** Cartão de um serviço. Tocar nele escolhe só este serviço e segue (o
+ * caminho rápido de sempre); "Adicionar" põe na combinação (vários serviços
+ * com o mesmo profissional), e "Retirar" tira. */
+export function CartaoServico({
+  servico: s,
+  ativo,
+  aoEscolher,
+  aoAlternar,
+}: {
+  servico: Servico;
+  ativo: boolean;
+  aoEscolher: () => void;
+  aoAlternar?: () => void;
+}) {
   return (
-    <button
-      type="button"
-      aria-pressed={ativo}
-      onClick={aoEscolher}
-      className={clsx(CLASSE_OPCAO, "flex w-full flex-col gap-1 p-4 pr-10", ativo ? OPCAO_ATIVA : OPCAO_INATIVA)}
-    >
-      <span className="text-base leading-snug font-semibold break-words">{s.name}</span>
-      {s.description && <span className="line-clamp-2 text-sm font-normal text-ink-soft">{s.description}</span>}
-      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-normal">
-        <span className="inline-flex items-center gap-1 text-ink-soft">
-          <Clock size={14} aria-hidden="true" /> {s.durationMinutes} min
+    <div className="relative">
+      <button
+        type="button"
+        aria-pressed={ativo}
+        onClick={aoEscolher}
+        className={clsx(
+          CLASSE_OPCAO,
+          "flex w-full flex-col gap-1 p-4 pr-10",
+          aoAlternar && "pb-12",
+          ativo ? OPCAO_ATIVA : OPCAO_INATIVA,
+        )}
+      >
+        <span className="text-base leading-snug font-semibold break-words">{s.name}</span>
+        {s.description && <span className="line-clamp-2 text-sm font-normal text-ink-soft">{s.description}</span>}
+        <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-normal">
+          <span className="inline-flex items-center gap-1 text-ink-soft">
+            <Clock size={14} aria-hidden="true" /> {s.durationMinutes} min
+          </span>
+          <span className="font-semibold text-ink">{precoPublico(s.priceCents, s.priceVisible)}</span>
         </span>
-        <span className="font-semibold text-ink">{precoPublico(s.priceCents, s.priceVisible)}</span>
-      </span>
-      <MarcaEscolhido ativo={ativo} />
-    </button>
+        <MarcaEscolhido ativo={ativo} />
+      </button>
+      {aoAlternar && (
+        <button
+          type="button"
+          onClick={aoAlternar}
+          aria-pressed={ativo}
+          data-testid="alternar-servico"
+          aria-label={ativo ? "Retirar da combinação" : "Adicionar à combinação"}
+          className={clsx(
+            "absolute right-2 bottom-2 inline-flex min-h-11 items-center rounded-[var(--radius-control)] px-3 text-sm font-medium text-accent hover:underline",
+            FOCO,
+          )}
+        >
+          {ativo ? "Retirar" : "+ Adicionar"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Combinação de vários serviços: itens, duração total, preço e o caminho
+ * para seguir (ou o aviso, se nenhum profissional faz todos). */
+export function ResumoDaCombinacao({
+  resumo,
+  semProfissional,
+  aoContinuar,
+}: {
+  resumo: { rotulo: string; minutos: number; preco: string };
+  semProfissional: boolean;
+  aoContinuar: () => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-[var(--radius-control)] border border-border bg-card p-4" data-testid="resumo-combinacao">
+      <p className="text-sm font-semibold break-words text-ink">{resumo.rotulo}</p>
+      <p className="text-sm text-ink-soft">
+        {resumo.minutos} min no total · {resumo.preco}
+      </p>
+      <p className="text-xs text-ink-soft">Atendidos em sequência pelo mesmo profissional.</p>
+      {semProfissional ? (
+        <p role="status" className="text-sm text-ink" data-testid="combinacao-sem-profissional">
+          Nenhum profissional faz todos estes serviços. Retire algum para continuar.
+        </p>
+      ) : (
+        <Botao type="button" className="w-full sm:w-auto" onClick={aoContinuar} data-testid="continuar-servicos">
+          Continuar <ChevronRight size={18} aria-hidden="true" />
+        </Botao>
+      )}
+    </div>
   );
 }
 

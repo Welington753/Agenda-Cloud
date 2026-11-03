@@ -27,10 +27,15 @@ export type EstadoDisponibilidade =
   | { status: "carregada"; disponibilidade: DisponibilidadeReal }
   | { status: "falha"; falha: FalhaDisponibilidadeReal };
 
+/** Um serviço (`serviceId`) ou vários (`serviceIds`, mesmo profissional, na
+ * ordem do atendimento). */
 export interface Selecao {
-  serviceId: string;
+  serviceId?: string;
+  serviceIds?: readonly string[];
   date: string;
 }
+
+const servicosDa = (selecao: Selecao): readonly string[] => selecao.serviceIds ?? (selecao.serviceId ? [selecao.serviceId] : []);
 
 export interface DisponibilidadeControlada {
   estado: EstadoDisponibilidade;
@@ -72,10 +77,11 @@ export function useDisponibilidadeReal(
 
     // JSON, e não uma junção por separador: um id que contivesse o
     // separador poderia formar a mesma chave de outra combinação.
+    const servicos = servicosDa(pedido.selecao);
     const chave = JSON.stringify([
       tenantId,
       professionalId,
-      pedido.selecao.serviceId,
+      servicos,
       pedido.selecao.date,
       pedido.tentativa,
     ]);
@@ -89,7 +95,7 @@ export function useDisponibilidadeReal(
       const resultado = await consultarDisponibilidade(
         tenantId,
         professionalId,
-        pedido.selecao.serviceId,
+        servicos,
         pedido.selecao.date,
         controller.signal,
       );

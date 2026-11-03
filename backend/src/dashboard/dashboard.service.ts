@@ -33,6 +33,7 @@ import { activeProfessionals, staffSeatUsage } from '../team/seats.js';
 import { contagemPorSituacao, mesDaData, type PeriodoLocal, type Situacao } from './dashboard-period.js';
 import type { DashboardQueryDto } from './dashboard.dto.js';
 import { resumoFinanceiro } from '../payments/payments.service.js';
+import { ITENS_DA_RESERVA_SQL } from '../appointments/appointment-items-sql.js';
 
 /** Quantos próximos atendimentos o Início mostra; o resto fica na agenda. */
 export const LIMITE_DE_PROXIMOS = 8;
@@ -142,14 +143,10 @@ export class DashboardService {
       }>(
         await manager.query(
           `SELECT a.id, a.start_at, a.status::text AS status, a.consumer_name_snapshot AS consumer_name,
-                  s.name AS service_name, p.name AS professional_name
+                  i.service_name, p.name AS professional_name
              FROM appointments a
              LEFT JOIN professionals p ON p.tenant_id = a.tenant_id AND p.id = a.professional_id
-             LEFT JOIN LATERAL (
-               SELECT service_id FROM appointment_items
-                WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-             ) i ON true
-             LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+             ${ITENS_DA_RESERVA_SQL}
             WHERE a.tenant_id = $1 AND a.status IN ('PENDING', 'CONFIRMED') AND a.start_at > $2
             ORDER BY a.start_at, a.id
             LIMIT ${LIMITE_DE_PROXIMOS}`,

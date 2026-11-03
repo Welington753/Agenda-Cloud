@@ -5,6 +5,7 @@
 // tenant. O contrato do backend nem aceita esses campos — quem decide todos
 // eles é o servidor.
 import { apiRequest, mensagemDoBackend } from "./http-client";
+import { ehItensDeServico, type ItemDeServicoReal } from "./itens-de-servico";
 
 export type StatusAgendamentoReal =
   | "PENDING"
@@ -34,6 +35,8 @@ export interface AgendamentoReal {
   notes: string | null;
   professional: { id: string; name: string };
   service: { id: string; name: string };
+  /** Itens contratados, na ordem (totais acima). Ausente numa API anterior. */
+  services?: ItemDeServicoReal[];
   consumer: { id: string; name: string; whatsapp: string | null };
   unitId: string;
   createdAt: string;
@@ -68,7 +71,9 @@ export type SelecaoDeCliente =
 
 export interface DadosAgendamentoReal {
   professionalId: string;
-  serviceId: string;
+  /** Um ou mais serviços do MESMO profissional, na ordem do atendimento.
+   * Preço, duração e ocupação são somados no servidor. */
+  serviceIds: string[];
   /** Instante ISO 8601 com fuso, copiado do slot devolvido pela consulta de
    * disponibilidade — nunca uma hora local remontada no navegador. */
   startAt: string;
@@ -153,7 +158,8 @@ export function ehAgendamento(valor: unknown): valor is AgendamentoReal {
     (v.priceCents === null || typeof v.priceCents === "number") &&
     pessoa(v.professional) &&
     pessoa(v.service) &&
-    pessoa(v.consumer)
+    pessoa(v.consumer) &&
+    ehItensDeServico(v.services)
   );
 }
 

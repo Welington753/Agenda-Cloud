@@ -145,6 +145,18 @@ export function CartaoAtendimento({
             <span className="tabular-nums">{rotuloDeDuracao(agendamento.durationMinutes)}</span>
             <span className="lg:hidden"> · com {agendamento.professional.name}</span>
           </p>
+          {/* Vários serviços: cada item com a duração e o preço contratados
+            (os totais ficam nas linhas de cima e de baixo). */}
+          {(agendamento.services?.length ?? 0) > 1 && (
+            <ul className="text-xs text-ink-muted tabular-nums lg:col-start-2 lg:!mt-0" data-testid="itens-da-reserva">
+              {agendamento.services!.map((item) => (
+                <li key={item.id}>
+                  {item.name} · {rotuloDeDuracao(item.durationMinutes)}
+                  {agendamento.hidden?.includes("price") ? "" : ` · ${rotuloDePreco(item.priceCents)}`}
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="text-xs text-ink-muted tabular-nums lg:col-start-2 lg:!mt-0">
             {[
               agendamento.consumer.whatsapp,

@@ -38,13 +38,20 @@ export interface ReciboPedido {
   localStart: string;
   timezone: string;
   serviceName: string;
+  /** Os serviços pedidos, com os valores congelados na reserva. Ausentes
+   * numa API anterior. */
+  services?: { name: string; durationMinutes: number; priceCents: number | null; priceVisible: boolean }[];
+  totalDurationMinutes?: number;
+  /** `null` quando algum serviço não mostra preço ou é sob consulta. */
+  totalPriceCents?: number | null;
   professionalName: string;
   establishmentName: string;
   replayed: boolean;
 }
 
 export interface DadosPedidoPublico {
-  serviceId: string;
+  /** Um ou mais serviços do MESMO profissional, na ordem do atendimento. */
+  serviceIds: string[];
   professionalId: string;
   startAt: string;
   name: string;
@@ -139,10 +146,15 @@ export async function obterPaginaPublica(
 
 export async function consultarHorariosPublicos(
   slug: string,
-  consulta: { serviceId: string; professionalId: string; date: string },
+  consulta: { serviceIds: readonly string[]; professionalId: string; date: string },
   signal?: AbortSignal,
 ): Promise<ResultadoPublico<HorariosPublicos>> {
-  const q = new URLSearchParams(consulta).toString();
+  // Um serviço: `serviceId` (o contrato de sempre); vários: `serviceIds=a,b`.
+  const servicos: Record<string, string> =
+    consulta.serviceIds.length === 1
+      ? { serviceId: consulta.serviceIds[0] }
+      : { serviceIds: consulta.serviceIds.join(",") };
+  const q = new URLSearchParams({ ...servicos, professionalId: consulta.professionalId, date: consulta.date }).toString();
   const r = await apiRequest<unknown>(`${base(slug)}/availability?${q}`, { signal });
   if (r.kind === "network-error") return { ok: false, falha: { tipo: "falha_comunicacao" } };
   if (r.kind === "http-error") {

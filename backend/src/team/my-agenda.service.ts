@@ -44,6 +44,7 @@ import {
   type StaffAction,
 } from './staff-access.js';
 import type { MyAgendaQuery, OwnStatusActionDto } from './team.dto.js';
+import { ITENS_DA_RESERVA_SQL } from '../appointments/appointment-items-sql.js';
 
 /** Mesmo teto da agenda do dono (LIMITE_DO_DIA): a rota nunca vira um dump. */
 const LIMITE_DO_DIA = 200;
@@ -151,13 +152,9 @@ export class MyAgendaService {
       const janela = janelaDeCarregamento({ year, month, day });
       const linhas = await manager.query<OwnAppointmentRow[]>(
         `SELECT a.id, a.start_at, a.status, a.consumer_name_snapshot AS consumer_name,
-                s.name AS service_name, i.duration_minutes_snapshot AS duration_minutes
+                i.service_name, i.duration_minutes
            FROM appointments a
-           LEFT JOIN LATERAL (
-             SELECT service_id, duration_minutes_snapshot FROM appointment_items
-              WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-           ) i ON true
-           LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+           ${ITENS_DA_RESERVA_SQL}
           WHERE a.tenant_id = $1 AND a.professional_id = $2 AND a.start_at < $3 AND a.end_at > $4
           ORDER BY a.start_at, a.id LIMIT ${LIMITE_DO_DIA}`,
         [acesso.tenantId, acesso.professional.id, janela.fim, janela.inicio],
@@ -185,13 +182,9 @@ export class MyAgendaService {
       const fim = janelaDeCarregamento(dataLocalDaString(query.to)).fim;
       const linhas = await manager.query<OwnAppointmentRow[]>(
         `SELECT a.id, a.start_at, a.status, a.consumer_name_snapshot AS consumer_name,
-                s.name AS service_name, i.duration_minutes_snapshot AS duration_minutes
+                i.service_name, i.duration_minutes
            FROM appointments a
-           LEFT JOIN LATERAL (
-             SELECT service_id, duration_minutes_snapshot FROM appointment_items
-              WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-           ) i ON true
-           LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+           ${ITENS_DA_RESERVA_SQL}
           WHERE a.tenant_id = $1 AND a.professional_id = $2 AND a.start_at < $3 AND a.end_at > $4
           ORDER BY a.start_at, a.id LIMIT ${LIMITE_DO_PERIODO}`,
         [acesso.tenantId, acesso.professional.id, fim, inicio],
@@ -226,13 +219,9 @@ export class MyAgendaService {
     await this.appointments.applyStatusChange(acesso.tenantId, appointmentId, acao, dto, userId, acesso.professional.id);
     const [linha] = await this.dataSource.manager.query<OwnAppointmentRow[]>(
       `SELECT a.id, a.start_at, a.status, a.consumer_name_snapshot AS consumer_name,
-              s.name AS service_name, i.duration_minutes_snapshot AS duration_minutes
+              i.service_name, i.duration_minutes
          FROM appointments a
-         LEFT JOIN LATERAL (
-           SELECT service_id, duration_minutes_snapshot FROM appointment_items
-            WHERE tenant_id = a.tenant_id AND appointment_id = a.id ORDER BY position LIMIT 1
-         ) i ON true
-         LEFT JOIN services s ON s.tenant_id = a.tenant_id AND s.id = i.service_id
+         ${ITENS_DA_RESERVA_SQL}
         WHERE a.tenant_id = $1 AND a.professional_id = $2 AND a.id = $3`,
       [acesso.tenantId, acesso.professional.id, appointmentId],
     );

@@ -15,7 +15,7 @@ function responder(status: number, corpo: string | null, contentType?: string) {
 
 const BORDA = ["<html><body>Bad Gateway</body></html>", "text/html; charset=utf-8"] as const;
 const PEDIDO = {
-  serviceId: "s",
+  serviceIds: ["s"],
   professionalId: "p",
   startAt: "2026-10-22T12:00:00.000Z",
   name: "Ana",
@@ -28,7 +28,7 @@ describe("leituras públicas: só 'a API não respondeu' é falha de comunicaç�
     responder(502, ...BORDA);
     expect(await obterPaginaPublica("studio")).toEqual({ ok: false, falha: { tipo: "falha_comunicacao" } });
     responder(502, ...BORDA);
-    expect(await consultarHorariosPublicos("studio", { serviceId: "s", professionalId: "p", date: "2026-10-22" })).toEqual({
+    expect(await consultarHorariosPublicos("studio", { serviceIds: ["s"], professionalId: "p", date: "2026-10-22" })).toEqual({
       ok: false,
       falha: { tipo: "falha_comunicacao" },
     });

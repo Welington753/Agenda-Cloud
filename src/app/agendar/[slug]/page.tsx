@@ -34,7 +34,6 @@ import {
   mensagemFalhaPublica,
   nomeDoFuso,
   nomePlausivel,
-  precoPublico,
   whatsappPlausivel,
 } from "@/lib/agendamento-publico/agendamento-publico";
 import {
@@ -47,7 +46,10 @@ import {
   conferirHorario,
   escolherDia,
   escolherProfissional,
+  alternarServicoNaEscolha,
   escolherServico,
+  resumoPublico,
+  servicosEscolhidos,
   etapaAnterior,
   etapaMaxima,
   profissionaisDoServico,
@@ -60,7 +62,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EtapaProfissional } from "./escolhas";
 import { EtapaDados, EtapaHorario, EtapaRevisar, EtapaServico, FalhaDoEnvio } from "./etapas";
 import { CabecalhoEtapa, Moldura, Progresso } from "./moldura";
-import { Recibo } from "./recibo";
+import { precoDoRecibo, Recibo } from "./recibo";
 import { useHorariosPublicos, usePaginaPublica } from "./use-leituras-publicas";
 
 type EstadoEnvio =
@@ -130,20 +132,23 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
   const tituloRef = useRef<HTMLHeadingElement>(null);
   const primeiraEtapa = useRef(true);
 
-  const { serviceId, professionalId, date, slot, nome, whatsapp } = escolhas;
+  const { serviceIds, professionalId, date, slot, nome, whatsapp } = escolhas;
   const dias = useMemo(() => diasOferecidos(establishment.timezone, new Date()), [establishment.timezone]);
   const fuso = useMemo(() => nomeDoFuso(establishment.timezone, new Date()), [establishment.timezone]);
-  const opcoesProfissional = useMemo(() => profissionaisDoServico(pagina, serviceId), [pagina, serviceId]);
-  const servico = services.find((s) => s.id === serviceId) ?? null;
+  const opcoesProfissional = useMemo(() => profissionaisDoServico(pagina, serviceIds), [pagina, serviceIds]);
+  const escolhidos = useMemo(() => servicosEscolhidos(pagina, { serviceIds }), [pagina, serviceIds]);
+  const resumo = useMemo(() => resumoPublico(escolhidos), [escolhidos]);
+  // Chave estável da lista, para efeitos que dependem dela.
+  const listaDeServicos = serviceIds.join(",");
   const profissional = opcoesProfissional.find((p) => p.id === professionalId) ?? null;
   const servicosVisiveis = useMemo(() => filtrarServicos(services, busca), [services, busca]);
 
   // Qualquer mudança no que será pedido → pedido novo → chave nova.
   useEffect(() => {
     setChave(gerarChaveDeEnvio());
-  }, [serviceId, professionalId, slot, nome, whatsapp]);
+  }, [listaDeServicos, professionalId, slot, nome, whatsapp]);
 
-  const horarios = useHorariosPublicos(slug, { serviceId, professionalId, date }, versaoHorarios);
+  const horarios = useHorariosPublicos(slug, { serviceIds, professionalId, date }, versaoHorarios);
 
   // Lista nova de horários sem o escolhido (ocupado nesse meio-tempo): cai.
   const livres = horarios.status === "pronto" ? horarios.horarios.slots : null;
@@ -189,11 +194,11 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
   }
 
   async function enviar() {
-    if (!slot || !serviceId || !professionalId || emVoo.current) return;
+    if (!slot || serviceIds.length === 0 || !professionalId || emVoo.current) return;
     emVoo.current = true;
     setEnvio({ status: "enviando" });
     const r = await enviarPedidoPublico(slug, {
-      serviceId,
+      serviceIds,
       professionalId,
       startAt: slot.startAt,
       name: nome.trim(),
@@ -220,7 +225,7 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
       <Moldura estabelecimento={establishment.name}>
         <Recibo
           recibo={envio.recibo}
-          preco={servico ? precoPublico(servico.priceCents, servico.priceVisible) : null}
+          preco={precoDoRecibo(envio.recibo, escolhidos.length > 0 ? resumo.preco : null)}
           nome={nome.trim()}
           whatsapp={whatsapp.trim()}
         />
@@ -251,7 +256,7 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
           titulo={TITULO_DA_ETAPA[etapa]}
           aoVoltar={etapa > ETAPA_SERVICO ? () => irPara(etapaAnterior(etapa)) : null}
           travado={travado}
-          servico={etapa > ETAPA_SERVICO && etapa < ETAPA_REVISAR ? (servico?.name ?? null) : null}
+          servico={etapa > ETAPA_SERVICO && etapa < ETAPA_REVISAR ? resumo.rotulo || null : null}
           profissional={etapa > ETAPA_PROFISSIONAL ? (profissional?.name ?? null) : null}
           quando={etapa > ETAPA_HORARIO && slot && date ? `${dataPorExtenso(date)} às ${slot.localStart}` : null}
         />
@@ -262,11 +267,15 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
             comBusca={services.length >= BUSCA_A_PARTIR_DE}
             busca={busca}
             aoBuscar={setBusca}
-            escolhido={serviceId}
+            escolhidos={serviceIds}
             aoEscolher={(id) => {
               alterar(escolherServico(pagina, escolhas, id, dias[0]?.date ?? null));
               setEtapa(ETAPA_PROFISSIONAL);
             }}
+            aoAlternar={(id) => alterar(alternarServicoNaEscolha(pagina, escolhas, id, dias[0]?.date ?? null))}
+            resumo={serviceIds.length > 1 ? resumo : null}
+            semProfissional={serviceIds.length > 0 && opcoesProfissional.length === 0}
+            aoContinuar={() => irPara(ETAPA_PROFISSIONAL)}
           />
         )}
 
@@ -307,10 +316,11 @@ function Agendamento({ slug, pagina }: { slug: string; pagina: PaginaPublica }) 
           />
         )}
 
-        {etapa === ETAPA_REVISAR && servico && profissional && slot && date && (
+        {etapa === ETAPA_REVISAR && escolhidos.length > 0 && profissional && slot && date && (
           <EtapaRevisar
             estabelecimento={establishment.name}
-            servico={servico}
+            resumo={resumo}
+            varios={escolhidos.length > 1}
             profissional={profissional.name}
             date={date}
             slot={slot}
@@ -335,3 +345,4 @@ const TITULO_DA_ETAPA: Record<Etapa, string> = {
   3: "Seus dados",
   4: "Revise e envie",
 };
+

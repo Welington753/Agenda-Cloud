@@ -35,10 +35,11 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as treze migrations no dist (nunca specs)', () => {
+  it('descobre as catorze migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(13);
+    expect(migrationJsFiles).toHaveLength(14);
+    expect(migrationJsFiles.some((f) => f.includes('AppointmentServiceSnapshots'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('CommercialAccess'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('PlatformPortal'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('InitialSchema'))).toBe(true);
@@ -51,6 +52,12 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(migrationJsFiles.some((f) => f.includes('TeamAccess'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('StaffLogin'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('AppointmentPayments'))).toBe(true);
+    // As três mais recentes, na ordem do carimbo (a ordem de aplicação).
+    expect([...migrationJsFiles].sort().slice(-3)).toEqual([
+      '1793232000000-CommercialAccess.js',
+      '1793318400000-PlatformPortal.js',
+      '1793404800000-AppointmentServiceSnapshots.js',
+    ]);
     // Nenhum `.spec.js` deve escapar para o dist — só código de migration real.
     expect(files.some((f) => f.includes('.spec.'))).toBe(false);
   });
