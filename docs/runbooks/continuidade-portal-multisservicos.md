@@ -1,9 +1,38 @@
 # Continuidade: portal da plataforma (#84), vários serviços (#85) e kit de publicação (#86)
 
-Checkpoint de 2026-11-03 (PC do trabalho), depois dos merges de #84 e #85, da
-abertura do PR do kit protegido e da revisão do kit (seção 3.1). **Nada foi
-publicado nem aplicado em banco real.** Nenhuma conexão com o piloto, nenhuma mensagem enviada, nada alterado
-no Render, nenhum papel real alterado. Os preços continuam sem aprovação.
+Checkpoint de 2026-11-03 (PC do trabalho), depois dos merges de #84, #85 e
+#86 (kit de publicação, revisado na seção 3.1). **Nada foi publicado nem
+aplicado em banco real.** Nenhuma conexão com o piloto, nenhuma mensagem
+enviada, nada alterado no Render, nenhum papel real alterado. Os preços
+continuam sem aprovação.
+
+## 0. SHA operacional da futura publicação
+
+**`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
+(pais `96415bc` e `677b515`). A árvore é idêntica à do head validado
+`677b515` (`git diff` vazio, mesma tree). Este é o SHA de toda a operação:
+worktree, backups, comprovantes, API e web. Esta nota fica numa branch só de
+documentação e **não** muda o SHA operacional.
+
+| PR | Head mesclado | Merge na integration | Validação |
+| --- | --- | --- | --- |
+| #84 | `58200949f7a3718d116617691b92570d58a48794` | `b0003b77d63c6d04d6e777b1ddd205db20cfe96f` | seção 2 |
+| #85 | `96b48ad22bb9e1d50fd3ce60edb5a128fd2a5d0b` | `96415bc4919b712df5fda3b2d4af37de1a934195` | seção 2 |
+| #86 | `677b51515778fc00e5e184da64ff010baa227ce5` | `8916f180cad7397074e54c25ef237ffc7c797681` | seções 3, 3.1 e 7; três checks verdes no head |
+
+- Última versão publicada confirmada: `99242a662cfa2a8bb3b144b62c2fe5fe000ee222`.
+- Piloto ainda com **12 migrations**; `PlatformPortal1793318400000` e
+  `AppointmentServiceSnapshots1793404800000` continuam pendentes.
+- Ordem futura: `conferir` → etapa portal completa → etapa multisservicos
+  completa → `conferir` do estado final com 14 migrations → API → web
+  (detalhes na seção 4).
+- Cada etapa exige backup e comprovante próprios, gerados no SHA operacional
+  definitivo. Os comprovantes dos ensaios não servem.
+- Retorno ao web antigo é parcial; retorno à API antiga e `down` não são
+  recuperação padrão.
+- Antes do merge: head e base sem avanço, sem conflitos nem pedidos de
+  alteração; depois do commit ensaiado `65fa44b` só mudaram o runbook e o
+  teste db-e2e da conferência (nenhuma mudança de execução).
 
 ## 1. Estado de produção e do piloto (não mudou)
 
@@ -48,7 +77,7 @@ rebase, bypass ou force push. Integration atual:
 
 PR #74 continua aberto e intocado.
 
-## 3. Kit de publicação — PR #86, aberto, sem merge
+## 3. Kit de publicação — PR #86, mesclado em `8916f18`
 
 [#86](https://github.com/Welington753/Agenda-Cloud/pull/86), branch
 `chore/kit-publicacao-portal-multisservicos`, head
@@ -196,7 +225,10 @@ Antes do passo 1:
    publicação.
 3. **Backup real e restauração operacional:** no SHA operacional, na operação
    autorizada.
-4. **Merge do #86:** revisado nesta rodada, **não mesclado** (não autorizado).
+4. **Merge do #86:** feito com autorização, merge normal condicionado ao head
+   `677b515`, `[skip render]`: `8916f180cad7397074e54c25ef237ffc7c797681`.
+   Nenhuma operação no piloto nem publicação.
+7. **Espaço em disco para a operação:** insuficiente neste PC (seção 6).
 5. **Limitações que continuam:**
    - as quedas de conexão foram simuladas no cliente;
    - o lançador rodou num pseudoconsole com entrada digitada pelo driver, não
@@ -248,6 +280,33 @@ Nada de código fora do GitHub. Ficam localmente, descartáveis:
 No fim, ficaram livres cerca de 860 MB. Antes de outro `npm ci`, build do web
 ou ensaio grande, confira `df -h /c`. O `.next/cache` do repositório principal
 (264 MB) e o cache do npm não são desta tarefa e ficaram intocados.
+
+**Espaço para a operação (estimativa de 2026-11-03, depois do merge do #86).**
+Livres em C: cerca de 1,05 GB (`G:` mostra o mesmo espaço; não é disco
+separado). Estimativa para a operação no SHA operacional:
+
+| Item | Estimativa |
+| --- | --- |
+| worktree limpa do SHA (arquivos versionados) | ~10 MB |
+| `npm ci` no backend | ~190 MB (+ crescimento do cache do npm, se frio) |
+| binários do PostgreSQL 17 para dump/restauração | já presentes no scratchpad; ~0,3 GB se baixados de novo |
+| backups (um por etapa) e cópias de conferência | tamanho do banco do piloto, ainda não medido; ensaio: 0,2 MB por dump |
+| cluster local da restauração conferida (duas etapas) | ~170 MB no ensaio + o banco restaurado |
+| margem para sistema, WAL e logs | ≥ 1 GB |
+
+Total recomendado livre antes de começar: **≥ 2 GB**, mais duas vezes o
+tamanho do dump do piloto. Hoje **não há espaço suficiente com margem**: não
+instalar dependências nem iniciar restauração neste estado.
+
+Opções viáveis, sem apagar arquivos pessoais, backups ou evidências (decisão
+do dono do PC):
+- disco externo ou outro PC (o de casa) para a worktree operacional, os
+  backups e a restauração;
+- apagar itens recriáveis que não são desta tarefa: `.next/cache` do
+  repositório principal (264 MB) e o cache do npm (`npm cache clean`);
+- apagar `node_modules`/`.next` de worktrees já mescladas (`-pr84`,
+  `-combo`, `-anterior-99242a6`), conferindo antes que nenhum processo os usa;
+- limpar a Lixeira e arquivos temporários do Windows, se o dono autorizar.
 
 No repositório principal deste PC continuam, intocados: `CLAUDE.md`
 modificado, branch `feat/senha-dono-calendario-profissional` e as demais
