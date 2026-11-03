@@ -330,7 +330,7 @@ async function principal() {
       for (const linha of schema.descreverImpactoPortalMultisservicos(impactoAntes)) log(`ANTES_${linha}`);
       if (falhasAntes.length) parar("ERR_ENSAIO_ESTADO_ANTES");
 
-      await aplicarSomenteAPendente(destino, { esperadasAntes: [...esperadasAntes], pendente: etapa.migration, aplicacao: APLICACAO, log });
+      await aplicarSomenteAPendente(destino, { esperadasAntes: [...esperadasAntes], pendente: etapa.migration, posteriores: etapa.posteriores, aplicacao: APLICACAO, log });
 
       const depois = await conectar(destino, { aplicacao: APLICACAO, log });
       let falhasDepois;

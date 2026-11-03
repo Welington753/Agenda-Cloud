@@ -13,6 +13,7 @@ export {
 export interface Etapa {
   readonly nome: 'portal' | 'multisservicos';
   readonly migration: string;
+  readonly posteriores: readonly string[];
   readonly frase: string;
   readonly operacao: string;
   readonly esperadoAntes: string;

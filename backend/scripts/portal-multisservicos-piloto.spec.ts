@@ -62,6 +62,11 @@ describe('identidade das etapas', () => {
     expect(APLICACOES_DAS_MIGRATIONS).toEqual([portal.aplicacao, multisservicos.aplicacao]);
   });
 
+  it('a etapa do portal deixa a migration seguinte de fora; a última não deixa nada', () => {
+    expect(portal.posteriores).toEqual([multisservicos.migration]);
+    expect(multisservicos.posteriores).toEqual([]);
+  });
+
   it('o que muda de propósito vem das migrations', () => {
     expect(portal.colunasNovas).toEqual({ tenant_access_periods: ['amount_source'] });
     expect(portal.tabelasNovas).toEqual(['plan_prices', 'tenant_contract_prices', 'tenant_no_expiry_grants']);

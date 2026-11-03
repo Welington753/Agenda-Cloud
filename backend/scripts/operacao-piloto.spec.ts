@@ -82,6 +82,20 @@ describe('conferirPendentes', () => {
   ])('recusa %s', (_caso, executadas, carregadas, esperado) => {
     expect(conferirPendentes({ executadas, carregadas, esperadasAntes: antes, pendente: 'D4' })).toBe(esperado);
   });
+  it('com posteriores: a pendente no meio, as seguintes conferidas pelo nome e na ordem', () => {
+    const posteriores = ['E5'];
+    expect(conferirPendentes({ executadas: antes, carregadas: [...antes, 'D4', 'E5'], esperadasAntes: antes, pendente: 'D4', posteriores })).toBeNull();
+    for (const carregadas of [
+      [...antes, 'D4'],
+      [...antes, 'E5', 'D4'],
+      [...antes, 'D4', 'E5', 'F6'],
+      [...antes, 'D4', 'X9'],
+    ]) {
+      expect(conferirPendentes({ executadas: antes, carregadas, esperadasAntes: antes, pendente: 'D4', posteriores })).toBe(
+        'ERR_MIGRATIONS_COMPILADAS_INESPERADAS',
+      );
+    }
+  });
 });
 
 describe('compararFotografias', () => {

@@ -28,6 +28,7 @@ export function conferirPendentes(args: {
   carregadas: string[];
   esperadasAntes: string[];
   pendente: string;
+  posteriores?: string[];
 }): string | null;
 export function ambienteLibpq(
   destino: Destino & { ca?: string },

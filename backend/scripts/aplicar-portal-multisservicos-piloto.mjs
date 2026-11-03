@@ -339,6 +339,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
     await aplicarSomenteAPendente(destino, {
       esperadasAntes: [...esperadasAntes],
       pendente: etapa.migration,
+      posteriores: etapa.posteriores,
       aplicacao: etapa.aplicacao,
       log,
       aoIniciar: () => {

@@ -44,10 +44,13 @@ export const ESTADOS = [ESTADO_ANTES, ESTADO_INTERMEDIARIO, ESTADO_FINAL];
 /** Registro da fase `conferir`, comum às duas etapas. */
 export const OPERACAO_CONFERIR = "migrations_portal_multisservicos";
 
-const etapa = ({ nome, migration, antes, depois, prefixo, colunasNovas, tabelasNovas }) =>
+const etapa = ({ nome, migration, posteriores, antes, depois, prefixo, colunasNovas, tabelasNovas }) =>
   Object.freeze({
     nome,
     migration,
+    // Migrations do mesmo commit que ficam para a etapa seguinte: conferidas
+    // pelo nome e NÃO carregadas na aplicação desta (operacao-piloto.mjs).
+    posteriores,
     frase: `APLICAR ${migration}`,
     operacao: `migration_${migration}`,
     esperadoAntes: antes,
@@ -66,6 +69,7 @@ export const ETAPAS = Object.freeze({
   portal: etapa({
     nome: "portal",
     migration: MIGRATION_PORTAL,
+    posteriores: [MIGRATION_NOMES_CONGELADOS],
     antes: ESTADO_ANTES,
     depois: ESTADO_INTERMEDIARIO,
     prefixo: "portal-",
@@ -75,6 +79,7 @@ export const ETAPAS = Object.freeze({
   multisservicos: etapa({
     nome: "multisservicos",
     migration: MIGRATION_NOMES_CONGELADOS,
+    posteriores: [],
     antes: ESTADO_INTERMEDIARIO,
     depois: ESTADO_FINAL,
     prefixo: "multisservicos-",
