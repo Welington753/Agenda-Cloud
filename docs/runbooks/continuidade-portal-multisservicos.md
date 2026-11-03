@@ -476,3 +476,37 @@ Outros registros (não são pendências da publicação):
 Preservados: `CLAUDE.md` modificado no repositório principal, PR #74,
 worktree `-reserva` e o trabalho local de `-combo`. Nenhum merge desta
 documentação.
+
+## 9. Próximo lote (novo pedido, ainda NÃO implementado)
+
+**Já publicado (não repetir):** SHA operacional
+`8916f180cad7397074e54c25ef237ffc7c797681`, API e web; as 14 migrations
+aplicadas e conferidas. Não repetir migrations nem deploys.
+
+**Novo pedido (2026-11-03), só registrado:** separar completamente o portal
+da plataforma da operação dos estabelecimentos. Requisitos e testes em
+`docs/plans/portal-independente-da-operacao.md`. Resumo:
+
+- `/conta` só com funções operacionais; sem grupo "PLATAFORMA" nem atalho
+  "Portal da plataforma", inclusive para proprietários (desktop, celular,
+  menu de perfil);
+- portal com endereço próprio (preferência `/portal`), entrada, layout e
+  navegação independentes, sem exigir vínculo com estabelecimento nem
+  depender de plano ou validade;
+- só `MASTER_OWNER` ativo, recusa no servidor para todos os demais (inclusive
+  Max), sem regra por nome, e-mail ou plano;
+- preservar as três contas proprietárias, a proteção do último proprietário
+  e a reautenticação das ações de equipe e recebimentos (`/platform/reauth`).
+
+Nenhuma implementação, merge, deploy, consulta ao banco real ou alteração de
+contas nesta rodada. A implementação parte da integration conferida
+(`8916f18` em 2026-11-03), em branch própria.
+
+### Para retomar em outro PC
+
+- Este PC guarda só: pasta de operações com os backups e `operacoes.jsonl`
+  (`%USERPROFILE%\AgendaCloud-operacoes`), capturas da validação no
+  scratchpad da sessão (dados pessoais), worktrees locais (`-pr85`,
+  `-combo` com conflitos, `-promocao` com junction, `-recebimentos`,
+  `-reserva`) e o `CLAUDE.md` modificado no repositório principal.
+- Nenhum processo temporário desta tarefa ficou ativo.
