@@ -1,11 +1,11 @@
 "use client";
 
 // Nova empresa com o responsável. O servidor cria estabelecimento (em teste,
-// com o plano escolhido do catálogo), unidade principal e o convite de DONO
-// numa transação só. E-mail sem conta gera uma conta PENDENTE, que só entra
-// depois de ativar pelo link; e-mail com conta recebe um convite de vínculo
-// e nada da pessoa muda. O preço mostrado é o do catálogo, não um valor
-// contratado.
+// com o plano escolhido do catálogo), unidade principal, o contrato (ciclo e,
+// se houver, valor específico deste cliente) e o convite de DONO numa
+// transação só. E-mail sem conta gera uma conta PENDENTE, que só entra depois
+// de ativar pelo link; e-mail com conta recebe um convite de vínculo e nada
+// da pessoa muda. Escolher plano e preço NÃO registra pagamento.
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { LinkBotao, Botao } from "@/components/ui/button";
@@ -17,7 +17,8 @@ import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma
 import { useEnvioComChave } from "@/lib/administracao/use-envio-com-chave";
 import { acaoAdministrativa } from "@/lib/administracao/api-contas";
 import { ehPlanos, ehResultadoCriacao } from "@/lib/administracao/contas";
-import { SEGMENTOS, precoCatalogo } from "@/lib/administracao/contratos";
+import { SEGMENTOS } from "@/lib/administracao/contratos";
+import { centavosDe, reais } from "@/lib/administracao/validade";
 import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotaFichaEstabelecimento } from "@/lib/administracao/rotas";
 import { useCapacidades } from "@/lib/administracao/use-acesso-plataforma";
 
@@ -27,7 +28,17 @@ export default function NovoEstabelecimentoPage() {
   const capacidades = useCapacidades();
   const planos = useLeituraPlataforma("/platform/plans", ehPlanos);
   const envio = useEnvioComChave(ehResultadoCriacao);
-  const [form, setForm] = useState({ businessName: "", category: "OTHER", planId: "", name: "", email: "", phone: "" });
+  const vazio = {
+    businessName: "",
+    category: "OTHER",
+    planId: "",
+    billingCycle: "MONTHLY",
+    contractAmount: "",
+    name: "",
+    email: "",
+    phone: "",
+  };
+  const [form, setForm] = useState(vazio);
   const campo = (nome: keyof typeof form) => ({
     value: form[nome],
     onChange: (e: { target: { value: string } }) => setForm((f) => ({ ...f, [nome]: e.target.value })),
@@ -41,14 +52,23 @@ export default function NovoEstabelecimentoPage() {
     );
   if (planos.estado.status !== "pronto") return <EstadoLeitura estado={planos.estado} recarregar={planos.recarregar} />;
 
+  const planoEscolhido = planos.estado.dados.find((p) => p.id === form.planId);
+  const ciclo = form.billingCycle as "MONTHLY" | "QUARTERLY";
+  const precoDoCatalogo = planoEscolhido?.cyclePrices?.[ciclo] ?? null;
+  const valorContratado = form.contractAmount.trim() ? centavosDe(form.contractAmount) : null;
+  const valorInvalido = form.contractAmount.trim() !== "" && valorContratado === null;
+
   function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
+    if (valorInvalido) return;
     void envio.enviar((requestKey) =>
       acaoAdministrativa("/platform/establishments", "POST", {
         requestKey,
         businessName: form.businessName,
         category: form.category,
         planId: form.planId,
+        billingCycle: ciclo,
+        ...(valorContratado !== null ? { contractAmountCents: valorContratado } : {}),
         owner: { name: form.name, email: form.email, ...(form.phone.trim() ? { phone: form.phone } : {}) },
       }),
     );
@@ -92,14 +112,40 @@ export default function NovoEstabelecimentoPage() {
                   <option value="">Escolha um plano</option>
                   {planos.estado.dados.map((plano) => (
                     <option key={plano.id} value={plano.id}>
-                      {plano.name} · {precoCatalogo(plano.catalogPriceCents)} · até {plano.maxProfessionals} profissionais
+                      {plano.name} · até {plano.maxProfessionals} profissionais
                     </option>
                   ))}
                 </select>
               </label>
-              <p className="text-xs text-ink-soft sm:col-span-2">
-                O preço é o do catálogo, só como referência. Valor contratado e pagamentos não são registrados aqui.
-              </p>
+              <label className="text-sm font-medium">
+                Ciclo
+                <select className={CAMPO} {...campo("billingCycle")}>
+                  <option value="MONTHLY">Mensal</option>
+                  <option value="QUARTERLY">Trimestral</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">
+                Valor contratado específico (R$, opcional)
+                <input className={CAMPO} inputMode="decimal" placeholder="0,00" {...campo("contractAmount")} />
+              </label>
+              <div className="text-xs text-ink-soft sm:col-span-2" data-testid="preco-criacao">
+                {planoEscolhido ? (
+                  <p>
+                    Preço do catálogo ({ciclo === "MONTHLY" ? "mensal" : "trimestral"}):{" "}
+                    <strong>{precoDoCatalogo === null ? "pendente (não definido)" : reais(precoDoCatalogo)}</strong>.{" "}
+                    {valorContratado !== null
+                      ? `Este cliente terá o valor contratado de ${reais(valorContratado)}.`
+                      : "Sem valor específico, os pagamentos seguem o catálogo."}
+                  </p>
+                ) : (
+                  <p>Escolha um plano para ver o preço.</p>
+                )}
+                <p className="mt-1">
+                  Escolher plano e preço não registra pagamento nem comprova recebimento. O estabelecimento começa no teste
+                  gratuito; o pagamento é registrado depois, na ficha.
+                </p>
+                {valorInvalido && <p className="text-[color:var(--color-danger)]">Valor contratado inválido.</p>}
+              </div>
               <h2 className="pt-2 font-semibold sm:col-span-2">Responsável</h2>
               <label className="text-sm font-medium">
                 Nome
@@ -147,7 +193,7 @@ export default function NovoEstabelecimentoPage() {
                   variante="secundaria"
                   className="min-h-11"
                   onClick={() => {
-                    setForm({ businessName: "", category: "OTHER", planId: "", name: "", email: "", phone: "" });
+                    setForm(vazio);
                     envio.recomecar();
                   }}
                 >

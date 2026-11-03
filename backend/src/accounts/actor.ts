@@ -1,10 +1,11 @@
 // Quem está agindo na administração: relido do banco DENTRO da transação de
 // cada operação, nunca do navegador nem de uma leitura anterior. Um papel
 // retirado no meio do caminho vale na próxima operação.
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import type { PlatformPermission } from '../entities/enums/platform-permission.enum.js';
 import type { PlatformRole } from '../entities/enums/platform-role.enum.js';
+import { ASSIGNABLE_PLATFORM_ROLES } from '../platform/platform-access.js';
 import type { UserStatus } from '../entities/enums/user-status.enum.js';
 import { platformCapabilities, type PlatformCapabilities } from '../platform/platform-access.js';
 
@@ -51,6 +52,18 @@ export async function loadActor(manager: EntityManager, userId: string, lock = f
         })
       : platformCapabilities(null),
   };
+}
+
+/** Só o papel de proprietário é atribuível (portal exclusivo, ver
+ * platform/platform-access.ts). Vale também para quem chama o serviço sem
+ * passar pelo DTO. */
+export function assertAssignablePlatformRole(role: PlatformRole | null): void {
+  if (role !== null && !ASSIGNABLE_PLATFORM_ROLES.includes(role)) {
+    throw new ConflictException({
+      code: 'PAPEL_NAO_ATRIBUIVEL',
+      message: 'Só o papel de proprietário da plataforma pode ser atribuído nesta versão.',
+    });
+  }
 }
 
 export function requireCapability(actor: Actor, capability: keyof Actor['caps']): void {

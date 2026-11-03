@@ -37,11 +37,11 @@ describe("itensDaNavegacao", () => {
       "Serviços",
       "Profissionais",
       "Configurações",
-      "Administração",
+      "Portal da plataforma",
     ]);
     expect(itens.at(-1)).toEqual({
-      href: "/conta/administracao",
-      rotulo: "Administração",
+      href: "/plataforma",
+      rotulo: "Portal da plataforma",
       noCelular: "menu",
       grupo: "plataforma",
     });
@@ -51,7 +51,7 @@ describe("itensDaNavegacao", () => {
   it("administrador sem estabelecimento: Administração e Configurações, na barra", () => {
     const itens = itensDaNavegacao({ comEstabelecimento: false, comAdministracao: true });
     expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
-      ["/conta/administracao", "barra"],
+      ["/plataforma", "barra"],
       ["/conta/configuracoes", "barra"],
     ]);
   });
@@ -72,7 +72,7 @@ describe("itensDaNavegacao por perfil", () => {
 
   it("funcionário que também administra a plataforma vê a Administração", () => {
     const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true, perfil: "funcionario" });
-    expect(itens.map((i) => i.rotulo)).toEqual(["Minha agenda", "Configurações", "Administração"]);
+    expect(itens.map((i) => i.rotulo)).toEqual(["Minha agenda", "Configurações", "Portal da plataforma"]);
   });
 
   it("papel sem área: só Configurações; nenhuma área do dono", () => {
@@ -90,8 +90,8 @@ describe("itemAtivo", () => {
   it("subpáginas de Configurações mantêm Configurações ativa", () => {
     expect(itemAtivo("/conta/configuracoes/perfil", "/conta/configuracoes")).toBe(true);
     expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes")).toBe(true);
-    expect(itemAtivo("/conta/administracao/estabelecimentos/t1", "/conta/administracao")).toBe(true);
-    expect(itemAtivo("/conta/administracao/estabelecimentos", "/conta/configuracoes")).toBe(false);
+    expect(itemAtivo("/plataforma/estabelecimentos/t1", "/plataforma")).toBe(true);
+    expect(itemAtivo("/plataforma/estabelecimentos", "/conta/configuracoes")).toBe(false);
   });
 
   it("Serviços e Profissionais são áreas próprias, mesmo sob /conta/configuracoes", () => {

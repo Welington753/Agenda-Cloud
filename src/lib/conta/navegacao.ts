@@ -77,7 +77,7 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
  * autorização, que o servidor refaz em toda leitura. */
 export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
   href: ROTA_ADMINISTRACAO,
-  rotulo: "Administração",
+  rotulo: "Portal da plataforma",
   noCelular: "menu",
   grupo: "plataforma",
 };

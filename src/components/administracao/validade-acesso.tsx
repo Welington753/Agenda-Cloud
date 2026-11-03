@@ -11,7 +11,7 @@
 // sem duplicar pagamento nem estender a validade duas vezes. Nenhuma delas
 // tira suspensão ou arquivamento.
 import { useState, type ReactNode } from "react";
-import { CalendarCheck, CircleAlert, Clock, Gift } from "lucide-react";
+import { CalendarCheck, CircleAlert, Clock, Gift, InfinityIcon } from "lucide-react";
 import { Badge, type CorBadge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -25,11 +25,13 @@ import {
 } from "@/lib/administracao/contratos";
 import { Retorno, useResultado } from "./resultado-acao";
 import { HistoricoDeValidade } from "./historico-validade";
-import { centavosDe, diaBr, FORMAS_DE_PAGAMENTO, hojeLocal } from "@/lib/administracao/validade";
+import { FormularioDePagamento, type CamposDoPagamento, type Ciclo } from "./formulario-pagamento";
+import { centavosDe, diaBr, hojeLocal, origemDoValorDigitado, textoDoValor } from "@/lib/administracao/validade";
 
 const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 
 const ESTADO: Record<EstadoComercial, { rotulo: string; cor: CorBadge; icone: ReactNode }> = {
+  NO_EXPIRY: { rotulo: "Sem vencimento", cor: "destaque", icone: <InfinityIcon aria-hidden className="size-3.5" /> },
   UNTRACKED: { rotulo: "Validade ainda não definida", cor: "neutro", icone: <Clock aria-hidden className="size-3.5" /> },
   MISSING: { rotulo: "Sem validade registrada", cor: "aviso", icone: <CircleAlert aria-hidden className="size-3.5" /> },
   TRIAL: { rotulo: "Teste gratuito", cor: "info", icone: <Clock aria-hidden className="size-3.5" /> },
@@ -53,38 +55,51 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
   // A chave nasce com o formulário aberto e vale para todas as tentativas
   // dele: o servidor nunca grava duas vezes o mesmo envio.
   const [chave, setChave] = useState(novaChaveDeFormulario);
-  const [ciclo, setCiclo] = useState<"MONTHLY" | "QUARTERLY">("MONTHLY");
-  const [valor, setValor] = useState("");
-  const [forma, setForma] = useState("PIX");
-  const [recebidoEm, setRecebidoEm] = useState(() => hojeLocal(item.timezone));
-  const [referencia, setReferencia] = useState("");
-  const [observacao, setObservacao] = useState("");
+  const [pg, setPg] = useState<CamposDoPagamento>(() => camposIniciais("MONTHLY"));
   const [dias, setDias] = useState("7");
   const [motivo, setMotivo] = useState("");
-  const [conferido, setConferido] = useState(false);
   const acoes = item.allowedActions;
+  const precoDo = (c: Ciclo) => item.pricing?.cycles.find((p) => p.cycle === c);
+  const sugestao = precoDo(pg.ciclo);
+  const mudar = (parcial: Partial<CamposDoPagamento>) => setPg((atual) => ({ ...atual, ...parcial }));
   const estado = ESTADO[item.access.state];
   const suspenso = item.status === "SUSPENDED";
 
+  /** Valor sugerido pelo servidor para o ciclo: contrato vigente, senão
+   * catálogo; pendente deixa o campo vazio (nunca zero). */
+  function valorSugerido(c: Ciclo) {
+    const s = item.pricing?.cycles.find((p) => p.cycle === c);
+    return { valor: s?.suggestedCents ? textoDoValor(s.suggestedCents) : "", atualizarContrato: false };
+  }
+
+  function camposIniciais(c: Ciclo): CamposDoPagamento {
+    return {
+      ciclo: c,
+      ...valorSugerido(c),
+      forma: "PIX",
+      recebidoEm: hojeLocal(item.timezone),
+      referencia: "",
+      observacao: "",
+      conferido: false,
+    };
+  }
+
   function abrir(nova: Acao) {
     setChave(novaChaveDeFormulario());
-    setValor("");
-    setReferencia("");
-    setObservacao("");
+    setPg(camposIniciais(item.pricing?.preferredCycle ?? "MONTHLY"));
     setMotivo("");
     setDias(nova === "courtesy" ? "30" : "7");
-    setConferido(false);
-    setRecebidoEm(hojeLocal(item.timezone));
     setAcao(nova);
   }
 
-  const centavos = centavosDe(valor);
+  const centavos = centavosDe(pg.valor);
+  const origem = origemDoValorDigitado(centavos, sugestao);
   const numeroDeDias = Number(dias);
   const maxDias = acao === "courtesy" ? 180 : 30;
   const diasValidos = Number.isInteger(numeroDeDias) && numeroDeDias >= 1 && numeroDeDias <= maxDias;
   const podeConfirmar =
     acao === "paid"
-      ? centavos !== null && conferido && !!recebidoEm && recebidoEm <= hojeLocal(item.timezone)
+      ? centavos !== null && pg.conferido && !!pg.recebidoEm && pg.recebidoEm <= hojeLocal(item.timezone)
       : diasValidos && motivo.trim().length >= 3;
 
   async function confirmar() {
@@ -94,13 +109,14 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
         ? {
             expectedUpdatedAt: item.updatedAt,
             requestKey: chave,
-            cycle: ciclo,
+            cycle: pg.ciclo,
             amountCents: centavos,
-            paymentMethod: forma,
-            receivedOn: recebidoEm,
-            ...(referencia.trim() ? { reference: referencia.trim() } : {}),
-            ...(observacao.trim() ? { notes: observacao.trim() } : {}),
+            paymentMethod: pg.forma,
+            receivedOn: pg.recebidoEm,
+            ...(pg.referencia.trim() ? { reference: pg.referencia.trim() } : {}),
+            ...(pg.observacao.trim() ? { notes: pg.observacao.trim() } : {}),
             manualConfirmation: true,
+            ...(pg.atualizarContrato && origem === "ADJUSTED" ? { updateContract: true } : {}),
           }
         : { expectedUpdatedAt: item.updatedAt, requestKey: chave, days: numeroDeDias, reason: motivo.trim() };
     const atual = acao;
@@ -180,74 +196,15 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
           }
         >
           {acao === "paid" && (
-            <div className="space-y-3" data-testid="form-pagamento">
-              <p>
-                Plano {item.plan.name}. O período começa no fim da validade em curso (renovação antecipada) ou hoje, se
-                não há validade em curso. Mensal e trimestral seguem o calendário, não 30 ou 90 dias.
-              </p>
-              <fieldset className="grid gap-3 sm:grid-cols-2">
-                <label className="min-w-0 text-sm font-medium">
-                  Ciclo
-                  <select className={CAMPO} value={ciclo} onChange={(e) => setCiclo(e.target.value as "MONTHLY" | "QUARTERLY")}>
-                    <option value="MONTHLY">Mensal</option>
-                    <option value="QUARTERLY">Trimestral</option>
-                  </select>
-                </label>
-                <label className="min-w-0 text-sm font-medium">
-                  Valor contratado (R$)
-                  <input
-                    className={CAMPO}
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    value={valor}
-                    onChange={(e) => setValor(e.target.value)}
-                  />
-                </label>
-                <label className="min-w-0 text-sm font-medium">
-                  Forma de pagamento
-                  <select className={CAMPO} value={forma} onChange={(e) => setForma(e.target.value)}>
-                    {Object.entries(FORMAS_DE_PAGAMENTO).map(([codigo, rotulo]) => (
-                      <option key={codigo} value={codigo}>
-                        {rotulo}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="min-w-0 text-sm font-medium">
-                  Recebido em
-                  <input
-                    type="date"
-                    className={CAMPO}
-                    max={hojeLocal(item.timezone)}
-                    value={recebidoEm}
-                    onChange={(e) => setRecebidoEm(e.target.value)}
-                  />
-                </label>
-                <label className="min-w-0 text-sm font-medium sm:col-span-2">
-                  Referência (opcional)
-                  <input
-                    className={CAMPO}
-                    maxLength={120}
-                    placeholder="Ex.: identificador do comprovante"
-                    value={referencia}
-                    onChange={(e) => setReferencia(e.target.value)}
-                  />
-                </label>
-                <label className="min-w-0 text-sm font-medium sm:col-span-2">
-                  Observação (opcional)
-                  <input className={CAMPO} maxLength={300} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
-                </label>
-              </fieldset>
-              <label className="flex min-h-11 items-start gap-3 text-sm">
-                <input type="checkbox" className="mt-1 size-5" checked={conferido} onChange={(e) => setConferido(e.target.checked)} />
-                <span>
-                  Conferi o pagamento manualmente. O registro diz que a confirmação foi manual, pela administração: não
-                  houve confirmação automática por banco ou operadora.
-                </span>
-              </label>
-              {valor && centavos === null && <p className="text-xs text-[color:var(--color-danger)]">Valor inválido.</p>}
-              {suspenso && <p className="text-xs">O estabelecimento continua suspenso depois do registro.</p>}
-            </div>
+            <FormularioDePagamento
+              item={item}
+              campos={pg}
+              mudar={mudar}
+              aoTrocarCiclo={(c) => mudar({ ciclo: c, ...valorSugerido(c) })}
+              sugestao={sugestao}
+              origem={origem}
+              valorInvalido={!!pg.valor && centavos === null}
+            />
           )}
           {(acao === "trial-extension" || acao === "courtesy") && (
             <div className="space-y-3" data-testid="form-validade">
@@ -289,6 +246,14 @@ export function ValidadeDoAcesso({ item, aoMudar }: { item: DetalheEstabelecimen
 
 function ResumoDaValidade({ item }: { item: DetalheEstabelecimento }) {
   const { access } = item;
+  if (access.state === "NO_EXPIRY") {
+    return (
+      <p className="text-sm" data-testid="validade-sem-vencimento">
+        Acesso sem vencimento concedido pela administração. Não é pagamento, não muda plano, recursos nem papéis. Os
+        períodos registrados continuam no histórico e voltam a valer se a concessão for retirada.
+      </p>
+    );
+  }
   if (access.state === "UNTRACKED") {
     // Nem pago nem teste renovado: só a regularização individual define.
     return (

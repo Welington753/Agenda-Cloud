@@ -26,20 +26,19 @@
 // operação só aparece quando há um estabelecimento ativo: antes da escolha
 // (quem tem mais de um vínculo) as páginas nem teriam o que mostrar.
 //
-// Quem administra a plataforma (acesso confirmado por `GET /platform/access`,
-// ver lib/administracao/use-acesso-plataforma.tsx) ganha "Administração" no
-// mesmo menu — no menu da conta, no celular — mesmo sem vínculo com
-// estabelecimento, num grupo separado da operação e das Configurações.
-// Nas páginas da administração o cabeçalho diz "Administração da plataforma";
-// o estabelecimento ativo continua o mesmo, porque a ficha de outra empresa
-// nunca vira contexto da sessão.
+// Quem é proprietário da plataforma (acesso confirmado por
+// `GET /platform/access`, ver lib/administracao/use-acesso-plataforma.tsx)
+// ganha o atalho "Portal da plataforma" — no menu da conta, no celular —
+// mesmo sem vínculo com estabelecimento, num grupo separado da operação. O
+// portal é outra área (`/plataforma`, com layout próprio, ver
+// components/administracao/shell-plataforma.tsx): este shell não o desenha.
 //
 // Nada aqui importa a demonstração (`AdminShell` usa a sessão simulada): é
 // por isso que este shell é próprio, e não uma variação daquele.
 import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Repeat, ShieldCheck } from "lucide-react";
+import { Repeat } from "lucide-react";
 import clsx from "clsx";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { identificacaoDaConta } from "@/lib/api/auth-api";
@@ -56,7 +55,7 @@ import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicit
 import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { useSair } from "@/components/conta/use-sair";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
-import { emAdministracao } from "@/lib/administracao/rotas";
+
 import { paginaForaDoEstabelecimento, perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
 import { acessoVencido } from "@/lib/api/auth-api";
 import { AcessoVencido } from "@/components/conta/acesso-vencido";
@@ -137,8 +136,6 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const naBarra = itens.filter((item) => item.noCelular === "barra");
   const colunasNoCelular = naBarra.length;
   const comAdministracao = acessoConfirmado(estadoAcesso);
-  // Administrando a plataforma ou operando o estabelecimento: o cabeçalho diz.
-  const modoAdministracao = emAdministracao(pathname);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -152,29 +149,9 @@ export function ShellConta({ children }: { children: ReactNode }) {
           >
             <MarcaAgendaCloud />
           </Link>
-          {modoAdministracao && (
-            <p
-              data-testid="modo-administracao"
-              className="mt-0.5 flex max-w-full items-start gap-1 text-xs font-semibold text-chrome-ink md:mt-2"
-            >
-              <ShieldCheck size={14} aria-hidden="true" className="mt-px shrink-0" />
-              {/* No celular cabe numa linha; no computador, o sino divide a
-                  largura do menu e o texto quebra em vez de ser cortado. */}
-              <span className="truncate md:whitespace-normal">Administração da plataforma</span>
-            </p>
-          )}
-          {contexto && modoAdministracao && (
-            <p className="mt-3 hidden text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block">
-              Seu estabelecimento
-            </p>
-          )}
           {contexto && (
             <p
-              className={clsx(
-                "truncate text-xs text-chrome-ink-soft md:mt-1 md:text-sm md:text-chrome-ink",
-                // No celular, a faixa da administração já diz qual é.
-                modoAdministracao && "hidden md:block",
-              )}
+              className="truncate text-xs text-chrome-ink-soft md:mt-1 md:text-sm md:text-chrome-ink"
               data-testid="estabelecimento-ativo"
             >
               {contexto.tenantName}

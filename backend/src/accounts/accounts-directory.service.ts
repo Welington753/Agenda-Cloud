@@ -110,6 +110,13 @@ export class AccountsDirectoryService {
     });
   }
 
+  /** Para rotas que não leem o diretório mas só servem ao portal: a mesma
+   * recusa de quem não é proprietário da plataforma. */
+  async assertViewer(actorId: string): Promise<void> {
+    const actor = await loadActor(this.dataSource.manager, actorId);
+    if (!actor.caps.viewDirectory) throw new ForbiddenException('Sem acesso à administração da plataforma.');
+  }
+
   async access(actorId: string) {
     const actor = await loadActor(this.dataSource.manager, actorId);
     return {
@@ -144,11 +151,18 @@ export class AccountsDirectoryService {
     }));
   }
 
+  /** Planos do catálogo com o preço em vigor de cada ciclo (`null`:
+   * pendente, nunca gratuito), para a criação de estabelecimento. */
   plans(actorId: string) {
+    const preco = (ciclo: string) =>
+      `(SELECT pp.amount_cents FROM plan_prices pp WHERE pp.plan_id = plans.id AND pp.billing_cycle = '${ciclo}'
+         ORDER BY pp.recorded_at DESC, pp.id DESC LIMIT 1)`;
     return this.read(actorId, (manager) =>
       manager.query(
         `SELECT id, code, name, price_cents AS "catalogPriceCents", max_professionals AS "maxProfessionals",
-                max_units AS "maxUnits" FROM plans ORDER BY name, id`,
+                max_units AS "maxUnits",
+                json_build_object('MONTHLY', ${preco('MONTHLY')}, 'QUARTERLY', ${preco('QUARTERLY')}) AS "cyclePrices"
+           FROM plans ORDER BY max_professionals, name, id`,
       ),
     );
   }

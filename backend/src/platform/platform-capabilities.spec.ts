@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PlatformPermission } from '../entities/enums/platform-permission.enum.js';
 import { PlatformRole } from '../entities/enums/platform-role.enum.js';
 import { UserStatus } from '../entities/enums/user-status.enum.js';
-import { EFFECTIVE_PLATFORM_PERMISSIONS, platformCapabilities } from './platform-access.js';
+import { ASSIGNABLE_PLATFORM_ROLES, EFFECTIVE_PLATFORM_PERMISSIONS, platformCapabilities } from './platform-access.js';
 
 const conta = (platformRole?: PlatformRole, platformPermissions?: PlatformPermission[], status = UserStatus.ACTIVE) => ({
   status,
@@ -22,20 +22,19 @@ describe('capacidades da plataforma', () => {
     expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN, EM)).managePlatformAccess).toBe(false);
   });
 
-  it('MASTER_ADMIN só com a permissão explícita; suporte só consulta', () => {
-    expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN))).toEqual({
+  it('portal exclusivo do proprietário: MASTER_ADMIN e MASTER_SUPPORT não abrem nada, com ou sem permissão', () => {
+    const nada = {
       viewDirectory: false,
       manageEstablishments: false,
       managePlatformAccess: false,
       manageEstablishmentLifecycle: false,
-    });
-    expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN, EM)).manageEstablishments).toBe(true);
-    expect(platformCapabilities(conta(PlatformRole.MASTER_SUPPORT, EM))).toEqual({
-      viewDirectory: true,
-      manageEstablishments: false,
-      managePlatformAccess: false,
-      manageEstablishmentLifecycle: false,
-    });
+    };
+    for (const papel of [PlatformRole.MASTER_ADMIN, PlatformRole.MASTER_SUPPORT]) {
+      expect(platformCapabilities(conta(papel))).toEqual(nada);
+      expect(platformCapabilities(conta(papel, EM))).toEqual(nada);
+      expect(platformCapabilities(conta(papel, Object.values(PlatformPermission)))).toEqual(nada);
+    }
+    expect(ASSIGNABLE_PLATFORM_ROLES).toEqual([PlatformRole.MASTER_OWNER]);
   });
 
   it('sem papel, conta não ativa ou permissões sem efeito: nada', () => {
@@ -43,6 +42,6 @@ describe('capacidades da plataforma', () => {
     expect(platformCapabilities(conta(undefined, todas)).viewDirectory).toBe(false);
     expect(platformCapabilities(conta(PlatformRole.MASTER_OWNER, undefined, UserStatus.SUSPENDED)).viewDirectory).toBe(false);
     expect(platformCapabilities(conta(PlatformRole.MASTER_ADMIN, [PlatformPermission.SUPPORT_ACCESS, PlatformPermission.PLANS_MANAGE])).viewDirectory).toBe(false);
-    expect(EFFECTIVE_PLATFORM_PERMISSIONS).toEqual([PlatformPermission.ESTABLISHMENTS_MANAGE]);
+    expect(EFFECTIVE_PLATFORM_PERMISSIONS).toEqual([]);
   });
 });

@@ -38,10 +38,10 @@ export default function PapeisPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">Papéis e permissões</h1>
+        <h1 className="text-2xl font-bold">Proprietários da plataforma</h1>
         <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-          Só aparecem como atribuíveis os papéis e permissões que liberam alguma rota hoje. Ser dono(a) de um
-          estabelecimento nunca dá acesso à administração da plataforma.
+          O portal é exclusivo dos proprietários da plataforma (MASTER_OWNER), confirmados no servidor a cada requisição.
+          Ser dono, gerente ou profissional de um estabelecimento, de qualquer plano, inclusive Max, nunca dá acesso. Os papéis delegados antigos não abrem nada; o último proprietário ativo não pode ser retirado nem bloqueado.
         </p>
       </header>
       <Cartao>

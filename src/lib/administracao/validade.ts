@@ -1,5 +1,6 @@
 // Textos e conversões da validade do acesso (assinatura do Agenda Cloud) na
 // administração. Funções puras.
+import { dataCadastro, type SemVencimento } from "./contratos";
 
 export const FORMAS_DE_PAGAMENTO: Record<string, string> = {
   PIX: "Pix",
@@ -40,9 +41,51 @@ export function validadeDepoisDaCorrecao(
   situacao: { state: string; blocked: boolean; validUntil: string | null },
   timeZone: string,
 ): string {
+  if (situacao.state === "NO_EXPIRY") return "sem vencimento (concessão em vigor)";
   if (situacao.state === "UNTRACKED") return "validade ainda não definida (opera como antes)";
   if (situacao.state === "MISSING") return "sem validade registrada: acesso pausado";
   if (situacao.blocked || !situacao.validUntil) return "vencido: acesso pausado";
   const ultimo = new Intl.DateTimeFormat("pt-BR", { timeZone }).format(new Date(Date.parse(situacao.validUntil) - 1));
   return `${ROTULO_DO_ESTADO[situacao.state] ?? "válido"} até ${ultimo}`;
 }
+
+/** Centavos -> texto do campo (`3990` -> `"39,90"`), sem símbolo. */
+export const textoDoValor = (centavos: number) => `${Math.floor(centavos / 100)},${String(centavos % 100).padStart(2, "0")}`;
+
+export const ORIGEM_DA_SUGESTAO = {
+  CONTRACT: "Valor contratado deste cliente",
+  CATALOG: "Preço do catálogo",
+  PENDING: "Preço ainda não definido",
+} as const;
+
+export const ORIGEM_DO_VALOR = {
+  CONTRACT: "valor contratado",
+  CATALOG: "preço do catálogo",
+  ADJUSTED: "ajustado só neste pagamento",
+} as const;
+
+/** De onde vem o valor que está no campo, comparado à sugestão do servidor.
+ * O servidor decide de novo ao gravar; isto é só o aviso da tela. */
+export function origemDoValorDigitado(
+  centavos: number | null,
+  sugestao: { suggestedCents: number | null; source: "CONTRACT" | "CATALOG" | "PENDING" } | undefined,
+): "CONTRACT" | "CATALOG" | "ADJUSTED" | null {
+  if (centavos === null || !sugestao) return null;
+  if (sugestao.source !== "PENDING" && centavos === sugestao.suggestedCents) return sugestao.source;
+  return "ADJUSTED";
+}
+
+/** Consequência da retirada, em uma frase, a partir da prévia do servidor. */
+export function consequenciaDaRetirada(previa: SemVencimento["revokePreview"]): string {
+  if (!previa) return "";
+  if (!previa.blocked && previa.lastDay) {
+    return `O acesso segue pelos períodos já registrados, até ${diaBr(previa.lastDay)}. Depois disso, vence normalmente.`;
+  }
+  if (previa.state === "EXPIRED") {
+    return `O acesso fica bloqueado na próxima requisição: o último período registrado terminou${
+      previa.expiredAt ? ` em ${dataCadastro(previa.expiredAt)}` : ""
+    }. Dados e reservas ficam preservados; nenhum agendamento é cancelado.`;
+  }
+  return "O acesso fica bloqueado na próxima requisição: não há período registrado. Dados e reservas ficam preservados; nenhum agendamento é cancelado.";
+}
+

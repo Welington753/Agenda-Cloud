@@ -1,29 +1,29 @@
 "use client";
 
-// Papel e permissões da PLATAFORMA (separados dos papéis dentro de cada
-// estabelecimento). Só o MASTER_OWNER altera, nunca a própria conta, e só
-// com a senha confirmada. A única permissão oferecida é a que libera alguma
-// rota; as outras do modelo aparecem como "sem efeito" quando já existem.
+// Papel da PLATAFORMA (separado dos papéis dentro de cada estabelecimento).
+// Só um proprietário altera, nunca a própria conta, e só com a senha
+// confirmada. O portal é exclusivo do proprietário: o único papel oferecido é
+// esse; papéis delegados antigos aparecem como "sem acesso ao portal" e podem
+// ser retirados. O servidor protege o último proprietário ativo.
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge-base";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { acaoAdministrativa } from "@/lib/administracao/api-contas";
-import { PAPEIS_PLATAFORMA, PERMISSOES_PLATAFORMA } from "@/lib/administracao/rotulos";
+import { PAPEIS_PLATAFORMA, PAPEL_ATRIBUIVEL, PERMISSOES_PLATAFORMA } from "@/lib/administracao/rotulos";
 import type { PapelPlataforma } from "@/lib/administracao/contas";
 import { BotaoConfirmado, CAMPO, Retorno, useExecucao, type SecaoProps } from "./comum";
 
 const CAPACIDADES: Record<string, string> = {
-  viewDirectory: "Consultar estabelecimentos, usuários, convites e histórico",
-  manageEstablishments: "Criar estabelecimentos, convidar e gerenciar contas sem papel de plataforma",
-  managePlatformAccess: "Gerenciar papéis e permissões da plataforma",
+  viewDirectory: "Consultar estabelecimentos, contas, preços, pagamentos e histórico",
+  manageEstablishments: "Criar estabelecimentos, convidar e gerenciar contas",
+  managePlatformAccess: "Definir quem é proprietário da plataforma",
+  manageEstablishmentLifecycle: "Ativar, inativar, validade, sem vencimento, planos e preços",
 };
 
 export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
-  const [papel, setPapel] = useState<PapelPlataforma | "">(ficha.platformRole ?? "");
-  const [gerencia, setGerencia] = useState(ficha.platformPermissions.includes("ESTABLISHMENTS_MANAGE"));
+  const [papel, setPapel] = useState<PapelPlataforma | "">(ficha.platformRole === PAPEL_ATRIBUIVEL ? PAPEL_ATRIBUIVEL : "");
   const { executar, ocupado, mensagem } = useExecucao(aoMudar);
   const capacidades = Object.entries(ficha.platformCapabilities).filter(([, ativa]) => ativa);
-  const permissoesAplicaveis = papel === "MASTER_ADMIN" || papel === "MASTER_SUPPORT";
 
   function salvar() {
     void executar(
@@ -31,7 +31,7 @@ export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
         acaoAdministrativa(`/platform/users/${encodeURIComponent(ficha.id)}/platform-access`, "PUT", {
           expectedUpdatedAt: ficha.updatedAt,
           role: papel || null,
-          permissions: permissoesAplicaveis && gerencia ? ["ESTABLISHMENTS_MANAGE"] : [],
+          permissions: [],
         }),
       "Acesso de plataforma atualizado.",
     );
@@ -40,7 +40,7 @@ export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
   return (
     <Cartao>
       <CartaoCorpo className="space-y-4">
-        <h2 className="font-semibold">Administração da plataforma</h2>
+        <h2 className="font-semibold">Portal da plataforma</h2>
         <p className="text-sm">
           {ficha.platformRole ? PAPEIS_PLATAFORMA[ficha.platformRole] : "Sem papel de plataforma."}
         </p>
@@ -51,7 +51,7 @@ export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
             ))}
           </ul>
         ) : (
-          ficha.platformRole && <p className="text-sm text-ink-soft">Este papel sem permissão não libera nada.</p>
+          ficha.platformRole && <p className="text-sm text-ink-soft">Este papel não abre o portal: só o de proprietário.</p>
         )}
         {ficha.ineffectivePlatformPermissions.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -67,22 +67,8 @@ export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
                 Papel na plataforma
                 <select className={CAMPO} value={papel} onChange={(e) => setPapel(e.target.value as PapelPlataforma | "")}>
                   <option value="">Sem papel de plataforma</option>
-                  {Object.entries(PAPEIS_PLATAFORMA).map(([valor, rotulo]) => (
-                    <option key={valor} value={valor}>
-                      {rotulo}
-                    </option>
-                  ))}
+                  <option value={PAPEL_ATRIBUIVEL}>{PAPEIS_PLATAFORMA[PAPEL_ATRIBUIVEL]}</option>
                 </select>
-              </label>
-              <label className="flex min-h-11 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-5"
-                  checked={permissoesAplicaveis && gerencia}
-                  disabled={!permissoesAplicaveis}
-                  onChange={(e) => setGerencia(e.target.checked)}
-                />
-                {PERMISSOES_PLATAFORMA.ESTABLISHMENTS_MANAGE}
               </label>
             </div>
             <BotaoConfirmado
@@ -92,8 +78,8 @@ export function SecaoPlataforma({ ficha, aoMudar }: SecaoProps) {
               disabled={ocupado}
               texto={
                 <p>
-                  {ficha.name} passa a ter: {papel ? PAPEIS_PLATAFORMA[papel] : "nenhum papel de plataforma"}
-                  {permissoesAplicaveis && gerencia ? ", com estabelecimentos e contas" : ""}. Vale na próxima ação da pessoa.
+                  {ficha.name} passa a ter: {papel ? PAPEIS_PLATAFORMA[papel] : "nenhum papel de plataforma"}. Vale na
+                  próxima ação da pessoa, mesmo com a sessão aberta.
                 </p>
               }
               aoConfirmar={salvar}

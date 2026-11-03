@@ -21,7 +21,14 @@ import { generateId } from '../entities/common/generate-id.js';
 import { PlatformRole } from '../entities/enums/platform-role.enum.js';
 import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, verifyPassword } from '../auth/password-hasher.js';
 import type { DeniedPermissionsDto, PlatformAccessDto, StatusChangeDto, UpdateUserDto } from './accounts.dto.js';
-import { assertCanManageAccount, loadActor, requireCapability, FORBIDDEN_MESSAGE, type Actor } from './actor.js';
+import {
+  assertAssignablePlatformRole,
+  assertCanManageAccount,
+  loadActor,
+  requireCapability,
+  FORBIDDEN_MESSAGE,
+  type Actor,
+} from './actor.js';
 import { recordAudit } from './audit.js';
 import { requireRecentReauth } from './reauth.js';
 import { avancarVersao } from './user-version.js';
@@ -178,6 +185,7 @@ export class AccountsAdminService {
       // quem age vale aqui.
       const actor = await loadActor(manager, actorId);
       requireCapability(actor, 'managePlatformAccess');
+      assertAssignablePlatformRole(dto.role);
       const target = await this.lockTarget(manager, actor, userId, dto.expectedUpdatedAt);
       const role = dto.role;
       const permissions = role && role !== PlatformRole.MASTER_OWNER ? [...dto.permissions].sort() : [];

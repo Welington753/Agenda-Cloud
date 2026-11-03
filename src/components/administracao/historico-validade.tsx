@@ -19,7 +19,7 @@ import {
   type PeriodoDeAcesso,
   type TipoDePeriodo,
 } from "@/lib/administracao/contratos";
-import { CICLOS, diaBr, FORMAS_DE_PAGAMENTO, reais, validadeDepoisDaCorrecao } from "@/lib/administracao/validade";
+import { CICLOS, diaBr, FORMAS_DE_PAGAMENTO, ORIGEM_DO_VALOR, reais, validadeDepoisDaCorrecao } from "@/lib/administracao/validade";
 
 const TIPO: Record<TipoDePeriodo, string> = { TRIAL: "Teste gratuito", PAID: "Período pago", COURTESY: "Cortesia" };
 const CAMPO = "mt-1 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm";
@@ -77,7 +77,8 @@ export function HistoricoDeValidade({ item, aoMudar }: { item: DetalheEstabeleci
             <p className="mt-1 break-words text-xs text-ink-soft">
               Plano {p.plan.name}
               {p.cycle && ` · ${CICLOS[p.cycle]}`}
-              {p.amountCents !== null && ` · ${reais(p.amountCents)} contratado`}
+              {p.amountCents !== null && ` · ${reais(p.amountCents)}`}
+              {p.amountSource && ` (${ORIGEM_DO_VALOR[p.amountSource]})`}
               {p.paymentMethod && ` · ${FORMAS_DE_PAGAMENTO[p.paymentMethod] ?? p.paymentMethod}`}
               {p.receivedOn && `, recebido em ${diaBr(p.receivedOn)}`}
               {p.reference && ` · ref. ${p.reference}`}

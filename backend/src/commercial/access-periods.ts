@@ -16,7 +16,12 @@
 //   ("Validade ainda não definida"). Qualquer outro fica bloqueado: a falta
 //   do teste nunca vira acesso indefinido;
 // - um período anulado por correção não conta para nada (quem carrega os
-//   períodos já os deixa de fora).
+//   períodos já os deixa de fora);
+// - com a concessão "sem vencimento" em vigor, a validade não bloqueia
+//   (`NO_EXPIRY`), seja qual for o período. Não é pagamento nem recurso: a
+//   situação administrativa (suspensão) e o plano continuam valendo. Quem
+//   carrega os sinalizadores já tira a marca de anterior de quem teve alguma
+//   concessão (ver commercial-gate.ts).
 import { TRIAL_DURATION_DAYS } from '../auth/trial-policy.js';
 import { partesLocais, resolverHoraLocal, type DataLocal } from '../availability/time-zone.js';
 
@@ -43,6 +48,9 @@ export interface NewPeriodDates {
 }
 
 /**
+ * - `NO_EXPIRY`: concessão "sem vencimento" em vigor: não bloqueia, sem data
+ *   de fim. Os períodos continuam registrados e voltam a valer quando a
+ *   concessão é retirada.
  * - `UNTRACKED`: estabelecimento anterior a este controle, sem período
  *   válido: "Validade ainda não definida"; opera como antes.
  * - `MISSING`: sem período válido e sem a marca de anterior: bloqueado.
@@ -50,7 +58,15 @@ export interface NewPeriodDates {
  *   cortesia, que vence o teste, quando se sobrepõem).
  * - `EXPIRED`: há períodos, mas nenhum cobre agora.
  */
-export type AccessState = 'UNTRACKED' | 'MISSING' | 'TRIAL' | 'PAID' | 'COURTESY' | 'EXPIRED';
+export type AccessState = 'NO_EXPIRY' | 'UNTRACKED' | 'MISSING' | 'TRIAL' | 'PAID' | 'COURTESY' | 'EXPIRED';
+
+/** O que, além dos períodos, decide a situação. `legacy`: marca de anterior
+ * ao controle, sem nenhuma concessão "sem vencimento" (em vigor ou
+ * retirada). `noExpiry`: concessão "sem vencimento" em vigor. */
+export interface AccessFlags {
+  legacy: boolean;
+  noExpiry?: boolean;
+}
 
 export interface AccessSituation {
   state: AccessState;
@@ -86,12 +102,14 @@ export function coverageEnd(periods: readonly StoredPeriod[], now: Date): Date |
   return fim;
 }
 
-/** `legacy`: o estabelecimento tem a marca de anterior a este controle. */
 export function accessSituation(
   periods: readonly StoredPeriod[],
   now: Date,
-  { legacy }: { legacy: boolean },
+  { legacy, noExpiry = false }: AccessFlags,
 ): AccessSituation {
+  if (noExpiry) {
+    return { state: 'NO_EXPIRY', blocked: false, validUntil: null, expiredAt: null, expiredKind: null };
+  }
   if (periods.length === 0) {
     return { state: legacy ? 'UNTRACKED' : 'MISSING', blocked: !legacy, validUntil: null, expiredAt: null, expiredKind: null };
   }
@@ -265,7 +283,7 @@ export function correctionImpact(
   periods: readonly IdentifiedPeriod[],
   targetId: string,
   now: Date,
-  legacy: { legacy: boolean },
+  legacy: AccessFlags,
 ): CorrectionCheck {
   const alvo = periods.find((p) => p.id === targetId);
   if (!alvo) throw new Error('Período fora da lista de períodos válidos.');

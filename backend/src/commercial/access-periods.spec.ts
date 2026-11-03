@@ -91,6 +91,22 @@ describe('situação comercial', () => {
     expect(accessSituation(p, new Date(meiaNoite('2027-02-28').getTime() - 1), NOVO).blocked).toBe(false);
     expect(accessSituation(p, meiaNoite('2027-02-28'), NOVO).blocked).toBe(true);
   });
+
+  it('sem vencimento: não bloqueia com período vencido, sem período ou sem a marca, e não inventa data', () => {
+    const vencido = [pago('2027-01-10', '2027-02-10', 10)];
+    const agora = as('2027-06-01T12:00:00Z');
+    for (const periodos of [vencido, []]) {
+      expect(accessSituation(periodos, agora, { legacy: false, noExpiry: true })).toEqual({
+        state: 'NO_EXPIRY',
+        blocked: false,
+        validUntil: null,
+        expiredAt: null,
+        expiredKind: null,
+      });
+    }
+    // Retirado: volta a valer o que os períodos dizem.
+    expect(accessSituation(vencido, agora, { legacy: false, noExpiry: false })).toMatchObject({ state: 'EXPIRED', blocked: true });
+  });
 });
 
 describe('período pago', () => {

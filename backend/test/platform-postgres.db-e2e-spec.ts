@@ -185,7 +185,7 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
       NotFoundException,
     );
   });
-  it('permissão explícita e sua revogação são relidas sem novo login', async () => {
+  it('papel de proprietário dado e retirado é relido sem novo login; permissão avulsa não abre nada', async () => {
     await expect(service.detail(admin, tenantB)).rejects.toThrow(
       ForbiddenException,
     );
@@ -193,9 +193,14 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
       "UPDATE users SET platform_permissions = ARRAY['ESTABLISHMENTS_MANAGE']::platform_permission[] WHERE id = $1",
       [admin],
     );
+    await expect(service.detail(admin, tenantB)).rejects.toThrow(ForbiddenException);
+    await db.query(
+      "UPDATE users SET platform_role = 'MASTER_OWNER', platform_permissions = '{}' WHERE id = $1",
+      [admin],
+    );
     expect((await service.detail(admin, tenantB)).id).toBe(tenantB);
     await db.query(
-      "UPDATE users SET platform_permissions = '{}' WHERE id = $1",
+      "UPDATE users SET platform_role = 'MASTER_ADMIN', platform_permissions = '{}' WHERE id = $1",
       [admin],
     );
     await expect(service.detail(admin, tenantB)).rejects.toThrow(

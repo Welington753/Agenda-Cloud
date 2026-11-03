@@ -35,7 +35,12 @@ export type AdminAuditAction =
   | 'ACCESS_PAID_PERIOD_RECORDED'
   | 'ACCESS_TRIAL_EXTENDED'
   | 'ACCESS_COURTESY_GRANTED'
-  | 'ACCESS_PERIOD_CORRECTED';
+  | 'ACCESS_PERIOD_CORRECTED'
+  // Portal da plataforma (migration PlatformPortal).
+  | 'PLAN_PRICE_CHANGED'
+  | 'CONTRACT_PRICE_CHANGED'
+  | 'ACCESS_NO_EXPIRY_GRANTED'
+  | 'ACCESS_NO_EXPIRY_REVOKED';
 
 export interface AuditEntry {
   action: AdminAuditAction;
