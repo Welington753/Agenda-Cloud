@@ -1,8 +1,8 @@
 # Continuidade: portal da plataforma (#84), vários serviços (#85) e kit de publicação (#86)
 
-Checkpoint de 2026-11-03 (PC do trabalho), depois dos merges de #84 e #85 e
-da abertura do PR do kit protegido. **Nada foi publicado nem aplicado em banco
-real.** Nenhuma conexão com o piloto, nenhuma mensagem enviada, nada alterado
+Checkpoint de 2026-11-03 (PC do trabalho), depois dos merges de #84 e #85, da
+abertura do PR do kit protegido e da revisão do kit (seção 3.1). **Nada foi
+publicado nem aplicado em banco real.** Nenhuma conexão com o piloto, nenhuma mensagem enviada, nada alterado
 no Render, nenhum papel real alterado. Os preços continuam sem aprovação.
 
 ## 1. Estado de produção e do piloto (não mudou)
@@ -52,10 +52,13 @@ PR #74 continua aberto e intocado.
 
 [#86](https://github.com/Welington753/Agenda-Cloud/pull/86), branch
 `chore/kit-publicacao-portal-multisservicos`, head
-`52524eec6273a8427c13509b3b64b955513dc0bd`, base integration em `96415bc`.
-Runbook: `docs/runbooks/publicacao-portal-multisservicos-piloto.md`.
+`677b51515778fc00e5e184da64ff010baa227ce5` (depois da revisão, seção 3.1;
+antes era `52524ee`), base integration em `96415bc`. Commit do kit ensaiado
+pelo lançador: `65fa44b`; depois dele só documentação e um teste db-e2e
+(`29bfaf4`). Runbook:
+`docs/runbooks/publicacao-portal-multisservicos-piloto.md`.
 
-CI no head `52524ee`: os três checks verdes (seção 7).
+CI no head `677b515`: os três checks verdes (seção 7).
 
 Desenho: duas **etapas**, uma migration cada, cada uma com preparar, backup,
 restauração conferida e aplicar:
@@ -90,8 +93,8 @@ Compatibilidade (ensaiada, detalhes no runbook):
 - **Estado 13:** a API anterior funciona inteira; a API nova quebra a agenda.
 - **Estado 14:** as duas sobem.
 - **Web anterior × API nova:** funciona, menos a ficha de estabelecimento com
-  "sem vencimento". É a janela entre os dois deploys e a alternativa "voltar
-  só o web".
+  "sem vencimento" (confirmado no navegador). Serve para a janela entre os
+  dois deploys. "Voltar só o web" é recuperação **parcial** (seção 3.1).
 - **Web nova × API anterior:** não cria reserva. Não usar.
 - **API anterior depois de usar a nova:** ignora "sem vencimento", mostra só o
   1º serviço da reserva múltipla e devolve o portal a
@@ -102,6 +105,63 @@ Compatibilidade (ensaiada, detalhes no runbook):
 
 Comprovantes do ensaio **não valem** para a operação real (modo e commit
 diferentes; o kit recusa).
+
+### 3.1 Revisão do kit (mesma data, sem merge)
+
+Defeitos comprovados e corrigidos:
+
+- **Listagem de contas** (`03557e7`): com mais de 50 contas globais, a ordem
+  alfabética do papel deixava todos os `MASTER_OWNER` fora da listagem.
+  Agora os proprietários vêm primeiro, e a saída sinaliza o corte
+  (`CONTAS_LISTADAS: n de total (LISTAGEM_TRUNCADA ...)`). As contagens e a
+  proteção `ERR_SEM_PROPRIETARIO_ATIVO` sempre usaram `count(*)` sem limite
+  (agora com teste).
+- **Código de saída** (`03557e7`, `65fa44b`): a frase errada saía com 0. Agora
+  toda fase imprime `DESFECHO` e sai com:
+  - 0: fase concluída;
+  - 1: parou sem gravar;
+  - 2: aplicada, mas a conferência falhou;
+  - 3: incerto.
+
+  Um erro qualquer depois do início da migration nunca vira "nada gravado".
+  O lançador explica o código. O código sozinho não prova nada: vale o
+  `ESTADO` conferido.
+
+Revisão da seleção das migrations, sem defeito: nome e ordem conferidos, nunca
+só a contagem. As exclusões são só as `posteriores` declaradas, conferidas
+pelo nome no fim da lista; histórico com migration desconhecida para antes.
+Sem o parâmetro, os kits anteriores não mudam. Prova nova: db-e2e
+`aplicar-somente-a-pendente`, que aplica as duas etapas de verdade num banco
+temporário com o runtime compilado e cobre as recusas. Tirar a retirada das
+posteriores faz o teste falhar.
+
+Segunda rodada do ensaio (PostgreSQL 17.11, TLS, dados fictícios com
+períodos comerciais e reservas antigas), kit `65fa44b`:
+
+- **Lançador oficial** (num pseudoconsole real, ConPTY, sem harness): as duas
+  etapas inteiras, inclusive a **restauração da etapa 2**.
+  - Fases: conferir, preparar, restauração, aplicar e conferir.
+  - Recusas: frase errada (código 1) e repetição das duas etapas.
+- **Harness**: só a queda antes do COMMIT, para provar o código 3; o
+  `conferir` depois dela, pelo lançador, deu o estado antes.
+
+Navegador (Chromium, `next start`, API nova, estado final com "sem
+vencimento", preço contratado e reserva de dois serviços):
+
+- **Web novo × API nova:** tudo ok, inclusive criar reserva de dois serviços
+  pela tela.
+- **Web anterior × API nova:** agenda, reserva de um serviço, recebimentos e
+  fichas comuns ok. A reserva de dois serviços aparece com o nome combinado e
+  o total, sem o detalhe por serviço.
+  - A ficha de estabelecimento com "sem vencimento" **não abre**:
+    `NO_EXPIRY` é desconhecido para o validador antigo.
+  - Para esse estabelecimento ficam sem consulta nem ação: validade,
+    situação, plano, dados cadastrais e pessoas.
+  - Sem correção que preserve o significado. **Voltar só o web é recuperação
+    parcial**; a alternativa é corrigir o web novo para frente.
+
+Binários do 17.11: zip da EDB por HTTPS. O sha256 foi calculado localmente,
+sem comparação com checksum do fornecedor. Os executáveis não têm assinatura.
 
 ## 4. Ordem exata da futura publicação
 
@@ -116,7 +176,9 @@ integration ou posterior, o mesmo em tudo):
 4. Etapa `multisservicos`: `preparar` → `restauracao` → `aplicar`
    (`APLICAR AppointmentServiceSnapshots1793404800000`) →
    `after-appointment-snapshots`.
-5. `conferir`: estado final.
+5. `conferir`: estado final (`after-appointment-snapshots`, 14 migrations,
+   36/36). **Só com as duas etapas concluídas e essa conferência** a
+   publicação avança para a API nova.
 6. API no Render (Deploy a specific commit), conferências do runbook.
 7. Web no Render, mesmo SHA, testes manuais do runbook.
 
@@ -128,33 +190,64 @@ Antes do passo 1:
 
 1. **Conferência das identidades dos proprietários:** pendente. Leitura
    autorizada pela consulta com identificação; não presumir quais são as
-   contas; nenhum papel alterado.
+   contas; nenhum papel alterado. Ter um `MASTER_OWNER` ativo (a proteção do
+   kit) não substitui essa conferência.
 2. **Preços:** sem aprovação; cadastrar só preço aprovado, depois da
    publicação.
 3. **Backup real e restauração operacional:** no SHA operacional, na operação
    autorizada.
-4. **Revisão e merge do #86:** não mesclado nesta rodada.
-5. Observações sem defeito: convite de plataforma pendente com papel delegado,
+4. **Merge do #86:** revisado nesta rodada, **não mesclado** (não autorizado).
+5. **Limitações que continuam:**
+   - as quedas de conexão foram simuladas no cliente;
+   - o lançador rodou num pseudoconsole com entrada digitada pelo driver, não
+     por uma pessoa;
+   - no navegador só as duas combinações com a API nova; sem gerente,
+     profissional, link público e celular;
+   - a troca de API e a suspensão no Render não foram ensaiadas;
+   - o sha256 do PostgreSQL 17.11 não foi comparado com checksum do
+     fornecedor.
+6. Observações sem defeito: convite de plataforma pendente com papel delegado,
    se aceito, grava papel sem efeito; a reescrita do `administracao-flow.spec.ts`
    deixou de conferir a barra do celular no caso "sem estabelecimento".
 
 ## 6. O que fica só no PC do trabalho
 
 Nada de código fora do GitHub. Ficam localmente, descartáveis:
-- worktrees `C:\Projetos\Agenda-Cloud-pr84` (merge feito; `backend/node_modules`
-  removido por falta de espaço), `C:\Projetos\Agenda-Cloud-pr85` (agora na
-  branch do kit, com dependências), `C:\Projetos\Agenda-Cloud-continuidade-pm`,
-  `C:\Projetos\Agenda-Cloud-combo` (ensaio antigo de merge, superado;
-  `backend/node_modules` removido) e
-  `C:\Projetos\Agenda-Cloud-anterior-99242a6` (versão publicada, só para o
-  ensaio de compatibilidade);
-- no scratchpad da sessão: PostgreSQL 18 (porta 55434) e PostgreSQL 17.11
-  (porta 55435, bancos do ensaio, pasta de operações do ensaio), harnesses e
-  saídas do ensaio. Nada disso é backup do piloto.
+- worktrees:
+  - `C:\Projetos\Agenda-Cloud-pr84`: merge feito; sem `backend/node_modules`
+    nem `backend/dist`;
+  - `C:\Projetos\Agenda-Cloud-pr85`: na branch do kit, com dependências; sem
+    `.next`;
+  - `C:\Projetos\Agenda-Cloud-continuidade-pm`;
+  - `C:\Projetos\Agenda-Cloud-combo`: ensaio antigo de merge, superado, com
+    conflitos não resolvidos de propósito; sem `backend/node_modules`,
+    `dist` nem `dist-migrations`;
+  - `C:\Projetos\Agenda-Cloud-anterior-99242a6`: versão publicada, só para os
+    ensaios de compatibilidade; sem nenhum `node_modules` nem `.next`. Para
+    rodar de novo, `npm ci` nos dois projetos;
+- no scratchpad da sessão:
+  - PostgreSQL 18 (porta 55434, parado);
+  - PostgreSQL 17.11: binários, mais o cluster na porta 55435, parado. O
+    cluster guarda os bancos dos ensaios: `neondb_rodada1`, `neondb_rodada2`,
+    `neondb` (doze, depois da queda), `base12`, `compat12/13/14`, `revert14`,
+    `nav14` e `dbe2e_revisao`;
+  - pastas de operações das duas rodadas;
+  - harness, driver ConPTY (`pty/`, com `@lydell/node-pty`), roteiro do
+    navegador, transcrições `r01`–`r25` e `o01`–`o14`, capturas de tela.
 
-**Disco C: quase cheio** (cerca de 1 GB livre nesta sessão; chegou a 0 durante
-a extração do PostgreSQL 17, corrigido apagando só o que a sessão extraiu).
-Antes de outro `npm ci` ou ensaio grande, liberar espaço.
+  Nada disso é backup do piloto.
+
+**Disco C: quase cheio.** No início desta revisão estavam livres 762 MB.
+
+| Item | Efeito |
+| --- | --- |
+| removidos: `backend/node_modules` e `backend/dist` da worktree `-anterior-99242a6`; `dist`/`dist-migrations` de `-combo` e `-pr84` | liberou cerca de 183 MB |
+| criados e apagados depois de usados: builds `.next` do web novo e do anterior | 110 MB + 108 MB |
+| o `node_modules` da raiz de `-pr85` | foi **movido** (renomeado, mesmo disco) para `-anterior-99242a6` durante o build e o teste do web anterior, e devolvido em seguida |
+
+No fim, ficaram livres cerca de 860 MB. Antes de outro `npm ci`, build do web
+ou ensaio grande, confira `df -h /c`. O `.next/cache` do repositório principal
+(264 MB) e o cache do npm não são desta tarefa e ficaram intocados.
 
 No repositório principal deste PC continuam, intocados: `CLAUDE.md`
 modificado, branch `feat/senha-dono-calendario-profissional` e as demais
@@ -178,3 +271,17 @@ worktrees. Este PC não tem stash (o `stash@{0}` é do PC de casa).
   - em `52524ee`: os três verdes. Auth/serviços com web 891, backend 1.704,
     e2e 137 e db-e2e 245/245 nas duas rodadas; migration show/run 520 + 7;
     backup 17/17.
+- Revisão do kit (seção 3.1):
+  - local: backend `tsc`, `oxlint`, **1.714** unitários; db-e2e
+    `aplicar-somente-a-pendente` 3/3 e `pilot-portal-multisservicos-check`
+    2/2 em PostgreSQL 17.11 com TLS, também com 50 proprietários suspensos a
+    mais; mutações conferidas (retirada das posteriores e ordem da listagem);
+  - ensaio pelo lançador: 14 transcrições `o01`–`o14`; navegador: as duas
+    combinações com a API nova;
+  - CI em `506c0f2`: backup e migrations verdes. O check de navegador e API
+    falhou só no teste novo da listagem, na 2ª rodada do db-e2e (247/248):
+    contava só os proprietários ativos, e as suítes de navegador deixam
+    proprietários suspensos. Teste corrigido em `29bfaf4`; o kit não mudou;
+  - CI em `677b515`: os três verdes. Web 891, backend 1.714, e2e 137,
+    db-e2e **248/248** nas duas rodadas; migration show/run 530 + 7; backup
+    verde.
