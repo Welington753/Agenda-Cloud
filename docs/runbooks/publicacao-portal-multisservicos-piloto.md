@@ -501,9 +501,9 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 - **Commit do kit ensaiado:** `e0bdb77fc181aa017eb7f3b4d5bfaa325dde5e84`. Antes,
   em `f3552258d891e775ae33ade5cd5b7412286eb299`, rodaram `conferir`, `preparar`
   e as recusas; a restauração ali achou o defeito corrigido em `e0bdb77` (a
-  etapa 1 carregava as duas migrations). Os commits depois de `e0bdb77` só
-  mudam documentação: conferir com `git diff e0bdb77 <sha> -- backend`, que
-  deve sair vazio.
+  etapa 1 carregava as duas migrations). Depois de `e0bdb77` só mudaram a
+  documentação e um teste db-e2e: conferir com
+  `git diff e0bdb77 <sha> -- backend/scripts backend/src`, que deve sair vazio.
 
 ### Execução oficial, harness e limitações
 
