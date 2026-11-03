@@ -3,7 +3,7 @@
 // Estrutura comum da área REAL (`/conta/**`): menu lateral no computador
 // (inspirado no da demonstração) e, no celular, barra superior com o
 // estabelecimento, o sino "Notificações" e o menu da conta (aparência,
-// notificações deste aparelho, Configurações, Administração e "Sair", ver
+// notificações deste aparelho, Configurações e "Sair", ver
 // menu-conta.tsx) mais uma barra inferior com no máximo quatro áreas (Início,
 // Agenda, Clientes e Configurações para o dono). Serviços e Profissionais,
 // que não cabem na barra, ficam no menu da conta no celular. Sem rolagem
@@ -14,10 +14,9 @@
 //
 // A navegação, o estabelecimento e o "Sair" existem UMA vez no DOM e só mudam
 // de lugar com CSS: links duplicados (um por tamanho de tela) confundiriam
-// leitor de tela e localizadores. As exceções são "Trocar", que tem uma forma
-// por tamanho, e a Administração, que no celular sai da barra e aparece no
-// menu da conta — em ambos a outra forma fica em `display: none` (fora da
-// árvore de acessibilidade).
+// leitor de tela e localizadores. A exceção é "Trocar", que tem uma forma por
+// tamanho (a outra fica em `display: none`, fora da árvore de
+// acessibilidade).
 //
 // Só LÊ a sessão que `RequireRealSession` já validou (via `useRealAuth`): a
 // única requisição própria é o logout, com o mesmo comportamento de antes. O
@@ -26,12 +25,11 @@
 // operação só aparece quando há um estabelecimento ativo: antes da escolha
 // (quem tem mais de um vínculo) as páginas nem teriam o que mostrar.
 //
-// Quem é proprietário da plataforma (acesso confirmado por
-// `GET /platform/access`, ver lib/administracao/use-acesso-plataforma.tsx)
-// ganha o atalho "Portal da plataforma" — no menu da conta, no celular —
-// mesmo sem vínculo com estabelecimento, num grupo separado da operação. O
-// portal é outra área (`/plataforma`, com layout próprio, ver
-// components/administracao/shell-plataforma.tsx): este shell não o desenha.
+// Só funções do estabelecimento: nenhum grupo "Plataforma" nem atalho para o
+// portal da plataforma, nem para quem também é proprietário dela. O portal é
+// outra área, com entrada própria (`/portal`, ver
+// components/administracao/shell-plataforma.tsx), e este shell nem lê o
+// acesso a ele.
 //
 // Nada aqui importa a demonstração (`AdminShell` usa a sessão simulada): é
 // por isso que este shell é próprio, e não uma variação daquele.
@@ -54,7 +52,6 @@ import {
 import { AvisosNovasSolicitacoes } from "@/components/conta/avisos-novas-solicitacoes";
 import { MenuConta, SinoNotificacoes } from "@/components/conta/menu-conta";
 import { useSair } from "@/components/conta/use-sair";
-import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 
 import { paginaForaDoEstabelecimento, perfilDoPapel, redirecionamentoDoPerfil } from "@/lib/conta/papel";
 import { acessoVencido } from "@/lib/api/auth-api";
@@ -82,14 +79,11 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const { estado: estadoSolicitacoes } = useSolicitacoesPendentes();
   const pendentes = contagemVisivel(estadoSolicitacoes);
 
-  // "Administração" só entra com o acesso confirmado pelo backend.
-  const { estado: estadoAcesso } = useAcessoPlataforma();
-
   // Papel no estabelecimento ATIVO: o funcionário vê só a agenda dele e as
   // configurações pessoais; uma página que não é do perfil (aberta pelo
   // endereço) leva à do perfil ANTES de montar, para não disparar leituras que
-  // o servidor recusaria. Quem não tem vínculo nenhum (um administrador da
-  // plataforma) segue a mesma regra do papel sem área. Antes da escolha de
+  // o servidor recusaria. Quem não tem vínculo nenhum segue a mesma regra do
+  // papel sem área. Antes da escolha de
   // estabelecimento (vários vínculos, nenhum ativo) nada é encaminhado: as
   // páginas levam à escolha.
   const contextoAtivo =
@@ -129,13 +123,11 @@ export function ShellConta({ children }: { children: ReactNode }) {
     ? []
     : itensDaNavegacao({
         comEstabelecimento: !!contexto && !vencido,
-        comAdministracao: acessoConfirmado(estadoAcesso),
         perfil,
         contexto,
       });
   const naBarra = itens.filter((item) => item.noCelular === "barra");
   const colunasNoCelular = naBarra.length;
-  const comAdministracao = acessoConfirmado(estadoAcesso);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -188,13 +180,6 @@ export function ShellConta({ children }: { children: ReactNode }) {
                     // fica no menu da conta.
                     className={clsx("min-w-0", item.noCelular === "menu" && "hidden md:block")}
                   >
-                    {/* No computador, a administração fica num grupo próprio,
-                        separado da operação do estabelecimento. */}
-                    {item.grupo === "plataforma" && contexto && (
-                      <span className="mt-4 hidden border-t border-chrome-border px-3 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block">
-                        Plataforma
-                      </span>
-                    )}
                     <LinkNavegacao
                       item={item}
                       ativo={itemAtivo(pathname, item.href)}
@@ -225,8 +210,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             email={identificacaoDaConta(sessao.user)}
             tenantId={contexto && ehDono ? tenantIdAtivo : null}
             pendentes={ehDono ? pendentes : null}
-            comAdministracao={comAdministracao}
-            areasNoMenu={itens.filter((item) => item.noCelular === "menu" && item.grupo !== "plataforma")}
+            areasNoMenu={itens.filter((item) => item.noCelular === "menu")}
             configuracoes={ROTA_CONFIGURACOES}
             saindo={saindo}
             aoSair={() => void sair()}

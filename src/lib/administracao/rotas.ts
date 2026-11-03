@@ -1,17 +1,19 @@
-// Endereços do portal da plataforma, uma área PRÓPRIA (`/plataforma/**`),
-// com entrada, layout e navegação separados da operação dos
-// estabelecimentos (`/conta/**`). Regras puras, sem React.
+// Endereços do portal da plataforma, uma área PRÓPRIA (`/portal/**`), com
+// entrada (login próprio em `/portal`), layout e navegação separados da
+// operação dos estabelecimentos (`/conta/**`). A operação não tem atalho
+// nenhum para cá, nem para quem também é proprietário. Regras puras, sem
+// React.
 //
 // Mudar o endereço não autoriza nada: cada leitura e escrita do portal é
 // recusada no servidor para quem não é proprietário da plataforma
 // (backend/src/platform/platform-access.ts).
 //
-// Os endereços antigos (`/administracao/**`, do primeiro menu próprio, e
-// `/conta/administracao/**`, de quando a administração morava na área da
-// conta) continuam funcionando: o next.config.ts encaminha para cá,
-// preservando a busca. Um link salvo ou o `/login?next=...` não quebram.
+// Os endereços antigos (`/plataforma/**`, `/administracao/**` e
+// `/conta/administracao/**`) continuam funcionando: o next.config.ts
+// encaminha para cá, preservando a busca. O destino passa pela mesma entrada
+// e pelo mesmo portão do portal, então ninguém sem acesso vê dado nenhum.
 
-export const ROTA_ADMINISTRACAO = "/plataforma";
+export const ROTA_ADMINISTRACAO = "/portal";
 export const ROTA_ESTABELECIMENTOS_ADMINISTRADOS = `${ROTA_ADMINISTRACAO}/estabelecimentos`;
 
 /** Ficha de um estabelecimento. Consultá-la nunca troca o estabelecimento
@@ -54,34 +56,31 @@ export function emAdministracao(pathname: string | null): boolean {
   return pathname === ROTA_ADMINISTRACAO || pathname.startsWith(`${ROTA_ADMINISTRACAO}/`);
 }
 
+/** Destino depois da entrada do portal: um `next` (já sanitizado, ver
+ * lib/auth/safe-redirect.ts) que aponte para DENTRO do portal, ou a lista de
+ * estabelecimentos. Um `next` da operação nunca é seguido a partir daqui, e a
+ * própria entrada não vira destino (voltaria para o formulário). */
+export function destinoNoPortal(next: string | null): string {
+  const caminho = next?.split(/[?#]/)[0] ?? null;
+  if (next && caminho !== ROTA_ADMINISTRACAO && emAdministracao(caminho)) return next;
+  return ROTA_ESTABELECIMENTOS_ADMINISTRADOS;
+}
+
+/** Endereço da entrada do portal que, depois do login, volta para `atual`. */
+export function entradaDoPortal(atual: string | null): string {
+  if (!atual || destinoNoPortal(atual) !== atual) return ROTA_ADMINISTRACAO;
+  return `${ROTA_ADMINISTRACAO}?next=${encodeURIComponent(atual)}`;
+}
+
 /** Encaminhamentos temporários (307), no formato do `redirects()` do
- * next.config.ts. A entrada vai direto para a lista ainda no servidor: o
- * `redirect()` da página só rodaria depois do portão de acesso, e quem não
- * tem acesso ficaria num endereço que não existe de verdade. */
+ * next.config.ts. Todos levam à entrada (`/portal`) ou à mesma página dentro
+ * do portal: sem sessão, ela pede o login do portal; com a sessão de quem não
+ * é proprietário, o portão recusa antes de ler qualquer dado. */
 export const ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA = [
-  {
-    source: ROTA_ADMINISTRACAO,
-    destination: ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
-    permanent: false,
-  },
-  {
-    source: "/administracao",
-    destination: ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
-    permanent: false,
-  },
-  {
-    source: "/administracao/:caminho+",
-    destination: `${ROTA_ADMINISTRACAO}/:caminho+`,
-    permanent: false,
-  },
-  {
-    source: "/conta/administracao",
-    destination: ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
-    permanent: false,
-  },
-  {
-    source: "/conta/administracao/:caminho+",
-    destination: `${ROTA_ADMINISTRACAO}/:caminho+`,
-    permanent: false,
-  },
+  { source: "/plataforma", destination: ROTA_ADMINISTRACAO, permanent: false },
+  { source: "/plataforma/:caminho+", destination: `${ROTA_ADMINISTRACAO}/:caminho+`, permanent: false },
+  { source: "/administracao", destination: ROTA_ADMINISTRACAO, permanent: false },
+  { source: "/administracao/:caminho+", destination: `${ROTA_ADMINISTRACAO}/:caminho+`, permanent: false },
+  { source: "/conta/administracao", destination: ROTA_ADMINISTRACAO, permanent: false },
+  { source: "/conta/administracao/:caminho+", destination: `${ROTA_ADMINISTRACAO}/:caminho+`, permanent: false },
 ] as const;

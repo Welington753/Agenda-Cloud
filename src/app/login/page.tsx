@@ -8,19 +8,17 @@
 // contra o backend de verdade e falharia. Em vez disso, entra direto pela
 // simulação local (`autenticar`/`entrarComo`, inalterados desde antes deste
 // lote), sem nunca tocar a API real.
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, Crown, Headset, KeyRound, ShieldCheck, Store, UserCog, UserRound, Users } from "lucide-react";
+import { Building2, Crown, Headset, ShieldCheck, Store, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { autenticar, SENHA_DEMONSTRACAO } from "@/lib/auth/autenticacao";
 import { ROTA_INICIAL_POR_PAPEL_ESTABELECIMENTO, ROTA_INICIAL_POR_PAPEL_PLATAFORMA } from "@/lib/permissions";
-import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
-import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { FaixaConexao } from "@/components/conexao/aviso-conexao";
+import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcaAgendaCloud } from "@/components/marca/marca";
 import type { PapelEstabelecimento, PapelPlataforma } from "@/lib/types";
 
@@ -58,55 +56,13 @@ export default function LoginPage() {
 // default acima.
 function LoginPageConteudo() {
   const { entrarComo } = useAuth();
-  const { login, estado, conexao, recarregar } = useRealAuth();
-  // A leitura de sessão da abertura (RealAuthProvider) é o acesso que acorda
-  // a API. Enquanto ela não responde, o envio espera: o login NUNCA é
-  // repetido sozinho, então mandá-lo para um servidor ainda dormindo só
-  // geraria um erro. O que foi digitado continua no formulário.
-  const aguardandoServidor = conexao === "acordando" || conexao === "sem_internet";
-  const conexaoExibida = estado.status === "falha_comunicacao" ? "sem_resposta" : conexao;
   const { notificar } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-  const [entrando, setEntrando] = useState(false);
-
   function destinoPosLogin(): string {
     const next = sanitizarDestinoInterno(searchParams.get("next"));
     return next ?? ROTA_PADRAO_POS_LOGIN;
-  }
-
-  async function aoEnviar(e: FormEvent) {
-    e.preventDefault();
-    if (entrando || aguardandoServidor) return;
-    setEntrando(true);
-    setErro(null);
-
-    const resultado = await login(email, senha);
-    setEntrando(false);
-
-    if (!resultado.ok) {
-      switch (resultado.falha.tipo) {
-        case "credenciais_invalidas":
-          setErro("E-mail, usuário ou senha inválidos.");
-          break;
-        case "limite_tentativas":
-          setErro("Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.");
-          break;
-        case "falha_comunicacao":
-          setErro("Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.");
-          break;
-        default:
-          setErro("Não foi possível entrar agora. Tente novamente em instantes.");
-      }
-      return;
-    }
-
-    notificar(`Bem-vindo(a), ${resultado.dados.user.name.split(" ")[0]}.`, "sucesso");
-    router.push(destinoPosLogin());
   }
 
   function entrarComContaDemonstracao(conta: ContaDemonstracao) {
@@ -133,7 +89,7 @@ function LoginPageConteudo() {
           </div>
           <h2 className="text-2xl font-bold">Acesso reservado à equipe</h2>
           <p className="text-sm text-chrome-ink-soft">
-            Esta é a porta de entrada para administradores da plataforma e para a equipe de cada estabelecimento
+            Esta é a porta de entrada da equipe de cada estabelecimento
             (donos, gerentes, recepcionistas e profissionais). Consumidores finais nunca precisam fazer login — eles
             agendam direto pela página pública do estabelecimento.
           </p>
@@ -151,70 +107,24 @@ function LoginPageConteudo() {
             <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
           </div>
 
-          <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
-
-          <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
-                E-mail ou login
-              </label>
-              <input
-                id="email"
-                type="text"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@seuestabelecimento.com.br ou seu login"
-                aria-describedby="dica-login"
-                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
-              />
-              <p id="dica-login" className="mt-1 text-xs text-ink-soft">
-                Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um.
-              </p>
-            </div>
-            <div>
-              <label htmlFor="senha" className="mb-1 block text-sm font-medium text-ink">
-                Senha
-              </label>
-              <input
-                id="senha"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                placeholder="••••••••"
-                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent"
-              />
-            </div>
-
-            {erro && (
-              <p role="alert" className="text-sm text-[color:var(--color-danger)]">
-                {erro}
-              </p>
-            )}
-
-            <div className="flex items-center justify-end text-sm">
-              <button
-                type="button"
-                onClick={() =>
-                  notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
-                }
-                className="font-medium text-accent hover:underline"
-              >
-                Esqueci minha senha
-              </button>
-            </div>
-
-            <Botao type="submit" className="w-full" disabled={entrando || aguardandoServidor}>
-              <KeyRound size={16} className="mr-1.5" />
-              {entrando ? "Entrando..." : aguardandoServidor ? "Aguardando o servidor..." : "Entrar"}
-            </Botao>
-          </form>
+          <FormularioLogin
+            aoEntrar={() => router.push(destinoPosLogin())}
+            placeholder="voce@seuestabelecimento.com.br ou seu login"
+            dica="Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um."
+            extra={
+              <div className="flex items-center justify-end text-sm">
+                <button
+                  type="button"
+                  onClick={() =>
+                    notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
+                  }
+                  className="font-medium text-accent hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+            }
+          />
 
           {/* Não há cadastro aberto: o acesso real vem do convite da
               administração. Nunca a demonstração abaixo. */}

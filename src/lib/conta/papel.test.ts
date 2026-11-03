@@ -61,9 +61,9 @@ describe("redirecionamentoDoPerfil", () => {
     expect(redirecionamentoDoPerfil("dono", "/conta/agendamentos")).toBeNull();
   });
 
-  it("páginas comuns valem para todos, inclusive a administração da plataforma", () => {
+  it("páginas comuns valem para todos", () => {
     for (const perfil of ["dono", "funcionario", "sem-area"] as const) {
-      for (const caminho of ["/conta", "/conta/selecionar-estabelecimento", "/conta/administracao/usuarios"]) {
+      for (const caminho of ["/conta", "/conta/selecionar-estabelecimento"]) {
         expect(redirecionamentoDoPerfil(perfil, caminho)).toBeNull();
       }
     }
@@ -80,14 +80,14 @@ describe("gerente: só as áreas que o servidor liberou", () => {
     expect(temArea({ role: "GERENTE" }, "AGENDA_VER")).toBe(false);
     expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos", gerente([]))).toBe("/conta/configuracoes");
     expect(
-      itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: gerente([]) }).map((i) => i.rotulo),
+      itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: gerente([]) }).map((i) => i.rotulo),
     ).toEqual(["Configurações"]);
   });
 
   it("menu e começo seguem as áreas; a URL de uma área não concedida leva ao começo", () => {
     const g = gerente(["AGENDA_VER", "PROFISSIONAIS_VER", "SOLICITACOES_VER", "RECEBIMENTOS_VER", "AGENDA_PROPRIA_VER"]);
     expect(inicioDoPerfil("gerente", g)).toBe("/conta/agendamentos");
-    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: g });
+    const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: g });
     expect(itens.map((i) => i.rotulo)).toEqual(["Agenda", "Minha agenda", "Recebimentos", "Profissionais", "Configurações"]);
     expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
       "Agenda",
@@ -117,7 +117,7 @@ describe("gerente: só as áreas que o servidor liberou", () => {
     expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos/solicitacoes", g)).toBeNull();
     expect(redirecionamentoDoPerfil("gerente", "/conta/agendamentos", g)).toBe("/conta/agendamentos/solicitacoes");
     expect(
-      itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "gerente", contexto: g }).map((i) => i.rotulo),
+      itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: g }).map((i) => i.rotulo),
     ).toEqual(["Solicitações", "Configurações"]);
   });
 });
@@ -130,8 +130,8 @@ describe("acesso do estabelecimento vencido", () => {
     expect(acessoVencido(null)).toBe(false);
   });
 
-  it("continuam abertas: administração, escolha de estabelecimento e configurações pessoais", () => {
-    for (const aberta of ["/conta/administracao", "/conta/administracao/estabelecimentos/x", "/conta/selecionar-estabelecimento", "/conta/configuracoes/perfil", "/conta/configuracoes"]) {
+  it("continuam abertas: escolha de estabelecimento e configurações pessoais", () => {
+    for (const aberta of ["/conta/selecionar-estabelecimento", "/conta/configuracoes/perfil", "/conta/configuracoes"]) {
       expect(paginaForaDoEstabelecimento(aberta)).toBe(true);
     }
     for (const doEstabelecimento of ["/conta", "/conta/agendamentos", "/conta/clientes", "/conta/recebimentos", "/conta/visao-geral", "/conta/configuracoes/estabelecimento", "/conta/configuracoes/equipe"]) {

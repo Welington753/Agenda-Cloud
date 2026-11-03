@@ -9,11 +9,10 @@ import { useRouter } from "next/navigation";
 import { KeyRound, LogOut, Store, UserRound } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useToast } from "@/components/ui/toast";
-import { TrocarSenha } from "./trocar-senha";
+import { TrocarSenha } from "@/components/auth/trocar-senha";
 import { ROTULO_PAPEL_ESTABELECIMENTO_REAL } from "@/lib/auth/role-labels";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useSair } from "@/components/conta/use-sair";
-import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 
@@ -97,7 +96,6 @@ export default function PerfilPage() {
               ))}
             </ul>
           )}
-          <LinkAdministracao />
         </CartaoCorpo>
       </Cartao>
 

@@ -2,9 +2,11 @@
 // testadas sem montar componente (não há testing-library neste projeto).
 //
 // Só rotas reais existentes. Nada aqui aponta para `/painel`, `/master` ou
-// `/profissional`, que são a demonstração movida por dados locais.
+// `/profissional`, que são a demonstração movida por dados locais. Também
+// nada aponta para o portal da plataforma: a operação só mostra funções do
+// estabelecimento, inclusive para quem também é proprietário da plataforma
+// (o portal tem entrada própria em `/portal`).
 
-import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import {
   ROTA_AGENDA,
   ROTA_CLIENTES,
@@ -28,9 +30,6 @@ export interface ItemNavegacaoConta {
    * no celular fica no menu da conta (canto superior). No computador todas
    * aparecem no menu lateral. */
   noCelular: "barra" | "menu";
-  /** "plataforma" separa a administração da plataforma da operação do
-   * estabelecimento no menu (rótulo próprio no computador). */
-  grupo?: "plataforma";
 }
 
 /** Operação do dono, na ordem do dia a dia: o resumo, a agenda (que também
@@ -72,60 +71,32 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
   return [...itens, ITEM_CONFIGURACOES];
 }
 
-/** Administração da plataforma. Só entra no menu quando o backend confirmou
- * o acesso (`GET /platform/access`); esconder o item não substitui a
- * autorização, que o servidor refaz em toda leitura. */
-export const ITEM_ADMINISTRACAO: ItemNavegacaoConta = {
-  href: ROTA_ADMINISTRACAO,
-  rotulo: "Portal da plataforma",
-  noCelular: "menu",
-  grupo: "plataforma",
-};
-
 /**
- * Itens do menu para esta sessão.
+ * Itens do menu para esta sessão. Só operação do estabelecimento ativo.
  *
  * - Dono com estabelecimento ativo: Início, Agenda, Clientes, Serviços,
- *   Profissionais e Configurações; quem administra a plataforma ganha "Administração" num
- *   grupo próprio (no celular, pelo menu da conta, para a barra continuar com
- *   quatro áreas).
- * - Funcionário: "Minha agenda" e "Configurações" (e "Administração" na
- *   barra, se for o caso).
+ *   Profissionais e Configurações.
+ * - Funcionário: "Minha agenda" e "Configurações".
  * - Gerente: as áreas concedidas pelo dono (ver `itensDoGerente`).
  * - Papel sem área (RECEPCIONISTA antigo): só "Configurações".
- * - Sem estabelecimento: só para quem administra a plataforma (um
- *   administrador não precisa de vínculo): Administração e Configurações.
- * - Sem nenhum dos dois: sem menu.
+ * - Sem estabelecimento (ou com o acesso vencido): sem menu.
  */
 export function itensDaNavegacao({
   comEstabelecimento,
-  comAdministracao,
   perfil = "dono",
   contexto,
 }: {
   comEstabelecimento: boolean;
-  comAdministracao: boolean;
   /** Perfil no estabelecimento ativo (ver papel.ts). */
   perfil?: PerfilDaArea;
   /** Contexto ativo, com as áreas que o servidor liberou (gerente). */
   contexto?: Pick<TenantContextReal, "role" | "areas"> | null;
 }): readonly ItemNavegacaoConta[] {
-  const administracaoNaBarra: ItemNavegacaoConta = { ...ITEM_ADMINISTRACAO, noCelular: "barra" };
-  if (comEstabelecimento && perfil === "gerente") {
-    const itens = itensDoGerente(contexto);
-    return comAdministracao ? [...itens, ITEM_ADMINISTRACAO] : itens;
-  }
-  if (comEstabelecimento && perfil === "funcionario") {
-    return comAdministracao ? [...ITENS_NAVEGACAO_FUNCIONARIO, administracaoNaBarra] : ITENS_NAVEGACAO_FUNCIONARIO;
-  }
-  if (comEstabelecimento && perfil === "sem-area") {
-    return comAdministracao ? [administracaoNaBarra, ITEM_CONFIGURACOES] : [ITEM_CONFIGURACOES];
-  }
-  if (comEstabelecimento) {
-    return comAdministracao ? [...ITENS_NAVEGACAO_CONTA, ITEM_ADMINISTRACAO] : ITENS_NAVEGACAO_CONTA;
-  }
-  if (!comAdministracao) return [];
-  return [administracaoNaBarra, ITEM_CONFIGURACOES];
+  if (!comEstabelecimento) return [];
+  if (perfil === "gerente") return itensDoGerente(contexto);
+  if (perfil === "funcionario") return ITENS_NAVEGACAO_FUNCIONARIO;
+  if (perfil === "sem-area") return [ITEM_CONFIGURACOES];
+  return ITENS_NAVEGACAO_CONTA;
 }
 
 /**

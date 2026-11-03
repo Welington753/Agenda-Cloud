@@ -33,7 +33,6 @@ import { PaginaConta } from "@/components/conta/pagina-conta";
 import { AvisoSolicitacoes } from "@/components/conta/aviso-solicitacoes";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { LinkAdministracao } from "@/components/administracao/acesso-administracao";
 import { Carregando, ComoCalculamos, Financeiro, Hoje, Periodo, Plano, Proximos } from "./blocos";
 
 const ESCOLHAS: { valor: EscolhaDePeriodo; rotulo: string }[] = [
@@ -108,7 +107,6 @@ export default function InicioPage() {
             <p className="text-sm text-ink-soft">Sua conta ainda não está vinculada a um estabelecimento.</p>
           </CartaoCorpo>
         </Cartao>
-        <LinkAdministracao />
       </PaginaConta>
     );
   }

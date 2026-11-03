@@ -305,6 +305,52 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/administracao
         run: npm run test:browser:administracao
 
+      # Suítes do portal, cada uma na própria invocação (API nova, contadores
+      # de login novos; limite de produção de 5 por 15 min por IP, em memória
+      # no backend, intacto): entrada própria, sessão expirada, logout e
+      # celular (3 logins).
+      - name: Run platform portal entry (own login, expired session, logout, mobile)
+        id: browser_portal_entrada
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/portal-entrada
+        run: npm run test:browser:portal-entrada
+
+      - name: Run platform portal temporary password (change inside the portal, 3 login attempts)
+        id: browser_portal_senha_temporaria
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/portal-senha-temporaria
+        run: npm run test:browser:portal-senha-temporaria
+
+      - name: Run platform portal refusals (Max owner, manager, professional, suspended owner; 2 logins)
+        id: browser_portal_recusas
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/portal-recusas
+        run: npm run test:browser:portal-recusas
+
       # Invocação SEPARADA (aceite de convite: limite de 10 por 15 min por IP,
       # em memória no backend): empresa criada pela tela, e-mail na caixa
       # LOCAL (tests/browser/support/caixa-de-email.mjs, nada sai da

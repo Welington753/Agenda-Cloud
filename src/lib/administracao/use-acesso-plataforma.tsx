@@ -1,9 +1,8 @@
 "use client";
 
-// Acesso à administração da plataforma, lido UMA vez por sessão para toda a
-// área real: o menu (shell-conta.tsx) decide se mostra "Administração" e o
-// portão das páginas (`/conta/administracao/**`) usa a mesma resposta, sem
-// uma segunda consulta.
+// Acesso ao portal da plataforma, lido UMA vez pelo layout do portal
+// (`/portal/**`): o menu do portal e o portão das páginas usam a mesma
+// resposta, sem uma segunda consulta. A operação (`/conta`) não o lê.
 //
 // Vem só de `GET /platform/access`, que o backend calcula a partir do papel e
 // das permissões de plataforma relidos do banco. Nada aqui olha e-mail, nome
