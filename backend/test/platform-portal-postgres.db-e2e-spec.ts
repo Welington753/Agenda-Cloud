@@ -512,4 +512,31 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     const me = (await dono.get('/auth/me').expect(200)).body;
     expect(me.contexts.find((c: { tenantId: string }) => c.tenantId === vencido.tenantId).access.blocked).toBe(true);
   });
+
+  it('criação com ciclo combinado repetida em paralelo: um estabelecimento, um contrato, todas as respostas iguais', async () => {
+    // Mesmo nome, mesmo endereço: as transações seguintes esperam a primeira
+    // no endereço, tentam de novo e esbarram na chave já gravada no contrato.
+    // Seis envios tornam a corrida reproduzível (com dois, às vezes o
+    // segundo já encontra o convite gravado).
+    const corpo = {
+      requestKey: `chave-${id()}`,
+      businessName: `Paralelo ${marca}`,
+      category: 'BARBERSHOP',
+      planId: planoTeste,
+      billingCycle: 'MONTHLY',
+      contractAmountCents: 2990,
+      owner: { name: 'Responsável fictício', email: `${marca}-paralelo@example.test` },
+    };
+    const respostas = await Promise.all([1, 2, 3, 4, 5, 6].map(() => master.post('/platform/establishments').send(corpo)));
+    expect(respostas.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200]);
+    const tenantId = respostas[0].body.tenant.id as string;
+    expect(new Set(respostas.map((r) => r.body.tenant.id))).toEqual(new Set([tenantId]));
+    expect(
+      await n(
+        `SELECT count(*)::int AS n FROM tenants t JOIN units u ON u.tenant_id = t.id WHERE u.name = $1`,
+        [corpo.businessName],
+      ),
+    ).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM tenant_contract_prices WHERE tenant_id = $1`, [tenantId])).toBe(1);
+  });
 });

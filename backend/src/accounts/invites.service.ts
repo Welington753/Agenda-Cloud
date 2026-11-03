@@ -125,7 +125,12 @@ export class InvitesService {
         );
         return await this.finish(issued);
       } catch (error) {
-        if (isUniqueViolation(error, 'uq_invites_created_by_request_key')) {
+        // Com ciclo combinado, o contrato é gravado com a mesma chave ANTES do
+        // convite: um envio repetido em paralelo esbarra primeiro nele.
+        if (
+          isUniqueViolation(error, 'uq_invites_created_by_request_key') ||
+          isUniqueViolation(error, 'uq_tenant_contract_prices_request_key')
+        ) {
           const repetido = await this.replay(actorId, dto.requestKey);
           if (repetido) return repetido;
         }
