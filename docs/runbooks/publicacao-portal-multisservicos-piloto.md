@@ -569,8 +569,9 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
   em `f3552258d891e775ae33ade5cd5b7412286eb299`, rodaram `conferir`, `preparar`
   e as recusas; a restauração ali achou o defeito corrigido em `e0bdb77` (a
   etapa 1 carregava as duas migrations). A revisão mudou o kit em `03557e7` e
-  `65fa44b`, o commit da segunda rodada (abaixo). Depois de `65fa44b` só a
-  documentação muda: conferir com
+  `65fa44b`, o commit da segunda rodada (abaixo). Depois de `65fa44b` mudaram só a
+  documentação e um teste db-e2e (`29bfaf4`, contagem dos proprietários em
+  qualquer situação): conferir com
   `git diff 65fa44b <sha> -- backend/scripts backend/src`, que deve sair vazio.
 
 ### Segunda rodada: lançador oficial do começo ao fim (kit em `65fa44b`)
