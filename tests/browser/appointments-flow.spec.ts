@@ -821,12 +821,12 @@ test.describe("agendamentos reais", () => {
   });
 });
 
-test("vários serviços com o mesmo profissional: resumo do servidor e uma reserva com os itens", async ({
-  page,
-  request,
-}) => {
-  const conta = await criarConta(request, "multiplos");
-  await entrar(page, conta);
+test("vários serviços com o mesmo profissional: resumo do servidor e uma reserva com os itens", async ({ page }) => {
+  // Sessão aberta pela própria ativação do convite (no contexto da página):
+  // sem login a mais, que estouraria o limite de 5 por IP desta suíte.
+  await criarConta(page.request, "multiplos");
+  await page.goto("/conta/visao-geral");
+  await expect(page).toHaveURL(/\/conta\/visao-geral$/);
   const tenantId = await tenantDe(page);
   const corte = await criarServico(page, tenantId, "Corte", 30);
   const barba = await criarServico(page, tenantId, "Barba", 30);
@@ -837,8 +837,9 @@ test("vários serviços com o mesmo profissional: resumo do servidor e uma reser
   await page.getByLabel("Dia", { exact: true }).fill(DATA);
   await abrirNovoAgendamento(page);
   const servicos = page.getByTestId("servicos-da-reserva");
-  // O primeiro serviço do profissional já vem marcado; a Barba entra depois dele.
-  await expect(servicos.getByRole("checkbox", { name: "Corte" })).toBeChecked();
+  // Corte primeiro (o primeiro serviço costuma vir marcado; `check` não
+  // desmarca), e a Barba entra depois dele, na ordem do atendimento.
+  await servicos.getByRole("checkbox", { name: "Corte" }).check();
   await servicos.getByRole("checkbox", { name: "Barba" }).check();
   await expect(page.getByTestId("ordem-dos-servicos")).toContainText("Corte + Barba");
   await page.getByRole("button", { name: "Cadastrar novo" }).click();
