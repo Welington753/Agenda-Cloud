@@ -71,6 +71,12 @@ export const COLUNAS_PERIODOS = [
   'cancel_request_key',
 ] as const;
 
+/** Colunas que migrations POSTERIORES acrescentam à tabela de períodos
+ * (`PlatformPortal1793318400000`: origem do valor). Aceitas no "depois" para
+ * a conferência continuar valendo num banco já à frente; qualquer outra
+ * coluna a mais continua recusada. */
+export const COLUNAS_POSTERIORES_PERIODOS = ['amount_source'] as const;
+
 /** Constraints da tabela nova, com o tipo (`pg_constraint.contype`). */
 export const CONSTRAINTS_PERIODOS: readonly (readonly [string, 'p' | 'f' | 'c' | 'x'])[] = [
   ['pk_tenant_access_periods', 'p'],
@@ -329,7 +335,13 @@ export function falhasDepoisDeComercial(estado: EstadoComercial): string[] {
   for (const valor of VALORES_COMERCIAL) if (!estado.valores.includes(valor)) falhas.push(`enum_${valor}`);
   if (!mesmaLista(estado.tipos, tiposEsperados())) falhas.push('access_period_types');
   if (!estado.tabela) falhas.push(`table_${TABELA_PERIODOS}`);
-  else if (!mesmaLista([...estado.colunasDaTabela].sort(), [...COLUNAS_PERIODOS].sort())) falhas.push('access_periods_columns');
+  else if (
+    !mesmaLista(
+      estado.colunasDaTabela.filter((c) => !(COLUNAS_POSTERIORES_PERIODOS as readonly string[]).includes(c)).sort(),
+      [...COLUNAS_PERIODOS].sort(),
+    )
+  )
+    falhas.push('access_periods_columns');
   for (const [nome, tipo] of CONSTRAINTS_PERIODOS) if (!estado.constraints.includes(`${nome}:${tipo}`)) falhas.push(nome);
   for (const nome of INDICES_PERIODOS) if (!estado.indices.includes(nome)) falhas.push(nome);
   if (!estado.colunaLegado) falhas.push(`column_${COLUNA_LEGADO.join('_')}`);

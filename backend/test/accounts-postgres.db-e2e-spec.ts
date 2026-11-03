@@ -353,7 +353,7 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     expect(conta_.status).toBe('INVITED');
   });
 
-  it('usuário comum, suporte e administrador delegado são barrados no que não podem', async () => {
+  it('portal exclusivo do proprietário: usuário comum, suporte e administrador delegado são barrados em tudo', async () => {
     const comum = await conta('perm-comum');
     const suporte = await conta('perm-suporte', { role: 'MASTER_SUPPORT', permissions: ['ESTABLISHMENTS_MANAGE'] });
     const delegado = await conta('perm-delegado', { role: 'MASTER_ADMIN', permissions: ['ESTABLISHMENTS_MANAGE'] });
@@ -364,8 +364,10 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
 
     await expect(convite(comum.userId)).rejects.toThrow(ForbiddenException);
     await expect(convite(suporte.userId)).rejects.toThrow(ForbiddenException);
-    expect((await directory.listUsers(suporte.userId, { q: marca, page: 1, pageSize: 5 })).total).toBeGreaterThan(0);
-    await expect(convite(delegado.userId)).resolves.toMatchObject({ created: true });
+    // Papéis delegados não abrem nem a consulta: o portal é só do proprietário.
+    await expect(directory.listUsers(suporte.userId, { q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
+    await expect(directory.listUsers(delegado.userId, { q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
+    await expect(convite(delegado.userId)).rejects.toThrow(ForbiddenException);
 
     for (const sessao of [delegado]) await reauth(sessao.userId, sessao.sessionId);
     // Delegado não mexe em papel de plataforma, nem no próprio, nem em outro admin.
@@ -425,8 +427,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const rebaixar = async (quem: typeof a, alvo: typeof a) =>
       admin.setPlatformAccess(quem.userId, quem.sessionId, alvo.userId, {
         expectedUpdatedAt: await updatedAt(alvo.userId),
-        role: 'MASTER_ADMIN' as never,
-        permissions: ['ESTABLISHMENTS_MANAGE'],
+        role: null,
+        permissions: [],
       });
     const [ua, ub] = [await updatedAt(a.userId), await updatedAt(b.userId)];
     expect(ua && ub).toBeTruthy();
@@ -610,14 +612,24 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     expect(JSON.stringify(pedido)).not.toContain(token);
   });
 
-  it('convite de plataforma: só para e-mail novo, aplica o papel no aceite', async () => {
+  it('convite de plataforma: só para e-mail novo, só o papel de proprietário, aplicado no aceite', async () => {
     const master = await conta('plat-master', { role: 'MASTER_OWNER' });
+    // Papel delegado não é mais atribuível (portal exclusivo do proprietário).
+    await expect(
+      invites.invitePlatform(master.userId, {
+        requestKey: requestKey(),
+        name: 'Delegada',
+        email: email('plat-delegada'),
+        platformRole: 'MASTER_ADMIN' as never,
+        permissions: [],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PAPEL_NAO_ATRIBUIVEL' } });
     const r = await invites.invitePlatform(master.userId, {
       requestKey: requestKey(),
       name: 'Nova Admin',
       email: email('plat-nova'),
-      platformRole: 'MASTER_ADMIN' as never,
-      permissions: ['ESTABLISHMENTS_MANAGE'],
+      platformRole: 'MASTER_OWNER' as never,
+      permissions: [],
     });
     const token = tokenDe(ultimaMensagemPara(email('plat-nova')));
     const mensagemPlataforma = ultimaMensagemPara(email('plat-nova'));
@@ -625,15 +637,15 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     expect(mensagemPlataforma.text).toContain('participar da administração da plataforma Agenda Cloud');
     expect(mensagemPlataforma.text).toContain('Ativar meu acesso:');
     const aceito = await invites.accept(token, 'senha-da-nova-admin', { now: now() });
-    expect(aceito.destination).toBe('/conta/administracao');
+    expect(aceito.destination).toBe('/plataforma');
     const [user] = await db.query(`SELECT platform_role, platform_permissions::text[] AS platform_permissions FROM users WHERE id = $1`, [r.invite.targetUser!.id]);
-    expect(user).toEqual({ platform_role: 'MASTER_ADMIN', platform_permissions: ['ESTABLISHMENTS_MANAGE'] });
+    expect(user).toEqual({ platform_role: 'MASTER_OWNER', platform_permissions: [] });
     await expect(
       invites.invitePlatform(master.userId, {
         requestKey: requestKey(),
         name: 'Já existe',
         email: email('plat-nova'),
-        platformRole: 'MASTER_SUPPORT' as never,
+        platformRole: 'MASTER_OWNER' as never,
         permissions: [],
       }),
     ).rejects.toThrow(ConflictException);

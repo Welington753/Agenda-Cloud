@@ -17,15 +17,16 @@ describe('administração real da plataforma', () => {
     [PlatformRole.MASTER_OWNER, [], true],
     [PlatformRole.MASTER_ADMIN, [], false],
     [PlatformRole.MASTER_SUPPORT, [PlatformPermission.SUPPORT_ACCESS], false],
+    // Portal exclusivo do proprietário (docs/plans/portal-da-plataforma.md).
     [
       PlatformRole.MASTER_ADMIN,
       [PlatformPermission.ESTABLISHMENTS_MANAGE],
-      true,
+      false,
     ],
     [
       PlatformRole.MASTER_SUPPORT,
       [PlatformPermission.ESTABLISHMENTS_MANAGE],
-      true,
+      false,
     ],
   ])(
     'papel %s com permissões %s => %s',
