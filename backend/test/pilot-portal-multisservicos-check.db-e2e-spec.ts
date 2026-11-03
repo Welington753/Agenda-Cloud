@@ -121,10 +121,15 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
       const donos = impacto.contasPorPapel['MASTER_OWNER:ACTIVE'] ?? 0;
       expect(impacto.proprietariosAtivos).toBe(donos);
       expect(donos).toBeGreaterThanOrEqual(1);
-      // Proprietários primeiro; o delegado mais novo que os extras fica fora.
-      const primeiros = Math.min(donos, MAXIMO_DE_CONTAS_LISTADAS);
+      // Proprietários primeiro, em qualquer situação (outras suítes deixam
+      // contas suspensas); o delegado mais novo que os extras fica fora.
+      const todosOsDonos = Object.entries(impacto.contasPorPapel)
+        .filter(([chave]) => chave.startsWith('MASTER_OWNER:'))
+        .reduce((a, [, n]) => a + n, 0);
+      const primeiros = Math.min(todosOsDonos, MAXIMO_DE_CONTAS_LISTADAS);
       expect(impacto.contas.slice(0, primeiros).every((c) => c.papel === 'MASTER_OWNER')).toBe(true);
-      if (donos < MAXIMO_DE_CONTAS_LISTADAS) expect(impacto.contas.map((c) => c.id)).toContain(dono);
+      expect(impacto.contas.slice(primeiros).some((c) => c.papel === 'MASTER_OWNER')).toBe(false);
+      if (todosOsDonos <= MAXIMO_DE_CONTAS_LISTADAS) expect(impacto.contas.map((c) => c.id)).toContain(dono);
       expect(impacto.contas.map((c) => c.id)).not.toContain(delegado);
       for (const campo of ['precosDoCatalogo', 'precosContratados', 'semVencimento', 'pagosSemOrigem', 'itensSemNomeCongelado'] as const) {
         expect(impacto[campo]).not.toBeNull();
