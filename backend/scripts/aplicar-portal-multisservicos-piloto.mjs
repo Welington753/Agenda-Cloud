@@ -383,7 +383,7 @@ async function faseAplicar(destino, etapa, schema, manifesto, pastaExecucao) {
     try {
       await leitor.query("BEGIN TRANSACTION READ ONLY");
       const comparacao = compararFotografias(manifesto, await fotografar(leitor), {
-        ignorarSomas: [...Object.keys(manifesto.contagens)],
+        ignorarSomas: Object.keys(manifesto.contagens),
         ignorarTabelas: ["typeorm_migrations"],
         novasPermitidas: etapa.tabelasNovas,
       });
