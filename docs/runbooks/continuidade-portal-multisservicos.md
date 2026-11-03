@@ -2,8 +2,9 @@
 
 Checkpoint de 2026-11-03 (PC do trabalho). **Publicação feita** (seção 8):
 as duas migrations aplicadas e conferidas no piloto (14 migrations, 36/36) e
-API e web no ar em `8916f18`. Validação manual pós-publicação feita sem
-gravar nada (seção 8.3). Os preços continuam sem aprovação. As seções 0 a 7
+API e web Live em `8916f18` segundo as capturas do Render (seção 8.2).
+Validação manual pós-publicação sem alterar reserva, configuração comercial,
+preço ou papel (seção 8.3). Os preços continuam sem aprovação. As seções 0 a 7
 abaixo são o registro de antes da operação e ficam como histórico.
 
 ## 0. SHA operacional da futura publicação
@@ -217,7 +218,8 @@ Antes do passo 1:
 
 ## 5. Pendências
 
-1. **Conferência das identidades dos proprietários:** pendente. Leitura
+1. **Conferência das identidades dos proprietários:** concluída depois
+   (seção 8.5). Registro original: Leitura
    autorizada pela consulta com identificação; não presumir quais são as
    contas; nenhum papel alterado. Ter um `MASTER_OWNER` ativo (a proteção do
    kit) não substitui essa conferência.
@@ -376,27 +378,33 @@ commit `8916f18` em todas as linhas):
 
 ### 8.2 Versões publicadas
 
-- `agenda-cloud-piloto-api` e `agenda-cloud-piloto-web`: **Live em
-  `8916f18`**, segundo duas capturas do painel do Render fornecidas pelo
-  operador, uma por serviço, associadas pela identificação do serviço na
-  captura (não pelo horário). As capturas não estão no repositório.
+- Duas capturas do painel do Render, fornecidas pelo operador, mostram
+  deploys **Live no SHA `8916f18`**. Os recortes não exibem os nomes dos
+  serviços, então a associação de cada captura a
+  `agenda-cloud-piloto-api` ou `agenda-cloud-piloto-web` não é observação
+  direta (nem foi deduzida pelos horários). As capturas não estão no
+  repositório.
 - Verificações públicas (sem sessão): API `/` 200; web `/login` 200;
   `/agenda_api/auth/me` 401.
-- Evidência independente de que as duas versões novas estão no ar (feita
-  nesta validação, só GET sem sessão):
+- Sinais de que API e web servem código das funcionalidades novas (só GET
+  sem sessão). Não comprovam sozinhos o SHA publicado:
   - API: `GET /platform/prices` (rota nova do #84/#85) devolve 401, enquanto
     uma rota inexistente sob `/platform` devolve 404; o mesmo 401 pelo proxy
     do web;
   - web: `/plataforma/planos` (página nova) 200; `/conta/administracao`
     redireciona (307) para `/plataforma/estabelecimentos`.
-- Nenhum endpoint expõe o SHA; a associação com o commit vem das capturas.
+- Nenhum endpoint expõe o SHA. A evidência do commit são só as capturas
+  (Live em `8916f18`).
 
 ### 8.3 Validação manual (runbook, passo 8)
 
 Chrome instalado, perfil temporário, controlado por Playwright só para
-navegar e ler; o operador digitou as credenciais na própria janela. Nenhum
-formulário salvo, nenhuma reserva criada, nenhuma suíte executada contra o
-piloto. Histórico administrativo sem registro novo depois de 02/11/2026.
+navegar e ler; o operador digitou as credenciais na própria janela.
+Durante a validação nenhuma reserva, configuração comercial, preço ou papel
+foi alterado: nenhum formulário salvo, nenhuma suíte executada contra o
+piloto. Login e logout envolveram as operações normais de autenticação e
+sessão (criação e encerramento de sessões). Histórico administrativo sem
+registro novo depois de 02/11/2026.
 
 | Item | Resultado |
 | --- | --- |
@@ -443,20 +451,27 @@ lugar é decisão do operador.
 
 ### 8.5 Pendências depois da publicação
 
-1. Recusa ao portal por conta sem papel global (URL e API): precisa de uma
-   conta existente; não criar conta para isso.
-2. Gerente e profissional (runbook, passo 8.4): sem credenciais nesta
-   validação.
-3. Criação real de reserva de dois serviços no piloto: não testada
-   (só no ensaio local).
-4. Preços: sem aprovação; cadastrar só preço aprovado.
-5. Conferência das identidades dos proprietários (seção 5, item 1): esta
-   validação não a fez nem a substitui.
-6. Backup automático desativado; cópia dos backups fora deste PC por decisão
-   do operador.
-7. Limpeza do runbook (passo 9): a worktree `C:\Projetos\Agenda-Cloud-pr85`
-   (HEAD destacado em `8916f18`) fica até decisão do operador; a pasta de
-   operações fica.
+**Identidades dos proprietários: confirmadas pelo usuário** (2026-11-03): as
+três contas `MASTER_OWNER` pertencem aos dois proprietários (duas a um, uma
+ao outro). Nomes, e-mails e credenciais não são registrados aqui. Nenhum
+papel alterado.
+
+Pendências reais:
+
+1. Validação no piloto com conta de cliente sem papel global (recusa ao
+   portal pela URL e pela API): precisa de uma conta existente; não criar
+   conta para isso.
+2. Acessos de gerente e profissional (runbook, passo 8.4).
+3. Criação real de reserva no piloto (só no ensaio local).
+4. Aprovação e cadastro dos preços; cadastrar só preço aprovado.
+5. Ativação do backup automático do piloto (continua desativado).
+
+Outros registros (não são pendências da publicação):
+
+- cópia dos backups fora deste PC: decisão do operador;
+- limpeza do runbook (passo 9): a worktree `C:\Projetos\Agenda-Cloud-pr85`
+  (HEAD destacado em `8916f18`) fica até decisão do operador; a pasta de
+  operações fica.
 
 Preservados: `CLAUDE.md` modificado no repositório principal, PR #74,
 worktree `-reserva` e o trabalho local de `-combo`. Nenhum merge desta
