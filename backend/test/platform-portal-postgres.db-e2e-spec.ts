@@ -3,6 +3,9 @@
 // Dados e preços fictícios (plano de teste, nunca os planos reais). Prova:
 // - o portal recusa dono, gerente e profissional de Básico, Pro e Max, e os
 //   papéis delegados, em TODA rota do portal, por API direta;
+// - MASTER_ADMIN e MASTER_SUPPORT com todas as permissões, sessão ativa e
+//   senha confirmada recebem 403 em toda rota REGISTRADA sob /platform (a
+//   lista é conferida contra o roteador) e nada muda no banco;
 // - o papel de proprietário dado ou retirado vale na próxima requisição, com
 //   a mesma sessão aberta;
 // - preço do catálogo, preço contratado e origem do valor no pagamento, sem
@@ -299,6 +302,227 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods`)).toBe(periodosAntes);
     expect(await q(`SELECT id, platform_role, platform_permissions::text FROM users ORDER BY id`)).toEqual(papeisAntes);
     expect((await ficha(t)).updatedAt).toBe(f.updatedAt);
+  });
+
+  it('MASTER_ADMIN e MASTER_SUPPORT com sessão ativa e senha confirmada: 403 em TODA rota registrada do portal', async () => {
+    // Alvos reais (nada de id inexistente): o 403 não pode ser um 404
+    // disfarçado nem um 400 de corpo inválido.
+    const alvo = await estabelecimento('del-alvo', planoTeste);
+    await testeVencido(alvo.tenantId, planoTeste, alvo.dono.userId);
+    const gerente = await membro(alvo.tenantId, 'del-ger', 'GERENTE');
+    const criado = await master
+      .post('/platform/establishments')
+      .send({
+        requestKey: `chave-${id()}`,
+        businessName: `Convite ${marca}`,
+        category: 'OTHER',
+        planId: planoTeste,
+        owner: { name: 'Dono convidado', email: `${marca}-del-convidado@example.test` },
+      })
+      .expect(200);
+    const t = alvo.tenantId;
+    const [{ periodo }] = await q<{ periodo: string }>(`SELECT id AS periodo FROM tenant_access_periods WHERE tenant_id = $1`, [t]);
+    const [{ conta: alvoConta, versao, vinculo }] = await q<{ conta: string; versao: Date; vinculo: string }>(
+      `SELECT u.id AS conta, u.updated_at AS versao, m.id AS vinculo FROM users u JOIN memberships m ON m.user_id = u.id WHERE u.email = $1`,
+      [gerente.email],
+    );
+    const [{ convite }] = await q<{ convite: string }>(`SELECT id AS convite FROM invites WHERE tenant_id = $1 AND status = 'PENDING'`, [
+      criado.body.tenant.id,
+    ]);
+    const v = (await ficha(t)).updatedAt;
+    const vc = versao.toISOString();
+    const chave = () => `chave-${id()}`;
+    const motivo = 'tentativa de papel delegado';
+    const email = () => `${marca}-del-${id()}@example.test`;
+
+    // [rota registrada, caminho chamado, status esperado, corpo VÁLIDO para o
+    // schema da rota]. Alvos reais: o 403 não pode ser 404 nem 400 disfarçado.
+    const chamadas: [string, string, number, object?][] = [
+      ['GET /platform/access', '/platform/access', 200],
+      ['GET /platform/establishments', '/platform/establishments', 403],
+      ['GET /platform/establishments/:tenantId', `/platform/establishments/${t}`, 403],
+      ['PATCH /platform/establishments/:tenantId', `/platform/establishments/${t}`, 403, { expectedUpdatedAt: v, name: 'Outro nome' }],
+      ['POST /platform/establishments/:tenantId/suspend', `/platform/establishments/${t}/suspend`, 403, { expectedUpdatedAt: v, reason: motivo }],
+      [
+        'POST /platform/establishments/:tenantId/archive',
+        `/platform/establishments/${t}/archive`,
+        403,
+        { expectedUpdatedAt: v, reason: motivo, confirmSlug: `${marca}-del-alvo` },
+      ],
+      ['POST /platform/establishments/:tenantId/reactivate', `/platform/establishments/${t}/reactivate`, 403, { expectedUpdatedAt: v }],
+      ['PUT /platform/establishments/:tenantId/plan', `/platform/establishments/${t}/plan`, 403, { expectedUpdatedAt: v, planId: planoSemRecebimentos }],
+      [
+        'POST /platform/establishments/:tenantId/access/paid',
+        `/platform/establishments/${t}/access/paid`,
+        403,
+        {
+          expectedUpdatedAt: v,
+          requestKey: chave(),
+          cycle: 'MONTHLY',
+          amountCents: 100,
+          paymentMethod: 'PIX',
+          receivedOn: hoje(),
+          manualConfirmation: true,
+        },
+      ],
+      [
+        'POST /platform/establishments/:tenantId/access/trial-extension',
+        `/platform/establishments/${t}/access/trial-extension`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), days: 3, reason: motivo },
+      ],
+      [
+        'POST /platform/establishments/:tenantId/access/courtesy',
+        `/platform/establishments/${t}/access/courtesy`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), days: 3, reason: motivo },
+      ],
+      [
+        'POST /platform/establishments/:tenantId/access/periods/:periodId/correction',
+        `/platform/establishments/${t}/access/periods/${periodo}/correction`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), reason: motivo },
+      ],
+      [
+        'POST /platform/establishments/:tenantId/access/no-expiry',
+        `/platform/establishments/${t}/access/no-expiry`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), reason: motivo, confirm: true },
+      ],
+      [
+        'POST /platform/establishments/:tenantId/access/no-expiry/revoke',
+        `/platform/establishments/${t}/access/no-expiry/revoke`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), reason: motivo, confirm: true },
+      ],
+      [
+        'PUT /platform/establishments/:tenantId/contract-price',
+        `/platform/establishments/${t}/contract-price`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), cycle: 'MONTHLY', amountCents: 100, reason: motivo },
+      ],
+      ['GET /platform/prices', '/platform/prices', 403],
+      [
+        'PUT /platform/plans/:planId/prices/:cycle',
+        `/platform/plans/${planoTeste}/prices/MONTHLY`,
+        403,
+        { requestKey: chave(), expectedCurrentCents: null, amountCents: 100 },
+      ],
+      ['GET /platform/subscription-payments', '/platform/subscription-payments', 403],
+      ['GET /platform/roles', '/platform/roles', 403],
+      ['GET /platform/plans', '/platform/plans', 403],
+      ['GET /platform/establishment-options', '/platform/establishment-options', 403],
+      [
+        'POST /platform/establishments',
+        '/platform/establishments',
+        403,
+        { requestKey: chave(), businessName: 'Tentativa', category: 'OTHER', planId: planoTeste, owner: { name: 'Eu', email: email() } },
+      ],
+      ['GET /platform/establishments/:tenantId/members', `/platform/establishments/${t}/members`, 403],
+      [
+        'POST /platform/establishments/:tenantId/invites',
+        `/platform/establishments/${t}/invites`,
+        403,
+        { requestKey: chave(), name: 'Outro dono', email: email(), role: 'DONO' },
+      ],
+      ['GET /platform/users', '/platform/users', 403],
+      ['GET /platform/users/:userId', `/platform/users/${alvoConta}`, 403],
+      ['PATCH /platform/users/:userId', `/platform/users/${alvoConta}`, 403, { expectedUpdatedAt: vc, name: 'Outro nome' }],
+      ['POST /platform/users/:userId/block', `/platform/users/${alvoConta}/block`, 403, { expectedUpdatedAt: vc }],
+      ['POST /platform/users/:userId/reactivate', `/platform/users/${alvoConta}/reactivate`, 403, { expectedUpdatedAt: vc }],
+      [
+        'PUT /platform/users/:userId/platform-access',
+        `/platform/users/${alvoConta}/platform-access`,
+        403,
+        { expectedUpdatedAt: vc, role: 'MASTER_OWNER', permissions: [] },
+      ],
+      ['POST /platform/users/:userId/password-reset', `/platform/users/${alvoConta}/password-reset`, 403, { requestKey: chave() }],
+      ['DELETE /platform/memberships/:membershipId', `/platform/memberships/${vinculo}`, 403],
+      [
+        'PUT /platform/memberships/:membershipId/denied-permissions',
+        `/platform/memberships/${vinculo}/denied-permissions`,
+        403,
+        { expectedDenied: [], denied: ['AGENDAMENTO_CANCELAR'] },
+      ],
+      ['GET /platform/invites', '/platform/invites', 403],
+      [
+        'POST /platform/invites',
+        '/platform/invites',
+        403,
+        { requestKey: chave(), name: 'Outro proprietário', email: email(), platformRole: 'MASTER_OWNER', permissions: [] },
+      ],
+      ['POST /platform/invites/:inviteId/resend', `/platform/invites/${convite}/resend`, 403],
+      ['POST /platform/invites/:inviteId/revoke', `/platform/invites/${convite}/revoke`, 403],
+      ['GET /platform/requests/:requestKey', `/platform/requests/${chave()}`, 403],
+      ['GET /platform/audit', '/platform/audit', 403],
+    ];
+
+    // A lista cobre TODA rota registrada sob /platform, menos a confirmação de
+    // senha (conferida à parte): rota nova sem caso aqui faz o teste falhar.
+    type Camada = { route?: { path: string; methods: Record<string, boolean> } };
+    const pilha = (app.getHttpAdapter().getInstance() as { router: { stack: Camada[] } }).router.stack;
+    const registradas = pilha
+      .flatMap((c) => (c.route ? Object.keys(c.route.methods).map((m) => `${m.toUpperCase()} ${c.route!.path}`) : []))
+      .filter((rota) => rota.split(' ')[1].startsWith('/platform/') && rota !== 'POST /platform/reauth');
+    expect(chamadas.map(([rota]) => rota).sort()).toEqual([...new Set(registradas)].sort());
+
+    // Contas delegadas com TODAS as permissões; entram e confirmam a senha.
+    const agentes: [string, Agente][] = [];
+    for (const papel of ['MASTER_ADMIN', 'MASTER_SUPPORT']) {
+      const pessoa = await conta(`del-${papel.toLowerCase()}`, papel);
+      await q(`UPDATE users SET platform_permissions = enum_range(NULL::platform_permission) WHERE id = $1`, [pessoa.userId]);
+      const agente = await entrar(pessoa.email);
+      const outras = await q(`SELECT id, reauthenticated_at FROM sessions WHERE user_id <> $1 ORDER BY id`, [pessoa.userId]);
+      // A confirmação continua aceita (rota compartilhada com o dono do
+      // estabelecimento) e marca só a própria sessão.
+      await reautenticar(agente);
+      expect(
+        await q(`SELECT (reauthenticated_at IS NOT NULL) AS confirmada FROM sessions WHERE user_id = $1 AND revoked_at IS NULL`, [pessoa.userId]),
+      ).toEqual([{ confirmada: true }]);
+      expect(await q(`SELECT id, reauthenticated_at FROM sessions WHERE user_id <> $1 ORDER BY id`, [pessoa.userId])).toEqual(outras);
+      agentes.push([papel, agente]);
+    }
+
+    const TABELAS = [
+      'users',
+      'credentials',
+      'memberships',
+      'membership_permission_overrides',
+      'invites',
+      'password_resets',
+      'tenants',
+      'units',
+      'plans',
+      'plan_features',
+      'plan_prices',
+      'tenant_access_periods',
+      'tenant_contract_prices',
+      'tenant_no_expiry_grants',
+      'audit_logs',
+    ];
+    const retrato = async () => {
+      const r: Record<string, string[]> = {};
+      for (const tabela of TABELAS) r[tabela] = (await q<{ l: string }>(`SELECT row_to_json(x)::text AS l FROM ${tabela} x ORDER BY 1`)).map((l) => l.l);
+      return r;
+    };
+    const antes = await retrato();
+
+    for (const [papel, agente] of agentes) {
+      // A senha confirmada não libera nada: o que falta é ser proprietário.
+      expect((await agente.get('/platform/access').expect(200)).body).toEqual({
+        canViewEstablishments: false,
+        capabilities: { viewDirectory: false, manageEstablishments: false, managePlatformAccess: false, manageEstablishmentLifecycle: false },
+        platformRole: null,
+      });
+      for (const [rota, caminho, status, corpo] of chamadas) {
+        const chamada = agente[rota.split(' ')[0].toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete'](caminho);
+        const r = await (corpo ? chamada.send(corpo) : chamada);
+        expect({ papel, rota, status: r.status }).toEqual({ papel, rota, status });
+      }
+    }
+    // Nada mudou: contas, papéis, vínculos, convites, estabelecimentos,
+    // períodos, preços, sem vencimento e auditoria.
+    expect(await retrato()).toEqual(antes);
   });
 
   it('papel de proprietário dado e retirado vale na próxima requisição, com a sessão aberta', async () => {
