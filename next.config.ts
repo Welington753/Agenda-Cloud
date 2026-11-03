@@ -28,8 +28,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // A administração da plataforma passou a morar na área da conta, com o
-  // mesmo menu (ver src/lib/administracao/rotas.ts). Solicitações, Serviços,
+  // O portal da plataforma mora em `/portal`, com entrada própria; os
+  // endereços antigos levam para lá (ver src/lib/administracao/rotas.ts). Solicitações, Serviços,
   // Profissionais e Equipe mudaram de endereço (src/lib/conta/rotas.ts).
   async redirects() {
     return [...ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA, ...ENCAMINHAMENTOS_CONTA_ANTIGA];

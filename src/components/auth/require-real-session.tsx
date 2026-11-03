@@ -19,7 +19,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Botao } from "@/components/ui/button";
 import { ConectandoAoServidor, FaixaConexao } from "@/components/conexao/aviso-conexao";
 
-export function RequireRealSession({ children }: { children: ReactNode }) {
+function entradaDaOperacao(atual: string | null): string {
+  return atual ? `/login?next=${encodeURIComponent(atual)}` : "/login";
+}
+
+export function RequireRealSession({
+  children,
+  entrada = entradaDaOperacao,
+}: {
+  children: ReactNode;
+  /** Login desta área, com a volta para `atual` (o portal tem o seu). */
+  entrada?: (atual: string | null) => string;
+}) {
   const { estado, conexao, recarregar } = useRealAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -29,9 +40,8 @@ export function RequireRealSession({ children }: { children: ReactNode }) {
     // Caminho E busca: a notificação abre /conta/agendamentos/solicitacoes?… e, depois do
     // login, a pessoa volta exatamente para ela (sanitizado no login).
     const atual = pathname ? `${pathname}${window.location.search}` : null;
-    const destino = atual ? `/login?next=${encodeURIComponent(atual)}` : "/login";
-    router.replace(destino);
-  }, [estado.status, pathname, router]);
+    router.replace(entrada(atual));
+  }, [estado.status, pathname, router, entrada]);
 
   if (estado.status === "carregando" || estado.status === "nao_autenticado") {
     return (

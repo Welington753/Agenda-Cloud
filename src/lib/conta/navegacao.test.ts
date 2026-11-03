@@ -22,61 +22,37 @@ describe("ITENS_NAVEGACAO_CONTA", () => {
 });
 
 describe("itensDaNavegacao", () => {
-  const rotulos = (itens: ReturnType<typeof itensDaNavegacao>) => itens.map((i) => i.rotulo);
-
-  it("sem acesso confirmado à plataforma, o menu é o de sempre", () => {
-    expect(itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false })).toBe(ITENS_NAVEGACAO_CONTA);
+  it("dono com estabelecimento: só a operação", () => {
+    expect(itensDaNavegacao({ comEstabelecimento: true })).toBe(ITENS_NAVEGACAO_CONTA);
   });
 
-  it("com acesso, Administração vem por último, num grupo próprio e fora da barra do celular", () => {
-    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true });
-    expect(rotulos(itens)).toEqual([
-      "Início",
-      "Agenda",
-      "Clientes",
-      "Serviços",
-      "Profissionais",
-      "Configurações",
-      "Portal da plataforma",
-    ]);
-    expect(itens.at(-1)).toEqual({
-      href: "/plataforma",
-      rotulo: "Portal da plataforma",
-      noCelular: "menu",
-      grupo: "plataforma",
-    });
-    expect(rotulos(itens.filter((i) => i.noCelular === "barra"))).toEqual(["Início", "Agenda", "Clientes", "Configurações"]);
+  it("nenhum perfil ganha atalho para o portal da plataforma nem grupo próprio", () => {
+    const perfis = ["dono", "gerente", "funcionario", "sem-area"] as const;
+    for (const perfil of perfis) {
+      const contexto = { role: "GERENTE" as const, areas: ["AGENDA_VER", "CLIENTES_VER"] };
+      const itens = itensDaNavegacao({ comEstabelecimento: true, perfil, contexto });
+      expect(itens.every((i) => i.href.startsWith("/conta/"))).toBe(true);
+      expect(itens.map((i) => i.rotulo)).not.toContain("Portal da plataforma");
+      expect(itens.every((i) => Object.keys(i).sort().join() === "href,noCelular,rotulo")).toBe(true);
+    }
   });
 
-  it("administrador sem estabelecimento: Administração e Configurações, na barra", () => {
-    const itens = itensDaNavegacao({ comEstabelecimento: false, comAdministracao: true });
-    expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
-      ["/plataforma", "barra"],
-      ["/conta/configuracoes", "barra"],
-    ]);
-  });
-
-  it("sem estabelecimento e sem acesso, não há menu", () => {
-    expect(itensDaNavegacao({ comEstabelecimento: false, comAdministracao: false })).toEqual([]);
+  it("sem estabelecimento, não há menu (nem para um proprietário da plataforma)", () => {
+    expect(itensDaNavegacao({ comEstabelecimento: false })).toEqual([]);
   });
 });
 
 describe("itensDaNavegacao por perfil", () => {
   it("funcionário: Minha agenda e Configurações, na barra do celular", () => {
-    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "funcionario" });
+    const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "funcionario" });
     expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
       ["/conta/minha-agenda", "barra"],
       ["/conta/configuracoes", "barra"],
     ]);
   });
 
-  it("funcionário que também administra a plataforma vê a Administração", () => {
-    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: true, perfil: "funcionario" });
-    expect(itens.map((i) => i.rotulo)).toEqual(["Minha agenda", "Configurações", "Portal da plataforma"]);
-  });
-
   it("papel sem área: só Configurações; nenhuma área do dono", () => {
-    const itens = itensDaNavegacao({ comEstabelecimento: true, comAdministracao: false, perfil: "sem-area" });
+    const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "sem-area" });
     expect(itens.map((i) => i.href)).toEqual(["/conta/configuracoes"]);
   });
 });
@@ -90,8 +66,7 @@ describe("itemAtivo", () => {
   it("subpáginas de Configurações mantêm Configurações ativa", () => {
     expect(itemAtivo("/conta/configuracoes/perfil", "/conta/configuracoes")).toBe(true);
     expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes")).toBe(true);
-    expect(itemAtivo("/plataforma/estabelecimentos/t1", "/plataforma")).toBe(true);
-    expect(itemAtivo("/plataforma/estabelecimentos", "/conta/configuracoes")).toBe(false);
+    expect(itemAtivo("/portal/estabelecimentos", "/conta/configuracoes")).toBe(false);
   });
 
   it("Serviços e Profissionais são áreas próprias, mesmo sob /conta/configuracoes", () => {

@@ -336,7 +336,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
       password: "senha-da-plataforma-123",
     });
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [conta.user.id]);
-    await ap.goto(`/plataforma/estabelecimentos/${tenantId}`);
+    await ap.goto(`/portal/estabelecimentos/${tenantId}`);
     await expect(ap.getByTestId("uso-vagas")).toContainText("2 de 5");
     // Um terceiro profissional ativo: o plano Básico (2) não comporta.
     await db.query(

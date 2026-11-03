@@ -9,13 +9,11 @@ import {
   Contact,
   Home,
   Settings,
-  ShieldCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
 import type { ItemNavegacaoConta } from "@/lib/conta/navegacao";
-import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import {
   ROTA_AGENDA,
   ROTA_CLIENTES,
@@ -34,7 +32,6 @@ export const ICONE_POR_HREF: Record<string, LucideIcon> = {
   [ROTA_PROFISSIONAIS]: Users,
   [ROTA_CONFIGURACOES]: Settings,
   [ROTA_MINHA_AGENDA]: CalendarCheck,
-  [ROTA_ADMINISTRACAO]: ShieldCheck,
 };
 
 /** Colunas da barra inferior do celular: uma por área da barra.

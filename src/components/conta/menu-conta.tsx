@@ -8,9 +8,8 @@
 //   própria. Abrir o sino não confirma, recusa nem remarca nada.
 // - MENU DA CONTA: quem está conectado, "Notificações" (pendentes, situação
 //   neste aparelho e o atalho para Configurações → Notificações), Aparência,
-//   Configurações, Perfil e segurança, a Administração da plataforma (no
-//   celular, onde ela não cabe na barra) e Sair. No celular, também as áreas
-//   que não cabem na barra inferior (Serviços e Profissionais, para o dono).
+//   Configurações, Perfil e segurança e Sair. No celular, também as áreas que
+//   não cabem na barra inferior (Serviços e Profissionais, para o dono).
 //   A situação do push é verificada UMA vez a cada abertura do menu
 //   (lib/push/use-notificacoes-do-dispositivo.ts, o mesmo do cartão); nada
 //   aqui pede permissão ao navegador nem ativa/desativa sozinho.
@@ -27,7 +26,6 @@ import {
   LogOut,
   Settings,
   Settings2,
-  ShieldCheck,
   UserRound,
   Volume2,
   VolumeX,
@@ -39,7 +37,6 @@ import { lerPreferenciaDeSom } from "@/lib/agendamento-publico/som-dos-avisos";
 import { useNotificacoesDoDispositivo } from "@/lib/push/use-notificacoes-do-dispositivo";
 import { resumoDoPush } from "@/lib/push/suporte";
 import { SeletorAparencia } from "@/components/aparencia/aparencia";
-import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import { ROTA_NOTIFICACOES, ROTA_PERFIL, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
 
 const FOCO_NO_ESCURO = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus";
@@ -105,7 +102,6 @@ export function MenuConta({
   email,
   tenantId,
   pendentes,
-  comAdministracao = false,
   areasNoMenu = [],
   configuracoes,
   saindo,
@@ -116,8 +112,6 @@ export function MenuConta({
   /** Sem estabelecimento ativo (tela de escolha), não há notificações. */
   tenantId: string | null;
   pendentes: number | null;
-  /** Acesso à administração da plataforma confirmado pelo servidor. */
-  comAdministracao?: boolean;
   /** Áreas do menu principal que não cabem na barra inferior do celular
    * (Serviços e Profissionais, para o dono). Só aparecem aqui no celular: no
    * computador já estão no menu lateral. */
@@ -263,18 +257,6 @@ export function MenuConta({
               <UserRound size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
               Perfil e segurança
             </Link>
-            {/* No computador a Administração já está no menu lateral, num
-                grupo próprio; aqui ela só aparece no celular. */}
-            {comAdministracao && (
-              <Link
-                href={ROTA_ADMINISTRACAO}
-                className={clsx(CLASSE_LINHA, "md:hidden")}
-                data-testid="menu-administracao"
-              >
-                <ShieldCheck size={18} aria-hidden="true" className="shrink-0 text-ink-soft" />
-                Portal da plataforma
-              </Link>
-            )}
             <button
               type="button"
               disabled={saindo}

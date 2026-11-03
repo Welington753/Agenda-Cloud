@@ -2,33 +2,56 @@ import { describe, expect, it } from "vitest";
 import {
   ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA,
   ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
+  destinoNoPortal,
   emAdministracao,
+  entradaDoPortal,
   rotaFichaEstabelecimento,
 } from "./rotas";
 
 describe("rotas do portal da plataforma", () => {
   it("ficam numa área própria, fora da operação dos estabelecimentos", () => {
-    expect(ROTA_ESTABELECIMENTOS_ADMINISTRADOS).toBe("/plataforma/estabelecimentos");
-    expect(rotaFichaEstabelecimento("t 1/2")).toBe("/plataforma/estabelecimentos/t%201%2F2");
+    expect(ROTA_ESTABELECIMENTOS_ADMINISTRADOS).toBe("/portal/estabelecimentos");
+    expect(rotaFichaEstabelecimento("t 1/2")).toBe("/portal/estabelecimentos/t%201%2F2");
   });
 
   it("reconhece só as páginas do portal", () => {
-    expect(emAdministracao("/plataforma")).toBe(true);
-    expect(emAdministracao("/plataforma/estabelecimentos/t1")).toBe(true);
-    expect(emAdministracao("/plataforma-antiga")).toBe(false);
+    expect(emAdministracao("/portal")).toBe(true);
+    expect(emAdministracao("/portal/estabelecimentos/t1")).toBe(true);
+    expect(emAdministracao("/portal-antigo")).toBe(false);
+    expect(emAdministracao("/plataforma")).toBe(false);
     expect(emAdministracao("/conta/administracao")).toBe(false);
     expect(emAdministracao("/conta/agendamentos")).toBe(false);
     expect(emAdministracao(null)).toBe(false);
   });
 
-  it("encaminha os endereços antigos sem perder o caminho", () => {
+  it("encaminha os endereços antigos para a entrada ou para a mesma página do portal", () => {
     expect(ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA).toEqual([
-      { source: "/plataforma", destination: "/plataforma/estabelecimentos", permanent: false },
-      { source: "/administracao", destination: "/plataforma/estabelecimentos", permanent: false },
-      { source: "/administracao/:caminho+", destination: "/plataforma/:caminho+", permanent: false },
-      { source: "/conta/administracao", destination: "/plataforma/estabelecimentos", permanent: false },
-      { source: "/conta/administracao/:caminho+", destination: "/plataforma/:caminho+", permanent: false },
+      { source: "/plataforma", destination: "/portal", permanent: false },
+      { source: "/plataforma/:caminho+", destination: "/portal/:caminho+", permanent: false },
+      { source: "/administracao", destination: "/portal", permanent: false },
+      { source: "/administracao/:caminho+", destination: "/portal/:caminho+", permanent: false },
+      { source: "/conta/administracao", destination: "/portal", permanent: false },
+      { source: "/conta/administracao/:caminho+", destination: "/portal/:caminho+", permanent: false },
     ]);
+  });
+});
+
+describe("entrada do portal", () => {
+  it("depois do login, segue só um destino de dentro do portal", () => {
+    expect(destinoNoPortal(null)).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal("/portal/usuarios/u1?aba=acesso")).toBe("/portal/usuarios/u1?aba=acesso");
+    expect(destinoNoPortal("/conta/visao-geral")).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal("/portal-falso/x")).toBe("/portal/estabelecimentos");
+    // A própria entrada não vira destino: voltaria ao formulário.
+    expect(destinoNoPortal("/portal")).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal("/portal?next=/portal")).toBe("/portal/estabelecimentos");
+  });
+
+  it("sessão expirada no portal volta para a entrada do portal, não para o login da operação", () => {
+    expect(entradaDoPortal("/portal/papeis")).toBe("/portal?next=%2Fportal%2Fpapeis");
+    expect(entradaDoPortal("/portal/usuarios?busca=a b")).toBe("/portal?next=%2Fportal%2Fusuarios%3Fbusca%3Da%20b");
+    expect(entradaDoPortal(null)).toBe("/portal");
+    expect(entradaDoPortal("/conta/agendamentos")).toBe("/portal");
   });
 });
 
@@ -44,8 +67,8 @@ describe("seções do portal", () => {
       "Proprietários da plataforma",
       "Histórico administrativo",
     ]);
-    expect(SECOES_ADMINISTRACAO.every((s) => s.href.startsWith("/plataforma/"))).toBe(true);
-    expect(secaoAtiva("/plataforma/usuarios/u1", "/plataforma/usuarios")).toBe(true);
-    expect(secaoAtiva("/plataforma/usuarios-x", "/plataforma/usuarios")).toBe(false);
+    expect(SECOES_ADMINISTRACAO.every((s) => s.href.startsWith("/portal/"))).toBe(true);
+    expect(secaoAtiva("/portal/usuarios/u1", "/portal/usuarios")).toBe(true);
+    expect(secaoAtiva("/portal/usuarios-x", "/portal/usuarios")).toBe(false);
   });
 });

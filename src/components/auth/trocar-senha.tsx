@@ -1,9 +1,10 @@
 "use client";
 
-// Troca da própria senha (Configurações → Perfil e segurança). No primeiro
-// acesso com senha temporária, é a única coisa que a conta pode fazer: o
-// shell leva a pessoa para cá, e o servidor recusa as demais rotas até a
-// troca (`TROCA_DE_SENHA_OBRIGATORIA`).
+// Troca da própria senha (`POST /auth/password`), a mesma na operação
+// (Configurações → Perfil e segurança) e no portal da plataforma. No
+// primeiro acesso com senha temporária, é a única coisa que a conta pode
+// fazer: cada área leva a pessoa para esta troca, e o servidor recusa as
+// demais rotas até ela (`TROCA_DE_SENHA_OBRIGATORIA`).
 //
 // Um envio por vez (barreira síncrona contra clique duplo). Sem resposta, a
 // troca pode ter acontecido: a tela diz isso e não reenvia.
@@ -33,7 +34,16 @@ function mensagem(falha: FalhaTrocaDeSenha): string {
   }
 }
 
-export function TrocarSenha({ obrigatoria, aoTrocar }: { obrigatoria: boolean; aoTrocar: () => void }) {
+export function TrocarSenha({
+  obrigatoria,
+  aoTrocar,
+  bloqueadas = "a agenda e as demais áreas",
+}: {
+  obrigatoria: boolean;
+  aoTrocar: () => void;
+  /** O que fica bloqueado até a troca, no aviso da senha temporária. */
+  bloqueadas?: string;
+}) {
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
   const [confirmacao, setConfirmacao] = useState("");
@@ -74,8 +84,8 @@ export function TrocarSenha({ obrigatoria, aoTrocar }: { obrigatoria: boolean; a
     <form onSubmit={(e) => void aoEnviar(e)} className="space-y-3" data-testid="form-trocar-senha">
       {obrigatoria && (
         <p role="status" className="rounded-[var(--radius-control)] bg-warning-soft px-3 py-2 text-sm text-ink" data-testid="troca-obrigatoria">
-          Você entrou com uma senha temporária. Escolha a sua senha para continuar: até lá, a agenda e as demais áreas
-          ficam bloqueadas.
+          Você entrou com uma senha temporária. Escolha a sua senha para continuar: até lá, {bloqueadas} ficam
+          bloqueadas.
         </p>
       )}
       <label className="block text-sm font-medium text-ink">

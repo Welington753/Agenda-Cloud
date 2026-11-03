@@ -7,8 +7,8 @@
 //
 // - dono: Início;
 // - funcionário: Minha agenda;
-// - sem área no estabelecimento ou sem estabelecimento: Administração, se o
-//   servidor confirmar o acesso à plataforma; senão, Configurações.
+// - sem área no estabelecimento ou sem estabelecimento: Configurações. O
+//   portal da plataforma não é destino daqui: tem entrada própria (`/portal`).
 //
 // Continua sendo o destino depois do cadastro e de links antigos, por isso
 // existe (sem conteúdo) em vez de um encaminhamento fixo no servidor, que não
@@ -17,14 +17,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
-import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
-import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
 import { inicioDoPerfil, perfilDoPapel } from "@/lib/conta/papel";
 import { ROTA_SELECIONAR_ESTABELECIMENTO } from "@/lib/conta/rotas";
 
 export default function ContaPage() {
   const { estado } = useRealAuth();
-  const { estado: acesso } = useAcessoPlataforma();
   const router = useRouter();
 
   const destino = (() => {
@@ -34,9 +31,7 @@ export default function ContaPage() {
     const contexto = tenantIdAtivo ? encontrarContextoPorTenantId(sessao, tenantIdAtivo) : null;
     const perfil = perfilDoPapel(contexto?.role);
     if (contexto && perfil !== "sem-area") return inicioDoPerfil(perfil, contexto);
-    // Sem área: espera a resposta do acesso à plataforma antes de escolher.
-    if (acesso.status === "carregando") return null;
-    return acessoConfirmado(acesso) ? ROTA_ADMINISTRACAO : inicioDoPerfil("sem-area");
+    return inicioDoPerfil("sem-area");
   })();
 
   useEffect(() => {

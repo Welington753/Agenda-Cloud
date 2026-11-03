@@ -1,5 +1,6 @@
-// Portal da plataforma: área PRÓPRIA (`/plataforma`), com cabeçalho e menu
-// separados da operação dos estabelecimentos. PostgreSQL descartável real;
+// Portal da plataforma: área PRÓPRIA (`/portal`), com entrada, cabeçalho e
+// menu separados da operação dos estabelecimentos, que não tem atalho para
+// cá (a entrada e o login do portal estão em portal-entrada-flow.spec.ts). PostgreSQL descartável real;
 // a promoção de papel e os planos fictícios são só fixture de teste: não
 // existe rota pública para promover uma conta, e nenhum preço real é gravado.
 // As contas nascem pela fixture de convite (support/contas-de-teste.ts).
@@ -10,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 const API = "http://localhost:3001";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 24);
-const LISTA = "/plataforma/estabelecimentos";
+const LISTA = "/portal/estabelecimentos";
 const SEM_ACESSO = "Sua conta não tem acesso ao portal da plataforma.";
 const SENHA = "senha-administracao-123";
 
@@ -75,7 +76,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     const principal = `${marca} Principal`;
     const account = await cadastrar(page, marca);
     // Dono de um estabelecimento no Max: o plano não dá acesso ao portal.
-    await db.query("UPDATE tenants SET plan_id = 'plan_pro' WHERE id = $1", [account.tenant.id]);
+    await db.query("UPDATE tenants SET plan_id = 'plan_equipe' WHERE id = $1", [account.tenant.id]);
     const main = page.getByRole("main");
 
     // Sem papel de plataforma: nenhum atalho, e por URL direta (o endereço
@@ -83,12 +84,12 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await page.goto("/conta/visao-geral");
     await expect(navConta(page).getByRole("link", { name: "Agenda" })).toBeVisible();
     await expect(navConta(page).getByRole("link", { name: "Portal da plataforma" })).toHaveCount(0);
-    for (const caminho of ["/plataforma", "/administracao", "/conta/administracao", "/plataforma/planos", "/plataforma/pagamentos"]) {
+    for (const caminho of ["/portal", "/plataforma", "/administracao", "/conta/administracao", "/portal/planos", "/plataforma/pagamentos"]) {
       await page.goto(caminho);
       await expect(main.getByRole("alert")).toHaveText(SEM_ACESSO);
       await expect(navPortal(page)).toHaveCount(0);
     }
-    await expect(page).toHaveURL("/plataforma/pagamentos");
+    await expect(page).toHaveURL("/portal/pagamentos");
     for (const rota of [
       "/platform/establishments",
       `/platform/establishments/${account.tenant.id}`,
@@ -129,10 +130,14 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     };
     page.on("request", contarEscrita);
 
-    // Com o papel confirmado pelo servidor, a área da conta ganha o atalho e o
-    // portal abre com cabeçalho e menu próprios (sem o menu da operação).
+    // Mesmo com o papel confirmado, a operação continua sem atalho nem grupo
+    // "Plataforma"; o portal abre pela entrada própria, com cabeçalho e menu
+    // próprios (sem o menu da operação).
     await page.goto("/conta/visao-geral");
-    await navConta(page).getByRole("link", { name: "Portal da plataforma" }).click();
+    await expect(navConta(page).getByRole("link", { name: "Agenda" })).toBeVisible();
+    await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);
+    await expect(navConta(page).getByText("Plataforma", { exact: true })).toHaveCount(0);
+    await page.goto("/portal");
     await expect(page).toHaveURL(LISTA);
     await expect(page.getByTestId("portal-plataforma")).toHaveText("Portal da plataforma");
     await expect(navConta(page)).toHaveCount(0);
@@ -146,7 +151,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
       "Histórico administrativo",
     ]);
     await expect(page.getByRole("heading", { name: "Estabelecimentos", exact: true })).toBeVisible();
-    await expect(page.getByTestId("voltar-operacao")).toBeVisible();
+    await expect(page.getByRole("link", { name: /operação/i })).toHaveCount(0);
 
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
@@ -191,13 +196,17 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await page.getByRole("button", { name: "Tentar novamente" }).click();
     await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
 
-    // No celular, o atalho fica no menu da conta, fora das quatro áreas da barra.
+    // No celular, nem a barra nem o menu da conta têm atalho do portal; o
+    // portal continua abrindo pelo próprio endereço.
     await page.goto("/conta/visao-geral");
     await page.setViewportSize({ width: 360, height: 844 });
     await expect(navConta(page).locator(":scope > ul > li:visible")).toHaveCount(4);
     await page.getByTestId("abrir-menu-conta").click();
-    await page.getByTestId("menu-administracao").click();
+    await expect(page.getByTestId("menu-perfil")).toBeVisible();
+    await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);
+    await page.goto("/portal");
     await expect(page).toHaveURL(LISTA);
+    await expect(navPortal(page)).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 844 });
     expect(escritas).toBe(0);
     page.off("request", contarEscrita);
@@ -261,12 +270,12 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     ]);
     expect(vinculos.rows).toEqual([{ tenant_id: account.tenant.id }]);
 
-    // Voltar à operação mantém o estabelecimento ativo de sempre.
-    await page.getByTestId("voltar-operacao").click();
+    // A operação continua com o estabelecimento ativo de sempre.
+    await page.goto("/conta/visao-geral");
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(principal);
 
     // Papel revogado vale na próxima leitura, com a sessão e o portal abertos.
-    await page.goto("/plataforma/pagamentos");
+    await page.goto("/portal/pagamentos");
     await expect(page.getByRole("heading", { name: "Pagamentos das assinaturas" })).toBeVisible();
     await db.query("UPDATE users SET platform_role = NULL WHERE id = $1", [account.user.id]);
     await page.getByRole("button", { name: "Atualizar", exact: true }).click();
@@ -287,19 +296,19 @@ test("proprietário sem estabelecimento entra no portal; papel delegado antigo n
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [account.user.id]);
     const main = page.getByRole("main");
 
-    // Sem estabelecimento, "/conta" leva direto ao portal.
+    // Na operação, sem vínculo: só as configurações pessoais, sem menu de
+    // áreas nem atalho do portal ("/conta" não leva mais ao portal).
     await page.goto("/conta");
-    await expect(page).toHaveURL(LISTA);
-    await expect(page.getByTestId("voltar-operacao")).toHaveCount(0);
-    // Na área da conta, sem vínculo: o atalho do portal e as configurações pessoais.
-    await page.goto("/conta/configuracoes");
-    await expect(navConta(page).getByRole("link")).toHaveText(["Portal da plataforma", "Configurações"]);
+    await expect(page).toHaveURL(/\/conta\/configuracoes$/);
+    await expect(navConta(page)).toHaveCount(0);
+    await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);
     expect(
       await page.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
     ).toEqual(["/conta/configuracoes/aparencia", "/conta/configuracoes/perfil"]);
     await page.goto("/conta/configuracoes/equipe");
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
-    await navConta(page).getByRole("link", { name: "Portal da plataforma" }).click();
+    // O portal, pela entrada própria, sem pedir estabelecimento.
+    await page.goto("/portal");
     await expect(page).toHaveURL(LISTA);
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();

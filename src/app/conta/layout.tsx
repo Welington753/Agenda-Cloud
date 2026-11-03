@@ -15,15 +15,13 @@
 // solicitações pendentes (contador do menu, avisos de novas solicitações,
 // Visão geral e tela de Solicitações usam a mesma lista).
 //
-// `AcessoPlataformaProvider` lê uma vez se a pessoa administra a plataforma:
-// o menu mostra "Administração" e as páginas de `/conta/administracao` usam a
-// mesma resposta (o servidor autoriza de novo cada leitura).
+// A operação não lê o acesso ao portal da plataforma (`/portal`, área e
+// entrada próprias): nenhuma tela daqui mostra funções administrativas.
 import type { ReactNode } from "react";
 import { RequireRealSession } from "@/components/auth/require-real-session";
 import { ShellConta } from "@/components/conta/shell-conta";
 import { SolicitacoesProvider } from "@/lib/agendamento-publico/use-solicitacoes";
 import { MarcadorAparencia } from "@/components/aparencia/aparencia";
-import { AcessoPlataformaProvider } from "@/lib/administracao/use-acesso-plataforma";
 
 export default function ContaLayout({ children }: { children: ReactNode }) {
   // Área real adaptável: claro, escuro ou seguir aparelho (menu da conta).
@@ -31,11 +29,9 @@ export default function ContaLayout({ children }: { children: ReactNode }) {
     <>
       <MarcadorAparencia />
       <RequireRealSession>
-        <AcessoPlataformaProvider>
-          <SolicitacoesProvider>
-            <ShellConta>{children}</ShellConta>
-          </SolicitacoesProvider>
-        </AcessoPlataformaProvider>
+        <SolicitacoesProvider>
+          <ShellConta>{children}</ShellConta>
+        </SolicitacoesProvider>
       </RequireRealSession>
     </>
   );

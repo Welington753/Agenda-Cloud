@@ -111,7 +111,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     const main = page.getByRole("main");
 
     // ---------------------------------------------- 1. empresa nova + ativação
-    await page.goto("/plataforma/estabelecimentos");
+    await page.goto("/portal/estabelecimentos");
     await page.getByRole("link", { name: "Novo estabelecimento" }).click();
     await page.getByLabel("Nome do estabelecimento").fill(`${marca} Barbearia Nova`);
     await page.getByLabel("Segmento").selectOption("BARBERSHOP");
@@ -164,7 +164,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     });
     const [nova] = (await db.query("SELECT id FROM units WHERE name = $1", [`${marca} Barbearia Nova`])).rows;
     const [{ tenant_id: tenantNovo }] = (await db.query("SELECT tenant_id FROM units WHERE id = $1", [nova.id])).rows;
-    await page.goto(`/plataforma/estabelecimentos/${tenantNovo}`);
+    await page.goto(`/portal/estabelecimentos/${tenantNovo}`);
     const pessoas = main.getByText("Pessoas com acesso").locator("..");
     await expect(pessoas.getByTestId("pessoas-estabelecimento")).toContainText("Dona Nova");
     await page.getByLabel("Nome", { exact: true }).fill("Nome Digitado Diferente");
@@ -199,7 +199,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await page.getByRole("button", { name: "Convidar como dono(a)" }).click();
     await expect(page.getByTestId("resultado-envio")).toContainText("Convite registrado.");
     const linkRevogado = await linkDoConvite(request, `${marca}-revogada@example.test`);
-    await page.goto("/plataforma/convites");
+    await page.goto("/portal/convites");
     await page.getByLabel("Buscar por nome ou e-mail").fill(`${marca}-revogada`);
     await page.getByRole("button", { name: "Pesquisar" }).click();
     await page.getByTestId("lista-convites").getByRole("button", { name: "Revogar" }).click();
@@ -212,7 +212,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
 
     await request.post(`${CAIXA}/controle`, { data: { falhar: true } });
     try {
-      await page.goto(`/plataforma/estabelecimentos/${tenantNovo}`);
+      await page.goto(`/portal/estabelecimentos/${tenantNovo}`);
       await page.getByLabel("Nome", { exact: true }).fill("Pessoa Sem Envio");
       await page.getByLabel("E-mail").fill(`${marca}-sem-envio@example.test`);
       await page.getByRole("button", { name: "Convidar como dono(a)" }).click();
@@ -221,7 +221,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     } finally {
       await request.post(`${CAIXA}/controle`, { data: { falhar: false } });
     }
-    await page.goto("/plataforma/convites");
+    await page.goto("/portal/convites");
     await page.getByLabel("Buscar por nome ou e-mail").fill(`${marca}-sem-envio`);
     await page.getByRole("button", { name: "Pesquisar" }).click();
     await page.getByTestId("lista-convites").getByRole("button", { name: "Reenviar" }).click();
@@ -235,7 +235,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await capturar(page, "convites");
 
     // ------------------------------------- 4. bloqueio com sessão aberta
-    await page.goto("/plataforma/usuarios");
+    await page.goto("/portal/usuarios");
     await page.getByLabel("Buscar por nome ou e-mail").fill(emailDona);
     await page.getByRole("button", { name: "Pesquisar" }).click();
     await expect(main.getByRole("status")).toHaveText("1 conta(s) encontrada(s)");
@@ -266,7 +266,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await existente.contexto.close();
 
     // Histórico com as ações, sem token.
-    await page.goto("/plataforma/historico");
+    await page.goto("/portal/historico");
     const historico = page.getByTestId("historico");
     for (const acao of ["Conta bloqueada", "Convite aceito", "Convite revogado", "Estabelecimento criado"]) {
       await expect(historico.getByText(acao, { exact: true }).first()).toBeVisible();
@@ -298,7 +298,7 @@ test("usuário comum e papéis delegados não acessam o portal da plataforma", a
     },
   });
   expect(criar.status()).toBe(403);
-  await page.goto("/plataforma/usuarios");
+  await page.goto("/portal/usuarios");
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("Sua conta não tem acesso ao portal da plataforma.");
 
   const db = await conectarBancoDeTeste();
@@ -309,7 +309,7 @@ test("usuário comum e papéis delegados não acessam o portal da plataforma", a
     );
     // Portal exclusivo do proprietário: suporte, mesmo com a permissão antiga,
     // não consulta nem cria.
-    await page.goto("/plataforma/estabelecimentos");
+    await page.goto("/portal/estabelecimentos");
     await expect(page.getByRole("main").getByRole("alert")).toHaveText("Sua conta não tem acesso ao portal da plataforma.");
     await expect(page.getByRole("heading", { name: "Estabelecimentos", exact: true })).toHaveCount(0);
     expect((await page.request.get("http://localhost:3001/platform/establishments")).status()).toBe(403);
