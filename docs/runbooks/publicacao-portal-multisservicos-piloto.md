@@ -36,6 +36,11 @@ Estado entre sessões em `continuidade-portal-multisservicos.md`.
 - Ensaio completo em PostgreSQL 17.11 descartável com TLS e dados fictícios,
   ensaio de compatibilidade das APIs e dos webs anterior e novo nos três
   estados do schema, e ensaio do `down` numa cópia (seções abaixo).
+- Segunda rodada (revisão): o caminho inteiro das duas etapas pelo
+  **lançador oficial** num console real, inclusive a restauração da etapa 2;
+  web novo e web anterior **no navegador** contra a API nova no estado final;
+  desfecho e código de saída distintos para sucesso, parada sem gravação,
+  aplicada sem conferência e resultado incerto (seção "Ensaio").
 
 **Operação no piloto: nada executado.** Nenhuma conexão com o piloto, nenhum
 backup, nenhuma das duas migrations aplicada, nada publicado no Render.
@@ -265,12 +270,20 @@ A etapa 2 recusa o estado `before-platform-portal`
 (`ERR_ETAPA_ANTERIOR_PENDENTE`); as duas recusam um estado posterior ao delas
 (`ERR_ETAPA_JA_APLICADA`).
 
-| Mensagem final | Significado | Ação |
-| --- | --- | --- |
-| `... aplicada e conferida` | gravada e o estado "depois" ok | próximo passo |
-| `... FOI APLICADA (COMMIT confirmado), mas a conferência posterior falhou` (saída 2) | gravada; só a leitura depois falhou | **não** rode `aplicar`; rode `conferir` |
-| `ERR_RESULTADO_INCERTO` | conexão perdida depois do início | **não** rode `aplicar` (nenhuma etapa); rode `conferir` |
-| `ERR_MIGRATION_FALHOU` | o banco recusou (ex.: `55P03`) e o estado "antes" foi confirmado intacto | nada gravado; escolha outro momento e repita a fase `aplicar` da mesma etapa |
+Toda fase termina com uma linha `DESFECHO` e o código de saída
+correspondente; o lançador repete o significado do código. **O código, sozinho,
+não comprova aplicação:** a prova é a linha `ESTADO` conferida (no fim da
+fase ou numa `conferir`) e o registro em `operacoes.jsonl`.
+
+| `DESFECHO` | Código | Significado | Ação |
+| --- | --- | --- | --- |
+| `aplicada_e_conferida` | 0 | gravada e o estado "depois" ok (`ESTADO:` na linha anterior) | próximo passo |
+| `preparado_sem_gravacao` / `estado_identificado` | 0 | `preparar` com backup / `conferir` leu um dos três estados | ler `ESTADO` |
+| `abortado_sem_gravacao` | 1 | frase diferente ou mais de uma linha; nada enviado | repetir quando quiser |
+| `parado_sem_gravacao` | 1 | parou antes da migration começar, ou o banco recusou (ex.: `55P03`, `ERR_MIGRATION_FALHOU`) e o estado "antes" foi confirmado intacto | ver `ERRO`/`MOTIVO`; repetir a fase `aplicar` da mesma etapa em outro momento |
+| `conferencia_sem_estado_valido` | 1 | `conferir` achou `divergente` ou sessão de migration ativa | não aplique nem publique |
+| `aplicada_conferencia_falhou` | 2 | **gravada** (COMMIT confirmado); só a leitura depois falhou | **não** rode `aplicar`; rode `conferir` |
+| `resultado_incerto` | 3 | conexão perdida (ou erro qualquer) depois do início da migration | **não** rode `aplicar` (nenhuma etapa); rode `conferir` |
 
 ### 6. Conferir: só leitura, quando quiser
 
@@ -301,6 +314,12 @@ Só com `ESTADO: after-appointment-snapshots`. Render,
 Entre a API nova e o web novo, **não** conceda "sem vencimento": o web atual
 não abre a ficha de um estabelecimento nesse estado (ver "Compatibilidade").
 O web atual não tem tela para isso, então só aconteceria por chamada direta.
+
+**Voltar à API anterior** depois disso devolve o portal a `MASTER_ADMIN` e
+`MASTER_SUPPORT` e perde o comportamento das funcionalidades novas ("sem
+vencimento" ignorado, reserva múltipla mostrada como a do primeiro serviço,
+sem preço nem contrato). Não é recuperação segura. O `down` das migrations
+também não (ver "Migrations").
 
 Não há variável nova.
 
@@ -337,10 +356,13 @@ só ids, papéis, situações e contagens.
 | `PRECOS_DO_CATALOGO`, `PRECOS_CONTRATADOS`, `SEM_VENCIMENTO` | depois da etapa 1: 0 até a administração registrar algo |
 | `RESERVAS`, `ITENS_DE_RESERVA`, `RESERVAS_COM_VARIOS_ITENS`, `RECEBIMENTOS` | iguais antes e depois de cada etapa; antes desta versão, nenhuma reserva com vários itens |
 | `ITENS_SEM_NOME_CONGELADO` | depois da etapa 2: todos os itens existentes |
-| `PROPRIETARIOS_ATIVOS` | `MASTER_OWNER` ativos: quem entra no portal com a API nova (precisa ser 1 ou mais) |
+| `CONTAS_COM_PAPEL_GLOBAL` | contagem completa por `papel:situacao` (sem limite) |
+| `PROPRIETARIOS_ATIVOS` | `MASTER_OWNER` ativos, contagem completa: quem entra no portal com a API nova (precisa ser 1 ou mais; é dela que sai `ERR_SEM_PROPRIETARIO_ATIVO`, nunca da listagem) |
 | `DELEGADOS_ATIVOS_QUE_PERDEM_O_PORTAL` | `MASTER_ADMIN`/`MASTER_SUPPORT` ativos: perdem o portal com a API nova |
 | `CONVITES_DE_PLATAFORMA_PENDENTES` | por papel; um convite pendente com papel delegado, se aceito, grava um papel sem efeito na API nova |
-| `CONTA_COM_PAPEL_GLOBAL` | uma linha por conta (id, papel, situação, vínculos de dono, data de criação) |
+| `CONTA_COM_PAPEL_GLOBAL` | uma linha por conta (id, papel, situação, vínculos de dono, data de criação), **no máximo 50**, proprietários primeiro |
+| `CONTAS_LISTADAS: n de total` | quantas linhas acima; com `LISTAGEM_TRUNCADA` e `CONTAS_NAO_LISTADAS` quando passou de 50. A consulta SQL do runbook lista todas |
+| `PROPRIETARIOS_NOTA` | ter `MASTER_OWNER` ativo não confirma quem são: a conferência autorizada das identidades continua pendente |
 
 ## Contas com papel global
 
@@ -351,6 +373,10 @@ dono para essa leitura**, pela consulta
 o resultado para o repositório nem para notas). Nenhuma fase altera papel,
 permissão, situação ou convite: promover, rebaixar ou bloquear é decisão do
 dono, por procedimento próprio.
+
+A proteção `ERR_SEM_PROPRIETARIO_ATIVO` só garante que **alguém** continua
+entrando no portal com a API nova. Ela **não substitui** a conferência das
+identidades: um `MASTER_OWNER` ativo pode não ser uma conta autorizada.
 
 ## Códigos de parada próprios deste kit
 
@@ -392,6 +418,12 @@ antes: preço do catálogo, preço contratado, pagamento pelo valor contratado
 (`amountSource: CONTRACT`), "sem vencimento" num estabelecimento com cortesia
 vencida, reserva com dois serviços e renomeação de um serviço.
 
+Na segunda rodada, as duas combinações dadas como utilizáveis no estado final
+(web novo × API nova e web anterior × API nova) foram abertas **no navegador**
+(Chromium pelo Playwright, `next start` de cada versão, API nova em
+`dist/main.js`, numa cópia desse mesmo banco). As outras duas combinações
+continuam conferidas só pelas funções de cada web.
+
 ### API
 
 | Estado | API anterior | API nova |
@@ -420,10 +452,37 @@ API anterior no estado final, **depois** de a API nova ter gravado:
 
 | Combinação (estado final) | Resultado |
 | --- | --- |
-| web anterior × API nova | sessão, serviços, agenda, recebimentos, criar reserva de um serviço, lista e ficha do portal: ok. **A ficha de um estabelecimento com "sem vencimento" não abre** (o validador anterior não conhece o estado `NO_EXPIRY`). Reserva com vários serviços aparece com o primeiro serviço e o horário de fim certo. Não há como criar reserva múltipla nem cadastrar preço |
-| web nova × API nova | tudo ok |
+| web anterior × API nova (**navegador**) | login, agenda, criar reserva de um serviço pela tela, recebimentos, lista do portal e fichas comuns: ok. Reserva com dois serviços aparece como "Corte + Barba · 50 min", total R$ 75,00 e fim certo, **sem** o detalhe por serviço. **A ficha de um estabelecimento com "sem vencimento" não abre** (abaixo). Não há tela para criar reserva múltipla, preço ou "sem vencimento" |
+| web nova × API nova (**navegador**) | ok: fichas com "sem vencimento" e com preço contratado (R$ 89,90), reserva de dois serviços com o detalhe por serviço, **criar reserva de dois serviços pela tela** (50 min, R$ 75,00), recebimentos |
 | web nova × API anterior | **criar reserva falha** (400: a API anterior exige `serviceId`); as telas de preço e "sem vencimento" chamam rotas que a API anterior não tem. Não use |
 | web anterior × API anterior | igual a hoje, com as diferenças da API anterior acima |
+
+#### Web anterior: a ficha de estabelecimento com "sem vencimento"
+
+A API nova responde `access.state: "NO_EXPIRY"`; o validador do web anterior
+só aceita `UNTRACKED`, `MISSING`, `TRIAL`, `PAID`, `COURTESY` e `EXPIRED` e
+recusa a ficha **inteira**: a tela mostra "Não foi possível carregar os dados
+da administração." com "Tentar novamente" (conferido no navegador). Para
+**esse** estabelecimento, no web anterior, ficam indisponíveis todas as
+consultas e ações da ficha:
+
+- consulta: situação, responsáveis, validade, histórico de validade, plano e
+  uso, dados cadastrais, unidades e pessoas com acesso;
+- ações: registrar pagamento, conceder cortesia, prorrogar teste, corrigir
+  registro, suspender, reativar, arquivar, trocar de plano, editar dados e
+  convidar responsável.
+
+A lista do portal continua mostrando o estabelecimento, e as fichas dos
+demais abrem. O uso do próprio estabelecimento pelos donos e pela equipe não
+depende dessa tela.
+
+**Não há correção que preserve o significado:** fazer a API mandar outro
+estado inventaria uma validade que não existe. Alternativa operacional,
+enquanto o web anterior estiver no ar: corrigir o web novo para frente e
+republicá-lo. Retirar o "sem vencimento" só para a ficha abrir muda o acesso
+real do estabelecimento e é decisão do dono, não procedimento de recuperação.
+Por isso, **voltar só o web é recuperação parcial** sempre que existir
+"sem vencimento" em vigor.
 
 ### Combinações e recuperação
 
@@ -431,7 +490,7 @@ API anterior no estado final, **depois** de a API nova ter gravado:
 | --- | --- | --- |
 | API e web anteriores no estado 13 (entre as etapas) | sim | é o estado de passagem previsto |
 | API e web anteriores no estado 14, antes de publicar a API nova | sim | sim (nada novo foi gravado ainda) |
-| API nova + web anterior (entre os dois deploys) | sim, menos a ficha com "sem vencimento" | sim, como janela curta e para **voltar só o web** |
+| API nova + web anterior (entre os dois deploys) | sim, menos a ficha com "sem vencimento" e sem as telas novas | como janela curta, sim. Para **voltar só o web**, **parcial**: sem "sem vencimento" em vigor, recupera as telas anteriores; com ele, os estabelecimentos nesse estado ficam sem ficha (seção acima) |
 | API nova + web novo | sim | destino |
 | API anterior depois de usar a versão nova | parcialmente | **não**: tira o "sem vencimento" de quem o tem, mostra reserva múltipla errada e devolve o portal aos papéis delegados |
 | web novo + API anterior | não | **não** |
@@ -452,7 +511,7 @@ novo no ar com a API anterior.
 | --- | --- | --- |
 | falha numa etapa, nada gravado (`ERR_MIGRATION_FALHOU`) | repetir a fase `aplicar` da mesma etapa em outro momento | — |
 | resultado incerto | `conferir`; seguir a partir do estado lido | `divergente` |
-| defeito de tela do web novo, API nova sã | **voltar só o web** para `99242a6` | houver estabelecimento com "sem vencimento" que precise ser administrado |
+| defeito de tela do web novo, API nova sã | **voltar só o web** para `99242a6` (recuperação parcial: sem preço, contrato, reserva múltipla nem "sem vencimento" na tela) | houver estabelecimento com "sem vencimento" que precise ser administrado: nesse caso, corrigir o web novo para frente |
 | defeito da API nova | **corrigir para frente** (commit novo, revisado, com checks, API → web) | a correção não estiver pronta: **interrupção controlada** (suspender a API no Render, como no runbook comercial; não ensaiado) |
 | defeito grave da API nova e o dono decide voltar a API anterior | só com decisão explícita, sabendo das consequências em "Compatibilidade" | — |
 | problema de dados depois de uma migration | **parar** e investigar numa cópia restaurada | sempre |
@@ -484,9 +543,17 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 
 ### Ambiente
 
-- **Destino:** PostgreSQL **17.11** local (binários oficiais para Windows,
-  zip da EDB baixado por HTTPS, sem assinatura Authenticode; sha256
-  `6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3`), só
+- **Destino:** PostgreSQL **17.11** local. Binários para Windows do zip
+  `https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip`
+  (o link de download da página do PostgreSQL para Windows), baixado por
+  HTTPS. O sha256
+  `6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3` foi
+  **calculado localmente** depois do download e **não foi comparado** com um
+  checksum publicado pelo fornecedor; os executáveis e a `libpq.dll` **não têm
+  assinatura Authenticode** (`Get-AuthenticodeSignature`: `NotSigned`). Isso
+  identifica o arquivo usado, mas não prova a origem além do HTTPS. Só
+  `bin`, `lib` e `share` foram extraídos; o zip foi apagado por falta de
+  espaço, então o hash não pode ser recalculado. Só
   `hostssl` com `scram-sha-256`, certificado de uma CA descartável para o host
   fictício `ep-ensaio-piloto-444.c-2.us-east-1.aws.neon.tech` (conexão
   desviada para 127.0.0.1 pelo modo ensaio), banco `neondb` com dono **não
@@ -501,11 +568,65 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 - **Commit do kit ensaiado:** `e0bdb77fc181aa017eb7f3b4d5bfaa325dde5e84`. Antes,
   em `f3552258d891e775ae33ade5cd5b7412286eb299`, rodaram `conferir`, `preparar`
   e as recusas; a restauração ali achou o defeito corrigido em `e0bdb77` (a
-  etapa 1 carregava as duas migrations). Depois de `e0bdb77` só mudaram a
-  documentação e um teste db-e2e: conferir com
-  `git diff e0bdb77 <sha> -- backend/scripts backend/src`, que deve sair vazio.
+  etapa 1 carregava as duas migrations). A revisão mudou o kit em `03557e7` e
+  `65fa44b`, o commit da segunda rodada (abaixo). Depois de `65fa44b` só a
+  documentação muda: conferir com
+  `git diff 65fa44b <sha> -- backend/scripts backend/src`, que deve sair vazio.
 
-### Execução oficial, harness e limitações
+### Segunda rodada: lançador oficial do começo ao fim (kit em `65fa44b`)
+
+Kit em `65fa44b80ac91c8989377d63441156d0fd75f5b9` (as correções da revisão:
+desfecho e códigos de saída, listagem de contas, explicação no lançador).
+Mesmo servidor 17.11, mesmos dados fictícios num banco `neondb` novo criado
+do modelo de doze migrations, pasta de operações nova.
+
+**Como:** o lançador `abrir-portal-multisservicos-piloto.ps1 -Ensaio` rodou
+por `powershell.exe -File` dentro de um **pseudoconsole real do Windows**
+(ConPTY, pelo pacote `@lydell/node-pty`, fora do repositório). O script viu
+um TTY de verdade, a URL foi digitada no prompt oculto e a frase no prompt de
+confirmação, como um operador. Sem `node --import`, sem harness, sem
+alteração do kit.
+
+| # | Fase (lançador oficial) | Resultado |
+| --- | --- | --- |
+| 1 | `conferir` | `ESTADO: before-platform-portal`, 0/36; `CONTAS_LISTADAS: 4 de 4`; `DESFECHO: estado_identificado`, código 0 |
+| 2 | `preparar -Etapa portal` | backup 153.697 bytes, 41 tabelas; `preparado_sem_gravacao`, código 0 |
+| 3 | `restauracao -Etapa portal` | 41 tabelas, contagens e md5 iguais; na cópia só PlatformPortal (`FORA_DESTA_ETAPA`); todas as linhas `ENSAIO_*` `true` (registros comerciais 4 períodos, 1 anulado, 2 anteriores; reservas 3, recebimentos 2; contas iguais); código 0 |
+| 4 | `aplicar -Etapa portal`, frase errada | backup novo, `MOTIVO: a frase digitada é diferente`, `DESFECHO: abortado_sem_gravacao`, **código 1** (antes da revisão, saía 0) |
+| 5 | `aplicar -Etapa portal` | `MESMO_SERVIDOR_DO_BACKUP_CONFERIDO: sim`; `TLS_MIGRATION: TLSv1.3`; `SESSAO_DA_MIGRATION: mesma=true lock_timeout=10s`; só PlatformPortal; 13, 35/36; `CONTAGENS_DESDE_O_BACKUP: iguais`; `ESTADO: after-platform-portal`; `aplicada_e_conferida`, código 0 |
+| 6 | `conferir` | `ESTADO: after-platform-portal`, código 0 |
+| 7 | `aplicar -Etapa portal` de novo | `ERR_ETAPA_JA_APLICADA`, `parado_sem_gravacao`, código 1 |
+| 8 | `preparar -Etapa multisservicos` | backup 166.871 bytes, 44 tabelas; código 0 |
+| 9 | **`restauracao -Etapa multisservicos`** | 44 tabelas, contagens e md5 iguais; na cópia só AppointmentServiceSnapshots; `ENSAIO_COLUNAS_ANTIGAS_IGUAIS: true (appointment_items)`, `ENSAIO_COLUNAS_NOVAS_NULAS: true (appointment_items=0)`; registros comerciais, contas, reservas e recebimentos iguais; código 0 |
+| 10 | `aplicar -Etapa multisservicos` | só AppointmentServiceSnapshots; 14, 36/36; contagens iguais ao backup; `ESTADO: after-appointment-snapshots`; código 0 |
+| 11 | `conferir` | `ESTADO: after-appointment-snapshots`, "a API nova pode ser publicada"; código 0 |
+| 12 | `aplicar -Etapa multisservicos` de novo | `ERR_ETAPA_JA_APLICADA`, código 1 |
+| 13 | queda no lugar do COMMIT, etapa 1 (banco novo de doze) | **harness** (único jeito de derrubar o socket): `ERR_RESULTADO_INCERTO`, `DESFECHO: resultado_incerto`, **código 3** |
+| 14 | `conferir` depois da queda | lançador: `ESTADO: before-platform-portal`, código 0 |
+
+Nenhuma das 14 transcrições contém a senha do banco (conferido pelo próprio
+driver). As demais recusas da primeira rodada (lock `55P03`, queda depois do
+COMMIT, backup de outro commit, proteções do modo piloto) não foram
+repetidas: o código delas não mudou na revisão; mudaram só a linha
+`DESFECHO` e o código de saída, cobertos pelos testes de
+`portal-multisservicos-piloto.spec.ts`.
+
+Testes automáticos novos da revisão: `test/aplicar-somente-a-pendente.db-e2e-spec.ts`
+roda `aplicarSomenteAPendente` com o runtime compilado num banco temporário.
+Cada etapa aplica só a sua migration. Ficam recusadas antes de qualquer
+comando da migration, sem mudar o histórico:
+
+- repetição e etapa fora de ordem;
+- pendente trocada;
+- histórico com migration desconhecida;
+- lista de posteriores com nome desconhecido, a mais ou vazia;
+- e, sem `posteriores` (comportamento dos kits anteriores), as duas pendentes
+  compiladas.
+
+Tirar a retirada das posteriores, ou voltar a ordem antiga da listagem de
+contas, faz os testes falharem (conferido).
+
+### Primeira rodada: execução oficial, harness e limitações (kit em `e0bdb77`)
 
 - **Lançador oficial** (`abrir-portal-multisservicos-piloto.ps1`, sem nada no
   meio): fase `restauracao` da etapa 1 completa, com os binários 17.11.
@@ -513,9 +634,10 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
   carregado por `node --import`, que o modo piloto recusa): `preparar`,
   `aplicar` e `conferir` de todos os casos abaixo e a restauração da etapa 2.
   O harness só substitui o terminal e, nos casos de queda, derruba o socket no
-  cliente. **Não é prova do lançador** nessas fases.
+  cliente. **Não é prova do lançador** nessas fases (a segunda rodada cobriu
+  o caminho inteiro pelo lançador).
 
-### Resultados
+### Resultados da primeira rodada
 
 | Caso | Como | Resultado |
 | --- | --- | --- |
@@ -539,23 +661,31 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`;
 | senhas do banco em `operacoes.jsonl`, manifestos e saídas | — | nenhuma ocorrência |
 
 Testes automáticos: `portal-multisservicos-piloto.spec.ts` e
-`lib/portal-multisservicos-schema.spec.ts` (regras puras e nomes conferidos
-contra o texto das migrations), `operacao-piloto.spec.ts` (migrations
-posteriores) e `test/pilot-portal-multisservicos-check.db-e2e-spec.ts` (a
-conferência e as duas consultas contra o banco com as catorze migrations).
+`lib/portal-multisservicos-schema.spec.ts` (regras puras, desfecho e nomes
+conferidos contra o texto das migrations), `operacao-piloto.spec.ts`
+(migrations posteriores), `test/aplicar-somente-a-pendente.db-e2e-spec.ts`
+(aplicação real das duas etapas num banco temporário) e
+`test/pilot-portal-multisservicos-check.db-e2e-spec.ts` (a conferência, a
+listagem cortada com proprietários primeiro e as duas consultas contra o
+banco com as catorze migrations).
 
 ### Limitações
 
-- As quedas foram simuladas no cliente, não por falha de rede do Neon.
-- O lançador foi exercido por inteiro só na restauração da etapa 1; as outras
-  fases rodaram com terminal simulado. A colagem real com Ctrl+V é a ensaiada
-  nas publicações anteriores.
-- O banco descartável é PostgreSQL local no Windows, não o Neon.
-- A conferência posterior que falha depois de um COMMIT confirmado (saída 2)
-  não foi repetida neste kit: o código é o mesmo de CommercialAccess, onde foi
-  ensaiado.
-- Os webs foram conferidos pelas funções reais de cada um contra respostas
-  reais, **não no navegador**; nenhuma tela foi aberta neste ensaio.
+- As quedas foram simuladas no cliente (harness), não por falha de rede do
+  Neon; são os únicos casos que ainda dependem do terminal simulado.
+- O lançador rodou por inteiro num pseudoconsole (ConPTY) com a entrada
+  digitada pelo driver do ensaio, não por uma pessoa no Windows Terminal. A
+  colagem real com Ctrl+V é a ensaiada nas publicações anteriores.
+- O banco descartável é PostgreSQL local no Windows, não o Neon. Os binários
+  17.11 têm só o sha256 calculado localmente (sem comparação com checksum do
+  fornecedor e sem assinatura; ver "Ambiente").
+- A conferência posterior que falha depois de um COMMIT confirmado (código 2)
+  não foi provocada neste kit; o caminho é o mesmo de CommercialAccess, onde
+  foi ensaiado, e o código de saída está nos testes unitários.
+- No navegador: só web novo × API nova e web anterior × API nova, no estado
+  final. Web novo × API anterior e web anterior × API anterior seguem
+  conferidos pelas funções de cada web. O ensaio de navegador não cobriu
+  gerente, profissional, link público nem o celular.
 - A troca de API no Render e a suspensão do serviço **não** foram ensaiadas.
 - A versão Live do Render é registrada como `99242a6` na continuidade; confira
   no painel antes de publicar.
