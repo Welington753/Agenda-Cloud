@@ -58,7 +58,7 @@ async function capturar(page: Page, nome: string, pasta: (f: string) => string) 
     for (const width of [1280, 390, 360]) {
       await page.setViewportSize({ width, height: 844 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await page.screenshot({ path: pasta(`portal-${nome}-${tema}-${width}.png`), fullPage: true });
+      await page.screenshot({ path: pasta(`administracao-${nome}-${tema}-${width}.png`), fullPage: true });
     }
   }
   await page.emulateMedia({ colorScheme: "light" });
