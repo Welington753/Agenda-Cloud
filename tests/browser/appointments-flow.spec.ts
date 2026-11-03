@@ -837,8 +837,9 @@ test("vários serviços com o mesmo profissional: resumo do servidor e uma reser
   await page.getByLabel("Dia", { exact: true }).fill(DATA);
   await abrirNovoAgendamento(page);
   const servicos = page.getByTestId("servicos-da-reserva");
-  // Corte primeiro (o primeiro serviço costuma vir marcado; `check` não
-  // desmarca), e a Barba entra depois dele, na ordem do atendimento.
+  // Um dos serviços do profissional já vem marcado (a ordem dos vínculos não
+  // é fixa): desmarca os dois e marca na ordem do atendimento, Corte e Barba.
+  for (const nome of ["Corte", "Barba"]) await servicos.getByRole("checkbox", { name: nome }).uncheck();
   await servicos.getByRole("checkbox", { name: "Corte" }).check();
   await servicos.getByRole("checkbox", { name: "Barba" }).check();
   await expect(page.getByTestId("ordem-dos-servicos")).toContainText("Corte + Barba");
