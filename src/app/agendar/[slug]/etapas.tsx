@@ -16,7 +16,7 @@ import {
 import type { Escolhas, HorarioEscolhido } from "@/lib/agendamento-publico/fluxo-publico";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { CartaoServico, Dias, Horarios, type EstadoHorarios } from "./escolhas";
+import { CartaoServico, Dias, Horarios, ResumoDaCombinacao, type EstadoHorarios } from "./escolhas";
 import { Resumo } from "./recibo";
 
 const CLASSE_CAMPO =
@@ -42,15 +42,26 @@ export function EtapaServico({
   comBusca,
   busca,
   aoBuscar,
-  escolhido,
+  escolhidos,
   aoEscolher,
+  aoAlternar,
+  resumo,
+  semProfissional,
+  aoContinuar,
 }: {
   servicos: PaginaPublica["services"];
   comBusca: boolean;
   busca: string;
   aoBuscar: (termo: string) => void;
-  escolhido: string | null;
+  escolhidos: readonly string[];
+  /** Tocar no cartão: só este serviço, e segue para o profissional. */
   aoEscolher: (serviceId: string) => void;
+  /** "Adicionar"/"Retirar": monta a combinação, sem sair da etapa. */
+  aoAlternar: (serviceId: string) => void;
+  /** Com dois ou mais serviços: itens, duração total e preço. */
+  resumo: { rotulo: string; minutos: number; preco: string } | null;
+  semProfissional: boolean;
+  aoContinuar: () => void;
 }) {
   return (
     <section className="space-y-3" aria-label="Serviço">
@@ -72,7 +83,13 @@ export function EtapaServico({
       )}
       <div className="grid gap-2 sm:grid-cols-2" data-testid="lista-servicos-publicos">
         {servicos.map((s) => (
-          <CartaoServico key={s.id} servico={s} ativo={escolhido === s.id} aoEscolher={() => aoEscolher(s.id)} />
+          <CartaoServico
+            key={s.id}
+            servico={s}
+            ativo={escolhidos.includes(s.id)}
+            aoEscolher={() => aoEscolher(s.id)}
+            aoAlternar={() => aoAlternar(s.id)}
+          />
         ))}
       </div>
       {servicos.length === 0 && (
@@ -80,6 +97,7 @@ export function EtapaServico({
           Nenhum serviço com esse nome.
         </p>
       )}
+      {resumo && <ResumoDaCombinacao resumo={resumo} semProfissional={semProfissional} aoContinuar={aoContinuar} />}
     </section>
   );
 }
@@ -225,7 +243,8 @@ export function EtapaDados({
 
 export function EtapaRevisar({
   estabelecimento,
-  servico,
+  resumo,
+  varios,
   profissional,
   date,
   slot,
@@ -238,7 +257,9 @@ export function EtapaRevisar({
   aoVerificar,
 }: {
   estabelecimento: string;
-  servico: PaginaPublica["services"][number];
+  /** Os serviços escolhidos, resumidos (ver `resumoPublico`). */
+  resumo: { rotulo: string; minutos: number; preco: string };
+  varios: boolean;
   profissional: string;
   date: string;
   slot: HorarioEscolhido;
@@ -258,7 +279,7 @@ export function EtapaRevisar({
             testId="resumo-pedido"
             linhas={[
               { rotulo: "Estabelecimento", valor: estabelecimento, testId: "resumo-estabelecimento" },
-              { rotulo: "Serviço", valor: `${servico.name} · ${servico.durationMinutes} min`, testId: "resumo-servico" },
+              { rotulo: varios ? "Serviços" : "Serviço", valor: `${resumo.rotulo} · ${resumo.minutos} min`, testId: "resumo-servico" },
               { rotulo: "Profissional", valor: profissional, testId: "resumo-profissional" },
               { rotulo: "Data", valor: dataPorExtenso(date), testId: "resumo-data" },
               {
@@ -271,7 +292,7 @@ export function EtapaRevisar({
                 ),
                 testId: "resumo-hora",
               },
-              { rotulo: "Preço", valor: precoPublico(servico.priceCents, servico.priceVisible), testId: "resumo-preco" },
+              { rotulo: varios ? "Total" : "Preço", valor: resumo.preco, testId: "resumo-preco" },
               { rotulo: "Nome", valor: nome.trim(), testId: "resumo-nome" },
               { rotulo: "WhatsApp", valor: whatsapp.trim(), testId: "resumo-whatsapp" },
             ]}
@@ -303,3 +324,4 @@ export function EtapaRevisar({
     </section>
   );
 }
+

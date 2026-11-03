@@ -173,7 +173,7 @@ export default function AgendamentosPage() {
 
   async function aoConfirmar(dados: {
     professionalId: string;
-    serviceId: string;
+    serviceIds: string[];
     startAt: string;
     consumer: SelecaoDeCliente;
   }): Promise<AgendamentoReal | null> {

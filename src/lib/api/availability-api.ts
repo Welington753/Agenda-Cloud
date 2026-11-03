@@ -35,9 +35,24 @@ export interface HorarioReal {
   offsetLabel: string;
 }
 
+/** Um serviço escolhido, como seria congelado agora (resumo antes de
+ * confirmar). `priceCents: null` = sob consulta ou escondido. */
+export interface ServicoDaConsulta {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  priceCents: number | null;
+}
+
 export interface DisponibilidadeReal {
   professionalId: string;
   serviceId: string;
+  /** Vários serviços (mesmo profissional): ausentes numa API anterior. */
+  serviceIds?: string[];
+  services?: ServicoDaConsulta[];
+  /** Soma dos preços; `null` se algum é sob consulta ou está escondido. */
+  totalPriceCents?: number | null;
+  priceHidden?: boolean;
   /** Data consultada (`YYYY-MM-DD`), no fuso abaixo. */
   date: string;
   timezone: string;
@@ -102,8 +117,29 @@ function ehDisponibilidade(valor: unknown): valor is DisponibilidadeReal {
     numeroOuNulo(v.maxFutureDays) &&
     Array.isArray(v.slots) &&
     v.slots.every(ehHorario) &&
-    (v.emptyReason === null || ehMotivo(v.emptyReason))
+    (v.emptyReason === null || ehMotivo(v.emptyReason)) &&
+    (v.services === undefined ||
+      (Array.isArray(v.services) &&
+        v.services.every(
+          (s: unknown) =>
+            typeof s === "object" &&
+            s !== null &&
+            typeof (s as ServicoDaConsulta).id === "string" &&
+            typeof (s as ServicoDaConsulta).name === "string" &&
+            typeof (s as ServicoDaConsulta).durationMinutes === "number" &&
+            numeroOuNulo((s as ServicoDaConsulta).priceCents),
+        ))) &&
+    (v.totalPriceCents === undefined || numeroOuNulo(v.totalPriceCents))
   );
+}
+
+/** Um serviço: `serviceId=...` (o mesmo contrato de sempre). Vários:
+ * `serviceIds=a,b`, na ordem do atendimento. */
+export function parametroDosServicos(servicos: string | readonly string[]): string {
+  const lista = typeof servicos === "string" ? [servicos] : servicos;
+  return lista.length === 1
+    ? `serviceId=${encodeURIComponent(lista[0])}`
+    : `serviceIds=${lista.map(encodeURIComponent).join(",")}`;
 }
 
 function falhaPorStatus(status: number, data: unknown): FalhaDisponibilidadeReal {
@@ -124,14 +160,14 @@ function falhaPorStatus(status: number, data: unknown): FalhaDisponibilidadeReal
 export async function consultarDisponibilidade(
   tenantId: string,
   professionalId: string,
-  serviceId: string,
+  servicos: string | readonly string[],
   date: string,
   signal?: AbortSignal,
 ): Promise<ResultadoDisponibilidadeReal<DisponibilidadeReal>> {
   const caminho =
     `/tenants/${encodeURIComponent(tenantId)}` +
     `/professionals/${encodeURIComponent(professionalId)}/availability` +
-    `?serviceId=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`;
+    `?${parametroDosServicos(servicos)}&date=${encodeURIComponent(date)}`;
 
   const resultado = await apiRequest<unknown>(caminho, { method: "GET", signal });
 

@@ -4,9 +4,12 @@
 //
 // Serviço → Profissional → Dia e horário → Seus dados → Revisar.
 //
-// - Um serviço e um profissional por pedido.
-// - Trocar o serviço mantém o profissional só se ele ainda atende o serviço
-//   novo; o horário escolhido sempre cai (a duração pode ser outra).
+// - Um ou mais serviços e UM profissional por pedido, que faça todos eles
+//   (ver docs/plans/agendamento-multiplos-servicos.md). Tocar no cartão
+//   escolhe só aquele serviço (o caminho rápido de sempre); "Adicionar" monta
+//   a combinação.
+// - Mudar os serviços mantém o profissional só se ele ainda atende todos;
+//   o horário escolhido sempre cai (a duração pode ser outra).
 // - Trocar o profissional ou o dia derruba o horário escolhido.
 // - A etapa "Profissional" é sempre mostrada. Com UM profissional válido
 //   para o serviço, ele já vem escolhido (nome na tela) e a pessoa só
@@ -14,7 +17,8 @@
 //   outro profissional por conta própria.
 // - Nenhum horário fica "reservado" aqui: o servidor revalida tudo no envio.
 import type { PaginaPublica } from "@/lib/api/public-booking-api";
-import { nomePlausivel, whatsappPlausivel } from "./agendamento-publico";
+import { nomePlausivel, precoPublico, whatsappPlausivel } from "./agendamento-publico";
+import { alternarServico, profissionaisCompativeis } from "@/lib/profissionais/servicos-da-reserva";
 
 export const ETAPAS = ["Serviço", "Profissional", "Dia e horário", "Seus dados", "Revisar"] as const;
 export type Etapa = 0 | 1 | 2 | 3 | 4;
@@ -31,7 +35,8 @@ export interface HorarioEscolhido {
 }
 
 export interface Escolhas {
-  serviceId: string | null;
+  /** Na ordem em que a pessoa escolheu (a ordem do atendimento). */
+  serviceIds: string[];
   professionalId: string | null;
   date: string | null;
   slot: HorarioEscolhido | null;
@@ -40,7 +45,7 @@ export interface Escolhas {
 }
 
 export const ESCOLHAS_VAZIAS: Escolhas = {
-  serviceId: null,
+  serviceIds: [],
   professionalId: null,
   date: null,
   slot: null,
@@ -48,12 +53,41 @@ export const ESCOLHAS_VAZIAS: Escolhas = {
   whatsapp: "",
 };
 
-export function profissionaisDoServico(pagina: PaginaPublica, serviceId: string | null) {
-  if (!serviceId) return [];
-  return pagina.professionals.filter((p) => p.serviceIds.includes(serviceId));
+/** Profissionais que fazem TODOS os serviços escolhidos. */
+export function profissionaisDoServico(pagina: PaginaPublica, servicos: readonly string[] | string | null) {
+  const lista = servicos === null ? [] : typeof servicos === "string" ? [servicos] : servicos;
+  if (lista.length === 0) return [];
+  return profissionaisCompativeis(pagina.professionals, lista);
 }
 
-/** Escolhe o serviço (a etapa seguinte é sempre "Profissional"). Com
+/** Aplica uma nova lista de serviços: o profissional fica só se fizer todos
+ * (ou é o único que faz); o horário cai se a lista mudou. */
+function comServicos(pagina: PaginaPublica, atual: Escolhas, serviceIds: string[], primeiroDia: string | null): Escolhas {
+  const opcoes = profissionaisDoServico(pagina, serviceIds);
+  const unico = opcoes.length === 1 ? opcoes[0].id : null;
+  const professionalId =
+    unico ?? (atual.professionalId && opcoes.some((p) => p.id === atual.professionalId) ? atual.professionalId : null);
+  const mesmaLista = serviceIds.length === atual.serviceIds.length && serviceIds.every((id, i) => atual.serviceIds[i] === id);
+  return {
+    ...atual,
+    serviceIds,
+    professionalId,
+    date: unico ? (atual.date ?? primeiroDia) : atual.date,
+    slot: mesmaLista && professionalId === atual.professionalId ? atual.slot : null,
+  };
+}
+
+/** "Adicionar"/"Retirar" um serviço da combinação, sem avançar de etapa. */
+export function alternarServicoNaEscolha(
+  pagina: PaginaPublica,
+  atual: Escolhas,
+  serviceId: string,
+  primeiroDia: string | null,
+): Escolhas {
+  return comServicos(pagina, atual, alternarServico(atual.serviceIds, serviceId), primeiroDia);
+}
+
+/** Escolhe SÓ este serviço (a etapa seguinte é sempre "Profissional"). Com
  * profissional único, ele já fica escolhido e o dia, se ainda não houver, é
  * `primeiroDia`. */
 export function escolherServico(
@@ -62,17 +96,7 @@ export function escolherServico(
   serviceId: string,
   primeiroDia: string | null,
 ): Escolhas {
-  const opcoes = profissionaisDoServico(pagina, serviceId);
-  const unico = opcoes.length === 1 ? opcoes[0].id : null;
-  const professionalId =
-    unico ?? (atual.professionalId && opcoes.some((p) => p.id === atual.professionalId) ? atual.professionalId : null);
-  return {
-    ...atual,
-    serviceId,
-    professionalId,
-    date: unico ? (atual.date ?? primeiroDia) : atual.date,
-    slot: atual.serviceId === serviceId && professionalId === atual.professionalId ? atual.slot : null,
-  };
+  return comServicos(pagina, atual, [serviceId], primeiroDia);
 }
 
 /** Escolhe o profissional; o dia, se ainda não houver, é o primeiro oferecido. */
@@ -102,8 +126,10 @@ export function dadosCompletos(e: Escolhas): boolean {
 
 /** Etapa mais adiantada que as escolhas atuais permitem abrir. */
 export function etapaMaxima(pagina: PaginaPublica, e: Escolhas): Etapa {
-  if (!e.serviceId || !pagina.services.some((s) => s.id === e.serviceId)) return ETAPA_SERVICO;
-  if (!e.professionalId || !profissionaisDoServico(pagina, e.serviceId).some((p) => p.id === e.professionalId)) {
+  if (e.serviceIds.length === 0 || !e.serviceIds.every((id) => pagina.services.some((s) => s.id === id))) {
+    return ETAPA_SERVICO;
+  }
+  if (!e.professionalId || !profissionaisDoServico(pagina, e.serviceIds).some((p) => p.id === e.professionalId)) {
     return ETAPA_PROFISSIONAL;
   }
   if (!e.date || !e.slot) return ETAPA_HORARIO;
@@ -114,4 +140,24 @@ export function etapaMaxima(pagina: PaginaPublica, e: Escolhas): Etapa {
 /** Etapa anterior ao voltar: sempre a imediatamente antes, sem pular nenhuma. */
 export function etapaAnterior(etapa: Etapa): Etapa {
   return etapa === ETAPA_SERVICO ? ETAPA_SERVICO : ((etapa - 1) as Etapa);
+}
+
+/** Os serviços escolhidos, na ordem, como a página os mostra. */
+export function servicosEscolhidos(pagina: PaginaPublica, e: Pick<Escolhas, "serviceIds">) {
+  return e.serviceIds
+    .map((id) => pagina.services.find((s) => s.id === id))
+    .filter((s): s is PaginaPublica["services"][number] => !!s);
+}
+
+/** Resumo do pedido antes de enviar: nomes, duração total e preço. Um
+ * serviço: o preço dele, como sempre. Vários: a soma só quando todos mostram
+ * preço; senão "Sob consulta" (nunca uma soma parcial). O servidor recalcula
+ * tudo com os valores congelados na reserva. */
+export function resumoPublico(servicos: readonly PaginaPublica["services"][number][]) {
+  const rotulo = servicos.map((s) => s.name).join(" + ");
+  const minutos = servicos.reduce((t, s) => t + s.durationMinutes, 0);
+  if (servicos.length === 1) return { rotulo, minutos, preco: precoPublico(servicos[0].priceCents, servicos[0].priceVisible) };
+  const visiveis = servicos.length > 0 && servicos.every((s) => s.priceVisible && s.priceCents !== null);
+  const total = servicos.reduce((t, s) => t + (s.priceCents ?? 0), 0);
+  return { rotulo, minutos, preco: visiveis ? precoPublico(total, true) : "Sob consulta" };
 }

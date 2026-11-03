@@ -1,7 +1,10 @@
 "use client";
 
-// Formulário de nova reserva (Lote 6D.5): cliente, profissional, serviço,
-// horário vindo da API de disponibilidade, resumo e confirmação.
+// Formulário de nova reserva (Lote 6D.5): cliente, profissional, um ou mais
+// serviços (todos com o MESMO profissional, entre os que ele realiza),
+// horário vindo da API de disponibilidade, resumo e confirmação. Itens,
+// preço total e duração total do resumo vêm da consulta ao servidor, que
+// recalcula tudo de novo ao gravar.
 //
 // Os horários NUNCA são montados no navegador: cada opção é um slot devolvido
 // pelo backend, e o que é enviado é o `startAt` (instante ISO) exato daquele
@@ -32,6 +35,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { BotaoHorario } from "./botao-horario";
 import { SeletorCliente } from "./seletor-cliente";
+import { ResumoDosItens, SelecaoDeServicos } from "./selecao-de-servicos";
 
 interface NovaReservaProps {
   tenantId: string;
@@ -45,7 +49,7 @@ interface NovaReservaProps {
   erro: string | null;
   aoConfirmar: (dados: {
     professionalId: string;
-    serviceId: string;
+    serviceIds: string[];
     startAt: string;
     consumer: SelecaoDeCliente;
   }) => Promise<AgendamentoReal | null>;
@@ -64,7 +68,7 @@ export function NovaReserva({
   const ativos = useMemo(() => profissionais.filter((p) => p.active), [profissionais]);
 
   const [professionalId, setProfessionalId] = useState("");
-  const [serviceId, setServiceId] = useState("");
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [startAt, setStartAt] = useState("");
   const [clienteExistente, setClienteExistente] = useState<ClienteReal | null>(null);
   const [clienteNovo, setClienteNovo] = useState<DadosClienteNovo | null>(null);
@@ -88,17 +92,15 @@ export function NovaReserva({
     setProfessionalId((inicial ?? ativos[0]).id);
   }, [professionalId, ativos, profissionalInicialId]);
 
-  // Trocar de profissional invalida o serviço escolhido: os vínculos são
-  // outros. Nunca manter um serviço que aquele profissional não realiza.
+  // Trocar de profissional mantém só os serviços que ele realiza: nunca fica
+  // escolhido um serviço fora dos vínculos dele. Sem nenhum, o primeiro dele.
   useEffect(() => {
-    if (servicosElegiveis.length === 0) {
-      setServiceId("");
-      return;
-    }
-    if (!servicosElegiveis.some((v) => v.serviceId === serviceId)) {
-      setServiceId(servicosElegiveis[0].serviceId);
-    }
-  }, [servicosElegiveis, serviceId]);
+    setServiceIds((atuais) => {
+      const validos = atuais.filter((id) => servicosElegiveis.some((v) => v.serviceId === id));
+      if (validos.length > 0) return validos.length === atuais.length ? atuais : validos;
+      return servicosElegiveis.length > 0 ? [servicosElegiveis[0].serviceId] : [];
+    });
+  }, [servicosElegiveis]);
 
   // Qualquer mudança na seleção invalida o horário já escolhido e o resultado
   // de disponibilidade na tela — os dois passariam a não corresponder aos
@@ -106,7 +108,7 @@ export function NovaReserva({
   useEffect(() => {
     setStartAt("");
     limparDisponibilidade();
-  }, [professionalId, serviceId, date, limparDisponibilidade]);
+  }, [professionalId, serviceIds, date, limparDisponibilidade]);
 
   const selecaoCliente: SelecaoDeCliente | null = clienteExistente
     ? { mode: "existing", consumerId: clienteExistente.id }
@@ -127,7 +129,7 @@ export function NovaReserva({
 
     const criado = await aoConfirmar({
       professionalId,
-      serviceId,
+      serviceIds,
       startAt: slotEscolhido.startAt,
       consumer: selecaoCliente,
     });
@@ -182,28 +184,15 @@ export function NovaReserva({
               </select>
             </div>
 
-            <div>
-              <label htmlFor="servico" className="mb-1 block text-xs font-medium text-ink-soft">
-                Serviço
-              </label>
-              <select
-                id="servico"
-                value={serviceId}
-                disabled={gravando || servicosElegiveis.length === 0}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
-              >
-                {servicosElegiveis.length === 0 && (
-                  <option value="">Nenhum serviço vinculado</option>
-                )}
-                {servicosElegiveis.map((v) => (
-                  <option key={v.serviceId} value={v.serviceId}>
-                    {v.serviceName}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
+
+          <SelecaoDeServicos
+            elegiveis={servicosElegiveis}
+            escolhidos={serviceIds}
+            profissional={profissional?.name}
+            desabilitado={gravando}
+            aoMudar={setServiceIds}
+          />
 
           <SeletorCliente
             tenantId={tenantId}
@@ -228,9 +217,9 @@ export function NovaReserva({
             <Botao
               type="button"
               variante="secundaria"
-              disabled={gravando || consultando || !serviceId}
+              disabled={gravando || consultando || serviceIds.length === 0}
               aria-busy={consultando}
-              onClick={() => disponibilidade.consultar({ serviceId, date })}
+              onClick={() => disponibilidade.consultar({ serviceIds, date })}
             >
               {consultando ? "Consultando..." : "Ver horários livres"}
             </Botao>
@@ -283,10 +272,9 @@ export function NovaReserva({
           <CartaoCorpo className="space-y-1" data-testid="resumo">
             <p className="text-sm font-semibold text-ink">Confira antes de confirmar</p>
             <p className="text-sm text-ink">
-              {slotEscolhido.localStart}–{slotEscolhido.localEnd} ·{" "}
-              {servicosElegiveis.find((v) => v.serviceId === serviceId)?.serviceName} · com{" "}
-              {profissional?.name}
+              {slotEscolhido.localStart}–{slotEscolhido.localEnd} · com {profissional?.name}
             </p>
+            <ResumoDosItens disponibilidade={estado.disponibilidade} />
             <p className="text-sm text-ink">
               Cliente: {clienteExistente?.name ?? clienteNovo?.name ?? "— selecione um cliente —"}
             </p>
@@ -297,9 +285,8 @@ export function NovaReserva({
                 : ""}
               fuso {estado.disponibilidade.timezone}
             </p>
-            {/* O preço não aparece aqui: quem congela o valor é o servidor,
-                no momento da gravação, e a consulta de disponibilidade não
-                devolve preço. Mostrar um número agora seria inventá-lo. */}
+            {/* Itens, preço e duração vêm da consulta ao servidor; quem
+                congela os valores é o servidor, no momento da gravação. */}
           </CartaoCorpo>
         </Cartao>
       )}
@@ -329,3 +316,4 @@ export function NovaReserva({
     </form>
   );
 }
+

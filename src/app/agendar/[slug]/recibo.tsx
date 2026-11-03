@@ -5,8 +5,9 @@
 import type { ReactNode } from "react";
 import { Clock } from "lucide-react";
 import type { ReciboPedido } from "@/lib/api/public-booking-api";
-import { dataPorExtenso, estadoDoRecibo, tituloDoRecibo } from "@/lib/agendamento-publico/agendamento-publico";
+import { dataPorExtenso, estadoDoRecibo, precoPublico, tituloDoRecibo } from "@/lib/agendamento-publico/agendamento-publico";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
+import { formatarMoeda } from "@/lib/format";
 
 export interface LinhaResumo {
   rotulo: string;
@@ -64,11 +65,15 @@ export function Recibo({
         <Resumo
           linhas={[
             { rotulo: "Estabelecimento", valor: r.establishmentName },
-            { rotulo: "Serviço", valor: r.serviceName },
+            {
+              rotulo: (r.services?.length ?? 1) > 1 ? "Serviços" : "Serviço",
+              valor: <ServicosDoRecibo recibo={r} />,
+              testId: "recibo-servicos",
+            },
             { rotulo: "Profissional", valor: r.professionalName },
             { rotulo: "Data", valor: dataPorExtenso(r.localDate), testId: "recibo-data" },
             { rotulo: "Horário", valor: r.localStart, testId: "recibo-hora" },
-            ...(preco ? [{ rotulo: "Preço", valor: preco }] : []),
+            ...(preco ? [{ rotulo: (r.services?.length ?? 1) > 1 ? "Total" : "Preço", valor: preco, testId: "recibo-preco" }] : []),
             { rotulo: "Nome", valor: nome },
             { rotulo: "WhatsApp", valor: whatsapp },
           ]}
@@ -83,4 +88,30 @@ export function Recibo({
       </CartaoCorpo>
     </Cartao>
   );
+}
+
+/** Um serviço: o nome. Vários: cada um com a duração (e o preço, quando o
+ * serviço mostra preço no online), mais a duração total. */
+function ServicosDoRecibo({ recibo: r }: { recibo: ReciboPedido }) {
+  if (!r.services || r.services.length <= 1) return <>{r.serviceName}</>;
+  return (
+    <span className="block space-y-0.5">
+      {r.services.map((s, i) => (
+        <span key={i} className="block">
+          {s.name} · {s.durationMinutes} min
+          {s.priceVisible && s.priceCents !== null ? ` · ${formatarMoeda(s.priceCents)}` : ""}
+        </span>
+      ))}
+      {r.totalDurationMinutes !== undefined && (
+        <span className="block text-ink-soft">Duração total: {r.totalDurationMinutes} min</span>
+      )}
+    </span>
+  );
+}
+
+/** Preço no recibo: vários serviços, o total devolvido pelo servidor (com os
+ * valores congelados) ou "Sob consulta"; um serviço, o mesmo de antes. */
+export function precoDoRecibo(recibo: ReciboPedido, precoDeUm: string | null): string | null {
+  if ((recibo.services?.length ?? 1) <= 1) return precoDeUm;
+  return recibo.totalPriceCents != null ? precoPublico(recibo.totalPriceCents, true) : "Sob consulta";
 }

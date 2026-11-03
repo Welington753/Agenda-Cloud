@@ -29,7 +29,7 @@ const AGENDAMENTO = {
 
 const DADOS = {
   professionalId: "p1",
-  serviceId: "s1",
+  serviceIds: ["s1"],
   startAt: "2026-09-20T12:00:00.000Z",
   consumer: { mode: "existing" as const, consumerId: "c1" },
 };
@@ -113,7 +113,7 @@ describe("criarAgendamento", () => {
 
     const [, init] = ultimaChamada();
     const corpo = JSON.parse(init.body as string) as Record<string, unknown>;
-    expect(Object.keys(corpo).sort()).toEqual(["consumer", "professionalId", "serviceId", "startAt"]);
+    expect(Object.keys(corpo).sort()).toEqual(["consumer", "professionalId", "serviceIds", "startAt"]);
     expect(corpo).not.toHaveProperty("priceCents");
     expect(corpo).not.toHaveProperty("status");
     expect(corpo).not.toHaveProperty("endAt");

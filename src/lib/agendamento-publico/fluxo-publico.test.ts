@@ -7,7 +7,9 @@ import {
   ETAPA_PROFISSIONAL,
   ETAPA_REVISAR,
   ETAPA_SERVICO,
+  alternarServicoNaEscolha,
   conferirHorario,
+  resumoPublico,
   escolherDia,
   escolherProfissional,
   escolherServico,
@@ -29,7 +31,7 @@ const PAGINA: PaginaPublica = {
 const NOVE = { startAt: "2027-03-07T12:00:00.000Z", localStart: "09:00" };
 
 function completo(): Escolhas {
-  return { serviceId: "corte", professionalId: "bia", date: "2027-03-07", slot: NOVE, nome: "Joana", whatsapp: "(11) 98888-0001" };
+  return { serviceIds: ["corte"], professionalId: "bia", date: "2027-03-07", slot: NOVE, nome: "Joana", whatsapp: "(11) 98888-0001" };
 }
 
 describe("percurso do agendamento público", () => {
@@ -96,12 +98,40 @@ describe("percurso do agendamento público", () => {
 
   it("só abre a etapa que as escolhas permitem", () => {
     expect(etapaMaxima(PAGINA, ESCOLHAS_VAZIAS)).toBe(ETAPA_SERVICO);
-    expect(etapaMaxima(PAGINA, { ...ESCOLHAS_VAZIAS, serviceId: "corte" })).toBe(ETAPA_PROFISSIONAL);
+    expect(etapaMaxima(PAGINA, { ...ESCOLHAS_VAZIAS, serviceIds: ["corte"] })).toBe(ETAPA_PROFISSIONAL);
     expect(etapaMaxima(PAGINA, { ...completo(), slot: null })).toBe(ETAPA_HORARIO);
     expect(etapaMaxima(PAGINA, { ...completo(), whatsapp: "1234" })).toBe(ETAPA_DADOS);
     expect(etapaMaxima(PAGINA, completo())).toBe(ETAPA_REVISAR);
     // Profissional que não atende o serviço não vale; serviço que saiu do catálogo também não.
     expect(etapaMaxima(PAGINA, { ...completo(), professionalId: "caio" })).toBe(ETAPA_PROFISSIONAL);
-    expect(etapaMaxima(PAGINA, { ...completo(), serviceId: "removido" })).toBe(ETAPA_SERVICO);
+    expect(etapaMaxima(PAGINA, { ...completo(), serviceIds: ["removido"] })).toBe(ETAPA_SERVICO);
+  });
+});
+
+describe("vários serviços no pedido público", () => {
+  it("adicionar a barba ao corte deixa só quem faz os dois, e o horário cai", () => {
+    const comCorte = { ...completo(), professionalId: "bia" };
+    const r = alternarServicoNaEscolha(PAGINA, comCorte, "barba", "2027-03-07");
+    expect(r.serviceIds).toEqual(["corte", "barba"]);
+    // Bia só corta: sai; Ana é a única que faz os dois e fica escolhida.
+    expect(r.professionalId).toBe("ana");
+    expect(r.slot).toBeNull();
+    expect(etapaMaxima(PAGINA, r)).toBe(ETAPA_HORARIO);
+  });
+
+  it("retirar volta à lista anterior; combinação que ninguém faz não deixa seguir", () => {
+    const dois = alternarServicoNaEscolha(PAGINA, ESCOLHAS_VAZIAS, "corte", null);
+    const tres = alternarServicoNaEscolha(PAGINA, dois, "massagem", null);
+    expect(tres.serviceIds).toEqual(["corte", "massagem"]);
+    expect(tres.professionalId).toBeNull();
+    expect(etapaMaxima(PAGINA, tres)).toBe(ETAPA_PROFISSIONAL);
+    expect(alternarServicoNaEscolha(PAGINA, tres, "massagem", null).serviceIds).toEqual(["corte"]);
+  });
+
+  it("Corte + Barba: R$ 67,50 e 60 min; um preço escondido vira sob consulta", () => {
+    const corte = { id: "corte", name: "Corte", description: "", durationMinutes: 30, priceCents: 4250, priceVisible: true };
+    const barba = { id: "barba", name: "Barba", description: "", durationMinutes: 30, priceCents: 2500, priceVisible: true };
+    expect(resumoPublico([corte, barba])).toEqual({ rotulo: "Corte + Barba", minutos: 60, preco: expect.stringContaining("67,50") });
+    expect(resumoPublico([corte, { ...barba, priceVisible: false }]).preco).toBe("Sob consulta");
   });
 });

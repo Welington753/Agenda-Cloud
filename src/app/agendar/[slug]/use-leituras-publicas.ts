@@ -80,21 +80,23 @@ export function usePaginaPublica(slug: string) {
  * leitura anterior; só a última aplica resultado. */
 export function useHorariosPublicos(
   slug: string,
-  consulta: { serviceId: string | null; professionalId: string | null; date: string | null },
+  consulta: { serviceIds: readonly string[]; professionalId: string | null; date: string | null },
   versao: number,
 ): EstadoHorarios {
-  const { serviceId, professionalId, date } = consulta;
+  const { professionalId, date } = consulta;
+  // Chave estável da lista (a dependência do efeito não pode ser o array).
+  const servicos = consulta.serviceIds.join(",");
   const [horarios, setHorarios] = useState<EstadoHorarios>({ status: "ocioso" });
 
   useEffect(() => {
-    if (!serviceId || !professionalId || !date) {
+    if (!servicos || !professionalId || !date) {
       setHorarios({ status: "ocioso" });
       return;
     }
     const controle = new AbortController();
     setHorarios({ status: "carregando" });
     void lerComRecuperacao(
-      (signal) => consultarHorariosPublicos(slug, { serviceId, professionalId, date }, signal),
+      (signal) => consultarHorariosPublicos(slug, { serviceIds: servicos.split(","), professionalId, date }, signal),
       repetirLeituraPublica,
       controle.signal,
       {
@@ -108,7 +110,7 @@ export function useHorariosPublicos(
       setHorarios(r.ok ? { status: "pronto", horarios: r.dados } : { status: "falha", falha: r.falha });
     });
     return () => controle.abort();
-  }, [slug, serviceId, professionalId, date, versao]);
+  }, [slug, servicos, professionalId, date, versao]);
 
   return horarios;
 }
