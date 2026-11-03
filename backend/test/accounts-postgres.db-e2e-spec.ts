@@ -460,7 +460,7 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
       );
       await runner.query(
         `INSERT INTO sessions (id, user_id, token_hash, expires_at, reauthenticated_at) VALUES
-         ($1, $2, $3, now() + interval '1 day', now()), ($4, $5, $6, now() + interval '1 day', now())`,
+         ($1, $2, $3, now() + interval '1 day', now() - interval '1 second'), ($4, $5, $6, now() + interval '1 day', now() - interval '1 second')`,
         [sessaoUnico, unico, id() + id(), sessaoDelegado, delegado, id() + id()],
       );
       const servico = new AccountsAdminService({

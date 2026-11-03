@@ -82,7 +82,7 @@ describe.skipIf(!url)('senha do dono e calendário do funcionário contra Postgr
   async function sessao(userId: string, token = id() + id()) {
     const sessionId = id();
     await db.query(
-      `INSERT INTO sessions (id, user_id, token_hash, expires_at, reauthenticated_at) VALUES ($1, $2, $3, now() + interval '1 day', now())`,
+      `INSERT INTO sessions (id, user_id, token_hash, expires_at, reauthenticated_at) VALUES ($1, $2, $3, now() + interval '1 day', now() - interval '1 second')`,
       [sessionId, userId, hashSessionToken(token)],
     );
     return sessionId;
