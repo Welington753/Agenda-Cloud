@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import {
+  MAXIMO_DE_CONTAS_LISTADAS,
   MIGRATIONS_ATE_NOMES_CONGELADOS,
   TOTAL_OBJETOS_PORTAL_MULTISSERVICOS,
   descreverImpactoPortalMultisservicos,
@@ -86,22 +87,34 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
     const delegado = id();
     const nome = `Pessoa fictícia ${delegado.slice(0, 6)}`;
     const email = `${delegado}@example.test`;
-    await comCliente((c) =>
-      c.query(
-        `INSERT INTO users (id, name, email, status, email_verified, platform_role, platform_permissions)
-         VALUES ($1, $2, $3, 'ACTIVE', true, 'MASTER_SUPPORT', '{ESTABLISHMENTS_MANAGE}')`,
+    // Mais contas globais que o limite da listagem (outras suítes também
+    // criam contas): a conta conferida é a mais antiga do primeiro papel na
+    // ordem, então aparece sempre; as demais ficam em CONTAS_NAO_LISTADAS.
+    const extras = Array.from({ length: MAXIMO_DE_CONTAS_LISTADAS + 5 }, () => id());
+    await comCliente(async (c) => {
+      await c.query(
+        `INSERT INTO users (id, name, email, status, email_verified, platform_role, platform_permissions, created_at)
+         VALUES ($1, $2, $3, 'ACTIVE', true, 'MASTER_ADMIN', '{ESTABLISHMENTS_MANAGE}', '2000-01-01T00:00:00Z')`,
         [delegado, nome, email],
-      ),
-    );
+      );
+      await c.query(
+        `INSERT INTO users (id, name, email, status, email_verified, platform_role)
+         SELECT x, 'Conta fictícia', x || '@example.test', 'ACTIVE', true, 'MASTER_SUPPORT' FROM unnest($1::text[]) x`,
+        [extras],
+      );
+    });
     try {
       const impacto = await comLeitor(lerImpactoPortalMultisservicos);
-      expect(impacto.delegadosAtivos).toBeGreaterThanOrEqual(1);
-      expect(impacto.contas).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_SUPPORT', situacao: 'ACTIVE' }));
+      expect(impacto.delegadosAtivos).toBeGreaterThanOrEqual(1 + extras.length);
+      expect(impacto.contas).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_ADMIN', situacao: 'ACTIVE' }));
+      const total = Object.values(impacto.contasPorPapel).reduce((a, b) => a + b, 0);
+      expect(impacto.contas).toHaveLength(MAXIMO_DE_CONTAS_LISTADAS);
       for (const campo of ['precosDoCatalogo', 'precosContratados', 'semVencimento', 'pagosSemOrigem', 'itensSemNomeCongelado'] as const) {
         expect(impacto[campo]).not.toBeNull();
       }
       const linhas = descreverImpactoPortalMultisservicos(impacto);
-      expect(linhas).toContainEqual(expect.stringMatching(new RegExp(`^CONTA_COM_PAPEL_GLOBAL: id=${delegado} papel=MASTER_SUPPORT situacao=ACTIVE `)));
+      expect(linhas).toContainEqual(expect.stringMatching(new RegExp(`^CONTA_COM_PAPEL_GLOBAL: id=${delegado} papel=MASTER_ADMIN situacao=ACTIVE `)));
+      expect(linhas).toContain(`CONTAS_NAO_LISTADAS: ${total - MAXIMO_DE_CONTAS_LISTADAS}`);
       expect(linhas).toContainEqual(expect.stringMatching(/^DELEGADOS_ATIVOS_QUE_PERDEM_O_PORTAL: [1-9]\d*$/));
       expect(linhas.join('\n')).not.toContain(nome);
       expect(linhas.join('\n')).not.toContain(email);
@@ -111,7 +124,9 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
       );
       soLeitura(impactoSql);
       const linhasSql = impactoSql.flatMap((r) => r.rows);
-      expect(linhasSql).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_SUPPORT' }));
+      expect(linhasSql).toContainEqual(expect.objectContaining({ id: delegado, papel: 'MASTER_ADMIN' }));
+      // A consulta do runbook lista todas, sem limite.
+      expect(linhasSql.filter((l) => extras.includes(l.id as string))).toHaveLength(extras.length);
       expect(JSON.stringify(linhasSql)).not.toContain(email);
 
       const identificadas = await comCliente(
@@ -120,7 +135,7 @@ describe.skipIf(!url)('conferência de PlatformPortal e AppointmentServiceSnapsh
       soLeitura(identificadas);
       expect(identificadas.flatMap((r) => r.rows)).toContainEqual(expect.objectContaining({ id: delegado, nome, email }));
     } finally {
-      await comCliente((c) => c.query('DELETE FROM users WHERE id = $1', [delegado]));
+      await comCliente((c) => c.query('DELETE FROM users WHERE id = ANY($1)', [[delegado, ...extras]]));
     }
   });
 });
