@@ -50,6 +50,8 @@ import {
 } from './availability-rules.js';
 import type { AvailabilityQueryDto } from './availability.dto.js';
 import { servicosDaEscolha } from '../appointments/service-selection.js';
+import { managerCan } from '../common/manager-permissions.js';
+import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { ErroDeFuso, janelaDeCarregamento, type DataLocal } from './time-zone.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
@@ -161,6 +163,15 @@ export interface AvailabilityView {
   serviceId: string;
   /** Todos os serviços escolhidos, na ordem do atendimento. */
   serviceIds: string[];
+  /** Os serviços como seriam congelados agora, para o resumo antes de
+   * confirmar. O preço segue a regra da agenda: gerente sem a consulta de
+   * recebimentos recebe `null` e `priceHidden: true`. A reserva recalcula
+   * tudo no servidor ao gravar. */
+  services: { id: string; name: string; durationMinutes: number; priceCents: number | null }[];
+  /** Soma dos preços; `null` se algum é sob consulta ou se o preço está
+   * escondido. */
+  totalPriceCents: number | null;
+  priceHidden: boolean;
   /** Data de calendário consultada, no fuso abaixo. */
   date: string;
   timezone: string;
@@ -212,11 +223,26 @@ export class AvailabilityService {
       query.date,
     );
     const { professional, service, policy, resultado } = calculo;
+    const veDinheiro =
+      authorized.role !== EstablishmentRole.GERENTE ||
+      managerCan(authorized.role, authorized.overrides ?? [], 'RECEBIMENTOS_VISUALIZAR');
+    const itens = calculo.services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      durationMinutes: s.durationMinutes,
+      priceCents: veDinheiro ? (s.priceCents ?? null) : null,
+    }));
 
     return {
       professionalId: professional.id,
       serviceId: service.id,
       serviceIds: calculo.services.map((s) => s.id),
+      services: itens,
+      totalPriceCents:
+        veDinheiro && itens.every((i) => i.priceCents !== null)
+          ? itens.reduce((total, i) => total + (i.priceCents ?? 0), 0)
+          : null,
+      priceHidden: !veDinheiro,
       date: query.date,
       timezone: calculo.timezone,
       durationMinutes: calculo.duracaoMinutos,

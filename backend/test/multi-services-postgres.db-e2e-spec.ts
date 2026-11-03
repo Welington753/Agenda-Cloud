@@ -174,6 +174,22 @@ describe.skipIf(!DIRECT_URL)('agendamento com vários serviços contra PostgreSQ
 
   it('Corte R$ 42,50/30 min + Barba R$ 25,00/30 min = uma reserva de R$ 67,50/60 min com dois itens', async () => {
     const c = await criarCenario('soma');
+    // Resumo antes de confirmar, calculado no servidor.
+    const consulta = await disponibilidade.consult(c.ownerUserId, c.tenantId, c.professionalId, {
+      serviceIds: [c.corteId, c.barbaId],
+      date: DATA,
+    });
+    expect(consulta).toMatchObject({
+      serviceId: c.corteId,
+      serviceIds: [c.corteId, c.barbaId],
+      durationMinutes: 60,
+      totalPriceCents: 6750,
+      priceHidden: false,
+      services: [
+        { id: c.corteId, name: 'Corte', durationMinutes: 30, priceCents: 4250 },
+        { id: c.barbaId, name: 'Barba', durationMinutes: 30, priceCents: 2500 },
+      ],
+    });
     const view = await agendar(c, [c.corteId, c.barbaId]);
 
     expect(view).toMatchObject({
