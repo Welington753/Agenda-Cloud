@@ -149,6 +149,9 @@ export interface Plano {
   catalogPriceCents: number | null;
   maxProfessionals: number;
   maxUnits: number;
+  /** Preço do catálogo em vigor por ciclo (`null`: pendente). Ausente numa
+   * API anterior. */
+  cyclePrices?: { MONTHLY: number | null; QUARTERLY: number | null };
 }
 
 export interface ReferenciaPapeis {
@@ -258,7 +261,19 @@ export function ehMembros(v: unknown): v is MembrosEstabelecimento {
 }
 
 export function ehPlanos(v: unknown): v is Plano[] {
-  return lista(v) && v.every((p) => objeto(p) && texto(p.id) && texto(p.name) && inteiro(p.maxProfessionals));
+  const preco = (x: unknown) => x === null || inteiro(x);
+  return (
+    lista(v) &&
+    v.every(
+      (p) =>
+        objeto(p) &&
+        texto(p.id) &&
+        texto(p.name) &&
+        inteiro(p.maxProfessionals) &&
+        (p.cyclePrices === undefined ||
+          (objeto(p.cyclePrices) && preco(p.cyclePrices.MONTHLY) && preco(p.cyclePrices.QUARTERLY))),
+    )
+  );
 }
 
 export function ehOpcoesEstabelecimento(v: unknown): v is { items: { id: string; name: string }[]; truncated: boolean } {

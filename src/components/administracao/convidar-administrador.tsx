@@ -1,8 +1,9 @@
 "use client";
 
-// Convite para a administração da PLATAFORMA (só MASTER_OWNER; o servidor
-// confere). Só para e-mail sem conta: para uma conta existente, o papel é
-// ajustado na ficha do usuário, com a senha confirmada.
+// Convite de PROPRIETÁRIO da plataforma (só um proprietário convida; o
+// servidor confere). O portal não tem papel delegado: o convite sempre dá o
+// papel de proprietário. Só para e-mail sem conta: para uma conta existente,
+// o papel é ajustado na ficha, com a senha confirmada.
 import { useState, type FormEvent } from "react";
 import { Botao } from "@/components/ui/button";
 import { ResultadoEnvio } from "./resultado-envio";
@@ -10,14 +11,13 @@ import { SituacaoDoConvite } from "./estado-envio";
 import { acaoAdministrativa } from "@/lib/administracao/api-contas";
 import { useEnvioComChave } from "@/lib/administracao/use-envio-com-chave";
 import { ehResultadoCriacao } from "@/lib/administracao/contas";
-import { PAPEIS_PLATAFORMA, PERMISSOES_PLATAFORMA } from "@/lib/administracao/rotulos";
+import { PAPEL_ATRIBUIVEL } from "@/lib/administracao/rotulos";
 
 const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 
 export function ConvidarAdministrador({ aoConvidar }: { aoConvidar: () => void }) {
   const envio = useEnvioComChave(ehResultadoCriacao);
-  const [form, setForm] = useState({ name: "", email: "", platformRole: "MASTER_ADMIN", gerencia: true });
-  const comPermissao = form.platformRole !== "MASTER_OWNER";
+  const [form, setForm] = useState({ name: "", email: "" });
 
   function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
@@ -27,8 +27,8 @@ export function ConvidarAdministrador({ aoConvidar }: { aoConvidar: () => void }
           requestKey,
           name: form.name,
           email: form.email,
-          platformRole: form.platformRole,
-          permissions: comPermissao && form.gerencia ? ["ESTABLISHMENTS_MANAGE"] : [],
+          platformRole: PAPEL_ATRIBUIVEL,
+          permissions: [],
         }),
       )
       .then(aoConvidar);
@@ -46,29 +46,13 @@ export function ConvidarAdministrador({ aoConvidar }: { aoConvidar: () => void }
             E-mail
             <input required type="email" maxLength={254} className={CAMPO} value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
           </label>
-          <label className="min-w-0 text-sm font-medium">
-            Papel na plataforma
-            <select className={CAMPO} value={form.platformRole} onChange={(e) => setForm((f) => ({ ...f, platformRole: e.target.value }))}>
-              {Object.entries(PAPEIS_PLATAFORMA).map(([valor, rotulo]) => (
-                <option key={valor} value={valor}>
-                  {rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-5"
-              disabled={!comPermissao}
-              checked={comPermissao && form.gerencia}
-              onChange={(e) => setForm((f) => ({ ...f, gerencia: e.target.checked }))}
-            />
-            {PERMISSOES_PLATAFORMA.ESTABLISHMENTS_MANAGE}
-          </label>
+          <p className="text-xs text-ink-soft sm:col-span-2">
+            A pessoa passa a ser proprietária da plataforma, com acesso total ao portal. Confira a identidade antes:
+            nenhum nome ou e-mail dá acesso por si só.
+          </p>
           <div className="sm:col-span-2">
             <Botao type="submit" className="min-h-11">
-              Convidar para a administração
+              Convidar proprietário
             </Botao>
           </div>
         </fieldset>
@@ -85,7 +69,7 @@ export function ConvidarAdministrador({ aoConvidar }: { aoConvidar: () => void }
               variante="secundaria"
               className="min-h-11"
               onClick={() => {
-                setForm({ name: "", email: "", platformRole: "MASTER_ADMIN", gerencia: true });
+                setForm({ name: "", email: "" });
                 envio.recomecar();
               }}
             >

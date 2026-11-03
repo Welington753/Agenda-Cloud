@@ -7,7 +7,7 @@ import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS } from "@/lib/administracao/rotas";
 
 const MENSAGENS = {
   sessao: "Sua sessão precisa ser verificada novamente.",
-  permissao: "Sua conta não tem acesso à administração da plataforma.",
+  permissao: "Sua conta não tem acesso ao portal da plataforma.",
   ausente: "Estabelecimento não encontrado.",
   rede: "Não foi possível conectar ao servidor. Tente novamente.",
   servidor: "Não foi possível carregar os dados da administração.",
@@ -24,7 +24,7 @@ export function EstadoLeitura({
   if (estado.status === "carregando")
     return (
       <p role="status" className="py-12 text-center text-ink-soft">
-        Carregando administração…
+        Carregando o portal…
       </p>
     );
   return (

@@ -19,6 +19,8 @@ import {
 } from "@/components/administracao/ciclo-estabelecimento";
 import { PlanoDoEstabelecimento } from "@/components/administracao/plano-estabelecimento";
 import { ValidadeDoAcesso } from "@/components/administracao/validade-acesso";
+import { AcessoSemVencimento } from "@/components/administracao/sem-vencimento";
+import { PrecoContratado } from "@/components/administracao/preco-contratado";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -61,8 +63,12 @@ export default function DetalhePage() {
             <h2 className="mb-4 font-semibold">Estabelecimento</h2>
             <dl className="grid grid-cols-2 gap-4">
               <Dado
-                titulo="Situação administrativa"
-                valor={SITUACOES[item.status]}
+                titulo="Situação operacional"
+                valor={
+                  item.status === "SUSPENDED" || item.status === "ARCHIVED"
+                    ? `Inativo (${SITUACOES[item.status]})`
+                    : "Ativo"
+                }
               />
               <Dado
                 titulo="Segmento"
@@ -107,8 +113,10 @@ export default function DetalhePage() {
       </div>
       {/* A versão lida entra na chave: depois de uma ação, os formulários
           recomeçam com os dados novos do servidor. */}
-      <ValidadeDoAcesso key={`validade-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <SituacaoDoEstabelecimento key={`situacao-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <ValidadeDoAcesso key={`validade-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <AcessoSemVencimento key={`sem-vencimento-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <PrecoContratado key={`preco-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <DadosCadastrais key={`dados-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <Cartao>

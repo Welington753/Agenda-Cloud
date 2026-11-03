@@ -1,4 +1,13 @@
-import { ehPeriodoDeAcesso, ehSituacaoComercial, type PeriodoDeAcesso, type SituacaoComercial } from "./contratos-validade";
+import {
+  ehPeriodoDeAcesso,
+  ehPrecoDoEstabelecimento,
+  ehSemVencimento,
+  ehSituacaoComercial,
+  type PeriodoDeAcesso,
+  type PrecoDoEstabelecimento,
+  type SemVencimento,
+  type SituacaoComercial,
+} from "./contratos-validade";
 
 export * from "./contratos-validade";
 
@@ -101,7 +110,17 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     /** Anular um registro de validade feito por engano. Ausente numa API
      * anterior. */
     correctPeriod?: boolean;
+    /** Portal da plataforma; ausentes numa API anterior. */
+    grantNoExpiry?: boolean;
+    revokeNoExpiry?: boolean;
+    changeContract?: boolean;
   };
+  /** Ativo/Inativo (situação administrativa), separado da validade. */
+  operational?: "ACTIVE" | "INACTIVE";
+  /** Concessões "sem vencimento" e a prévia da retirada. */
+  noExpiry?: SemVencimento;
+  /** Preço do plano atual para este cliente (contrato, catálogo, pendente). */
+  pricing?: PrecoDoEstabelecimento;
 }
 
 
@@ -235,6 +254,9 @@ export function ehDetalheEstabelecimento(
     data(trial.trialEndAt) &&
     inteiro(trial.durationDays) &&
     ehSituacaoComercial(detail.access) &&
+    (detail.operational === undefined || detail.operational === "ACTIVE" || detail.operational === "INACTIVE") &&
+    (detail.noExpiry === undefined || ehSemVencimento(detail.noExpiry)) &&
+    (detail.pricing === undefined || ehPrecoDoEstabelecimento(detail.pricing)) &&
     Array.isArray(detail.accessPeriods) &&
     detail.accessPeriods.every(ehPeriodoDeAcesso) &&
     Array.isArray(detail.units) &&

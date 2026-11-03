@@ -1,9 +1,25 @@
-// Administração da plataforma dentro da área real: o menu, o cabeçalho, a
-// aparência e o menu da conta vêm do layout de `/conta`; aqui só o portão
-// de acesso (confirmado pelo backend) e a faixa do modo de uso.
-import type { ReactNode } from "react";
-import { PortaoAdministracao } from "@/components/administracao/acesso-administracao";
+"use client";
 
-export default function AdministracaoLayout({ children }: { children: ReactNode }) {
-  return <PortaoAdministracao>{children}</PortaoAdministracao>;
+// Portal da plataforma: área PRÓPRIA, com entrada, cabeçalho e menu
+// separados da operação dos estabelecimentos (`/conta`). Mesma sessão real
+// (`RequireRealSession`: sem sessão, vai para o login e volta para cá), mesma
+// aparência e a mesma leitura de acesso (`GET /platform/access`). O servidor
+// autoriza de novo cada leitura e escrita: só o proprietário da plataforma.
+import type { ReactNode } from "react";
+import { RequireRealSession } from "@/components/auth/require-real-session";
+import { MarcadorAparencia } from "@/components/aparencia/aparencia";
+import { AcessoPlataformaProvider } from "@/lib/administracao/use-acesso-plataforma";
+import { ShellPlataforma } from "@/components/administracao/shell-plataforma";
+
+export default function PlataformaLayout({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <MarcadorAparencia />
+      <RequireRealSession>
+        <AcessoPlataformaProvider>
+          <ShellPlataforma>{children}</ShellPlataforma>
+        </AcessoPlataformaProvider>
+      </RequireRealSession>
+    </>
+  );
 }

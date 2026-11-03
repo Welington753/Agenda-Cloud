@@ -336,7 +336,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
       password: "senha-da-plataforma-123",
     });
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [conta.user.id]);
-    await ap.goto(`/conta/administracao/estabelecimentos/${tenantId}`);
+    await ap.goto(`/plataforma/estabelecimentos/${tenantId}`);
     await expect(ap.getByTestId("uso-vagas")).toContainText("2 de 5");
     // Um terceiro profissional ativo: o plano Básico (2) não comporta.
     await db.query(
@@ -358,14 +358,14 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     expect([403, 409]).toContain(recusa.status()); // sem reautenticação: 403; com ela, o excesso: 409
     await capturar(ap, "ficha-administracao");
 
-    await ap.getByRole("button", { name: "Suspender", exact: true }).click();
+    await ap.getByRole("button", { name: "Inativar", exact: true }).click();
     await expect(ap.getByRole("dialog")).toContainText("Nada é apagado");
     await ap.getByLabel("Motivo (fica no histórico)").fill("Pedido do responsável");
-    await ap.getByRole("dialog").getByRole("button", { name: "Suspender" }).click();
+    await ap.getByRole("dialog").getByRole("button", { name: "Inativar" }).click();
     await expect(ap.getByTestId("confirmar-senha")).toBeVisible();
     await ap.getByLabel("Sua senha", { exact: true }).fill("senha-da-plataforma-123");
     await ap.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(ap.getByTestId("situacao-estabelecimento")).toContainText("Suspenso");
+    await expect(ap.getByTestId("situacao-operacional")).toHaveText("Inativo");
     await expect(ap.getByTestId("situacao-estabelecimento")).toContainText("Pedido do responsável");
     // Com o estabelecimento suspenso, a operação do dono para.
     expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(404);
@@ -378,10 +378,10 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     expect(comExcesso.status()).toBe(409);
     expect(((await comExcesso.json()) as { code: string }).code).toBe("PLANO_EXCEDIDO");
 
-    await ap.getByRole("button", { name: "Reativar", exact: true }).click();
-    await ap.getByRole("dialog").getByRole("button", { name: "Reativar" }).click();
+    await ap.getByRole("button", { name: "Ativar", exact: true }).click();
+    await ap.getByRole("dialog").getByRole("button", { name: "Ativar" }).click();
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
-    await expect(ap.getByTestId("situacao-estabelecimento")).toContainText("Em teste");
+    await expect(ap.getByTestId("situacao-operacional")).toHaveText("Ativo");
     expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/team`)).status()).toBe(200);
 
     // ------------------------------------------ 5. validade do acesso
@@ -391,9 +391,9 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await expect(validade.getByTestId("estado-validade")).toHaveText("Validade ainda não definida");
     await validade.getByRole("button", { name: "Registrar pagamento" }).click();
     const formularioPagamento = ap.getByTestId("form-pagamento");
-    await formularioPagamento.getByLabel("Valor contratado (R$)").fill("89,90");
+    await formularioPagamento.getByLabel("Valor deste pagamento (R$)").fill("89,90");
     await expect(ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" })).toBeDisabled();
-    await formularioPagamento.getByRole("checkbox").check();
+    await formularioPagamento.getByLabel(/Conferi o pagamento/).check();
     await capturar(ap, "registrar-pagamento");
     await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
@@ -404,8 +404,8 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     // Correção de um registro feito por engano: um segundo pagamento com o
     // valor errado é anulado, com o impacto mostrado antes e sem apagar nada.
     await validade.getByRole("button", { name: "Registrar pagamento" }).click();
-    await ap.getByTestId("form-pagamento").getByLabel("Valor contratado (R$)").fill("999,99");
-    await ap.getByTestId("form-pagamento").getByRole("checkbox").check();
+    await ap.getByTestId("form-pagamento").getByLabel("Valor deste pagamento (R$)").fill("999,99");
+    await ap.getByTestId("form-pagamento").getByLabel(/Conferi o pagamento/).check();
     await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
     await expect(validade.getByTestId("historico-validade")).toContainText("R$ 999,99");
@@ -462,8 +462,8 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await ap.reload();
     await expect(validade.getByTestId("estado-validade")).toHaveText("Vencido");
     await validade.getByRole("button", { name: "Registrar pagamento" }).click();
-    await ap.getByTestId("form-pagamento").getByLabel("Valor contratado (R$)").fill("89,90");
-    await ap.getByTestId("form-pagamento").getByRole("checkbox").check();
+    await ap.getByTestId("form-pagamento").getByLabel("Valor deste pagamento (R$)").fill("89,90");
+    await ap.getByTestId("form-pagamento").getByLabel(/Conferi o pagamento/).check();
     await ap.getByRole("dialog").getByRole("button", { name: "Registrar e liberar" }).click();
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
     await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
