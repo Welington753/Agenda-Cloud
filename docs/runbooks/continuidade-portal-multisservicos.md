@@ -7,6 +7,10 @@ Validação manual pós-publicação sem alterar reserva, configuração comerci
 preço ou papel (seção 8.3). Os preços continuam sem aprovação. As seções 0 a 7
 abaixo são o registro de antes da operação e ficam como histórico.
 
+**Atualização de 2026-11-03 (PC de casa):** o lote do portal independente
+(#87) foi mesclado na integration em `d2a4479`, **sem publicação**. Esse SHA é
+o candidato à próxima publicação; o publicado continua `8916f18` (seção 10).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -479,6 +483,9 @@ documentação.
 
 ## 9. Próximo lote (novo pedido, ainda NÃO implementado)
 
+> Registro original do pedido, mantido como histórico. Ele foi implementado
+> no PR #87 e mesclado sem publicação; o estado atual está na seção 10.
+
 **Já publicado (não repetir):** SHA operacional
 `8916f180cad7397074e54c25ef237ffc7c797681`, API e web; as 14 migrations
 aplicadas e conferidas. Não repetir migrations nem deploys.
@@ -510,3 +517,48 @@ contas nesta rodada. A implementação parte da integration conferida
   `-combo` com conflitos, `-promocao` com junction, `-recebimentos`,
   `-reserva`) e o `CLAUDE.md` modificado no repositório principal.
 - Nenhum processo temporário desta tarefa ficou ativo.
+
+## 10. Portal independente (#87): mesclado, NÃO publicado
+
+**Candidato à publicação (ainda não publicado):**
+**`d2a447998d06dbb4807521c1f570de7171128372`**, merge do #87 na integration
+em 2026-11-03 22:38 UTC (merge normal, condicionado ao head, com
+`[skip render]`).
+
+- Pais: `8916f180cad7397074e54c25ef237ffc7c797681` (integration) e
+  `58be19d1290f4430e7f52345bbf16762f04a0472` (head validado do #87).
+- A árvore do merge é idêntica à do head validado (tree `02e50ba`).
+- Antes do merge: head e base sem avanço, `MERGEABLE`/`CLEAN`, sem pedidos de
+  alteração. O check obrigatório "auth real e serviços reais (navegador + API)
+  contra PostgreSQL descartável" estava verde no head (10m49s), incluindo as
+  suítes `portal-entrada`, `portal-senha-temporaria` e `portal-recusas`. O
+  check de migrations não foi disparado porque o lote não toca em
+  `backend/src/database/**` nem em migrations.
+- Diff: 46 arquivos, só frontend, testes, workflow e o plano. Sem mudança no
+  backend.
+
+**Publicado (sem mudança):** API e web em
+`8916f180cad7397074e54c25ef237ffc7c797681`. As **14 migrations** continuam
+aplicadas e conferidas no piloto. **Este lote não acrescenta nenhuma
+migration**, então a publicação não tem etapa de banco.
+
+O que o lote entrega está em `docs/plans/portal-independente-da-operacao.md`
+(na integration), seção "Estado e retomada":
+
+- `/conta` sem grupo "PLATAFORMA" nem atalhos para o portal;
+- portal com entrada própria em `/portal`;
+- troca de senha temporária pelo portal;
+- endereços antigos redirecionam para `/portal`;
+- autorização do servidor inalterada (só `MASTER_OWNER` ativo).
+
+### Pendências
+
+- Publicação, numa etapa separada e com autorização: API e depois web, os
+  dois em `d2a4479`, sem migration. Até lá, não registrar este SHA como
+  publicado.
+- Validação no ambiente publicado depois do deploy:
+  - entrada do portal e redirecionamentos dos endereços antigos;
+  - operação sem atalhos;
+  - recusa de quem não é proprietário.
+- Nenhum deploy, operação no Render, conexão com banco real, migration ou
+  alteração de contas foi feito nesta etapa.
