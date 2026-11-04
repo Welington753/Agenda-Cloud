@@ -32,6 +32,12 @@ piloto com cliente sem papel global pendente (seção 13).
 mesclado na integration em `6fac73c`, **sem publicação**. API e web continuam
 em `2656f69`; nenhuma migration nova (seção 14).
 
+**Atualização de 2026-11-04 (PC do trabalho, depois):** o #92 (CLAUDE.md e
+guardas contra imports da demonstração, só documentação e testes) foi
+mesclado na integration em `05dd605`, **sem publicação**. API e web continuam
+em `2656f69`; as 14 migrations aplicadas não mudam; #90 e #91 continuam
+abertos (seção 16).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -991,3 +997,50 @@ aplicado no piloto, e nenhum banco real foi acessado.
   migration posterior de propósito.
 - As decisões comerciais do #91 estão no fim do plano: planos, período do
   relatório, arredondamento, fixo acima do preço, gerente e repasses.
+
+## 16. CLAUDE.md e guardas da demonstração (#92): mesclado, NÃO publicado
+
+Registro de 2026-11-04 (PC do trabalho).
+
+- **Head mesclado:** `09fd93e14920ced1dc68a10a92474448939bcec2`, um commit
+  sobre `6fac73c`. Diff restrito a `CLAUDE.md`,
+  `src/lib/servicos/excecoes-demonstracao.ts` e às duas guardas
+  `sem-dados-demo*.test.ts`. Nenhum código de produção, nenhuma migration.
+  CI obrigatório verde nesse head; sem pedidos de alteração.
+- **Merge:** `05dd605bc247635c6a078dfa1cf22d17997480e5`, merge normal (sem
+  squash nem rebase) condicionado ao head exato, título com `[skip render]`.
+  Pais `6fac73c` (integration anterior) e `09fd93e`; árvore igual à do head.
+  A branch `docs/claude-md-rotas-guarda-demo` e a worktree
+  `C:ProjetosAgenda-Cloud-guarda-demo` foram preservadas.
+- **Conteúdo:** o CLAUDE.md lista as rotas reais (`/conta`, `/portal`,
+  `/login`, `/cadastro`, `/convite`, `/redefinir-senha`, `/agendar/[slug]`)
+  e descreve `backend/src/commercial/`. As guardas direta e transitiva cobrem
+  todas as áreas reais; a única exceção são os dois imports dos botões de
+  demonstração em `src/app/login/page.tsx`, por arquivo e especificador.
+- **Integration avançou para `05dd605`, sem publicação.** API e web
+  continuam publicados em `2656f69` (seção 12.1). O lote não traz motivo de
+  publicação.
+- **Banco:** as 14 migrations aplicadas no piloto (seção 8.1) continuam as
+  mesmas.
+
+### 16.1 PRs abertos
+
+- **#90** (seção 15.1): aberto, head `877de2b`, sem mudança.
+- **#91** (seção 15.2): aberto. O head passou a `67d04c2`: `d02ec86` liga
+  comissões também ao Pro (`equipe`) dentro da 15ª migration, ainda não
+  aplicada em banco real, e `67d04c2` ajusta a contagem do catálogo no spec
+  de migration (26 para 27). O Básico (`essencial`) fica sem comissões por
+  padrão; o Max (`pro`, antigo "Rede") mantém. CI verde no `67d04c2`.
+
+### 16.2 Itens só neste PC
+
+- A worktree `Agenda-Cloud-guarda-demo` usa um junction de `node_modules`
+  apontando para o da worktree `Agenda-Cloud-comissoes`. Remover o junction
+  antes de apagar a worktree, para não apagar o `node_modules` de destino.
+- O CLAUDE.md da pasta principal tem alterações locais não versionadas,
+  preservadas.
+
+### 16.3 Próximo passo
+
+- Revisar #90 e #91. A publicação do #91 continua dependendo de um roteiro
+  próprio para a 15ª migration (seção 15.4).
