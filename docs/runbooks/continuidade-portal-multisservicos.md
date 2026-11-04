@@ -1118,8 +1118,12 @@ foi aplicada em banco real e nenhum banco real foi acessado.
     novo. Mas, enquanto ela estiver no ar, as conclusões não geram comissão,
     e essas conclusões nunca são apuradas depois. A tela, as regras e a visão
     do funcionário também param.
-  - **Ordem obrigatória:** migration, depois API, depois web. A API nova sobre
-    o schema antigo falha ao concluir atendimentos.
+  - **Ordem obrigatória:** migration, depois API, depois web.
+  - **API nova no schema de 14:** num estabelecimento que já tem o recurso de
+    comissões (Max, ou Básico com exceção ligada), concluir atendimento
+    responde 500 e a conclusão é desfeita; relatório e regras também
+    respondem 500. Nos demais (o Pro, que ainda não tem o recurso no catálogo
+    antigo), ela conclui sem apurar. Ensaiado em 04/11/2026 (seção 19).
 
 ### 17.3 Pendência: kit protegido da 15ª migration
 
@@ -1201,3 +1205,85 @@ foi aplicada em banco real e nenhum banco real foi acessado.
 
 - Criar e ensaiar o kit protegido da 15ª migration, só em banco descartável.
 - Depois, publicar seguindo o runbook: migration, API e web do mesmo SHA.
+
+## 19. Kit protegido da 15ª migration: PR #93 aberto
+
+Registro de 2026-11-04 (PC do trabalho). Nada foi publicado, nenhuma migration
+foi aplicada em banco real e nenhum banco real foi acessado.
+
+- **Integration:** `9e548a3` (15 migrations).
+- **Publicado:** API e web continuam em `2656f69`.
+- **Banco real:** continua com 14 migrations. A 15ª,
+  `ProfessionalCommissions1793491200000`, está pendente.
+- **PR #93:** `ops/kit-comissoes-profissionais` → integration, aberto, sem
+  conflito.
+  - Head: `3aa3442fb87c97e0ad189a6b1007e7f886581c26`.
+  - CI verde nos dois workflows nesse head.
+  - Commit ensaiado do kit: `d3d5ce19d74c9b3e23a1c7a205bbcc163d7b6adf`.
+    Depois dele mudaram só a documentação e o teste db-e2e da conferência
+    (`git diff d3d5ce1 3aa3442 -- backend/scripts backend/src` vazio).
+  - Runbook: `docs/runbooks/publicacao-comissoes-profissionais-piloto.md`.
+
+### 19.1 O que o kit faz
+
+- Fases `conferir`, `preparar`, `restauracao` e `aplicar`, no padrão dos
+  kits anteriores, com os códigos de saída 0 (sucesso), 1 (parou sem gravar),
+  2 (aplicada, conferência posterior falhou) e 3 (incerto).
+- Estados exatos `before-professional-commissions` (14) e
+  `after-professional-commissions` (15, 15/15 objetos com a definição exata e
+  a linha `pf_pc_equipe_comissoes`).
+- Depois do COMMIT, confere catálogo, planos, preços, exceções e "sem
+  vencimento" contra o backup novo.
+- O levantamento mostra quantos estabelecimentos passam a apurar comissões.
+
+### 19.2 Ensaio (PostgreSQL 17.11 descartável, TLS, dados fictícios)
+
+- **Lançador oficial num console real (ConPTY):**
+  - ciclo completo 14→15 e restauração conferida (só as mudanças previstas);
+  - frase errada, lock (`55P03`), repetição e estados divergentes: código 1,
+    nada gravado;
+  - sessão da migration derrubada no servidor (`57P01`): código 3; a
+    aplicação seguinte fica bloqueada até um `conferir`;
+  - catálogo alterado durante a frase: código 2;
+  - backup de outro commit, proteções do modo piloto, da URL e da CA:
+    recusados antes da escrita.
+- **Compatibilidade (HTTP real):**
+  - API anterior no schema 15: funciona e não apura; a volta com apurações
+    gravadas não perde nada;
+  - API nova no schema 15: apura por item;
+  - API nova no schema 14: ver a seção 17.2;
+  - web anterior: as funções de validação dele aceitam as respostas da API
+    nova.
+- **`down` depois da apuração:** recusado e desfeito; dados intactos.
+- **Testes locais:** unitários do backend 1790/1790; db-e2e completo em banco
+  novo 265/265.
+
+### 19.3 Limitações
+
+- Sem ensaio no navegador e sem a troca de API no Render.
+- O banco do ensaio é PostgreSQL local, não o Neon.
+- O sha256 do zip do PostgreSQL 17.11 só foi calculado localmente.
+- Os comprovantes do ensaio não valem para o piloto.
+
+### 19.4 Itens só neste PC
+
+- **Worktrees:**
+  - `C:ProjetosAgenda-Cloud-kit-comissoes` (branch do #93);
+  - `C:ProjetosAgenda-Cloud-publicado-2656f69` (versão publicada,
+    destacada, usada para a API anterior);
+  - as da seção 17.4.
+  - Os `node_modules` delas são junctions para os de
+    `Agenda-Cloud-comissoes`. Remova-os com `cmd /c rmdir` antes de apagar
+    a worktree.
+- **Scratchpad da sessão** (pode ser apagado pelo sistema):
+  - cluster PostgreSQL 17 do ensaio (`ens17`, parado) e os binários 17.11;
+  - pasta de operações do ensaio (`ops-ensaio`), transcrições, roteiros de
+    compatibilidade e o driver ConPTY.
+- **CLAUDE.md local:** preservado.
+
+### 19.5 Próximo passo
+
+1. Revisar e decidir o merge do #93.
+2. No SHA definitivo da integration, com autorização expressa: `preparar`,
+   `restauracao` e `aplicar` no piloto.
+3. Publicar a API e depois o web, do mesmo SHA.
