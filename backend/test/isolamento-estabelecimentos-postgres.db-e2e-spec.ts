@@ -11,7 +11,10 @@
 //   cada rota de B, sem nenhum dado de B na resposta;
 // - no caminho do próprio A, ids de B no caminho, no corpo ou na busca não
 //   alcançam nada de B;
-// - nada muda em nenhuma tabela com `tenant_id` de A ou de B;
+// - nada muda em nenhuma tabela com `tenant_id` de A ou de B, nem nas contas
+//   deles (`users`, `credentials`, `sessions`), rota por rota: a troca de
+//   senha do funcionário de B tentada por A não muda a senha, a troca
+//   obrigatória, o papel, a situação nem as sessões dele;
 // - controle positivo: depois das tentativas, a conta certa de B faz a MESMA
 //   chamada, com o mesmo corpo, e consegue. A recusa não é rota inexistente,
 //   recurso inexistente nem corpo inválido.
@@ -200,6 +203,9 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         password: SENHA,
       }).expect(ok)
     ).body as { membershipId: string };
+    const [{ userId: staffUserId }] = await q<{ userId: string }>(`SELECT user_id AS "userId" FROM memberships WHERE id = $1`, [
+      staff.membershipId,
+    ]);
     const equipe = await entrar(username);
     const proprias = {
       iniciar: await reserva(base, daEquipe, agora - 5 * MINUTO, 'CONFIRMED'),
@@ -231,7 +237,9 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       tenantId,
       dono,
       donoEmail: donoConta.email,
+      donoUserId: donoConta.userId,
       equipe,
+      equipeUserId: staffUserId,
       serviceId,
       professionalId,
       daEquipe,
@@ -581,28 +589,96 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       ...Object.values(b.proprias),
     ];
     const vazou = (corpo: unknown) => deB.filter((segredo) => JSON.stringify(corpo ?? null).includes(segredo));
+    /** Corpo para o relatório de falha, sem senha, token, segredo nem hash. */
+    const semSegredos = (corpo: unknown): unknown =>
+      JSON.parse(JSON.stringify(corpo ?? null, (k, v: unknown) => (/password|token|secret|hash/i.test(k) && typeof v === 'string' ? '<omitido>' : v)));
+
+    // As contas de A e de B ficam fora do retrato acima (`users`,
+    // `credentials` e `sessions` não têm `tenant_id`): senha, troca
+    // obrigatória, papel, situação e sessões. Comparado em memória; a falha
+    // aponta só a conta e o campo, nunca o valor (hash de senha, de token).
+    type Linha = Record<string, unknown>;
+    type Conta = { conta: Linha; credencial: Linha | null; sessoes: Record<string, Linha> };
+    const nomes = new Map(
+      (
+        await q<{ id: string; name: string }>(
+          `SELECT DISTINCT u.id, u.name FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.tenant_id = ANY($1)`,
+          [[a.tenantId, b.tenantId]],
+        )
+      ).map((l) => [l.id, l.name]),
+    );
+    const contas = async () =>
+      new Map(
+        (
+          await q<Conta & { id: string }>(
+            `SELECT u.id, row_to_json(u) AS conta,
+                    (SELECT row_to_json(c) FROM credentials c WHERE c.user_id = u.id) AS credencial,
+                    COALESCE((SELECT json_object_agg(s.id, row_to_json(s)) FROM sessions s WHERE s.user_id = u.id), '{}') AS sessoes
+               FROM users u WHERE u.id = ANY($1)`,
+            [[...nomes.keys()]],
+          )
+        ).map((l) => [l.id, l]),
+      );
+    // Quem chama: só a confirmação de senha da própria sessão é atualização
+    // normal. Na conta alvo e nas demais, qualquer campo conta.
+    const quemChama = new Set([a.donoUserId, a.equipeUserId]);
+    const campos = (tabela: string, x: Linha | null | undefined, y: Linha | null | undefined) =>
+      [...new Set([...Object.keys(x ?? {}), ...Object.keys(y ?? {})])]
+        .filter((c) => !isDeepStrictEqual(x?.[c], y?.[c]))
+        .map((c) => `${tabela}.${c}`);
+    /** `nome: tabela.coluna` do que mudou, fora o normal de quem chama. */
+    const mudancas = (antes: Map<string, Conta>, depois: Map<string, Conta>) => {
+      const sensiveis: string[] = [];
+      for (const [userId, nome] of nomes) {
+        const x = antes.get(userId);
+        const y = depois.get(userId);
+        const diferencas = [...campos('users', x?.conta, y?.conta), ...campos('credentials', x?.credencial, y?.credencial)];
+        for (const s of new Set([...Object.keys(x?.sessoes ?? {}), ...Object.keys(y?.sessoes ?? {})])) {
+          const [sx, sy] = [x?.sessoes[s], y?.sessoes[s]];
+          if (!sx || !sy) diferencas.push(sx ? 'sessions: sessão removida' : 'sessions: sessão nova');
+          else
+            diferencas.push(...campos('sessions', sx, sy).filter((c) => !(quemChama.has(userId) && c === 'sessions.reauthenticated_at')));
+        }
+        sensiveis.push(...diferencas.map((d) => `${nome}: ${d}`));
+      }
+      return sensiveis;
+    };
+    const contasAntes = await contas();
+    // O alvo da troca de senha (o funcionário de B) tem credencial e sessão
+    // aberta: uma troca ou uma revogação apareceria na comparação.
+    const alvo = contasAntes.get(b.equipeUserId);
+    expect({
+      credencial: alvo?.credencial != null,
+      trocaObrigatoria: alvo?.conta.must_change_password,
+      sessaoAberta: Object.values(alvo?.sessoes ?? {}).some((s) => s.revoked_at === null),
+    }).toEqual({ credencial: true, trocaObrigatoria: false, sessaoAberta: true });
 
     const INEXISTENTE = { statusCode: 404, error: 'Not Found', message: TENANT_NOT_FOUND_MESSAGE };
     const antes = await retrato();
     const fora: { rota: string; ataque: string; status: number; corpo: unknown; vazou: string[] }[] = [];
     const trocados: Record<string, number> = {};
+    const contasMudadas: { rota: string; campos: string[] }[] = [];
     for (const [rota, quem, caminho, corpo, , cruza] of casos) {
       const metodo = rota.split(' ')[0].toLowerCase() as Metodo;
+      const contasDaRota = await contas();
       const atacante = quem === 'dono' ? a.dono : a.equipe;
       // Caminho de B com os recursos de B: o mesmo 404 de inexistente.
       const deOutro = await chamar(atacante, metodo, caminho(b, b), corpo ? await corpo(b, b) : undefined);
       if (!isDeepStrictEqual({ status: deOutro.status, corpo: deOutro.body }, { status: 404, corpo: INEXISTENTE }))
-        fora.push({ rota, ataque: 'tenant de B', status: deOutro.status, corpo: deOutro.body, vazou: vazou(deOutro.body) });
+        fora.push({ rota, ataque: 'tenant de B', status: deOutro.status, corpo: semSegredos(deOutro.body), vazou: vazou(deOutro.body) });
       // Caminho do próprio A com ids de B: escrita recusada; busca filtrada
       // por id de B pode responder, mas nunca com nada de B.
       if (cruza) {
         const trocado = await chamar(atacante, metodo, caminho(a, b), corpo ? await corpo(a, b) : undefined);
         trocados[rota] = trocado.status;
         if ((metodo !== 'get' && trocado.status < 400) || vazou(trocado.body).length > 0)
-          fora.push({ rota, ataque: 'ids de B no caminho de A', status: trocado.status, corpo: trocado.body, vazou: vazou(trocado.body) });
+          fora.push({ rota, ataque: 'ids de B no caminho de A', status: trocado.status, corpo: semSegredos(trocado.body), vazou: vazou(trocado.body) });
       }
+      // Antes do controle positivo, que muda essas contas de propósito.
+      const mudou = mudancas(contasDaRota, await contas());
+      if (mudou.length > 0) contasMudadas.push({ rota, campos: mudou });
     }
-    expect(fora).toEqual([]);
+    expect({ fora, contasMudadas }).toEqual({ fora: [], contasMudadas: [] });
     // Fora o 404, só: as agendas de A filtradas pelo profissional de B
     // respondem vazias, e a criação com serviço de B é recusada inteira.
     expect(Object.fromEntries(Object.entries(trocados).filter(([, status]) => status !== 404))).toEqual({
@@ -617,8 +693,13 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
     for (const [rota, quem, caminho, corpo, status] of casos) {
       const metodo = rota.split(' ')[0].toLowerCase() as Metodo;
       const r = await chamar(quem === 'dono' ? b.dono : b.equipe, metodo, caminho(b, b), corpo ? await corpo(b, b) : undefined);
-      if (r.status !== status) controles.push({ rota, status: r.status, erro: r.body });
+      if (r.status !== status) controles.push({ rota, status: r.status, erro: semSegredos(r.body) });
     }
     expect(controles).toEqual([]);
+    // A comparação enxerga a troca: feita pela conta certa de B, a senha do
+    // alvo muda e a sessão dele é encerrada.
+    expect(mudancas(contasAntes, await contas())).toEqual(
+      expect.arrayContaining([`${nomes.get(b.equipeUserId)}: credentials.password_hash`, `${nomes.get(b.equipeUserId)}: sessions.revoked_at`]),
+    );
   });
 });

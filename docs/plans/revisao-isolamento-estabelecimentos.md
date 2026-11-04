@@ -49,6 +49,15 @@ conexão com banco real e sem contas reais. Ver "Estado e retomada" no fim.
      recusados (404; a criação de profissional com serviço de B, 400); as
      agendas de A filtradas pelo profissional de B respondem vazias;
    - nenhuma linha com `tenant_id` de A ou de B muda;
+   - rota por rota, antes do controle positivo, as contas de A e de B
+     (`users`, `credentials`, `sessions`) também não mudam: a troca de senha
+     do funcionário de B tentada por A não altera a credencial, a troca
+     obrigatória, o papel, a situação nem a validade ou revogação das sessões
+     dele. Só a confirmação de senha da sessão de quem chama é tolerada. A
+     comparação é em memória e a falha aponta só a conta e o campo, sem
+     hash nem token. Depois do controle, a mesma comparação mostra a senha
+     do alvo trocada e a sessão dele encerrada, prova de que ela enxerga a
+     mudança;
    - controle positivo: depois disso, a conta certa de B faz a mesma chamada,
      com o mesmo corpo, e consegue;
    - conferido por mutação: tirar o `tenantId` da busca do vínculo faz o
@@ -62,14 +71,18 @@ conexão com banco real e sem contas reais. Ver "Estado e retomada" no fim.
    desse estabelecimento continua recusada (`ACESSO_VENCIDO` e 404), na mesma
    sessão.
 
-## Observação (sem mudança)
+## Ponto registrado para análise própria (sem mudança)
 
-`PUT /tenants/:tenantId/push-subscription` com um endpoint que já é de outra
-conta transfere o aparelho para quem chamou e revoga a inscrição anterior,
-em qualquer estabelecimento ("um aparelho avisa uma pessoa só",
-`push/push-subscriptions.repository.ts`). Não é falha de isolamento: o
-endpoint é o segredo do próprio navegador, não um id de recurso que outro
-estabelecimento conheça, e nenhum dado volta na resposta.
+Comportamento observado: `PUT /tenants/:tenantId/push-subscription` com um
+endpoint que já pertence a outra conta transfere o aparelho para quem chamou
+e revoga a inscrição anterior, em qualquer estabelecimento (regra "um
+aparelho avisa uma pessoa só", `push/push-subscriptions.repository.ts`).
+
+A análise de segurança desse comportamento ficou fora da conclusão desta
+revisão: aqui ele não é classificado como seguro nem como vulnerável. Fica
+para uma análise separada, sem mudança na implementação do push. No teste de
+isolamento, a rota está na lista e recebe o 404 pelo caminho de B, mas não há
+tentativa com o endpoint de B no caminho de A.
 
 ## Estado e retomada
 
