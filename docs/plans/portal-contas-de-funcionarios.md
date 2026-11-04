@@ -18,6 +18,10 @@ Uma conta fica FORA da lista global quando, ao mesmo tempo:
 - tem ao menos um vínculo de outro papel (GERENTE, RECEPCIONISTA,
   PROFISSIONAL) ou um convite pendente de estabelecimento com outro papel.
 
+"Convite pendente" é o mesmo de `INVITE_STATUS_SQL`: `PENDING` e ainda não
+vencido. Convite vencido não conta para nenhum dos lados, como na equipe do
+estabelecimento, que também não o mostra.
+
 Consequências:
 
 - Quem é dono de um negócio e funcionário de outro continua listado, com
@@ -52,3 +56,9 @@ Consequências:
   páginas de 2, busca, filtro por estabelecimento, equipe, ficha, contagem de
   linhas antes/depois e as recusas do portal.
 - Mutação: sem o critério, o caso novo falha.
+- Revisão de 2026-11-04: o critério contava convite vencido como pendente.
+  Uma conta cujo único convite de funcionário venceu sumia da lista global e
+  da equipe ao mesmo tempo. Corrigido com o vencimento nas duas subconsultas;
+  caso novo no mesmo arquivo (convite de funcionário vencido continua na
+  lista; funcionária com convite de dono vencido fica só na equipe), que
+  falha sem a correção.

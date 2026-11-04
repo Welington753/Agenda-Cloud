@@ -310,6 +310,43 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     await expect(directory.listUsers(adminFunc.userId, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
   });
 
+  it('convite vencido não conta como pendente para a lista global (mesmo critério da equipe)', async () => {
+    const m = `${marca}-venc`;
+    const master = await conta('venc-master', { role: 'MASTER_OWNER' });
+    const tA = await tenant('venc-a');
+    const tB = await tenant('venc-b');
+    const convidar = (userId: string, tenantId: string, role: string, expiraEm: string) =>
+      db.query(
+        `INSERT INTO invites (id, type, target_name, target_email, tenant_id, establishment_role, status, token_hash,
+                              created_by_user_id, created_at, expires_at, target_user_id)
+         SELECT $1, 'ESTABLISHMENT', u.name, u.email, $2, $3::establishment_role, 'PENDING', $4, $5,
+                now() - interval '7 days', now() + $6::interval, u.id FROM users u WHERE u.id = $7`,
+        [id(), tenantId, role, id() + id(), master.userId, expiraEm, userId],
+      );
+    // Só um convite de funcionário, já vencido: a equipe não o mostra, então
+    // a conta precisa continuar na lista global.
+    const vencida = await conta('venc-func', { status: 'INVITED', semSenha: true });
+    await convidar(vencida.userId, tA, 'RECEPCIONISTA', '-1 hour');
+    // Funcionária de A cujo convite para ser dona de B venceu: não é mais
+    // responsável pendente, fica só na equipe.
+    const exFutura = await conta('venc-ex-futura');
+    await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'RECEPCIONISTA')`, [
+      id(),
+      exFutura.userId,
+      tA,
+    ]);
+    await convidar(exFutura.userId, tB, 'DONO', '-1 hour');
+
+    const equipeA = await directory.establishmentMembers(master.userId, tA);
+    expect(equipeA.pendingInvites.map((c: { targetUser: { id: string } | null }) => c.targetUser?.id)).not.toContain(
+      vencida.userId,
+    );
+    const lista = await directory.listUsers(master.userId, { q: m, page: 1, pageSize: 20 });
+    expect(lista.items.map((u: { id: string }) => u.id).sort()).toEqual([master.userId, vencida.userId].sort());
+    expect(lista.summary.total).toBe(2);
+    expect(lista.summary.invited).toBe(1);
+  });
+
   it('nova empresa com responsável: conta pendente, e-mail aceito pelo provedor, ativação e entrada', async () => {
     const master = await conta('fluxo-master', { role: 'MASTER_OWNER' });
     const dto = createEstablishmentSchema.parse({
