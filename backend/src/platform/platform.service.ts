@@ -25,6 +25,21 @@ import {
   ESTABLISHMENT_FROM,
   establishmentFilter,
 } from './platform.queries.js';
+import { loadDirectory } from './portal-directory.js';
+import {
+  attentionReason,
+  compareAttention,
+  directoryCounts,
+  matchesFilter,
+  monthRange,
+  PLATFORM_TIME_ZONE,
+  type AttentionReason,
+  type TenantAccessView,
+} from './portal-overview.js';
+
+/** Itens da lista "Precisa de atenção" devolvidos de uma vez; o total vem à
+ * parte, com o filtro da listagem para ver todos. */
+export const ATTENTION_LIMIT = 20;
 
 export interface EstablishmentRow {
   id: string;
@@ -83,9 +98,15 @@ export class PlatformService {
     });
   }
 
-  list(userId: string, query: EstablishmentQuery) {
+  list(userId: string, query: EstablishmentQuery, now = new Date()) {
     return this.read(userId, async (manager) => {
-      const filter = establishmentFilter(query);
+      // Situação do acesso e condição contratada de todos, em lote: o filtro
+      // usa a regra central e vira uma lista de ids na consulta paginada.
+      const diretorio = await loadDirectory(manager, now);
+      const ids = query.filter
+        ? [...diretorio.values()].filter((e) => matchesFilter(query.filter!, e.access, e.commercial)).map((e) => e.id)
+        : undefined;
+      const filter = establishmentFilter(query, ids);
       const [count] = await manager.query<{ total: number }[]>(
         `SELECT count(*)::int AS total ${ESTABLISHMENT_FROM} ${filter.sql}`,
         filter.values,
@@ -109,12 +130,99 @@ export class PlatformService {
         'SELECT id, name FROM plans ORDER BY name, id',
       );
       return {
-        items,
+        // Campos acrescentados (a lista anterior continua igual): situação
+        // administrativa, acesso efetivo com modalidade e validade, e a
+        // condição contratada de cada ciclo do plano atual.
+        items: items.map((item) => {
+          const entrada = diretorio.get(item.id);
+          return {
+            ...item,
+            operational: entrada?.access.operational ?? 'INACTIVE',
+            access: entrada?.access ?? null,
+            commercial: entrada?.commercial ?? null,
+          };
+        }),
         total: count.total,
         page: query.page,
         pageSize: query.pageSize,
         summary,
         plans,
+      };
+    });
+  }
+
+  /**
+   * Visão geral do portal: totais de TODOS os estabelecimentos cadastrados
+   * (não só clientes comerciais: ainda não há classificação de uso interno),
+   * com a regra central de acesso, e os pagamentos de assinatura do mês.
+   *
+   * Pagamentos do mês: períodos pagos confirmados manualmente e não anulados,
+   * pela data de recebimento registrada, do dia 1 ao último dia do mês
+   * corrente em America/Sao_Paulo. Soma o valor gravado em cada período,
+   * nunca recalculado pelo catálogo ou contrato. Não é receita recorrente,
+   * previsão nem inadimplência.
+   */
+  overview(userId: string, now = new Date()) {
+    return this.read(userId, async (manager) => {
+      const diretorio = await loadDirectory(manager, now);
+      const counts = directoryCounts(diretorio.values());
+
+      const atencao: { id: string; timezone: string; reason: AttentionReason; view: TenantAccessView }[] = [];
+      for (const e of diretorio.values()) {
+        const reason = attentionReason(e.access);
+        if (reason) atencao.push({ id: e.id, timezone: e.timezone, reason, view: e.access });
+      }
+      atencao.sort(compareAttention);
+      const primeiros = atencao.slice(0, ATTENTION_LIMIT);
+      const nomes = new Map<string, string>();
+      if (primeiros.length) {
+        const linhas = await manager.query<{ id: string; name: string }[]>(
+          `SELECT t.id, COALESCE(main_unit.name, t.slug::text) AS name ${ESTABLISHMENT_FROM} WHERE t.id = ANY($1::varchar[])`,
+          [primeiros.map((a) => a.id)],
+        );
+        for (const l of linhas) nomes.set(l.id, l.name);
+      }
+
+      const mes = monthRange(now, PLATFORM_TIME_ZONE);
+      const [pagamentos] = await manager.query<{ count: number; total_cents: string | number; canceled: number }[]>(
+        `SELECT count(*) FILTER (WHERE canceled_at IS NULL)::int AS count,
+                COALESCE(sum(contracted_price_cents) FILTER (WHERE canceled_at IS NULL), 0)::bigint AS total_cents,
+                count(*) FILTER (WHERE canceled_at IS NOT NULL)::int AS canceled
+           FROM tenant_access_periods
+          WHERE kind = 'PAID' AND confirmation_source = 'MANUAL' AND currency = 'BRL'
+            AND payment_received_on BETWEEN $1::date AND $2::date`,
+        [mes.from, mes.to],
+      );
+
+      return {
+        generatedAt: now.toISOString(),
+        establishments: counts,
+        payments: {
+          timeZone: PLATFORM_TIME_ZONE,
+          month: mes.month,
+          from: mes.from,
+          to: mes.to,
+          currency: 'BRL' as const,
+          count: pagamentos.count,
+          totalCents: Number(pagamentos.total_cents),
+          /** Registros anulados no mesmo intervalo, fora da soma. */
+          canceledCount: pagamentos.canceled,
+        },
+        attention: {
+          total: atencao.length,
+          byReason: {
+            VALIDITY_BLOCKED: atencao.filter((a) => a.reason === 'VALIDITY_BLOCKED').length,
+            EXPIRING_SOON: atencao.filter((a) => a.reason === 'EXPIRING_SOON').length,
+          },
+          items: primeiros.map((a) => ({
+            tenant: { id: a.id, name: nomes.get(a.id) ?? a.id, timezone: a.timezone },
+            reason: a.reason,
+            state: a.view.state,
+            lastDay: a.view.lastDay,
+            daysLeft: a.view.daysLeft,
+            expiredAt: a.view.expiredAt,
+          })),
+        },
       };
     });
   }

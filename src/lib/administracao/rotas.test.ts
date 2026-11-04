@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA,
   ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
+  ROTA_VISAO_GERAL,
   destinoNoPortal,
   emAdministracao,
   entradaDoPortal,
+  rotaEstabelecimentosFiltrados,
   rotaFichaEstabelecimento,
 } from "./rotas";
 
@@ -12,6 +14,13 @@ describe("rotas do portal da plataforma", () => {
   it("ficam numa área própria, fora da operação dos estabelecimentos", () => {
     expect(ROTA_ESTABELECIMENTOS_ADMINISTRADOS).toBe("/portal/estabelecimentos");
     expect(rotaFichaEstabelecimento("t 1/2")).toBe("/portal/estabelecimentos/t%201%2F2");
+    expect(ROTA_VISAO_GERAL).toBe("/portal/visao-geral");
+  });
+
+  it("links da Visão geral abrem a listagem já filtrada", () => {
+    expect(rotaEstabelecimentosFiltrados({})).toBe("/portal/estabelecimentos");
+    expect(rotaEstabelecimentosFiltrados({ filtro: "EXPIRING_SOON" })).toBe("/portal/estabelecimentos?filtro=EXPIRING_SOON");
+    expect(rotaEstabelecimentosFiltrados({ situacao: "SUSPENDED" })).toBe("/portal/estabelecimentos?situacao=SUSPENDED");
   });
 
   it("reconhece só as páginas do portal", () => {
@@ -38,13 +47,13 @@ describe("rotas do portal da plataforma", () => {
 
 describe("entrada do portal", () => {
   it("depois do login, segue só um destino de dentro do portal", () => {
-    expect(destinoNoPortal(null)).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal(null)).toBe("/portal/visao-geral");
     expect(destinoNoPortal("/portal/usuarios/u1?aba=acesso")).toBe("/portal/usuarios/u1?aba=acesso");
-    expect(destinoNoPortal("/conta/visao-geral")).toBe("/portal/estabelecimentos");
-    expect(destinoNoPortal("/portal-falso/x")).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal("/conta/visao-geral")).toBe("/portal/visao-geral");
+    expect(destinoNoPortal("/portal-falso/x")).toBe("/portal/visao-geral");
     // A própria entrada não vira destino: voltaria ao formulário.
-    expect(destinoNoPortal("/portal")).toBe("/portal/estabelecimentos");
-    expect(destinoNoPortal("/portal?next=/portal")).toBe("/portal/estabelecimentos");
+    expect(destinoNoPortal("/portal")).toBe("/portal/visao-geral");
+    expect(destinoNoPortal("/portal?next=/portal")).toBe("/portal/visao-geral");
   });
 
   it("sessão expirada no portal volta para a entrada do portal, não para o login da operação", () => {
@@ -59,6 +68,7 @@ describe("seções do portal", () => {
   it("menu na ordem pedida, todas dentro do portal", async () => {
     const { SECOES_ADMINISTRACAO, secaoAtiva } = await import("./rotas");
     expect(SECOES_ADMINISTRACAO.map((s) => s.rotulo)).toEqual([
+      "Visão geral",
       "Estabelecimentos",
       "Responsáveis e acessos",
       "Convites",

@@ -85,6 +85,14 @@ export class PlatformController {
     return this.platform.access(request.auth.userId);
   }
 
+  /** Totais do portal com a regra central de acesso e os pagamentos de
+   * assinatura do mês (só MASTER_OWNER ativo, relido no servidor). */
+  @Get('overview')
+  @Header('Cache-Control', 'private, no-store')
+  overview(@Req() request: AuthenticatedRequest) {
+    return this.platform.overview(request.auth.userId);
+  }
+
   @Get('establishments')
   @Header('Cache-Control', 'private, no-store')
   list(

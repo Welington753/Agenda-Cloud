@@ -14,7 +14,19 @@
 // e pelo mesmo portão do portal, então ninguém sem acesso vê dado nenhum.
 
 export const ROTA_ADMINISTRACAO = "/portal";
+/** Destino padrão depois da entrada do portal. */
+export const ROTA_VISAO_GERAL = `${ROTA_ADMINISTRACAO}/visao-geral`;
 export const ROTA_ESTABELECIMENTOS_ADMINISTRADOS = `${ROTA_ADMINISTRACAO}/estabelecimentos`;
+
+/** Lista de estabelecimentos já filtrada (links da Visão geral). Os nomes dos
+ * parâmetros são os que a listagem lê ao abrir. */
+export function rotaEstabelecimentosFiltrados(filtro: { filtro?: string; situacao?: string }): string {
+  const params = new URLSearchParams();
+  if (filtro.filtro) params.set("filtro", filtro.filtro);
+  if (filtro.situacao) params.set("situacao", filtro.situacao);
+  const busca = params.toString();
+  return busca ? `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}?${busca}` : ROTA_ESTABELECIMENTOS_ADMINISTRADOS;
+}
 
 /** Ficha de um estabelecimento. Consultá-la nunca troca o estabelecimento
  * ativo da sessão nem cria vínculo: o id só vai para a leitura de plataforma. */
@@ -36,6 +48,7 @@ export function rotaFichaUsuario(id: string): string {
 
 /** Seções do portal, na ordem do menu. */
 export const SECOES_ADMINISTRACAO: readonly { href: string; rotulo: string }[] = [
+  { href: ROTA_VISAO_GERAL, rotulo: "Visão geral" },
   { href: ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotulo: "Estabelecimentos" },
   { href: ROTA_USUARIOS, rotulo: "Responsáveis e acessos" },
   { href: ROTA_CONVITES, rotulo: "Convites" },
@@ -57,13 +70,13 @@ export function emAdministracao(pathname: string | null): boolean {
 }
 
 /** Destino depois da entrada do portal: um `next` (já sanitizado, ver
- * lib/auth/safe-redirect.ts) que aponte para DENTRO do portal, ou a lista de
- * estabelecimentos. Um `next` da operação nunca é seguido a partir daqui, e a
- * própria entrada não vira destino (voltaria para o formulário). */
+ * lib/auth/safe-redirect.ts) que aponte para DENTRO do portal, ou a Visão
+ * geral. Um `next` da operação nunca é seguido a partir daqui, e a própria
+ * entrada não vira destino (voltaria para o formulário). */
 export function destinoNoPortal(next: string | null): string {
   const caminho = next?.split(/[?#]/)[0] ?? null;
   if (next && caminho !== ROTA_ADMINISTRACAO && emAdministracao(caminho)) return next;
-  return ROTA_ESTABELECIMENTOS_ADMINISTRADOS;
+  return ROTA_VISAO_GERAL;
 }
 
 /** Endereço da entrada do portal que, depois do login, volta para `atual`. */

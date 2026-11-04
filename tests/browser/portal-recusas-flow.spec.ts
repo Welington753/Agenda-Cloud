@@ -20,10 +20,18 @@ import { LISTA_DO_PORTAL as LISTA, SEM_ACESSO_AO_PORTAL, acessoDaApi, navConta, 
 const SENHA_DONO = "senha-do-dono-do-max-1";
 const SENHA_EQUIPE = "senha-da-equipe-do-max-1";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 10);
-const ROTAS_DA_API = ["/platform/establishments", "/platform/prices", "/platform/users", "/platform/audit", "/platform/subscription-payments"];
+const ROTAS_DA_API = [
+  "/platform/overview",
+  "/platform/establishments",
+  "/platform/establishments?filter=EXPIRING_SOON",
+  "/platform/prices",
+  "/platform/users",
+  "/platform/audit",
+  "/platform/subscription-payments",
+];
 
 async function recusadoNoPortal(page: Page) {
-  for (const caminho of ["/portal", "/portal/papeis", "/plataforma/usuarios", "/conta/administracao"]) {
+  for (const caminho of ["/portal", "/portal/visao-geral", "/portal/papeis", "/plataforma/usuarios", "/conta/administracao"]) {
     await page.goto(caminho);
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(SEM_ACESSO_AO_PORTAL);
     await expect(navPortal(page)).toHaveCount(0);

@@ -20,6 +20,7 @@ import {
   entrarPeloFormulario,
   navConta,
   navPortal,
+  sairDoPortal,
   semRolagemHorizontal,
 } from "./support/portal";
 
@@ -64,7 +65,7 @@ test("proprietário sem estabelecimento troca a senha temporária pelo portal e 
     await expect(navConta(page)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Proprietários da plataforma" })).toHaveCount(0);
     await expect(page.locator('a[href^="/conta"]')).toHaveCount(0);
-    for (const rota of ["/platform/access", "/platform/establishments", "/platform/users", "/platform/prices"]) {
+    for (const rota of ["/platform/access", "/platform/overview", "/platform/establishments", "/platform/users", "/platform/prices"]) {
       const r = await page.request.get(`${API_DE_TESTE}${rota}`);
       expect(r.status(), rota).toBe(403);
       expect(await r.text(), rota).toContain("TROCA_DE_SENHA_OBRIGATORIA");
@@ -75,6 +76,9 @@ test("proprietário sem estabelecimento troca a senha temporária pelo portal e 
     await page.goto(LISTA);
     await expect(troca).toBeVisible();
     await expect(navPortal(page)).toHaveCount(0);
+    await page.goto("/portal/visao-geral");
+    await expect(troca).toBeVisible();
+    await expect(page.getByTestId("indicador-total")).toHaveCount(0);
     await page.setViewportSize({ width: 360, height: 844 });
     await semRolagemHorizontal(page);
     await page.screenshot({ path: testInfo.outputPath("portal-troca-de-senha-360.png"), fullPage: true });
@@ -134,7 +138,7 @@ test("proprietário sem estabelecimento troca a senha temporária pelo portal e 
     expect(antiga.status()).toBe(401);
 
     // "Sair" volta para a entrada do portal.
-    await page.getByRole("button", { name: "Sair" }).click();
+    await sairDoPortal(page);
     await expect(page).toHaveURL("/portal");
     await expect(page.getByRole("heading", { name: "Entrar no portal" })).toBeVisible();
   } finally {

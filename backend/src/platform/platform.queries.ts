@@ -19,12 +19,18 @@ export const ESTABLISHMENT_COLUMNS = `t.id, COALESCE(main_unit.name, t.slug::tex
     FROM memberships m JOIN users u ON u.id = m.user_id
     WHERE m.tenant_id = t.id AND m.role = 'DONO'), '[]'::json) AS owners`;
 
-export function establishmentFilter(query: EstablishmentQuery): {
+/** `ids`: resultado de um filtro calculado fora do SQL (regra de acesso ou
+ * condição contratada, ver portal-overview.ts); restringe a mesma consulta
+ * paginada. */
+export function establishmentFilter(
+  query: EstablishmentQuery,
+  ids?: readonly string[],
+): {
   sql: string;
-  values: string[];
+  values: unknown[];
 } {
   const clauses: string[] = [];
-  const values: string[] = [];
+  const values: unknown[] = [];
   if (query.q) {
     values.push(`%${query.q.replace(/[\\%_]/g, '\\$&')}%`);
     const parameter = `$${values.length}`;
@@ -41,6 +47,10 @@ export function establishmentFilter(query: EstablishmentQuery): {
   if (query.planId) {
     values.push(query.planId);
     clauses.push(`t.plan_id = $${values.length}`);
+  }
+  if (ids) {
+    values.push(ids);
+    clauses.push(`t.id = ANY($${values.length}::varchar[])`);
   }
   return {
     sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',

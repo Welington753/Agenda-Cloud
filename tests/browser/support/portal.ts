@@ -6,9 +6,11 @@ import { expect, type Page } from "@playwright/test";
 import { API_DE_TESTE } from "./contas-de-teste";
 
 export const LISTA_DO_PORTAL = "/portal/estabelecimentos";
+/** Destino padrão depois da entrada do portal. */
+export const VISAO_GERAL_DO_PORTAL = "/portal/visao-geral";
 export const SEM_ACESSO_AO_PORTAL = "Sua conta não tem acesso ao portal da plataforma.";
 
-export const navPortal = (page: Page) => page.getByRole("navigation", { name: "Seções da administração" });
+export const navPortal = (page: Page) => page.getByRole("navigation", { name: "Seções do portal" });
 export const navConta = (page: Page) => page.getByRole("navigation", { name: "Áreas da conta" });
 
 /** Login pelo formulário da página aberta (`/portal` ou `/login`). */
@@ -27,4 +29,17 @@ export async function acessoDaApi(page: Page): Promise<boolean | number> {
   const r = await page.request.get(`${API_DE_TESTE}/platform/access`);
   if (r.status() !== 200) return r.status();
   return ((await r.json()) as { canViewEstablishments: boolean }).canViewEstablishments;
+}
+
+/** "Sair" do portal fica no menu do usuário (com a aparência). */
+export async function sairDoPortal(page: Page) {
+  await page.getByTestId("abrir-menu-usuario").click();
+  await page.getByTestId("menu-usuario").getByRole("button", { name: "Sair" }).click();
+}
+
+/** No celular as seções do portal ficam recolhidas atrás do botão "Menu". */
+export async function abrirSecoesNoCelular(page: Page) {
+  const botao = page.getByTestId("abrir-menu-portal");
+  if ((await botao.getAttribute("aria-expanded")) !== "true") await botao.click();
+  await expect(navPortal(page)).toBeVisible();
 }
