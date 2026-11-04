@@ -217,9 +217,9 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     // Funcionário exclusivo, em um e em dois estabelecimentos.
     const recepcao = await conta('func-recepcao');
     await vincular(recepcao.userId, tA, 'RECEPCIONISTA');
-    const gerenteDuplo = await conta('func-gerente-duplo');
-    await vincular(gerenteDuplo.userId, tA, 'GERENTE');
-    await vincular(gerenteDuplo.userId, tB, 'RECEPCIONISTA');
+    const funcDuplo = await conta('func-duplo');
+    await vincular(funcDuplo.userId, tA, 'PROFISSIONAL');
+    await vincular(funcDuplo.userId, tB, 'RECEPCIONISTA');
     // Convite pendente de funcionário, ainda sem vínculo.
     const convidadaFunc = await conta('func-convidada', { status: 'INVITED', semSenha: true });
     await convidar(convidadaFunc.userId, tA, 'RECEPCIONISTA');
@@ -235,8 +235,11 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const responsavelPendente = await conta('func-responsavel', { status: 'INVITED', semSenha: true });
     await convidar(responsavelPendente.userId, tB, 'DONO');
     // Papel de plataforma com vínculo de funcionário: área da plataforma, continua.
+    // (Sem GERENTE nestes cenários: o levantamento de vagas de
+    // pilot-team-manager-check lista só os primeiros estabelecimentos com
+    // gerente, no mesmo banco.)
     const adminFunc = await conta('func-admin', { role: 'MASTER_ADMIN', permissions: ['ESTABLISHMENTS_MANAGE'] });
-    await vincular(adminFunc.userId, tB, 'GERENTE');
+    await vincular(adminFunc.userId, tB, 'RECEPCIONISTA');
 
     const contar = async () =>
       (
@@ -259,7 +262,7 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
       responsavelPendente.userId,
       adminFunc.userId,
     ].sort();
-    const fora = [recepcao.userId, gerenteDuplo.userId, convidadaFunc.userId];
+    const fora = [recepcao.userId, funcDuplo.userId, convidadaFunc.userId];
     const tudo = await directory.listUsers(master.userId, { q: m, page: 1, pageSize: 50 });
     const ids = tudo.items.map((u: { id: string }) => u.id);
     expect([...ids].sort()).toEqual(esperados);
@@ -291,13 +294,13 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     // Continuam na equipe do estabelecimento e na própria ficha.
     const equipeA = await directory.establishmentMembers(master.userId, tA);
     expect(equipeA.members.map((v: { user: { id: string } }) => v.user.id)).toEqual(
-      expect.arrayContaining([recepcao.userId, gerenteDuplo.userId, mista.userId, futuraDona.userId]),
+      expect.arrayContaining([recepcao.userId, funcDuplo.userId, mista.userId, futuraDona.userId]),
     );
     expect(equipeA.pendingInvites.map((c: { targetUser: { id: string } | null }) => c.targetUser?.id)).toContain(
       convidadaFunc.userId,
     );
     const equipeB = await directory.establishmentMembers(master.userId, tB);
-    expect(equipeB.members.map((v: { user: { id: string } }) => v.user.id)).toContain(gerenteDuplo.userId);
+    expect(equipeB.members.map((v: { user: { id: string } }) => v.user.id)).toContain(funcDuplo.userId);
     expect((await directory.userDetail(master.userId, recepcao.userId)).memberships).toHaveLength(1);
 
     // Só leitura: nada apagado nem alterado; a recusa do portal continua.
