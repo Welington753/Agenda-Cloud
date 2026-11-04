@@ -47,6 +47,8 @@ export type AreaDoEstabelecimento =
   | "RECEBIMENTOS_VER"
   | "RECEBIMENTOS_REGISTRAR"
   | "RECEBIMENTOS_ESTORNAR"
+  | "COMISSOES_VER"
+  | "COMISSOES_CONFIGURAR"
   | "CLIENTES_VER"
   | "CLIENTES_GERENCIAR"
   | "SERVICOS_VER"
@@ -58,7 +60,8 @@ export type AreaDoEstabelecimento =
   | "AGENDA_PROPRIA_VER"
   | "AGENDA_PROPRIA_INICIAR"
   | "AGENDA_PROPRIA_CONCLUIR"
-  | "AGENDA_PROPRIA_FALTA";
+  | "AGENDA_PROPRIA_FALTA"
+  | "AGENDA_PROPRIA_COMISSOES";
 
 export function perfilDoPapel(papel: PapelEstabelecimentoReal | null | undefined): PerfilDaArea {
   if (papel === "DONO") return "dono";

@@ -1,0 +1,71 @@
+// Comissões do estabelecimento (dono): regras por profissional e serviço e o
+// relatório apurado. Sessão obrigatória; a autorização no estabelecimento é
+// refeita pelo serviço em toda requisição.
+import { Body, Controller, Delete, Get, Header, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
+import { SessionGuard } from '../auth/session.guard.js';
+import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import {
+  commissionReportQuerySchema,
+  commissionRuleSchema,
+  professionalIdSchema,
+  serviceIdSchema,
+  type CommissionReportQuery,
+  type CommissionRuleDto,
+} from './commissions.dto.js';
+import { CommissionsService } from './commissions.service.js';
+
+type AuthenticatedRequest = Request & { [AUTH_CONTEXT_REQUEST_KEY]: IdentityContext };
+const identidade = (req: AuthenticatedRequest) => req[AUTH_CONTEXT_REQUEST_KEY];
+const profissionalPipe = new ZodValidationPipe(professionalIdSchema);
+const servicoPipe = new ZodValidationPipe(serviceIdSchema);
+
+@Controller('tenants/:tenantId/commissions')
+@UseGuards(SessionGuard)
+export class CommissionsController {
+  constructor(private readonly commissions: CommissionsService) {}
+
+  @Get()
+  @Header('Cache-Control', 'private, no-store')
+  report(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Query(new ZodValidationPipe(commissionReportQuerySchema)) query: CommissionReportQuery,
+  ) {
+    return this.commissions.report(identidade(req).userId, tenantId, query);
+  }
+
+  @Get('rules/:professionalId')
+  @Header('Cache-Control', 'private, no-store')
+  rules(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('professionalId', profissionalPipe) professionalId: string,
+  ) {
+    return this.commissions.rules(identidade(req).userId, tenantId, professionalId);
+  }
+
+  @Put('rules/:professionalId/:serviceId')
+  @Header('Cache-Control', 'private, no-store')
+  setRule(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('professionalId', profissionalPipe) professionalId: string,
+    @Param('serviceId', servicoPipe) serviceId: string,
+    @Body(new ZodValidationPipe(commissionRuleSchema)) dto: CommissionRuleDto,
+  ) {
+    return this.commissions.setRule(identidade(req).userId, tenantId, professionalId, serviceId, dto);
+  }
+
+  @Delete('rules/:professionalId/:serviceId')
+  @Header('Cache-Control', 'private, no-store')
+  clearRule(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('professionalId', profissionalPipe) professionalId: string,
+    @Param('serviceId', servicoPipe) serviceId: string,
+  ) {
+    return this.commissions.clearRule(identidade(req).userId, tenantId, professionalId, serviceId);
+  }
+}

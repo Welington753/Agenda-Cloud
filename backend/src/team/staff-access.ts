@@ -40,16 +40,24 @@ import { canManageConsumers, canViewConsumers } from '../consumers/consumer-acce
 import { canManageProfessionals, canViewProfessionals } from '../professionals/professional-access.js';
 import { canManageServices, canViewServices } from '../services/service-access.js';
 import { canViewPayments } from '../payments/payment-access.js';
+import { canViewCommissions } from '../commissions/commission-access.js';
 import { MANAGER_PERMISSIONS, type ManagerPermission } from '../common/manager-permissions.js';
 
-/** Valores novos do enum `permission` (migration TeamAccess1792886400000).
- * Ficam fora do enum TypeScript, que espelha a migration inicial. */
+/** Valores novos do enum `permission` (migrations TeamAccess1792886400000 e
+ * ProfessionalCommissions1793491200000), fora do enum TypeScript, que espelha
+ * a migration inicial. `COMISSOES_PROPRIAS_VISUALIZAR` libera só as PRÓPRIAS
+ * comissões (commissions/commission-access.ts); é separada de
+ * `COMISSOES_VISUALIZAR`, que só restringe o dono. */
 export const STAFF_PERMISSIONS = [
   'ATENDIMENTO_PROPRIO_INICIAR',
   'ATENDIMENTO_PROPRIO_CONCLUIR',
   'ATENDIMENTO_PROPRIO_FALTA',
+  'COMISSOES_PROPRIAS_VISUALIZAR',
 ] as const;
 export type StaffPermission = (typeof STAFF_PERMISSIONS)[number];
+
+/** Concessão que libera as próprias comissões. */
+export const OWN_COMMISSIONS_PERMISSION = 'COMISSOES_PROPRIAS_VISUALIZAR' satisfies StaffPermission;
 
 /** Ações que o funcionário pode receber. Confirmar, cancelar, remarcar e
  * criar reservas continuam com o dono. */
@@ -66,6 +74,7 @@ export const STAFF_PERMISSION_LABELS: Readonly<Record<StaffPermission, string>> 
   ATENDIMENTO_PROPRIO_INICIAR: 'Iniciar os próprios atendimentos',
   ATENDIMENTO_PROPRIO_CONCLUIR: 'Concluir os próprios atendimentos',
   ATENDIMENTO_PROPRIO_FALTA: 'Marcar falta nos próprios atendimentos',
+  COMISSOES_PROPRIAS_VISUALIZAR: 'Ver as próprias comissões',
 };
 
 /** Ajuste lido do banco: a permissão pode ser um valor novo do enum. */
@@ -113,13 +122,17 @@ export function canManageTeam(role: EstablishmentRole, overrides: readonly Permi
   return !overrides.some((o) => o.permission === Permission.EQUIPE_GERENCIAR && o.mode === PermissionMode.DENIED);
 }
 
-/** O que este dono pode conceder: só o que ele mesmo pode fazer. */
+/** O que este dono pode conceder: só o que ele mesmo pode fazer. As ações
+ * pedem o andamento da agenda; as próprias comissões, ver as comissões. O
+ * recurso do plano é conferido por quem chama (team-authorization.ts). */
 export function grantableStaffPermissions(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[],
 ): StaffPermission[] {
   if (!canManageTeam(role, overrides)) return [];
-  return canManageAppointmentStatus(role, overrides) ? [...STAFF_PERMISSIONS] : [];
+  return STAFF_PERMISSIONS.filter((p) =>
+    p === OWN_COMMISSIONS_PERMISSION ? canViewCommissions(role, overrides) : canManageAppointmentStatus(role, overrides),
+  );
 }
 
 type PoliticaDoDono = (role: EstablishmentRole, overrides: readonly PermissionOverrideLike[]) => boolean;

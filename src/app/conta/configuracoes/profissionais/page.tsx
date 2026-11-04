@@ -257,6 +257,7 @@ export default function ProfissionaisPage() {
             <ListaProfissionais
               podeGerenciar={podeGerenciar}
               podeConsultarDisponibilidade={tem("DISPONIBILIDADE")}
+              podeConfigurarComissoes={tem("COMISSOES_CONFIGURAR")}
               profissionais={estado.profissionais}
               gravando={gravando}
               confirmando={confirmando}

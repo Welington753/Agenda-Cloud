@@ -40,7 +40,9 @@ export type AdminAuditAction =
   | 'PLAN_PRICE_CHANGED'
   | 'CONTRACT_PRICE_CHANGED'
   | 'ACCESS_NO_EXPIRY_GRANTED'
-  | 'ACCESS_NO_EXPIRY_REVOKED';
+  | 'ACCESS_NO_EXPIRY_REVOKED'
+  // Comissões (migration ProfessionalCommissions).
+  | 'COMMISSION_RULE_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

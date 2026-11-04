@@ -11,7 +11,8 @@
 // informação sem campo de verdade no backend.
 import Link from "next/link";
 import clsx from "clsx";
-import { Ban, CalendarClock, CalendarSearch, Pencil, RotateCcw } from "lucide-react";
+import { Ban, CalendarClock, CalendarSearch, Percent, Pencil, RotateCcw } from "lucide-react";
+import { rotaComissoesDoProfissional } from "@/lib/conta/rotas";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Badge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
@@ -27,6 +28,8 @@ interface ListaProfissionaisProps {
   /** `false`: só consulta (gerente sem a permissão de gerenciar). */
   podeGerenciar?: boolean;
   podeConsultarDisponibilidade?: boolean;
+  /** Regras de comissão por serviço (recurso do plano + permissão do dono). */
+  podeConfigurarComissoes?: boolean;
   aoEditar: (profissional: ProfissionalReal) => void;
   aoPedirDesativacao: (profissional: ProfissionalReal) => void;
   aoCancelarDesativacao: () => void;
@@ -41,6 +44,7 @@ export function ListaProfissionais({
   reativandoId,
   podeGerenciar = true,
   podeConsultarDisponibilidade = true,
+  podeConfigurarComissoes = false,
   aoEditar,
   aoPedirDesativacao,
   aoCancelarDesativacao,
@@ -111,7 +115,7 @@ export function ListaProfissionais({
                 {/* Horários semanais (Lote 6D.3) e consulta de disponibilidade
                     (Lote 6D.4) — telas próprias. Disponibilidade só para quem
                     atende: o profissional desativado não tem agenda a oferecer. */}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Link
                     href={`/conta/configuracoes/profissionais/${profissional.id}/horarios`}
                     aria-label={`Horários de ${profissional.name}`}
@@ -128,6 +132,16 @@ export function ListaProfissionais({
                     >
                       <CalendarSearch size={14} aria-hidden="true" />
                       Disponibilidade
+                    </Link>
+                  )}
+                  {podeConfigurarComissoes && (
+                    <Link
+                      href={rotaComissoesDoProfissional(profissional.id)}
+                      aria-label={`Comissões de ${profissional.name}`}
+                      className={CLASSE_LINK_SECUNDARIO}
+                    >
+                      <Percent size={14} aria-hidden="true" />
+                      Comissões
                     </Link>
                   )}
                 </div>

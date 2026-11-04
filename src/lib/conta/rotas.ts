@@ -25,6 +25,10 @@ export const ROTA_MINHA_AGENDA = "/conta/minha-agenda";
 export const ROTA_SELECIONAR_ESTABELECIMENTO = "/conta/selecionar-estabelecimento";
 /** Recebimentos manuais (dono), abertos pelo Início. */
 export const ROTA_RECEBIMENTOS = "/conta/recebimentos";
+/** Comissões apuradas por profissional (dono), abertas pelo Início. */
+export const ROTA_COMISSOES = "/conta/comissoes";
+/** As próprias comissões (funcionário, quando o dono libera). */
+export const ROTA_MINHAS_COMISSOES = "/conta/minha-agenda/comissoes";
 
 export const ROTA_CONFIGURACOES = "/conta/configuracoes";
 export const ROTA_CONFIG_ESTABELECIMENTO = `${ROTA_CONFIGURACOES}/estabelecimento`;
@@ -34,6 +38,11 @@ export const ROTA_EQUIPE = `${ROTA_CONFIGURACOES}/equipe`;
 export const ROTA_NOTIFICACOES = `${ROTA_CONFIGURACOES}/notificacoes`;
 export const ROTA_APARENCIA = `${ROTA_CONFIGURACOES}/aparencia`;
 export const ROTA_PERFIL = `${ROTA_CONFIGURACOES}/perfil`;
+
+/** Regras de comissão de um profissional, por serviço. */
+export function rotaComissoesDoProfissional(id: string): string {
+  return `${ROTA_PROFISSIONAIS}/${encodeURIComponent(id)}/comissoes`;
+}
 
 export function rotaHorariosDoProfissional(id: string): string {
   return `${ROTA_PROFISSIONAIS}/${encodeURIComponent(id)}/horarios`;

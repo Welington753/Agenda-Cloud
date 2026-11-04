@@ -25,7 +25,8 @@ import {
   type ProximoAtendimentoDoPainel,
 } from "@/lib/api/dashboard-api";
 import { atendimentos, clientes, dataCurta } from "@/lib/conta/inicio";
-import { ROTA_AGENDA, ROTA_EQUIPE, ROTA_PROFISSIONAIS, ROTA_RECEBIMENTOS, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
+import { ROTA_AGENDA, ROTA_COMISSOES, ROTA_EQUIPE, ROTA_PROFISSIONAIS, ROTA_RECEBIMENTOS, ROTA_SOLICITACOES } from "@/lib/conta/rotas";
+import { useAreas } from "@/lib/conta/use-areas";
 import { formatarMoeda } from "@/lib/format";
 import { StatusDoAtendimento } from "@/components/conta/cartao-atendimento";
 import { Botao } from "@/components/ui/button";
@@ -146,6 +147,8 @@ export function Periodo({ painel }: { painel: PainelDoEstabelecimento }) {
  * valor tirado do preço das reservas). */
 export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
   const { finance, period } = painel;
+  // Comissões só com o recurso no plano e a permissão (o servidor confere).
+  const verComissoes = useAreas()("COMISSOES_VER");
   return (
     <div className="space-y-2" data-testid="financeiro">
       {/* Uma coluna no celular: valores em reais não cabem em meia largura. */}
@@ -168,6 +171,15 @@ export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
       >
         Ver e registrar recebimentos
       </Link>
+      {verComissoes && (
+        <Link
+          href={`${ROTA_COMISSOES}?de=${period.from}&ate=${period.to}`}
+          className="ml-4 inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--color-accent-hover)] underline"
+          data-testid="ver-comissoes"
+        >
+          Ver comissões apuradas
+        </Link>
+      )}
     </div>
   );
 }

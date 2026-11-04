@@ -31,6 +31,7 @@ import { canManageProfessionals, canViewProfessionals } from '../professionals/p
 import { canManagePublicBooking } from '../public-booking/public-booking-access.js';
 import { canManageServices, canViewServices } from '../services/service-access.js';
 import { canManageTeam, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
+import { canManageCommissionRules, canViewCommissions } from '../commissions/commission-access.js';
 
 export interface OverrideLike {
   permission: Permission;
@@ -56,6 +57,8 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
   { key: 'RECEBIMENTOS_VER', label: 'Ver recebimentos', policy: canViewPayments },
   { key: 'RECEBIMENTOS_REGISTRAR', label: 'Registrar recebimentos', policy: canRecordPayments },
   { key: 'RECEBIMENTOS_ESTORNAR', label: 'Estornar recebimentos', policy: canRefundPayments },
+  { key: 'COMISSOES_VER', label: 'Ver as comissões apuradas', policy: canViewCommissions },
+  { key: 'COMISSOES_CONFIGURAR', label: 'Configurar as comissões', policy: canManageCommissionRules },
   { key: 'CLIENTES_VER', label: 'Ver clientes', policy: canViewConsumers },
   { key: 'CLIENTES_GERENCIAR', label: 'Cadastrar clientes', policy: canManageConsumers },
   { key: 'SERVICOS_VER', label: 'Ver serviços', policy: canViewServices },
@@ -79,6 +82,11 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
     key: 'AGENDA_PROPRIA_FALTA',
     label: 'Marcar falta nos próprios atendimentos',
     policy: (role, o) => staffPermissionGranted(role, o, 'ATENDIMENTO_PROPRIO_FALTA'),
+  },
+  {
+    key: 'AGENDA_PROPRIA_COMISSOES',
+    label: 'Ver as próprias comissões',
+    policy: (role, o) => staffPermissionGranted(role, o, 'COMISSOES_PROPRIAS_VISUALIZAR'),
   },
 ];
 
@@ -108,6 +116,8 @@ export const EFFECTIVE_TENANT_PERMISSIONS: readonly Permission[] = [
   Permission.PROFISSIONAIS_GERENCIAR,
   Permission.CONFIGURACOES_GERENCIAR,
   Permission.EQUIPE_GERENCIAR,
+  Permission.COMISSOES_VISUALIZAR,
+  Permission.COMISSOES_GERENCIAR,
 ];
 
 export interface AreaAccess {

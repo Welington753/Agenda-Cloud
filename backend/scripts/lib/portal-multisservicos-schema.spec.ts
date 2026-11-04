@@ -89,7 +89,7 @@ describe('nomes derivados das migrations', () => {
     expect(texto.match(/queryRunner\.query/g)).toHaveLength(2);
   });
 
-  it('o histórico é exatamente o das migrations do repositório, na ordem: 12, 13 e 14', () => {
+  it('o histórico até a 14ª é exatamente o das migrations do repositório, na ordem: 12, 13 e 14', () => {
     const nomes = readdirSync(MIGRATIONS)
       .filter((n) => /^\d+-[A-Za-z]+\.ts$/.test(n))
       .sort()
@@ -97,7 +97,9 @@ describe('nomes derivados das migrations', () => {
         const [, carimbo, nome] = /^(\d+)-([A-Za-z]+)\.ts$/.exec(n)!;
         return `${nome}${carimbo}`;
       });
-    expect(nomes).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
+    // Migrations posteriores (ProfessionalCommissions em diante) não entram na
+    // conferência deste lote.
+    expect(nomes.slice(0, nomes.indexOf(MIGRATION_NOMES_CONGELADOS) + 1)).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
     expect(MIGRATIONS_ATE_COMERCIAL).toHaveLength(12);
     expect(MIGRATIONS_ATE_PORTAL).toHaveLength(13);
     expect(MIGRATIONS_ATE_NOMES_CONGELADOS).toHaveLength(14);

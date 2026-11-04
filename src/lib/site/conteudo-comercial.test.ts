@@ -89,6 +89,18 @@ describe("planos comerciais", () => {
       expect([plano.descricaoCurta, ...plano.destaques].join(" ")).not.toMatch(/unidade/i);
     }
   });
+
+  it("comissões no Pro (e no Max, que inclui tudo do Pro), nunca no Básico", () => {
+    const texto = (codigo: string) => {
+      const plano = PLANOS_COMERCIAIS.find((p) => p.codigo === codigo)!;
+      return [plano.descricaoCurta, ...plano.destaques].join(" ");
+    };
+    expect(texto("essencial")).not.toMatch(/comiss/i);
+    expect(texto("equipe")).toMatch(/comiss/i);
+    expect(texto("pro")).toMatch(/Tudo do Pro/);
+    const comissoes = FUNCIONALIDADES_DISPONIVEIS.find((f) => f.id === "comissoes");
+    expect(comissoes?.descricao).toMatch(/Pro e Max/);
+  });
 });
 
 describe("navegação", () => {
@@ -110,8 +122,8 @@ describe("navegação", () => {
 
   it("recursos futuros da matriz de planos nunca aparecem como disponíveis", () => {
     const disponiveis = new Set(FUNCIONALIDADES_DISPONIVEIS.map((f) => f.id));
-    for (const futuro of ["unidades", "comissoes", "personalizacao"]) expect(disponiveis.has(futuro)).toBe(false);
+    for (const futuro of ["unidades", "personalizacao"]) expect(disponiveis.has(futuro)).toBe(false);
     const textos = FUNCIONALIDADES_DISPONIVEIS.map((f) => `${f.rotulo} ${f.descricao}`).join(" ").toLowerCase();
-    expect(textos).not.toMatch(/unidades|comiss|logo/);
+    expect(textos).not.toMatch(/unidades|logo/);
   });
 });

@@ -56,11 +56,18 @@ describe('gestão da equipe pelo dono', () => {
 
   it('o dono só concede o que ele mesmo pode fazer', () => {
     expect(grantableStaffPermissions(EstablishmentRole.DONO, [])).toEqual([...STAFF_PERMISSIONS]);
+    // Sem o andamento da agenda, nenhuma das três ações; as próprias
+    // comissões dependem de o dono ver as comissões.
     expect(
       grantableStaffPermissions(EstablishmentRole.DONO, [
         { permission: Permission.AGENDA_GERENCIAR, mode: PermissionMode.DENIED },
       ]),
-    ).toEqual([]);
+    ).toEqual(['COMISSOES_PROPRIAS_VISUALIZAR']);
+    expect(
+      grantableStaffPermissions(EstablishmentRole.DONO, [
+        { permission: Permission.COMISSOES_VISUALIZAR, mode: PermissionMode.DENIED },
+      ]),
+    ).toEqual(['ATENDIMENTO_PROPRIO_INICIAR', 'ATENDIMENTO_PROPRIO_CONCLUIR', 'ATENDIMENTO_PROPRIO_FALTA']);
     expect(grantableStaffPermissions(EstablishmentRole.PROFISSIONAL, [])).toEqual([]);
   });
 });
