@@ -544,9 +544,10 @@ Nada foi executado contra o Neon, o piloto ou `agenda_dev`.
 - um `MASTER_OWNER`.
 
 **Commit do kit ensaiado:** `d3d5ce19d74c9b3e23a1c7a205bbcc163d7b6adf`.
-Depois dele mudaram só a documentação. Para conferir, rode
-`git diff d3d5ce1 <sha> -- backend/scripts backend/src backend/test`, que deve
-sair vazio.
+Depois dele mudaram só a documentação e o teste db-e2e da conferência, que
+passou a ignorar os planos de teste que outras suítes deixam no banco
+compartilhado. Para conferir, rode
+`git diff d3d5ce1 <sha> -- backend/scripts backend/src`, que deve sair vazio.
 
 ### Rodadas pelo lançador oficial
 

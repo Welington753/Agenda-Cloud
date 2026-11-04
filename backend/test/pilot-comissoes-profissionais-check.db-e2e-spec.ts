@@ -42,7 +42,8 @@ if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
   throw new Error('Este teste exige PostgreSQL descartável local.');
 }
 const CONSULTAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/runbooks/consultas');
-const FONTE_COMPILADA = new URL('../dist-migrations/database/migrations-data-source.js', import.meta.url);
+const PLANOS_DO_CATALOGO = ['plan_essencial', 'plan_equipe', 'plan_pro'];
+const FONTE_COMPILADA =new URL('../dist-migrations/database/migrations-data-source.js', import.meta.url);
 
 type Resposta = { command: string; rows: Record<string, unknown>[] };
 const soLeitura = (respostas: Resposta[]) => {
@@ -69,7 +70,14 @@ describe.skipIf(!url)('conferência de ProfessionalCommissions contra PostgreSQL
     const lido = await comLeitor(lerEstadoComissoes);
     // Outras suítes podem ter migrations depois desta no futuro: o recorte
     // confere as quinze, na ordem.
-    const estado = { ...lido, migrationNames: lido.migrationNames.slice(0, 15) };
+    // Outras suítes também criam planos de teste com todos os recursos no
+    // banco compartilhado; aqui contam só os três do catálogo (no piloto, e no
+    // banco temporário abaixo, a conferência vale para todos os planos).
+    const estado = {
+      ...lido,
+      migrationNames: lido.migrationNames.slice(0, 15),
+      planosComComissoes: lido.planosComComissoes.filter((p) => PLANOS_DO_CATALOGO.includes(p)),
+    };
     expect(estado.migrationNames).toEqual([...MIGRATIONS_ATE_COMISSOES]);
     expect(falhasDepoisDeComissoes(estado)).toEqual([]);
     expect(objetosComissoesPresentes(estado)).toBe(TOTAL_OBJETOS_COMISSOES);
@@ -135,7 +143,7 @@ describe.skipIf(!url)('conferência de ProfessionalCommissions contra PostgreSQL
       expect(excecoes).toContainEqual({ tenant_id: tenants.proSemComissoes, plan_id: 'plan_equipe', enabled: false });
       expect(Number(totais![0]!.regras)).toBe(impacto.regras);
       expect(Number(totais![0]!.apuracoes)).toBe(impacto.apuracoes);
-      expect(planos!.map((r) => r.plan_id)).toEqual(['plan_equipe', 'plan_pro']);
+      expect(planos!.map((r) => r.plan_id as string).filter((p) => PLANOS_DO_CATALOGO.includes(p))).toEqual(['plan_equipe', 'plan_pro']);
     } finally {
       await comCliente(url!, async (c) => {
         await c.query('DELETE FROM tenant_feature_overrides WHERE id = $1', [`tfo${marca}`]);
