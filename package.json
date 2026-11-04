@@ -26,6 +26,7 @@
     "test:browser:portal-entrada": "playwright test tests/browser/portal-entrada-flow.spec.ts",
     "test:browser:portal-senha-temporaria": "playwright test tests/browser/portal-senha-temporaria-flow.spec.ts",
     "test:browser:portal-recusas": "playwright test tests/browser/portal-recusas-flow.spec.ts",
+    "test:browser:portal-visao-geral": "playwright test tests/browser/portal-visao-geral-flow.spec.ts",
     "test:browser:contas": "playwright test tests/browser/contas-convites-flow.spec.ts",
     "test:browser:equipe": "playwright test tests/browser/equipe-acessos-flow.spec.ts",
     "test:browser:acesso-usuario": "playwright test tests/browser/acesso-por-usuario-flow.spec.ts",

@@ -76,6 +76,44 @@ export async function loadAccessFlags(manager: EntityManager, tenantId: string):
   return { legacy: linha?.legacy === true, noExpiry: linha?.no_expiry === true };
 }
 
+/** Os mesmos períodos válidos e sinalizadores de `ACCESS_PERIODS_SQL` e
+ * `ACCESS_LEGACY_SQL`, de TODOS os estabelecimentos, em duas consultas. Para
+ * os totais do portal: a regra (`accessSituation`) continua a mesma, só a
+ * leitura é em lote, sem uma consulta por estabelecimento. */
+export const ALL_ACCESS_PERIODS_SQL =
+  'SELECT tenant_id, id, kind::text AS kind, starts_at, ends_at, anchor_day FROM tenant_access_periods WHERE canceled_at IS NULL';
+
+export const ALL_ACCESS_FLAGS_SQL = `SELECT t.id AS tenant_id, t.access_legacy_since IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM tenant_no_expiry_grants g WHERE g.tenant_id = t.id) AS legacy,
+  EXISTS (SELECT 1 FROM tenant_no_expiry_grants g WHERE g.tenant_id = t.id AND g.revoked_at IS NULL) AS no_expiry
+  FROM tenants t`;
+
+export interface TenantAccessInputs {
+  periods: IdentifiedPeriod[];
+  flags: Required<AccessFlags>;
+}
+
+export async function loadAllAccessInputs(manager: EntityManager): Promise<Map<string, TenantAccessInputs>> {
+  const porTenant = new Map<string, TenantAccessInputs>();
+  const sinais = await manager.query<{ tenant_id: string; legacy: boolean; no_expiry: boolean }[]>(ALL_ACCESS_FLAGS_SQL);
+  for (const s of sinais) {
+    porTenant.set(s.tenant_id, { periods: [], flags: { legacy: s.legacy === true, noExpiry: s.no_expiry === true } });
+  }
+  const linhas = await manager.query<(PeriodRow & { tenant_id: string })[]>(
+    `${ALL_ACCESS_PERIODS_SQL} ORDER BY tenant_id, starts_at, id`,
+  );
+  for (const l of linhas) {
+    porTenant.get(l.tenant_id)?.periods.push({
+      id: l.id,
+      kind: l.kind,
+      startsAt: new Date(l.starts_at),
+      endsAt: new Date(l.ends_at),
+      anchorDay: l.anchor_day === null ? null : Number(l.anchor_day),
+    });
+  }
+  return porTenant;
+}
+
 export async function tenantAccessSituation(
   manager: EntityManager,
   tenantId: string,

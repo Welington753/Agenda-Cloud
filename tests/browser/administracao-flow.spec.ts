@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 const API = "http://localhost:3001";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 24);
 const LISTA = "/portal/estabelecimentos";
+const VISAO_GERAL = "/portal/visao-geral";
 const SEM_ACESSO = "Sua conta não tem acesso ao portal da plataforma.";
 const SENHA = "senha-administracao-123";
 
@@ -38,7 +39,7 @@ function cadastrar(page: Page, marca: string) {
 }
 
 const navConta = (page: Page) => page.getByRole("navigation", { name: "Áreas da conta" });
-const navPortal = (page: Page) => page.getByRole("navigation", { name: "Seções da administração" });
+const navPortal = (page: Page) => page.getByRole("navigation", { name: "Seções do portal" });
 
 async function confirmarSenhaSePedir(page: Page) {
   const dialogo = page.getByTestId("confirmar-senha");
@@ -138,10 +139,14 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);
     await expect(navConta(page).getByText("Plataforma", { exact: true })).toHaveCount(0);
     await page.goto("/portal");
-    await expect(page).toHaveURL(LISTA);
+    await expect(page).toHaveURL(VISAO_GERAL);
+    await expect(page.getByRole("heading", { name: "Visão geral", exact: true })).toBeVisible();
     await expect(page.getByTestId("portal-plataforma")).toHaveText("Portal da plataforma");
     await expect(navConta(page)).toHaveCount(0);
+    await navPortal(page).getByRole("link", { name: "Estabelecimentos", exact: true }).click();
+    await expect(page).toHaveURL(LISTA);
     await expect(navPortal(page).getByRole("link")).toHaveText([
+      "Visão geral",
       "Estabelecimentos",
       "Responsáveis e acessos",
       "Convites",
@@ -183,7 +188,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     // Filtro por situação e falha de rede (que nunca vira zero estabelecimentos).
     await page.goto(LISTA);
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
-    await page.getByLabel("Situação do acesso").selectOption("SUSPENDED");
+    await page.getByLabel("Situação do estabelecimento").selectOption("SUSPENDED");
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();
     await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
     await capturar(page, "lista", (f) => testInfo.outputPath(f));
@@ -205,7 +210,9 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(page.getByTestId("menu-perfil")).toBeVisible();
     await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);
     await page.goto("/portal");
-    await expect(page).toHaveURL(LISTA);
+    await expect(page).toHaveURL(VISAO_GERAL);
+    await expect(navPortal(page)).toHaveCount(0);
+    await page.getByTestId("abrir-menu-portal").click();
     await expect(navPortal(page)).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 844 });
     expect(escritas).toBe(0);
@@ -309,6 +316,8 @@ test("proprietário sem estabelecimento entra no portal; papel delegado antigo n
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     // O portal, pela entrada própria, sem pedir estabelecimento.
     await page.goto("/portal");
+    await expect(page).toHaveURL(VISAO_GERAL);
+    await navPortal(page).getByRole("link", { name: "Estabelecimentos", exact: true }).click();
     await expect(page).toHaveURL(LISTA);
     await page.getByLabel("Buscar estabelecimento ou responsável").fill(marca);
     await page.getByRole("button", { name: "Pesquisar", exact: true }).click();

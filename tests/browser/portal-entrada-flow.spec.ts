@@ -20,6 +20,9 @@ import {
   entrarPeloFormulario,
   navConta,
   navPortal,
+  sairDoPortal,
+  abrirSecoesNoCelular,
+  VISAO_GERAL_DO_PORTAL,
   semRolagemHorizontal,
 } from "./support/portal";
 
@@ -56,13 +59,22 @@ test("proprietário sem estabelecimento: entrada, login, celular, sessão expira
     // Entrar no portal não criou vínculo nem pediu estabelecimento.
     expect((await db.query("SELECT 1 FROM memberships WHERE user_id = $1", [conta.user.id])).rowCount).toBe(0);
 
-    // Celular: menu do portal e "Sair" sem rolagem lateral.
+    // Celular: seções recolhidas atrás do "Menu", menu do usuário com
+    // aparência e "Sair", sem rolagem lateral.
     for (const width of [390, 360]) {
       await page.setViewportSize({ width, height: 844 });
-      await expect(navPortal(page)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Sair" })).toBeVisible();
+      await expect(navPortal(page)).toHaveCount(0);
+      await abrirSecoesNoCelular(page);
       await semRolagemHorizontal(page);
       await page.screenshot({ path: testInfo.outputPath(`portal-entrada-celular-${width}.png`), fullPage: true });
+      await page.getByTestId("abrir-menu-portal").click();
+      await expect(navPortal(page)).toHaveCount(0);
+      await page.getByTestId("abrir-menu-usuario").click();
+      await expect(page.getByTestId("menu-usuario").getByRole("button", { name: "Sair" })).toBeVisible();
+      await expect(page.getByTestId("menu-usuario").getByTestId("seletor-aparencia")).toBeVisible();
+      await semRolagemHorizontal(page);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("menu-usuario")).toHaveCount(0);
     }
     await page.setViewportSize({ width: 1280, height: 844 });
 
@@ -79,7 +91,7 @@ test("proprietário sem estabelecimento: entrada, login, celular, sessão expira
     await expect(page).toHaveURL("/portal/usuarios");
 
     // "Sair" do portal leva à entrada do portal; nada do portal sem sessão.
-    await page.getByRole("button", { name: "Sair" }).click();
+    await sairDoPortal(page);
     await expect(page).toHaveURL("/portal");
     await expect(page.getByRole("heading", { name: "Entrar no portal" })).toBeVisible();
     expect(await acessoDaApi(page)).toBe(401);
@@ -100,7 +112,7 @@ test("proprietário sem estabelecimento: entrada, login, celular, sessão expira
 
     // Um `next` da operação na entrada do portal nunca é seguido.
     await page.goto("/portal?next=%2Fconta%2Fvisao-geral");
-    await expect(page).toHaveURL(LISTA);
+    await expect(page).toHaveURL(VISAO_GERAL_DO_PORTAL);
     await expect(navPortal(page)).toBeVisible();
   } finally {
     await db.end();

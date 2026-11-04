@@ -5,6 +5,7 @@ import { requestKeySchema } from '../accounts/accounts.dto.js';
 import { MAX_COURTESY_DAYS, MAX_TRIAL_EXTENSION_DAYS } from '../commercial/access-periods.js';
 import { ACCESS_PAYMENT_METHODS } from '../migrations/1793232000000-CommercialAccess.js';
 import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
+import { ESTABLISHMENT_FILTERS } from './portal-overview.js';
 
 export const establishmentIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,30}$/);
 
@@ -17,6 +18,8 @@ export const establishmentQuerySchema = z
     q: z.string().trim().min(2).max(120).optional(),
     status: z.enum(TENANT_STATUS_VALUES as unknown as [string, ...string[]]).optional(),
     planId: establishmentIdSchema.optional(),
+    /** Filtro de acesso ou de condição contratada (portal-overview.ts). */
+    filter: z.enum(ESTABLISHMENT_FILTERS).optional(),
     page: z
       .string()
       .regex(/^[1-9]\d{0,5}$/)
