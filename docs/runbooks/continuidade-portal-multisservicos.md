@@ -38,6 +38,13 @@ mesclado na integration em `05dd605`, **sem publicação**. API e web continuam
 em `2656f69`; as 14 migrations aplicadas não mudam; #90 e #91 continuam
 abertos (seção 16).
 
+**Atualização de 2026-11-04 (PC do trabalho, revisão de #90 e #91):** o #90
+(contas só de funcionário fora da lista global do portal) foi corrigido e
+mesclado na integration em `c40a91b`, **sem publicação**. O #91 (comissões)
+segue aberto, no head `d1e3519`. A publicação dele depende de um kit protegido
+para a 15ª migration, que ainda não existe. API e web continuam em `2656f69`;
+o banco real continua com 14 migrations (seção 17).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -1011,7 +1018,7 @@ Registro de 2026-11-04 (PC do trabalho).
   squash nem rebase) condicionado ao head exato, título com `[skip render]`.
   Pais `6fac73c` (integration anterior) e `09fd93e`; árvore igual à do head.
   A branch `docs/claude-md-rotas-guarda-demo` e a worktree
-  `C:ProjetosAgenda-Cloud-guarda-demo` foram preservadas.
+  `C:\Projetos\Agenda-Cloud-guarda-demo` foram preservadas.
 - **Conteúdo:** o CLAUDE.md lista as rotas reais (`/conta`, `/portal`,
   `/login`, `/cadastro`, `/convite`, `/redefinir-senha`, `/agendar/[slug]`)
   e descreve `backend/src/commercial/`. As guardas direta e transitiva cobrem
@@ -1044,3 +1051,105 @@ Registro de 2026-11-04 (PC do trabalho).
 
 - Revisar #90 e #91. A publicação do #91 continua dependendo de um roteiro
   próprio para a 15ª migration (seção 15.4).
+
+## 17. #90 mesclado e #91 revisado: nada publicado
+
+Registro de 2026-11-04 (PC do trabalho). Nada foi publicado, nenhuma migration
+foi aplicada em banco real e nenhum banco real foi acessado.
+
+- **Publicado:** API e web continuam em `2656f69` (seção 12.1).
+- **Banco real:** continua com as 14 migrations da seção 8.1.
+
+### 17.1 PR #90: mesclado
+
+- **Defeito corrigido na revisão:** a lista global tratava convite vencido como
+  pendente. Uma conta cujo único convite de funcionário tinha vencido sumia da
+  lista global, e a equipe do estabelecimento também não a mostrava.
+- **Correção:** `a286d8876e05e9dd3980e461f80b91dca1cd1fee`. Agora vale o mesmo
+  critério de `INVITE_STATUS_SQL`: convite pendente é o que ainda não venceu.
+  - O teste de regressão falha sem a correção.
+  - O plano `docs/plans/portal-contas-de-funcionarios.md` registra o critério.
+  - CI verde nesse head.
+- **Merge:** `c40a91bd48de31c15e654cee7c09accdc241c564`.
+  - Merge normal, condicionado ao head exato, com `[skip render]` no título.
+  - Pais: `05dd605` e `a286d88`.
+  - A árvore é igual à do merge local dos dois pais.
+  - Sem migration.
+- **Integration:** avançou para `c40a91b`, sem publicação. O #90 pode ser
+  publicado sozinho, com API e web do mesmo SHA, sem migration.
+
+### 17.2 PR #91: aberto, head `d1e3519`
+
+- **Head:** `d1e3519b213f67b2c6c76e2e6c31c0cafb36eb56`, um commit sobre
+  `67d04c2`:
+  - **Apuração:** a subconsulta que evita apurar o mesmo item duas vezes
+    (`commission-accrual.ts`) passou a filtrar pelo `tenant_id` autorizado. O
+    resultado é o mesmo, porque a FK composta já prende cada linha ao tenant
+    do item.
+  - **Plano:** ganhou a seção "Recuperação depois da publicação".
+- **Testes:** db-e2e de comissões, isolamento e agendamentos rodaram em banco
+  descartável novo, com as 15 migrations: 49/49.
+- **CI no head `d1e3519`:** verde nos dois workflows. O de migration terminou
+  às 17:13 UTC. O de auth e serviços reais teve as etapas concluídas às 17:26,
+  mas o GitHub só marcou o check como concluído (success) às 17:43. Não foi
+  preciso cancelar nem reexecutar.
+- **Conflitos:** o head entra sem conflito sobre `c40a91b`.
+- **Combinação revisada:** `05dd605` + #90 + #91 juntos, sem conflito.
+  - Guardas do #92: 51/51.
+  - Unitários: frontend 912, backend 1747.
+  - db-e2e inteira em banco novo: 15 migrations, 262/262.
+- **Revisão sem defeito comprovado:**
+  - A apuração roda na mesma transação da conclusão, com a reserva travada.
+  - Repetir não grava de novo: índice único por item e `ON CONFLICT DO
+    NOTHING`.
+  - Cada linha é uma fotografia imutável, sem retroatividade.
+  - O plano é conferido na conclusão.
+  - O funcionário só vê as próprias comissões, com concessão.
+- **Recuperação:**
+  - **`down` proibido depois da primeira apuração.** Ele recusa, e forçá-lo
+    apagaria histórico.
+  - **Voltar a API não é recuperação completa.** A API anterior aceita o schema
+    novo. Mas, enquanto ela estiver no ar, as conclusões não geram comissão,
+    e essas conclusões nunca são apuradas depois. A tela, as regras e a visão
+    do funcionário também param.
+  - **Ordem obrigatória:** migration, depois API, depois web. A API nova sobre
+    o schema antigo falha ao concluir atendimentos.
+
+### 17.3 Pendência: kit protegido da 15ª migration
+
+Os kits atuais recusam migration posterior de propósito. Antes de publicar o
+#91, criar um kit no padrão dos anteriores (`aplicar-*-piloto.mjs`,
+`conferir-restauracao-*`, `abrir-*.ps1`). O kit precisa de:
+
+- **Backup e checagem:** backup e `pilot:check-database` antes e depois.
+- **Estado de partida:** exatamente 14 migrations aplicadas e só
+  `ProfessionalCommissions1793491200000` pendente.
+- **Aplicação:** pela forma compilada.
+- **Conferência do schema:**
+  - coluna `appointment_item_id`;
+  - índices parcial e por item;
+  - `ck_commission_entries_rule_snapshot` e `uq_appointment_items_tenant_id`;
+  - os valores novos de enum;
+  - a linha `pf_pc_equipe_comissoes`, com planos, preços e exceções intactos.
+- **Restauração:** ensaio da restauração.
+- **Roteiro de volta:** as regras da seção 17.2.
+- **Aviso:** a partir da publicação, todo estabelecimento Pro passa a apurar
+  comissões.
+
+### 17.4 Itens só neste PC
+
+- **Worktree temporária `C:\Projetos\Agenda-Cloud-rev-combo`:** fica para
+  inspeção.
+  - Os `node_modules` dela, na raiz e em `backend`, são junctions para os de
+    `Agenda-Cloud-comissoes`.
+  - Remova os junctions com `cmd /c rmdir` antes de apagar a worktree.
+    Remoção recursiva apagaria os `node_modules` de destino.
+- **Cluster PostgreSQL descartável:** fica no scratchpad da sessão e está
+  parado.
+- **CLAUDE.md local:** as alterações na pasta principal continuam preservadas.
+
+### 17.5 Próximo passo
+
+- Decidir o merge do #91.
+- Criar e ensaiar o kit da 15ª migration (seção 17.3) só em banco descartável.
+- Publicar seguindo o runbook.
