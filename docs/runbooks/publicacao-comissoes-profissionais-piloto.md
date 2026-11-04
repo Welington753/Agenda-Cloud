@@ -582,6 +582,8 @@ prompt oculto e a frase no de confirmação, como um operador. Não houve
 | 23 | lançador em modo piloto com Endpoint ID de ensaio | `ERR_ENDPOINT_DE_ENSAIO_NO_PILOTO`, antes da URL; código 1 |
 | 24–28 | URL com outro endpoint, com o endpoint proibido, com pooler, com `sslmode=no-verify` e com outro banco | `ERR_ENDPOINT_DIFERENTE_DO_PILOTO`, `ERR_ENDPOINT_PROIBIDO`, `ERR_POOLER`, `ERR_TLS_AFROUXADO`, `ERR_BANCO_DIFERENTE_DE_NEONDB`; código 1, sem conexão |
 | 29 | `-EnsaioCa` com outra CA | `ERR_CERTIFICADO_NAO_CONFIAVEL`; código 1 |
+| 30 | `restauracao` no commit seguinte (`ef269be`), com o backup de `d3d5ce1` | `ERR_BACKUP_DE_OUTRO_COMMIT`; código 1 |
+| 31 | `aplicar` no commit seguinte, num estado 14 | `BACKUP_CONFERIDO: ... recusado (backup de outro commit, restauração conferida com outro commit)`, `ERR_SEM_BACKUP_COM_RESTAURACAO_CONFERIDA`, antes da URL; código 1; banco com 14 |
 
 **Script direto, modo piloto:** cada caso parou antes da URL, com
 `parado_sem_gravacao`:
