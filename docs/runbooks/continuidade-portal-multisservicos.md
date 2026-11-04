@@ -917,3 +917,77 @@ e aos recursos do plano; nunca recebe acesso ao portal.
 - `PUT /tenants/:tenantId/push-subscription`: a transferência do aparelho
   entre contas (seção 13.3) é comportamento observado; a análise de
   segurança fica separada e não entrou na conclusão desta revisão.
+
+## 15. Contas do portal e comissões: dois PRs abertos, NÃO mesclados
+
+Registro de 2026-11-04 (PC do trabalho). Integration conferida em `6fac73c`;
+API e web continuam publicados em `2656f69`. Nada foi mesclado, publicado nem
+aplicado no piloto, e nenhum banco real foi acessado.
+
+### 15.1 PR #90: contas só de funcionário fora da lista global do portal
+
+- **Branch e worktree:** `feat/portal-contas-sem-funcionarios`, em
+  `C:\Projetos\Agenda-Cloud-contas-master`.
+- **Commits:** `87da5d7` e `877de2b`. Sem migration.
+- **Comportamento:** a lista do portal (`GET /platform/users`) deixa de mostrar
+  contas sem papel de plataforma, sem vínculo nem convite pendente de DONO, e
+  com vínculo ou convite pendente de funcionário.
+- **Onde o critério entra:** na mesma cláusula da busca, antes da paginação e
+  dos contadores.
+- **Quem continua na lista:** dono de um negócio que também é funcionário de
+  outro, responsável ainda sem estabelecimento, `MASTER_OWNER` sem
+  estabelecimento e conta com papel de plataforma.
+- **O que não muda:** a equipe do estabelecimento, a ficha da conta e a lista
+  de convites.
+- **Plano:** `docs/plans/portal-contas-de-funcionarios.md`.
+- **CI no head anterior:** o primeiro CI falhou em
+  `pilot-team-manager-check`. O teste novo criava vínculos GERENTE, e o
+  levantamento de vagas só lista os primeiros estabelecimentos com gerente no
+  mesmo banco. Corrigido em `877de2b`. A suíte db-e2e inteira passou local em
+  banco novo (27 arquivos, 253 testes).
+- **CI no head `877de2b`:** verde. A primeira execução caiu em
+  `acesso-por-usuario-flow`, com `ECONNRESET` no `GET /auth/me`. É um fluxo
+  que este lote não toca, e o job reexecutado passou.
+
+### 15.2 PR #91: comissão por profissional e serviço
+
+- **Branch e worktree:** `feat/comissoes-profissional-servico`, em
+  `C:\Projetos\Agenda-Cloud-comissoes`.
+- **Commits:** `3177866` e `bbbcef4`. O segundo tira o gerente criado no teste
+  depois da recusa, pelo mesmo teto do `pilot-team-manager-check`.
+- **Migration:** a 15ª, `ProfessionalCommissions1793491200000`. Foi ensaiada só
+  em PostgreSQL 18 descartável com TLS, em três ensaios: do zero, só a 15ª
+  sobre base com 14 e dados, e `revert` e reaplicação.
+- **Reaproveitado:** `commission_rules`, `commission_entries` e o recurso
+  `COMISSOES` do catálogo, que só está no plano Rede (`pro`).
+- **Apuração:** na conclusão do atendimento, uma linha por serviço da reserva.
+- **Relatório:** `/conta/comissoes`, por profissional e período, sem
+  apresentar comissão como pagamento.
+- **Visão do funcionário:** só as próprias comissões, com a concessão
+  `COMISSOES_PROPRIAS_VISUALIZAR` dada pelo dono.
+- **Suíte nova de navegador:** `test:browser:comissoes`, com passo próprio no
+  workflow.
+- **Plano e decisões em aberto:** `docs/plans/comissoes-profissional-servico.md`.
+- **CI no head `bbbcef4`:** verde, inclusive o passo novo de navegador de
+  comissões. Local: db-e2e inteira em banco novo (28 arquivos, 259 testes).
+
+### 15.3 Itens só neste PC
+
+- **node_modules emprestados:** os `node_modules` (raiz e backend) das
+  worktrees `Agenda-Cloud-pr85` e `Agenda-Cloud-recebimentos` foram movidos
+  para as duas worktrees novas. Os lockfiles são idênticos. Devolver antes de
+  usar as worktrees de origem.
+- **Merge em andamento:** a worktree `Agenda-Cloud-combo` está com um merge em
+  andamento (conflitos em `lote6b2-migration...` e
+  `migrations-runtime-compiled.spec.ts`), que é anterior a esta rodada. Ela
+  não foi tocada.
+- **Cluster PostgreSQL descartável:** está no scratchpad da sessão, na porta
+  55434, e some com ele.
+
+### 15.4 Próximo passo
+
+- Revisar #90 e #91. Antes de publicar o #91 no piloto, é preciso um roteiro de
+  publicação próprio para a 15ª migration, porque os kits anteriores recusam
+  migration posterior de propósito.
+- As decisões comerciais do #91 estão no fim do plano: planos, período do
+  relatório, arredondamento, fixo acima do preço, gerente e repasses.
