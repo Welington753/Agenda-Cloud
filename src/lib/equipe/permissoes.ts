@@ -5,8 +5,8 @@
 // - Marcar uma área traz junto as dependências dela (criar reserva traz ver a
 //   agenda, profissionais, serviços e clientes), sempre visíveis na tela.
 // - Desmarcar uma área tira junto o que dependia dela.
-// - As três ações sobre os próprios atendimentos valem só com profissional
-//   ligado; as áreas do estabelecimento, só no perfil Gerente.
+// - As três ações sobre os próprios atendimentos e a consulta das próprias
+//   comissões valem só com profissional ligado; as áreas do estabelecimento, só no perfil Gerente.
 import type {
   PerfilDaEquipe,
   PermissaoDaEquipe,
@@ -19,6 +19,7 @@ export const PERMISSOES_PROPRIAS: readonly PermissaoFuncionario[] = [
   "ATENDIMENTO_PROPRIO_INICIAR",
   "ATENDIMENTO_PROPRIO_CONCLUIR",
   "ATENDIMENTO_PROPRIO_FALTA",
+  "COMISSOES_PROPRIAS_VISUALIZAR",
 ];
 
 export function ehPermissaoPropria(p: string): p is PermissaoFuncionario {

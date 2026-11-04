@@ -1,3 +1,11 @@
+// ATENÇÃO: a migration ProfessionalCommissions1793491200000 mudou esta
+// tabela (uma linha por serviço da reserva em `appointment_item_id`, preço,
+// regra e valores anuláveis, índice único por item e o de `appointment_id`
+// só para linhas sem item). Como as demais mudanças posteriores à migration
+// inicial, ela é lida e gravada em SQL explícito (src/commissions/), e esta
+// entidade continua espelhando a migration inicial
+// (entity-metadata.spec.ts). Não grave por esta entidade.
+//
 // Nova (seção 5.2). Espelha `LancamentoComissao` em src/lib/types.ts —
 // snapshot financeiro imutável do momento do cálculo, nunca recalculado a
 // partir da `CommissionRule` atual. `@Unique` em `appointmentId`: no máximo

@@ -10,10 +10,12 @@ import {
   canManageTeam,
   grantableManagerPermissions,
   grantableStaffPermissions,
+  OWN_COMMISSIONS_PERMISSION,
   type StaffPermission,
 } from './staff-access.js';
 import type { ManagerPermission } from '../common/manager-permissions.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
+import { featureEnabled } from '../commercial/commercial-gate.js';
 
 export interface TeamManager extends AuthorizedTenant {
   /** O que este dono pode conceder (só o que ele próprio pode fazer). */
@@ -31,9 +33,15 @@ export async function resolveTeamManager(manager: EntityManager, userId: string,
   const overrides = await manager.find(MembershipPermissionOverride, {
     where: { tenantId: authorized.tenantId, membershipId: authorized.membershipId },
   });
+  // Sem o recurso de comissões no plano, a consulta das próprias comissões
+  // não é oferecida (retirar continua possível: validarConcessoes confere só
+  // o que entra).
+  const comissoes = await featureEnabled(manager, authorized.tenantId, FeatureKey.COMISSOES);
   return {
     ...authorized,
-    grantable: grantableStaffPermissions(authorized.role, overrides),
+    grantable: grantableStaffPermissions(authorized.role, overrides).filter(
+      (p) => p !== OWN_COMMISSIONS_PERMISSION || comissoes,
+    ),
     grantableManager: grantableManagerPermissions(authorized.role, overrides),
   };
 }

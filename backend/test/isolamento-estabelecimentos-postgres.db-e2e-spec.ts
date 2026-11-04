@@ -206,6 +206,13 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
     const [{ userId: staffUserId }] = await q<{ userId: string }>(`SELECT user_id AS "userId" FROM memberships WHERE id = $1`, [
       staff.membershipId,
     ]);
+    // As próprias comissões (concessão do dono, fora de PROPRIAS para não mudar
+    // os casos de troca de permissões abaixo).
+    await q(
+      `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
+       VALUES ($1, $2, $3, 'COMISSOES_PROPRIAS_VISUALIZAR', 'GRANTED')`,
+      [id(), tenantId, staff.membershipId],
+    );
     const equipe = await entrar(username);
     const proprias = {
       iniciar: await reserva(base, daEquipe, agora - 5 * MINUTO, 'CONFIRMED'),
@@ -446,6 +453,31 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         200,
         true,
       ],
+      ['GET /tenants/:tenantId/commissions', 'dono', (t) => `${p(t)}/commissions`, null, 200, false],
+      [
+        'GET /tenants/:tenantId/commissions/rules/:professionalId',
+        'dono',
+        (t, r) => `${p(t)}/commissions/rules/${r.professionalId}`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'PUT /tenants/:tenantId/commissions/rules/:professionalId/:serviceId',
+        'dono',
+        (t, r) => `${p(t)}/commissions/rules/${r.professionalId}/${r.serviceId}`,
+        () => ({ kind: 'PERCENTAGE', value: 4000 }),
+        200,
+        true,
+      ],
+      [
+        'DELETE /tenants/:tenantId/commissions/rules/:professionalId/:serviceId',
+        'dono',
+        (t, r) => `${p(t)}/commissions/rules/${r.professionalId}/${r.serviceId}`,
+        null,
+        200,
+        true,
+      ],
       ['GET /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, null, 200, false],
       ['PUT /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, () => ({ enabled: true }), 200, false],
       ['GET /tenants/:tenantId/booking-requests', 'dono', (t) => `${p(t)}/booking-requests`, null, 200, false],
@@ -458,6 +490,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       ['DELETE /tenants/:tenantId/push-subscription', 'dono', (t) => `${p(t)}/push-subscription`, (_t, r) => ({ endpoint: r.endpoint }), 200, false],
       ['GET /tenants/:tenantId/my-agenda', 'equipe', (t) => `${p(t)}/my-agenda?date=${dia(0)}`, null, 200, false],
       ['GET /tenants/:tenantId/my-agenda/range', 'equipe', (t) => `${p(t)}/my-agenda/range?from=${dia(-1)}&to=${dia(1)}`, null, 200, false],
+      ['GET /tenants/:tenantId/my-agenda/commissions', 'equipe', (t) => `${p(t)}/my-agenda/commissions`, null, 200, false],
       ['POST /tenants/:tenantId/my-agenda/:appointmentId/start', 'equipe', (t, r) => `${p(t)}/my-agenda/${r.proprias.iniciar}/start`, propriaDe('iniciar'), 200, true],
       [
         'POST /tenants/:tenantId/my-agenda/:appointmentId/complete',
@@ -491,7 +524,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         'PUT /tenants/:tenantId/team/members/:membershipId/permissions',
         'dono',
         (t, r) => `${p(t)}/team/members/${r.membershipId}/permissions`,
-        () => ({ expectedGranted: PROPRIAS, granted: PROPRIAS.slice(0, 2) }),
+        () => ({ expectedGranted: [...PROPRIAS, 'COMISSOES_PROPRIAS_VISUALIZAR'], granted: PROPRIAS.slice(0, 2) }),
         200,
         true,
       ],

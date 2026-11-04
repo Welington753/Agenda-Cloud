@@ -15,6 +15,8 @@ import {
   type OwnAgendaPeriodDto,
 } from '../appointments/appointment.dto.js';
 import { MyAgendaService } from './my-agenda.service.js';
+import { ownCommissionsQuerySchema } from '../commissions/commissions.dto.js';
+import type { DashboardQueryDto } from '../dashboard/dashboard.dto.js';
 import { StaffAccountsService } from './staff-accounts.service.js';
 import { TeamService } from './team.service.js';
 import {
@@ -199,6 +201,17 @@ export class MyAgendaController {
     @Query(new ZodValidationPipe(ownAgendaPeriodSchema)) query: OwnAgendaPeriodDto,
   ) {
     return this.agenda.range(req.auth.userId, tenantId, query);
+  }
+
+  /** As próprias comissões apuradas, quando o dono liberou. */
+  @Get('commissions')
+  @Header('Cache-Control', 'private, no-store')
+  commissions(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId', id) tenantId: string,
+    @Query(new ZodValidationPipe(ownCommissionsQuerySchema)) query: DashboardQueryDto,
+  ) {
+    return this.agenda.commissions(req.auth.userId, tenantId, query);
   }
 
   @Post(':appointmentId/start')

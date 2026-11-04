@@ -123,6 +123,7 @@ import type {
 } from './appointment.dto.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import { servicosDaEscolha } from './service-selection.js';
+import { apurarNaConclusao } from '../commissions/commission-accrual.js';
 
 /** Nome exato da constraint do banco (ver 1788782400000-InitialSchema.ts).
  * Só ela vira 409 — qualquer outro erro sobe como está. */
@@ -904,6 +905,22 @@ export class AppointmentsService {
           changedBy: userId,
         }),
       );
+
+      // Comissão apurada na conclusão, na MESMA transação (fotografia do
+      // preço de cada item e da regra que vale agora; ver
+      // commissions/commission-accrual.ts). Repetir a conclusão já saiu acima.
+      if (destino === AppointmentStatus.COMPLETED) {
+        await apurarNaConclusao(
+          tx,
+          {
+            tenantId: authorized.tenantId,
+            id: appointment.id,
+            professionalId: appointment.professionalId,
+            startAt: appointment.startAt,
+          },
+          this.agora(),
+        );
+      }
 
       // Confirmar programa a confirmação e os lembretes; iniciar, concluir e
       // registrar falta invalidam o que ainda não saiu. Repetir a mesma ação

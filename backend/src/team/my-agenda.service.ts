@@ -38,6 +38,7 @@ import {
   STAFF_ACTIONS,
   STAFF_ACTION_FORBIDDEN_MESSAGE,
   STAFF_PERMISSION_OF_ACTION,
+  OWN_COMMISSIONS_PERMISSION,
   canViewOwnAgenda,
   staffPermissionGranted,
   type OverrideRow,
@@ -45,6 +46,10 @@ import {
 } from './staff-access.js';
 import type { MyAgendaQuery, OwnStatusActionDto } from './team.dto.js';
 import { ITENS_DA_RESERVA_SQL } from '../appointments/appointment-items-sql.js';
+import { commissionReport } from '../commissions/commission-report.js';
+import { OWN_COMMISSIONS_FORBIDDEN_MESSAGE } from '../commissions/commission-access.js';
+import { mesDaData } from '../dashboard/dashboard-period.js';
+import type { DashboardQueryDto } from '../dashboard/dashboard.dto.js';
 
 /** Mesmo teto da agenda do dono (LIMITE_DO_DIA): a rota nunca vira um dump. */
 const LIMITE_DO_DIA = 200;
@@ -57,6 +62,8 @@ export interface StaffAccess {
   professional: { id: string; name: string };
   timezone: string;
   allowed: Record<StaffAction, boolean>;
+  /** O dono liberou a consulta das próprias comissões. */
+  ownCommissions: boolean;
 }
 
 export interface OwnAppointmentView {
@@ -141,7 +148,29 @@ export class MyAgendaService {
       professional: { id: linha.professional_id, name: linha.professional_name ?? '' },
       timezone: linha.timezone,
       allowed,
+      ownCommissions: staffPermissionGranted(linha.role, valem, OWN_COMMISSIONS_PERMISSION),
     };
+  }
+
+  /** As PRÓPRIAS comissões apuradas, só com a concessão do dono e o recurso
+   * de comissões no plano. Sem o recebimento do cliente: o funcionário não vê
+   * o dinheiro do estabelecimento. */
+  async commissions(userId: string, tenantId: string, query: DashboardQueryDto, now = new Date()) {
+    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+      await manager.query('SET TRANSACTION READ ONLY');
+      const acesso = await this.resolveStaffAccess(manager, userId, tenantId);
+      if (!acesso.ownCommissions) throw new ForbiddenException(OWN_COMMISSIONS_FORBIDDEN_MESSAGE);
+      await requireCommercialAccess(manager, tenantId, FeatureKey.COMISSOES);
+      const periodo = query.from && query.to ? { from: query.from, to: query.to } : mesDaData(dataLocalDe(now, acesso.timezone));
+      const relatorio = await commissionReport(manager, {
+        tenantId: acesso.tenantId,
+        timezone: acesso.timezone,
+        period: periodo,
+        professionalId: acesso.professional.id,
+        withClientPayment: false,
+      });
+      return { professional: acesso.professional, ...relatorio };
+    });
   }
 
   async day(userId: string, tenantId: string, query: MyAgendaQuery, now = new Date()) {

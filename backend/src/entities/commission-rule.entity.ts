@@ -14,6 +14,8 @@
 //     entidade (lote posterior), nunca feita aqui.
 //   - `type = FIXED`: centavos inteiros, >= 0 (mesma unidade de
 //     `Service.priceCents`).
+//   - "Sem comissão" (escolha explícita do dono) é `PERCENTAGE` com valor 0;
+//     "não configurada" é a ausência de linha (src/commissions/).
 // O futuro `CHECK` do Lote 5 (SQL manual, não criado aqui) precisa impor:
 // `(type = 'PERCENTAGE' AND value BETWEEN 0 AND 10000) OR (type = 'FIXED'
 // AND value >= 0)` — não expressável por decorator do TypeORM porque depende

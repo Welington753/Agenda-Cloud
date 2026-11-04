@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { CalendarRange, CalendarX2, ChevronLeft, ChevronRight, List, RefreshCw } from "lucide-react";
+import { LinkMinhasComissoes } from "@/components/conta/link-minhas-comissoes";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { acaoAdministrativa, mensagemDoResultado } from "@/lib/administracao/api-contas";
@@ -136,6 +137,7 @@ export default function MinhaAgendaPage() {
     <PaginaConta
       titulo="Minha agenda"
       descricao={agenda ? `Atendimentos de ${agenda.professional.name}` : "Seus atendimentos neste estabelecimento."}
+      acoes={<LinkMinhasComissoes />}
     >
       <div
         role="group"

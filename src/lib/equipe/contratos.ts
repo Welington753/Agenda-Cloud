@@ -7,7 +7,8 @@
 export type PermissaoFuncionario =
   | "ATENDIMENTO_PROPRIO_INICIAR"
   | "ATENDIMENTO_PROPRIO_CONCLUIR"
-  | "ATENDIMENTO_PROPRIO_FALTA";
+  | "ATENDIMENTO_PROPRIO_FALTA"
+  | "COMISSOES_PROPRIAS_VISUALIZAR";
 
 /** Áreas do estabelecimento que o dono concede a um gerente (espelha
  * backend/src/common/manager-permissions.ts). */

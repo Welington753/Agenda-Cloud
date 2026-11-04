@@ -8,6 +8,11 @@
 // qualquer comando da migration (`aoIniciar` não é chamado e o histórico não
 // muda); sem `posteriores`, o comportamento dos kits anteriores continua (com
 // duas pendentes compiladas, recusa em vez de aplicar as duas).
+//
+// Migrations criadas DEPOIS deste kit (ProfessionalCommissions em diante)
+// também estão no `dist-migrations`. O kit recusaria a lista por elas, de
+// propósito; aqui elas entram no fim de `posteriores` de cada chamada que
+// passa a lista, para provar as etapas do kit com o runtime atual.
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { Client } from 'pg';
@@ -68,6 +73,7 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
     };
   };
 
+  let posterioresAoKit: string[] = [];
   async function aplicar(args: { esperadasAntes: readonly string[]; pendente: string; posteriores?: readonly string[] }) {
     const linhas: string[] = [];
     let iniciou = false;
@@ -75,7 +81,7 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
       const aplicadas = await aplicarSomenteAPendente(destino(), {
         esperadasAntes: [...args.esperadasAntes],
         pendente: args.pendente,
-        ...(args.posteriores ? { posteriores: [...args.posteriores] } : {}),
+        ...(args.posteriores ? { posteriores: [...args.posteriores, ...posterioresAoKit] } : {}),
         aplicacao: 'agenda-cloud-migration-teste',
         log: (l) => linhas.push(l),
         aoIniciar: () => {
@@ -99,7 +105,10 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
     const ds = new DataSource({ ...buildMigrationsDataSourceOptions(urlDoBanco()), logging: false });
     await ds.initialize();
     try {
-      expect(ds.migrations.map((m) => m.name ?? m.constructor.name)).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
+      const compiladas = ds.migrations.map((m) => m.name ?? m.constructor.name);
+      expect(compiladas.slice(0, MIGRATIONS_ATE_NOMES_CONGELADOS.length)).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
+      posterioresAoKit = compiladas.slice(MIGRATIONS_ATE_NOMES_CONGELADOS.length);
+      expect(posterioresAoKit).toEqual(['ProfessionalCommissions1793491200000']);
       ds.migrations.splice(MIGRATIONS_ATE_COMERCIAL.length);
       await ds.runMigrations({ transaction: 'all' });
     } finally {
@@ -155,9 +164,9 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
     expect(r.linhas).toEqual(
       expect.arrayContaining([
         'MIGRATIONS_NO_HISTORICO: 12',
-        'MIGRATIONS_COMPILADAS: 14',
+        `MIGRATIONS_COMPILADAS: ${MIGRATIONS_ATE_NOMES_CONGELADOS.length + posterioresAoKit.length}`,
         'PENDENTE: PlatformPortal1793318400000',
-        'FORA_DESTA_ETAPA: AppointmentServiceSnapshots1793404800000',
+        `FORA_DESTA_ETAPA: ${['AppointmentServiceSnapshots1793404800000', ...posterioresAoKit].join(',')}`,
         'APLICADAS: PlatformPortal1793318400000',
         'SESSAO_DA_MIGRATION: mesma=true lock_timeout=10s',
       ]),
@@ -177,7 +186,8 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
     const r = await aplicar({ esperadasAntes: MIGRATIONS_ATE_PORTAL, pendente: multisservicos.migration, posteriores: multisservicos.posteriores });
     expect(r).toMatchObject({ codigo: null, iniciou: true, aplicadas: ['AppointmentServiceSnapshots1793404800000'] });
     expect(r.linhas).toEqual(expect.arrayContaining(['MIGRATIONS_NO_HISTORICO: 13', 'APLICADAS: AppointmentServiceSnapshots1793404800000']));
-    expect(r.linhas.some((l) => l.startsWith('FORA_DESTA_ETAPA'))).toBe(false);
+    // Do kit, nenhuma fica de fora; só as criadas depois dele.
+    expect(r.linhas.filter((l) => l.startsWith('FORA_DESTA_ETAPA'))).toEqual([`FORA_DESTA_ETAPA: ${posterioresAoKit.join(',')}`]);
     expect(await historico()).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
     expect(falhasDepoisDosNomesCongelados(await estado())).toEqual([]);
 

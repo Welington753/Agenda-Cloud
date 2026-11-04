@@ -8,6 +8,8 @@
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
 export function areaFeature(area: string): FeatureKey | null {
+  // As próprias comissões pedem os dois recursos; o menu usa o de comissões.
+  if (area === 'AGENDA_PROPRIA_COMISSOES' || area.startsWith('COMISSOES_')) return FeatureKey.COMISSOES;
   if (area.startsWith('AGENDA_PROPRIA_')) return FeatureKey.EQUIPE;
   if (area.startsWith('AGENDA_') || area.startsWith('SOLICITACOES_') || area === 'DISPONIBILIDADE') {
     return FeatureKey.AGENDA;
