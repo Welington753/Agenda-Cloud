@@ -3,9 +3,12 @@
 // Dados e preços fictícios (plano de teste, nunca os planos reais). Prova:
 // - o portal recusa dono, gerente e profissional de Básico, Pro e Max, e os
 //   papéis delegados, em TODA rota do portal, por API direta;
-// - MASTER_ADMIN e MASTER_SUPPORT com todas as permissões, sessão ativa e
-//   senha confirmada recebem 403 em toda rota REGISTRADA sob /platform (a
-//   lista é conferida contra o roteador) e nada muda no banco;
+// - MASTER_ADMIN e MASTER_SUPPORT com todas as permissões, e dono, gerente e
+//   profissional de um Max, com sessão ativa e senha confirmada, recebem 403
+//   só com a mensagem em toda rota REGISTRADA sob /platform (a lista é
+//   conferida contra o roteador) e nada muda no banco;
+// - o dono da plataforma usa o portal com o próprio estabelecimento vencido
+//   ou inativo, enquanto a operação desse estabelecimento continua recusada;
 // - o papel de proprietário dado ou retirado vale na próxima requisição, com
 //   a mesma sessão aberta;
 // - preço do catálogo, preço contratado e origem do valor no pagamento, sem
@@ -305,7 +308,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     expect((await ficha(t)).updatedAt).toBe(f.updatedAt);
   });
 
-  it('MASTER_ADMIN e MASTER_SUPPORT com sessão ativa e senha confirmada: 403 em TODA rota registrada do portal', async () => {
+  it('MASTER_ADMIN, MASTER_SUPPORT e dono, gerente e profissional do Max, com senha confirmada: 403 sem dados em TODA rota do portal', async () => {
     // Alvos reais (nada de id inexistente): o 403 não pode ser um 404
     // disfarçado nem um 400 de corpo inválido.
     const alvo = await estabelecimento('del-alvo', planoTeste);
@@ -484,6 +487,18 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       expect(await q(`SELECT id, reauthenticated_at FROM sessions WHERE user_id <> $1 ORDER BY id`, [pessoa.userId])).toEqual(outras);
       agentes.push([papel, agente]);
     }
+    // Dono, gerente e profissional de um Max, sem papel global, com a senha
+    // confirmada: o plano não concede nada no portal.
+    const max = await estabelecimento('del-max', 'plan_pro', true);
+    for (const [papel, pessoa] of [
+      ['DONO', max.dono],
+      ['GERENTE', await membro(max.tenantId, 'del-max-ger', 'GERENTE')],
+      ['PROFISSIONAL', await membro(max.tenantId, 'del-max-pro', 'PROFISSIONAL')],
+    ] as const) {
+      const agente = await entrar(pessoa.email);
+      await reautenticar(agente);
+      agentes.push([papel, agente]);
+    }
 
     const TABELAS = [
       'users',
@@ -509,6 +524,15 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     };
     const antes = await retrato();
 
+    // A recusa é só a mensagem: nenhum dado do estabelecimento, da conta ou
+    // do convite alvo.
+    const RECUSA = {
+      statusCode: 403,
+      error: 'Forbidden',
+      message: expect.stringMatching(
+        /^(Sem acesso à administração da plataforma\.|Sua conta não tem permissão para esta ação na administração da plataforma\.)$/,
+      ),
+    };
     for (const [papel, agente] of agentes) {
       // A senha confirmada não libera nada: o que falta é ser proprietário.
       expect((await agente.get('/platform/access').expect(200)).body).toEqual({
@@ -520,11 +544,37 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         const chamada = agente[rota.split(' ')[0].toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete'](caminho);
         const r = await (corpo ? chamada.send(corpo) : chamada);
         expect({ papel, rota, status: r.status }).toEqual({ papel, rota, status });
+        if (status === 403) expect({ papel, rota, corpo: r.body }).toEqual({ papel, rota, corpo: RECUSA });
       }
     }
     // Nada mudou: contas, papéis, vínculos, convites, estabelecimentos,
     // períodos, preços, sem vencimento e auditoria.
     expect(await retrato()).toEqual(antes);
+  });
+
+  it('dono da plataforma usa o portal com o próprio estabelecimento vencido ou inativo; a operação dele segue o estabelecimento', async () => {
+    const pessoa = await conta('dona-com-loja', 'MASTER_OWNER');
+    const vencido = await estabelecimento('loja-vencida', planoTeste);
+    await testeVencido(vencido.tenantId, planoTeste, pessoa.userId);
+    const inativo = await estabelecimento('loja-inativa', planoTeste, true);
+    for (const tenantId of [vencido.tenantId, inativo.tenantId]) {
+      await q(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [id(), pessoa.userId, tenantId]);
+    }
+    const agente = await entrar(pessoa.email);
+    // Controle: a operação do estabelecimento inativo funciona antes de inativar.
+    await agente.get(`/tenants/${inativo.tenantId}/consumers/page`).expect(200);
+    await q(`UPDATE tenants SET status = 'SUSPENDED' WHERE id = $1`, [inativo.tenantId]);
+
+    // A operação recusa cada um pelo seu motivo, na mesma sessão.
+    expect((await agente.get(`/tenants/${vencido.tenantId}/consumers/page`).expect(403)).body.code).toBe('ACESSO_VENCIDO');
+    await agente.get(`/tenants/${inativo.tenantId}/consumers/page`).expect(404);
+    // O portal não lê vínculo, plano nem validade do estabelecimento da conta.
+    expect((await agente.get('/platform/access').expect(200)).body).toMatchObject({ canViewEstablishments: true });
+    await agente.get('/platform/overview').expect(200);
+    await agente.get('/platform/establishments').expect(200);
+    expect((await agente.get(`/platform/establishments/${inativo.tenantId}`).expect(200)).body).toMatchObject({ operational: 'INACTIVE' });
+    expect((await agente.get(`/platform/establishments/${vencido.tenantId}`).expect(200)).body.access).toMatchObject({ blocked: true });
+    await reautenticar(agente);
   });
 
   it('papel de proprietário dado e retirado vale na próxima requisição, com a sessão aberta', async () => {
