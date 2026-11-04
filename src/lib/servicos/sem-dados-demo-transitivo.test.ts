@@ -7,20 +7,38 @@
 //
 // Só importações de VALOR contam: `import type` some na compilação e não
 // carrega dado, sessão nem repositório nenhum.
+//
+// A única aresta permitida é a dos botões de demonstração do `/login` (ver
+// excecoes-demonstracao.ts): o grafo não a segue, e qualquer outro caminho da
+// página de login até a demonstração continua reprovado.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { EXCECOES_DEMONSTRACAO, type ExcecaoDemonstracao } from "./excecoes-demonstracao";
 
 const RAIZ = resolve(__dirname, "../../..");
 const SRC = join(RAIZ, "src");
 
 const PONTOS_DE_ENTRADA = [
   "src/app/conta",
+  "src/app/portal",
+  "src/app/login",
+  "src/app/cadastro",
+  "src/app/convite",
+  "src/app/redefinir-senha",
+  "src/app/agendar",
   "src/components/conta",
+  "src/components/auth",
+  "src/components/administracao",
+  "src/lib/api",
   "src/lib/clientes",
   "src/lib/conta",
+  "src/lib/equipe",
+  "src/lib/push",
   "src/lib/profissionais",
   "src/lib/servicos",
+  "src/lib/agendamento-publico",
+  "src/lib/administracao",
 ];
 
 /** Domínio da demonstração: sessão simulada, dados locais e o acesso deles. */
@@ -74,15 +92,26 @@ function resolver(especificador: string, de: string): string | null {
   return null; // pacote do node_modules
 }
 
+function ehDaDemonstracao(arquivo: string): boolean {
+  return PROIBIDOS.some((p) => arquivo === p || arquivo.startsWith(`${p}\\`) || arquivo.startsWith(`${p}/`));
+}
+
+function ehExcecao(de: string, para: string, excecoes: readonly ExcecaoDemonstracao[]): boolean {
+  return excecoes.some((e) => de === join(RAIZ, e.arquivo) && para === join(RAIZ, e.destino));
+}
+
 /** Mapa arquivo -> quem o trouxe, para a mensagem mostrar a cadeia. */
-function grafoAPartirDe(entradas: string[]): Map<string, string | null> {
+function grafoAPartirDe(
+  entradas: string[],
+  excecoes: readonly ExcecaoDemonstracao[] = EXCECOES_DEMONSTRACAO,
+): Map<string, string | null> {
   const origem = new Map<string, string | null>(entradas.map((e) => [e, null]));
   const fila = [...entradas];
   while (fila.length > 0) {
     const atual = fila.shift()!;
     for (const especificador of especificadoresDeValor(atual)) {
       const destino = resolver(especificador, atual);
-      if (destino && !origem.has(destino)) {
+      if (destino && !origem.has(destino) && !ehExcecao(atual, destino, excecoes)) {
         origem.set(destino, atual);
         fila.push(destino);
       }
@@ -109,13 +138,20 @@ describe("a área real nunca alcança a demonstração, nem indiretamente", () =
   });
 
   it("nenhum arquivo alcançado pertence ao domínio da demonstração", () => {
-    const violacoes = [...origem.keys()]
-      .filter((arquivo) => PROIBIDOS.some((p) => arquivo === p || arquivo.startsWith(`${p}\\`) || arquivo.startsWith(`${p}/`)))
-      .map((arquivo) => cadeia(arquivo, origem));
+    const violacoes = [...origem.keys()].filter(ehDaDemonstracao).map((arquivo) => cadeia(arquivo, origem));
     expect(violacoes).toEqual([]);
   });
 
-  it("o próprio detector acusa uma importação proibida (controle)", () => {
+  it("a página de login é ponto de entrada e só a aresta da exceção fica de fora (controle)", () => {
+    const login = join(RAIZ, "src/app/login/page.tsx");
+    expect(entradas).toContain(login);
+    const semExcecao = [...grafoAPartirDe([login], []).keys()];
+    for (const excecao of EXCECOES_DEMONSTRACAO) expect(semExcecao).toContain(join(RAIZ, excecao.destino));
+    expect(semExcecao).toContain(join(RAIZ, "src/lib/repositories/index.ts"));
+    expect([...grafoAPartirDe([login]).keys()].filter(ehDaDemonstracao)).toEqual([]);
+  });
+
+  it("o próprio detector acusa uma importação proibida, com a exceção do login ativa (controle)", () => {
     const shellDemo = join(RAIZ, "src/components/layout/admin-shell.tsx");
     const alcancados = grafoAPartirDe([shellDemo]);
     expect([...alcancados.keys()]).toContain(join(RAIZ, "src/lib/auth/auth-context.tsx"));
