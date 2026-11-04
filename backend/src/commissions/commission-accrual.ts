@@ -48,7 +48,8 @@ export async function apurarNaConclusao(
        LEFT JOIN commission_rules cr
          ON cr.tenant_id = ai.tenant_id AND cr.professional_id = $3 AND cr.service_id = ai.service_id
       WHERE ai.tenant_id = $1 AND ai.appointment_id = $2
-        AND NOT EXISTS (SELECT 1 FROM commission_entries ce WHERE ce.appointment_item_id = ai.id)
+        AND NOT EXISTS (SELECT 1 FROM commission_entries ce
+                         WHERE ce.tenant_id = $1 AND ce.appointment_item_id = ai.id)
       ORDER BY ai.position, ai.id`,
     [appointment.tenantId, appointment.id, appointment.professionalId],
   );

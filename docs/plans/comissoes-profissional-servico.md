@@ -79,6 +79,26 @@ existente:
 O `down` recusa se houver apuração por item, para não apagar histórico, e deixa
 os valores de enum. Ele remove só a linha `pf_pc_equipe_comissoes`.
 
+### Recuperação depois da publicação
+
+Depois da primeira apuração, o `down` não é caminho de recuperação: ele recusa,
+e forçá-lo apagaria histórico. Fica proibido.
+
+Voltar a API para a versão anterior mantém o schema novo e é aceito por ela:
+a versão anterior não lê as tabelas de comissão e descarta a concessão
+`COMISSOES_PROPRIAS_VISUALIZAR`. Mas isso **não é recuperação completa**, e o
+impacto funcional é real:
+
+- **Sem apuração:** atendimentos concluídos enquanto a API antiga estiver no ar
+  não geram comissão. Ao voltar a API nova, eles continuam sem, porque a
+  apuração só acontece na conclusão e não há preenchimento retroativo.
+- **Sem relatório e sem regras:** a tela de comissões, a configuração de regras
+  e a visão do funcionário deixam de funcionar. Regras e apurações já gravadas
+  ficam no banco, intactas.
+
+Use a volta da API só para conter um defeito grave, sabendo dessas lacunas, e
+registre o período em que ela ficou no ar.
+
 As entidades continuam espelhando a migration inicial (`entity-metadata.spec`),
 como nas outras mudanças posteriores. A leitura e a gravação são em SQL
 explícito (`backend/src/commissions/`).
