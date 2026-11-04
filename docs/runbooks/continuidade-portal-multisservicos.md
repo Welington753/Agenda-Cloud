@@ -27,6 +27,11 @@ autorização e isolamento no PR #89 (`3fe529f`), só testes e plano, CI verde,
 **sem merge**. Nenhum defeito de isolamento no escopo revisado; validação no
 piloto com cliente sem papel global pendente (seção 13).
 
+**Atualização de 2026-11-04 (PC do trabalho):** o #89 foi reforçado
+(`ed82260`, verificação de contas, credenciais e sessões, CI verde) e
+mesclado na integration em `6fac73c`, **sem publicação**. API e web continuam
+em `2656f69`; nenhuma migration nova (seção 14).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -858,3 +863,57 @@ revisão; fica para uma análise separada.
   sessão não substituem essa validação.
 - Revisar o #89 e decidir o merge. Sem publicação nem operação no piloto
   nessa rodada.
+
+## 14. Revisão de isolamento (#89): mesclado, NÃO publicado
+
+Registro de 2026-11-04 (PC do trabalho). A seção 13 fica como o registro de
+antes do merge.
+
+- **Head validado:** `ed82260ad3310881df3a9236e37653139614ebf4`, um commit
+  sobre `3fe529f`. Diff contra a integration restrito aos três arquivos de
+  testes e plano da seção 13; nenhum código de produção, nenhuma migration.
+- **Merge:** `6fac73c52f99db0979b28ced446a07322a93c862`, merge normal
+  (sem squash nem rebase) condicionado ao head exato, título com
+  `[skip render]`. Pais `2656f69` (integration anterior) e `ed82260`; árvore
+  igual à do head validado. PR #89 MERGED; a branch
+  `test/isolamento-estabelecimentos` e a worktree local foram preservadas.
+- **Integration avançou para `6fac73c`, sem publicação.** API e web
+  continuam publicados em `2656f69` (seção 12.1). Como o lote só tem testes e
+  documentação, não há motivo de publicação por ele.
+- **Banco:** as 14 migrations já aplicadas no piloto (seção 8.1) continuam
+  as mesmas; este lote não traz nenhuma.
+
+### 14.1 Reforço antes do merge (`ed82260`)
+
+- No teste de isolamento, rota por rota e antes do controle positivo, as
+  linhas de `users`, `credentials` e `sessions` de todas as contas de A e de
+  B são comparadas em memória. A troca de senha do funcionário de B tentada
+  por A não altera a credencial, a troca obrigatória, o papel, a situação
+  nem a validade ou revogação das sessões dele. Só a confirmação de senha da
+  sessão de quem chama é tolerada.
+- Pré-condição conferida (o alvo tem credencial e sessão aberta) e prova de
+  que a comparação enxerga a mudança: depois do controle positivo, a senha do
+  alvo aparece trocada e a sessão encerrada.
+- Falhas apontam só conta e campo; corpos de resposta relatados omitem
+  senha, token, segredo e hash.
+- Local: os dois arquivos afetados em PostgreSQL descartável com TLS (9
+  testes), `lint` e `tsc --noEmit`; uma mutação temporária no filtro de
+  estabelecimento da troca de senha foi detectada pela nova comparação. CI
+  obrigatório verde no head `ed82260`.
+- O plano (`docs/plans/revisao-isolamento-estabelecimentos.md`) foi alinhado
+  à seção 13.3.
+
+### 14.2 Distinção mantida
+
+Dono da plataforma é só a conta ativa com `MASTER_OWNER`. Dono do
+estabelecimento é cliente da plataforma, limitado ao próprio estabelecimento
+e aos recursos do plano; nunca recebe acesso ao portal.
+
+### 14.3 Pendências
+
+- Piloto: validação com um cliente autenticado, sem papel global, numa conta
+  já existente e autorizada, só leituras (o próprio estabelecimento abre;
+  `/platform/*` responde 403 só com a mensagem). Continua pendente.
+- `PUT /tenants/:tenantId/push-subscription`: a transferência do aparelho
+  entre contas (seção 13.3) é comportamento observado; a análise de
+  segurança fica separada e não entrou na conclusão desta revisão.
