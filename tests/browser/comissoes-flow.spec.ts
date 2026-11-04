@@ -1,6 +1,8 @@
 // Comissões de ponta a ponta, pela tela, contra o backend real e o
 // PostgreSQL DESCARTÁVEL. Nada sai da máquina e nenhum repasse é feito.
 //
+// 0. No Básico (código `essencial`) não há comissões, nem na tela nem no
+//    servidor. O resto roda no Pro (código `equipe`).
 // 1. O dono define, em Profissionais → Comissões, percentual num serviço e
 //    valor fixo noutro ("Não configurada" é o ponto de partida; zero pede
 //    "Sem comissão").
@@ -51,8 +53,9 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
       password: SENHA_DONO,
     });
     const tenantId = dono.tenant.id;
-    // O catálogo prevê comissões só no plano Rede.
-    await db.query(`UPDATE tenants SET plan_id = (SELECT id FROM plans WHERE code = 'pro') WHERE id = $1`, [tenantId]);
+    const plano = (codigo: string) =>
+      db.query(`UPDATE tenants SET plan_id = (SELECT id FROM plans WHERE code = $2) WHERE id = $1`, [tenantId, codigo]);
+    await plano("essencial");
     const servico = async (name: string, priceCents: number) => {
       const r = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/services`, { data: { name, durationMinutes: 30, priceCents } });
       expect(r.status()).toBe(201);
@@ -63,6 +66,20 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
     const r = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/professionals`, { data: { name: "Ana Lima", serviceIds: [corte, barba] } });
     expect(r.status()).toBe(201);
     const professionalId = ((await r.json()) as { professional: { id: string } }).professional.id;
+
+    // ------------------------------------------- 0. Básico: sem comissões
+    // Nem na tela nem no servidor; o resto da conta segue igual.
+    expect((await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/commissions`)).status()).toBe(403);
+    await page.goto("/conta/configuracoes/profissionais");
+    await expect(page.getByRole("link", { name: "Horários de Ana Lima" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Comissões de Ana Lima" })).toHaveCount(0);
+    await page.goto("/conta/visao-geral");
+    await expect(page.getByTestId("ver-recebimentos")).toBeVisible();
+    await expect(page.getByTestId("ver-comissoes")).toHaveCount(0);
+    await page.goto("/conta/comissoes");
+    await expect(page.getByText(/o plano não inclui comissões/)).toBeVisible();
+    // O Pro (código `equipe`) inclui comissões, como o Max (código `pro`).
+    await plano("equipe");
 
     // ------------------------------------------- 1. regras pela tela
     await page.goto("/conta/configuracoes/profissionais");

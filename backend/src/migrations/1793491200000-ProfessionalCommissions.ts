@@ -29,12 +29,26 @@
 // restringe o dono). `ADD VALUE` não é usado na mesma transação, como nas
 // migrations anteriores, e não pode ser desfeito: o `down` deixa os valores.
 //
+// CATÁLOGO: o recurso `COMISSOES` passa a fazer parte do plano Pro (código
+// `equipe`), além do Max (código `pro`, que já o tinha desde o catálogo
+// inicial). O Básico (código `essencial`) continua sem ele. Só acrescenta a
+// linha de `plan_features`, pelo id e código conhecidos: preços, limites,
+// outros recursos e as exceções individuais (`tenant_feature_overrides`)
+// ficam como estão, e uma exceção desligada continua valendo sobre o plano.
+// O recurso só libera a consulta e a configuração pelo dono; funcionário
+// continua dependendo da concessão própria.
+//
 // Nenhuma linha existente muda. O `down` só é seguro sem linhas novas (sem
 // item ou com valores nulos): ele recusa em vez de apagar histórico.
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const COMMISSION_AUDIT_ACTIONS = ['COMMISSION_RULE_CHANGED'] as const;
 export const COMMISSION_PERMISSIONS = ['COMISSOES_PROPRIAS_VISUALIZAR'] as const;
+
+/** Linha nova de `plan_features`, com id fixo para o `down()`. */
+export const COMMISSION_PLAN_FEATURE_ADDITIONS = [
+  { id: 'pf_pc_equipe_comissoes', planId: 'plan_equipe', planCode: 'equipe', featureId: 'feat_comissoes' },
+] as const;
 
 export class ProfessionalCommissions1793491200000 implements MigrationInterface {
   name = 'ProfessionalCommissions1793491200000';
@@ -72,6 +86,14 @@ export class ProfessionalCommissions1793491200000 implements MigrationInterface 
       `ALTER TABLE commission_entries ADD CONSTRAINT ck_commission_entries_rule_snapshot
         CHECK ((applied_type IS NULL) = (applied_value IS NULL))`,
     );
+    for (const linha of COMMISSION_PLAN_FEATURE_ADDITIONS) {
+      await queryRunner.query(
+        `INSERT INTO plan_features (id, plan_id, feature_id)
+         SELECT $1, p.id, f.id FROM plans p, features f WHERE p.id = $2 AND p.code = $3 AND f.id = $4
+         ON CONFLICT (plan_id, feature_id) DO NOTHING`,
+        [linha.id, linha.planId, linha.planCode, linha.featureId],
+      );
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -83,6 +105,11 @@ export class ProfessionalCommissions1793491200000 implements MigrationInterface 
     if (novas.total > 0) {
       throw new Error('commission_entries tem apurações por item; o down apagaria histórico e foi recusado.');
     }
+    // Só a linha que esta migration gravou; uma linha igual já existente
+    // antes (outro id) fica.
+    await queryRunner.query(`DELETE FROM plan_features WHERE id = ANY($1)`, [
+      COMMISSION_PLAN_FEATURE_ADDITIONS.map((l) => l.id),
+    ]);
     await queryRunner.query(`ALTER TABLE commission_entries DROP CONSTRAINT ck_commission_entries_rule_snapshot`);
     for (const coluna of ['price_cents_snapshot', 'applied_type', 'applied_value', 'professional_cents', 'establishment_cents']) {
       await queryRunner.query(`ALTER TABLE commission_entries ALTER COLUMN ${coluna} SET NOT NULL`);

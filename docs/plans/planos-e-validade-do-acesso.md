@@ -112,7 +112,7 @@ nenhuma tela os oferece como disponíveis.
 | Recurso | Básico | Pro | Max |
 | --- | --- | --- | --- |
 | `RELATORIOS` (relatórios além da visão geral) | não | sim | sim |
-| `COMISSOES` | não | proposta: sim | sim |
+| `COMISSOES` | não | sim (implementado; ver nota) | sim |
 | `LISTA_DE_ESPERA` | não | proposta: sim | sim |
 | `PERSONALIZACAO_AVANCADA` | não | não | sim |
 | `MULTIPLAS_UNIDADES` | não | não | sim, **quando existir** |
@@ -122,6 +122,10 @@ nenhuma tela os oferece como disponíveis.
 `plan_features` dos futuros não muda neste lote (o Pro já tinha
 `RELATORIOS`; o Max já tinha todos). A alocação de cada futuro é decidida
 quando o módulo existir.
+
+**Nota (comissões):** o módulo passou a existir com a migration
+ProfessionalCommissions, que acrescenta `COMISSOES` ao Pro (`equipe`). Básico
+continua sem. Ver docs/plans/comissoes-profissional-servico.md.
 
 **Max = todos os módulos destinados ao cliente**, nunca as permissões do
 sistema. A administração da plataforma não é recurso de plano: não tem

@@ -10,7 +10,10 @@
 // - cancelado e falta fora do total; atendimento concluído não cancela;
 //   reabertura futura preserva a fotografia;
 // - estorno do recebimento sinaliza, não apaga;
-// - isolamento entre estabelecimentos e recusas de acesso.
+// - isolamento entre estabelecimentos e recusas de acesso;
+// - planos: comissões no Pro (código `equipe`) e no Max (código `pro`), não
+//   no Básico (código `essencial`), onde concluir segue normal; a exceção
+//   individual vence o plano, e o plano não concede nada ao funcionário.
 import { globSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -109,7 +112,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     );
   }
 
-  async function cenario(nome: string, plano: 'pro' | 'equipe' = 'pro'): Promise<Cenario> {
+  async function cenario(nome: string, plano: 'pro' | 'equipe' | 'essencial' = 'pro'): Promise<Cenario> {
     const m = db.manager;
     const tenant = await m.save(
       m.create(Tenant, {
@@ -213,19 +216,73 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     servicos = new ServicesService(db);
     horarios = new ProfessionalWorkingHoursService(db);
     for (const l of (await db.query(`SELECT id, code FROM plans`)) as { id: string; code: string }[]) planos[l.code] = l.id;
-    if (!planos.pro || !planos.equipe) throw new Error('Catálogo de planos ausente — migrations não foram aplicadas.');
+    if (!planos.pro || !planos.equipe || !planos.essencial) throw new Error('Catálogo de planos ausente — migrations não foram aplicadas.');
   }, 30_000);
 
   afterAll(async () => {
     if (db?.isInitialized) await db.destroy();
   });
 
-  it('o catálogo já prevê comissões só no plano Rede (pro); nada muda nos planos', async () => {
+  it('catálogo: comissões no Pro (equipe) e no Max (pro), não no Básico (essencial); o resto dos planos igual', async () => {
     const linhasCatalogo = (await db.query(
       `SELECT p.code FROM plan_features pf JOIN plans p ON p.id = pf.plan_id JOIN features f ON f.id = pf.feature_id
         WHERE f.key = 'COMISSOES' AND p.code IN ('essencial', 'equipe', 'pro') ORDER BY p.code`,
     )) as { code: string }[];
-    expect(linhasCatalogo.map((l) => l.code)).toEqual(['pro']);
+    expect(linhasCatalogo.map((l) => l.code)).toEqual(['equipe', 'pro']);
+    // Só a linha nova de comissões no Pro; nomes, limites e os demais
+    // recursos continuam os do catálogo anterior.
+    const catalogo = (await db.query(
+      `SELECT p.code, p.name, p.max_professionals, p.max_units, array_agg(f.key::text ORDER BY f.key::text) AS recursos
+         FROM plans p JOIN plan_features pf ON pf.plan_id = p.id JOIN features f ON f.id = pf.feature_id
+        WHERE p.code IN ('essencial', 'equipe', 'pro') GROUP BY p.code, p.name, p.max_professionals, p.max_units
+        ORDER BY p.code`,
+    )) as { code: string; name: string; max_professionals: number; max_units: number; recursos: string[] }[];
+    expect(catalogo.map(({ recursos, ...plano }) => ({ ...plano, recursos: recursos.length }))).toEqual([
+      { code: 'equipe', name: 'Pro', max_professionals: 5, max_units: 1, recursos: 8 },
+      { code: 'essencial', name: 'Básico', max_professionals: 2, max_units: 1, recursos: 6 },
+      { code: 'pro', name: 'Max', max_professionals: 20, max_units: 5, recursos: 13 },
+    ]);
+    expect(catalogo[0].recursos).toEqual(['AGENDA', 'AGENDAMENTO_PUBLICO', 'COMISSOES', 'CONSUMIDORES', 'EQUIPE', 'PAGAMENTOS', 'PROFISSIONAIS', 'RELATORIOS']);
+    expect(catalogo[1].recursos).not.toContain('COMISSOES');
+  });
+
+  it('plano Pro: o dono apura e consulta; exceção individual vence o plano; o funcionário depende da concessão', async () => {
+    const c = await cenario('plano-pro', 'equipe');
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, { kind: 'PERCENTAGE', value: 1000 });
+    const reserva = await reservar(c, [c.corte], as(DIA, 9));
+    await concluir(c, reserva.id, as(DIA, 9));
+    // 10% de 42,50 = 4,25.
+    expect((await comissoes.report(c.dono, c.tenantId, MES)).totalAccruedCents).toBe(425);
+    // O recurso no plano não libera nada ao funcionário: só a concessão.
+    expect((await resolveTeamManager(db.manager, c.dono, c.tenantId)).grantable).toContain('COMISSOES_PROPRIAS_VISUALIZAR');
+    const semConcessao = await funcionario(c, c.ana, 'PROFISSIONAL', []);
+    await expect(agendaPropria.commissions(semConcessao, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+    await expect(comissoes.report(semConcessao, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+
+    // Exceção individual desligada num Pro: recusa e não apura; concluir segue normal.
+    await db.query(
+      `INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled)
+       SELECT substr(md5(random()::text), 1, 24), $1, id, false FROM features WHERE key = 'COMISSOES'`,
+      [c.tenantId],
+    );
+    await expect(comissoes.report(c.dono, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+    const desligada = await reservar(c, [c.corte], as(DIA, 10));
+    expect((await concluir(c, desligada.id, as(DIA, 10))).status).toBe('COMPLETED');
+    expect(await linhas(desligada.id)).toEqual([]);
+
+    // Exceção individual ligada num Básico: funciona como no plano.
+    const basico = await cenario('basico-com-excecao', 'essencial');
+    await expect(comissoes.rules(basico.dono, basico.tenantId, basico.ana)).rejects.toThrow(ForbiddenException);
+    expect((await resolveTeamManager(db.manager, basico.dono, basico.tenantId)).grantable).not.toContain('COMISSOES_PROPRIAS_VISUALIZAR');
+    await db.query(
+      `INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled)
+       SELECT substr(md5(random()::text), 1, 24), $1, id, true FROM features WHERE key = 'COMISSOES'`,
+      [basico.tenantId],
+    );
+    await comissoes.setRule(basico.dono, basico.tenantId, basico.ana, basico.corte, { kind: 'FIXED', value: 500 });
+    const comExcecao = await reservar(basico, [basico.corte], as(DIA, 9));
+    await concluir(basico, comExcecao.id, as(DIA, 9));
+    expect((await comissoes.report(basico.dono, basico.tenantId, MES)).totalAccruedCents).toBe(500);
   });
 
   it('regras: percentual, fixo, sem comissão e não configurada, só em serviço atendido, com histórico', async () => {
@@ -329,9 +386,10 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
 
     // Estabelecimento sem o recurso: concluir não apura; ligar depois não
     // inventa comissão para o que já foi concluído.
-    const semRecurso = await cenario('sem-recurso', 'equipe');
+    const semRecurso = await cenario('sem-recurso', 'essencial');
     const antiga = await reservar(semRecurso, [semRecurso.corte], as(DIA, 9));
-    await concluir(semRecurso, antiga.id, as(DIA, 9));
+    // No Básico, concluir segue normal: só não apura.
+    expect((await concluir(semRecurso, antiga.id, as(DIA, 9))).status).toBe('COMPLETED');
     expect(await linhas(antiga.id)).toEqual([]);
     await expect(comissoes.report(semRecurso.dono, semRecurso.tenantId, MES)).rejects.toThrow(ForbiddenException);
     await db.query('UPDATE tenants SET plan_id = $2 WHERE id = $1', [semRecurso.tenantId, planos.pro]);
@@ -500,7 +558,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
 
     // A concessão só é oferecida com o recurso no plano; sem ele, a rota recusa.
     expect((await resolveTeamManager(db.manager, c.dono, c.tenantId)).grantable).toContain('COMISSOES_PROPRIAS_VISUALIZAR');
-    await db.query('UPDATE tenants SET plan_id = $2 WHERE id = $1', [c.tenantId, planos.equipe]);
+    await db.query('UPDATE tenants SET plan_id = $2 WHERE id = $1', [c.tenantId, planos.essencial]);
     expect((await resolveTeamManager(db.manager, c.dono, c.tenantId)).grantable).not.toContain('COMISSOES_PROPRIAS_VISUALIZAR');
     await expect(agendaPropria.commissions(ana, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
     await expect(comissoes.report(c.dono, c.tenantId, MES)).rejects.toThrow(ForbiddenException);

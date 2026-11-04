@@ -16,9 +16,9 @@ Base: integration `6fac73c`. Uma migration nova, a 15ª:
 
 ## O que já existia e foi reaproveitado
 
-- **Catálogo:** o recurso `COMISSOES` já existe e está só no plano Rede (`pro`).
-  Nada foi mudado em planos, recursos ou preços. As rotas usam o mesmo recurso,
-  como os recebimentos usam `PAGAMENTOS`.
+- **Catálogo:** o recurso `COMISSOES` já existia, só no plano de código `pro`
+  (chamado Rede no catálogo inicial e Max desde a migration CommercialAccess).
+  As rotas usam o mesmo recurso, como os recebimentos usam `PAGAMENTOS`.
 - **`commission_rules`** (migration inicial, nunca gravada até aqui): uma regra
   por estabelecimento, profissional e serviço. O percentual fica em pontos-base
   e o valor fixo em centavos. Ficou como está.
@@ -36,8 +36,8 @@ Base: integration `6fac73c`. Uma migration nova, a 15ª:
 | Percentual | `PERCENTAGE`, 1 a 10000 pontos-base (12,5% = 1250) |
 | Valor fixo | `FIXED`, de 1 centavo a R$ 1.000.000,00 |
 
-A migration muda só `commission_entries`. Ela passa a ter uma linha por
-serviço da reserva:
+Nas tabelas de comissão, a migration muda só `commission_entries`, que
+passa a ter uma linha por serviço da reserva:
 
 - **Coluna nova:** `appointment_item_id`, com FK composta com o tenant (nova
   `UNIQUE (tenant_id, id)` em `appointment_items`) e índice único.
@@ -50,8 +50,34 @@ serviço da reserva:
   ganha `COMISSOES_PROPRIAS_VISUALIZAR`. É a concessão do dono ao funcionário,
   separada da permissão que restringe o dono.
 
+**Planos.** Os nomes comerciais não são os códigos: Básico é `essencial`, Pro
+é `equipe` e Max é `pro` (`backend/src/commercial/plan-catalog.ts`). A
+mesma migration acrescenta uma linha a `plan_features`
+(`pf_pc_equipe_comissoes`: plano `equipe`, recurso `COMISSOES`), com
+`ON CONFLICT DO NOTHING`. Fica assim, em instalação nova e em banco
+existente:
+
+| Plano (código) | Comissões |
+| --- | --- |
+| Básico (`essencial`) | não, por padrão |
+| Pro (`equipe`) | sim (novo) |
+| Max (`pro`, antigo Rede) | sim (já tinha) |
+
+- **O que não muda:** preços, limites, os outros recursos e as exceções por
+  estabelecimento (`tenant_feature_overrides`). Uma exceção desligada num Pro
+  continua desligando; uma ligada num Básico continua ligando.
+- **Funcionário:** o recurso no plano libera a consulta e a configuração ao
+  dono. Funcionário continua dependendo da concessão própria.
+- **Migration já aplicada:** nenhuma foi editada. A linha entrou na 15ª, que
+  ainda não rodou em banco real.
+- **Interface:** as áreas vêm do servidor (`tenant-effective-access`), então a
+  tela segue o catálogo sem lista própria. O site passou a listar comissões
+  como disponível nos planos Pro e Max.
+- **Demonstração legada:** `src/lib/planos.ts` (`/painel`, `/master`) não
+  foi tocada; ela já não acompanhava os nomes Básico/Pro/Max.
+
 O `down` recusa se houver apuração por item, para não apagar histórico, e deixa
-os valores de enum.
+os valores de enum. Ele remove só a linha `pf_pc_equipe_comissoes`.
 
 As entidades continuam espelhando a migration inicial (`entity-metadata.spec`),
 como nas outras mudanças posteriores. A leitura e a gravação são em SQL
@@ -65,7 +91,8 @@ reserva travada. Vale para a conclusão pelo dono, pelo gerente e pela agenda
 própria.
 
 - **Recurso do plano:** só apura se o estabelecimento tem `COMISSOES` na hora
-  da conclusão.
+  da conclusão. Sem o recurso (o Básico, por padrão), a conclusão segue igual
+  e nada é gravado em `commission_entries`.
 - **Uma linha por item:** cada uma guarda o preço do item, a regra que valia (ou
   nenhuma), a comissão e a parte do estabelecimento.
 - **Cálculo:** é inteiro, item a item. Para cada item, `floor((preço ×
@@ -140,7 +167,9 @@ concedida pelo dono em "Equipe e acessos" e o recurso no plano.
 - **Unitários do frontend:** percentual em pontos-base sem ponto flutuante,
   rótulos e forma das respostas.
 - **`test/commissions-postgres.db-e2e-spec.ts`:**
-  - catálogo;
+  - catálogo: Pro e Max com o recurso, Básico sem, o resto dos planos igual;
+  - plano Pro: apura e consulta; exceção desligada num Pro e ligada num
+    Básico; funcionário sem concessão recusado;
   - regras e histórico;
   - reserva com dois serviços, concluída em paralelo e repetida;
   - preço do catálogo mudado depois;
@@ -155,10 +184,13 @@ concedida pelo dono em "Equipe e acessos" e o recurso no plano.
   - dono restringido;
   - gerente com tudo concedido recusado;
   - funcionário sem e com a concessão;
-  - plano sem o recurso.
+  - Básico: concluir segue normal, sem apuração; consulta recusada.
+- **`1793491200000-ProfessionalCommissions.spec.ts`:** a linha nova é só
+  `equipe` + `COMISSOES`, o Básico continua sem, e o `down` remove só ela.
 - **Mutações:** sem o critério do total ou sem a proteção contra repetição, os
   casos falham.
-- **`npm run test:browser:comissoes`:** regras pela tela, conclusão repetida,
+- **`npm run test:browser:comissoes`:** no Básico, nada de comissões na tela
+  nem no servidor; no Pro, regras pela tela, conclusão repetida,
   relatório, regra mudada, funcionário sem e com a concessão. Capturas em claro
   e escuro, 1280, 390 e 360 px.
 - **Migration:** ensaiada em PostgreSQL 18 descartável com TLS. Foram três
@@ -169,9 +201,8 @@ concedida pelo dono em "Equipe e acessos" e o recurso no plano.
 
 ## Decisões comerciais em aberto
 
-1. **Planos:** comissões estão só no Rede (`pro`), conforme o catálogo. Liberar
-   para outros planos é decisão comercial, por catálogo ou por exceção por
-   estabelecimento.
+1. **Planos:** decidido. Comissões no Pro (`equipe`) e no Max (`pro`), fora do
+   Básico (`essencial`) por padrão. Um Básico só ganha por exceção individual.
 2. **Período do relatório:** é pela data do atendimento. Fechar pela data da
    conclusão muda atendimentos concluídos depois da virada do mês.
 3. **Arredondamento:** é meio centavo para cima, por item. Outra regra (por
