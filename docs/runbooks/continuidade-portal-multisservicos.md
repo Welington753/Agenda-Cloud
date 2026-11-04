@@ -45,6 +45,12 @@ segue aberto, no head `d1e3519`. A publicação dele depende de um kit protegido
 para a 15ª migration, que ainda não existe. API e web continuam em `2656f69`;
 o banco real continua com 14 migrations (seção 17).
 
+**Atualização de 2026-11-04 (PC do trabalho, merge do #91):** o #91
+(comissões) foi mesclado na integration em `9e548a3`, **sem publicação**. A
+integration passa a ter 15 migrations; o banco real continua com 14. A
+publicação desse SHA fica **bloqueada** até existir e ser ensaiado o kit
+protegido da 15ª migration (seções 17.3 e 18).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -1150,6 +1156,48 @@ Os kits atuais recusam migration posterior de propósito. Antes de publicar o
 
 ### 17.5 Próximo passo
 
-- Decidir o merge do #91.
+- Decidir o merge do #91 (feito; seção 18).
 - Criar e ensaiar o kit da 15ª migration (seção 17.3) só em banco descartável.
 - Publicar seguindo o runbook.
+
+## 18. #91 mesclado: publicação bloqueada pela 15ª migration
+
+Registro de 2026-11-04 (PC do trabalho). Nada foi publicado, nenhuma migration
+foi aplicada em banco real e nenhum banco real foi acessado.
+
+- **Conferência antes do merge:**
+  - head `d1e3519b213f67b2c6c76e2e6c31c0cafb36eb56`;
+  - integration em `c40a91b`;
+  - os dois workflows verdes;
+  - sem pedidos de alteração.
+- **Divergência avaliada:** a branch saiu de `6fac73c`, então não continha o #90
+  nem o #92. Mesmo assim, o merge era seguro:
+  - nenhum arquivo é alterado pelos dois lados;
+  - o merge local não teve conflito;
+  - a combinação dos três já tinha sido validada (seção 17.2).
+- **Merge:** `9e548a332321bbd714c614dafcd0c75a83c61107`.
+  - Merge normal, condicionado ao head exato, com `[skip render]` no título.
+  - Pais: `c40a91b` e `d1e3519`.
+  - A árvore é igual à do merge local.
+  - O #90 (`a286d88`) e o #92 (`09fd93e`) continuam contidos.
+  - Os arquivos deles não mudaram.
+- **Integration:** `9e548a3`, com 15 migrations.
+- **Publicado:** API e web continuam em `2656f69` (seção 12.1).
+- **Banco real:** continua com 14 migrations (seção 8.1). A 15ª,
+  `ProfessionalCommissions1793491200000`, está pendente.
+- **Publicação bloqueada:** nenhum SHA a partir de `9e548a3` pode ser publicado
+  antes de existir e ser ensaiado o kit protegido da 15ª migration (requisitos
+  na seção 17.3).
+  - A ordem é migration, depois API, depois web.
+  - Para recuperar, vale a seção 17.2: sem `down` depois da primeira apuração,
+    e voltar a API não é recuperação completa.
+- **Mesmo bloqueio para o #90:** a integration já contém o #91. Publicar o #90
+  sozinho exigiria um SHA anterior ao merge do #91 (`c40a91b`). Isso fica fora
+  do fluxo padrão e precisa de decisão explícita.
+- **Preservados:** a branch e a worktree `Agenda-Cloud-comissoes`; os itens da
+  seção 17.4.
+
+### 18.1 Próximo passo
+
+- Criar e ensaiar o kit protegido da 15ª migration, só em banco descartável.
+- Depois, publicar seguindo o runbook: migration, API e web do mesmo SHA.
