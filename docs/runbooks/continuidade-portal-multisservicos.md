@@ -11,6 +11,12 @@ abaixo são o registro de antes da operação e ficam como histórico.
 (#87) foi mesclado na integration em `d2a4479`, **sem publicação**. Esse SHA é
 o candidato à próxima publicação; o publicado continua `8916f18` (seção 10).
 
+**Atualização de 2026-11-04 (PC de casa):** a visão geral e a listagem
+comercial do portal (#88) foram mescladas em `2656f69`, **sem publicação**,
+depois de um ensaio local de compatibilidade. Esse SHA, que já contém o #87,
+passa a ser o candidato à próxima publicação; o publicado continua `8916f18`
+(seção 11).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -520,6 +526,9 @@ contas nesta rodada. A implementação parte da integration conferida
 
 ## 10. Portal independente (#87): mesclado, NÃO publicado
 
+> Candidato superado: `2656f69` (seção 11) contém este merge e é o SHA a
+> publicar.
+
 **Candidato à publicação (ainda não publicado):**
 **`d2a447998d06dbb4807521c1f570de7171128372`**, merge do #87 na integration
 em 2026-11-03 22:38 UTC (merge normal, condicionado ao head, com
@@ -562,3 +571,88 @@ O que o lote entrega está em `docs/plans/portal-independente-da-operacao.md`
   - recusa de quem não é proprietário.
 - Nenhum deploy, operação no Render, conexão com banco real, migration ou
   alteração de contas foi feito nesta etapa.
+
+## 11. Visão geral e listagem comercial do portal (#88): mesclado, NÃO publicado
+
+**Candidato à publicação (ainda não publicado):**
+**`2656f691bbd43123d49b48e65b8edb08c1061d68`**, merge do #88 na integration
+em 2026-11-04 01:08 UTC (merge normal, condicionado ao head, com
+`[skip render]`). Contém o #87 (`d2a4479`), que nunca foi publicado sozinho.
+
+- Pais: `d2a447998d06dbb4807521c1f570de7171128372` (integration) e
+  `4bf4331fe51a1897bb7b486251d4925a1a425008` (head validado do #88).
+- A árvore do merge é idêntica à do head validado (tree `79358f8`).
+- Antes do merge: head e base nos SHAs esperados, `MERGEABLE`/`CLEAN`, sem
+  revisões nem pedidos de alteração. O check obrigatório "auth real e serviços
+  reais (navegador + API) contra PostgreSQL descartável" estava verde no head
+  (10m32s), incluindo a suíte nova `portal-visao-geral`. O check de migrations
+  não foi disparado: o lote não toca em `backend/src/database/**` nem em
+  migrations.
+- Diff: 30 arquivos. No backend, só acréscimos: `GET /platform/overview` e os
+  campos e o filtro novos em `GET /platform/establishments`. Nenhuma
+  migration, preço ou condição comercial gravada.
+
+O que o lote entrega está em `docs/plans/portal-visao-geral-e-listagem.md`
+(na integration):
+
+- Visão geral como destino padrão do portal;
+- menu lateral no computador e recolhível no celular;
+- Aparência e "Sair" no menu do usuário;
+- totais pela regra central de acesso;
+- pagamentos de assinatura do mês;
+- lista "Precisa de atenção";
+- listagem com plano, condição contratada por ciclo, situação, modalidade e
+  validade, com filtros na URL.
+
+### 11.1 Ensaio local de compatibilidade (antes do merge)
+
+Ensaio feito só em máquina local, com PostgreSQL 17.11 descartável com TLS,
+banco recriado do zero, as 14 migrations aplicadas e dados fictícios criados
+pelas próprias suítes. Node 24.19.0, Chromium do Playwright. **Ele comprova a
+compatibilidade local entre as versões; não é um teste da troca de versões no
+Render.**
+
+Cada invocação subiu uma API nova, como o CI, para respeitar o limite de 5
+logins por IP em 15 minutos.
+
+1. **Janela entre os deploys:** API compilada de `4bf4331`, web compilado de
+   `d2a4479` (worktree descartável, suítes do próprio `d2a4479`):
+   - `portal-entrada`: 1/1. Cobre login do portal, celular, sessão expirada e
+     "Sair".
+   - `administracao`: 2/2. Cobre lista e ficha do estabelecimento, preços,
+     sem vencimento, revogação e recusas por URL e pela API.
+   - `pilot-navigation`: 3/3. Cobre a navegação básica da operação com
+     sessão.
+2. **Depois do web:** web e API de `4bf4331`:
+   - `portal-visao-geral`: 1/1, com 3 logins. Cobre Visão geral, listagem,
+     filtros, menu do celular e sessão expirada.
+3. **Sonda da API nova, sem sessão:**
+   - `GET /platform/overview`: 401;
+   - `GET /platform/establishments`: 401;
+   - rota inexistente: 404.
+
+   A rota nova existe e exige sessão.
+
+Nenhum código mudou por causa do ensaio.
+
+### Pendências
+
+- **Publicação**, numa etapa separada e com autorização:
+  - API e depois web, os dois em `2656f69`;
+  - sem migration: as 14 do piloto não se repetem.
+  - Até lá, não registrar este SHA como publicado. O publicado continua
+    `8916f18`.
+- **Validação no ambiente publicado**, depois do deploy:
+  - entrada do portal levando à Visão geral;
+  - totais e pagamentos do mês com os dados reais;
+  - listagem e filtros;
+  - endereços antigos;
+  - operação sem atalhos;
+  - recusa de quem não é proprietário.
+- **Limitações conhecidas**, descritas no plano:
+  - os totais incluem contas de teste e da equipe, porque ainda não existe
+    classificação de uso interno;
+  - "Precisa de atenção" mostra no máximo 20 itens;
+  - os pagamentos são sempre os do mês corrente, no horário de Brasília.
+- Nenhum deploy, operação no Render, conexão com banco real, migration,
+  alteração de contas ou de preços foi feito nesta etapa.
