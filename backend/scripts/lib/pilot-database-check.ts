@@ -55,6 +55,13 @@ import {
   objetosPortalMultisservicosPresentes,
   TOTAL_OBJETOS_PORTAL_MULTISSERVICOS,
 } from './portal-multisservicos-schema.js';
+import {
+  falhasAntesDeComissoes,
+  falhasDepoisDeComissoes,
+  lerEstadoComissoes,
+  objetosComissoesPresentes,
+  TOTAL_OBJETOS_COMISSOES,
+} from './comissoes-profissionais-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -77,7 +84,9 @@ export type PilotExpectation =
   | 'after-commercial-access'
   | 'before-platform-portal'
   | 'after-platform-portal'
-  | 'after-appointment-snapshots';
+  | 'after-appointment-snapshots'
+  | 'before-professional-commissions'
+  | 'after-professional-commissions';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -95,6 +104,8 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'before-platform-portal',
   'after-platform-portal',
   'after-appointment-snapshots',
+  'before-professional-commissions',
+  'after-professional-commissions',
 ];
 
 interface EnvLike {
@@ -299,6 +310,17 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
             : falhasDepoisDosNomesCongelados(estado);
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosPortalMultisservicosPresentes(estado)}/${TOTAL_OBJETOS_PORTAL_MULTISSERVICOS}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    // Antes (14) e depois (15) de ProfessionalCommissions. Exatamente um passa.
+    if (expectation === 'before-professional-commissions' || expectation === 'after-professional-commissions') {
+      const estado = await lerEstadoComissoes(client);
+      const falhas =
+        expectation === 'before-professional-commissions' ? falhasAntesDeComissoes(estado) : falhasDepoisDeComissoes(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosComissoesPresentes(estado)}/${TOTAL_OBJETOS_COMISSOES}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
