@@ -22,6 +22,11 @@ em `2656f69` nas capturas do Render fornecidas pelo usuário. Validação
 pós-publicação só de leitura, sem defeito encontrado; a recusa de quem não é
 proprietário e os pagamentos com dados reais ficam pendentes (seção 12).
 
+**Atualização de 2026-11-04 (PC de casa, depois da publicação):** revisão de
+autorização e isolamento no PR #89 (`3fe529f`), só testes e plano, CI verde,
+**sem merge**. Nenhum defeito de isolamento no escopo revisado; validação no
+piloto com cliente sem papel global pendente (seção 13).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -788,3 +793,68 @@ Nenhum defeito encontrado.
   - pagamentos só do mês corrente, no horário de Brasília.
 - Nenhum novo deploy, migration, conexão direta com banco, nem alteração de
   conta, preço ou configuração comercial foi feito nesta etapa.
+
+## 13. Revisão de autorização e isolamento (#89): aberto, NÃO mesclado
+
+Registro de 2026-11-04 (PC de casa). Nada foi publicado; o piloto continua
+com API e web Live em `2656f69` (seção 12.1) e as 14 migrations já
+aplicadas (seção 8.1), que não devem ser repetidas.
+
+- PR #89, branch `test/isolamento-estabelecimentos`, head
+  **`3fe529f061c7c6f740a4a8d396b2ecd4a8759b48`**, base na integration em
+  `2656f691bbd43123d49b48e65b8edb08c1061d68`. CI verde (check exigido
+  "auth real e serviços reais", 13m35s). Sem merge.
+- Só testes e plano: `backend/test/isolamento-estabelecimentos-postgres.db-e2e-spec.ts`
+  (novo), `backend/test/platform-portal-postgres.db-e2e-spec.ts` (estendido)
+  e `docs/plans/revisao-isolamento-estabelecimentos.md`. Nenhum código de
+  produção, nenhuma migration.
+- Local, PostgreSQL 17 descartável com TLS: `test:db-e2e` com 27 arquivos e
+  252 testes passando; `lint` e `tsc --noEmit` limpos.
+
+### 13.1 Distinção usada
+
+- **Dono da plataforma**: conta ativa com `MASTER_OWNER`. Único papel que
+  abre o portal.
+- **Dono do estabelecimento**: cliente da plataforma, limitado ao próprio
+  estabelecimento e aos recursos do plano. Gerente e profissional ficam nas
+  permissões do estabelecimento. Plano Max, teste, cortesia ou "sem
+  vencimento" não concedem nada no portal; `MASTER_ADMIN` e
+  `MASTER_SUPPORT` também não.
+
+### 13.2 Resultado
+
+Conclusão limitada ao escopo revisado: **nenhum defeito de isolamento
+encontrado**.
+
+- As 55 rotas `/tenants/:tenantId` (lista conferida contra o roteador): o
+  dono do estabelecimento A recebe o mesmo 404 de inexistente em cada rota
+  de B, sem dado de B; ids de B no caminho, corpo ou busca de A são
+  recusados; nenhuma linha de A ou B muda; a conta de B faz a mesma chamada
+  e consegue (controle positivo). Uma mutação proposital (vínculo buscado
+  sem o tenant) fez 45 rotas falharem.
+- Portal: dono do estabelecimento, gerente e profissional de um Max, com a
+  senha confirmada, recebem 403 só com a mensagem em toda rota `/platform`.
+- Dono da plataforma com o próprio estabelecimento vencido ou inativo: o
+  portal funciona e a operação daquele estabelecimento continua recusada.
+- Dono da plataforma **sem estabelecimento**: comprovado em testes locais e
+  no CI (`portal-entrada-flow`, `platform-postgres`), **não** no piloto. A
+  validação da seção 12.2 usou uma conta de dono da plataforma, sem registro
+  de que ela não tenha estabelecimento.
+
+### 13.3 Ponto registrado para análise própria
+
+`PUT /tenants/:tenantId/push-subscription` com um endpoint que já pertence a
+outra conta transfere o aparelho para quem chamou e revoga a inscrição
+anterior, em qualquer estabelecimento (regra "um aparelho avisa uma pessoa
+só", `push/push-subscriptions.repository.ts`). Não entrou na conclusão desta
+revisão; fica para uma análise separada.
+
+### 13.4 Pendências
+
+- Piloto: validação com um cliente autenticado, sem papel global, numa conta
+  já existente e autorizada (o próprio estabelecimento abre; `/platform/*`
+  responde 403 só com a mensagem). Não criar contas, não mudar papéis e não
+  testar escritas no piloto. Contas de dono da plataforma e respostas 401 sem
+  sessão não substituem essa validação.
+- Revisar o #89 e decidir o merge. Sem publicação nem operação no piloto
+  nessa rodada.
