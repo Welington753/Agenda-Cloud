@@ -17,6 +17,11 @@ depois de um ensaio local de compatibilidade. Esse SHA, que já contém o #87,
 passa a ser o candidato à próxima publicação; o publicado continua `8916f18`
 (seção 11).
 
+**Atualização de 2026-11-04 (PC de casa, depois):** API e web observados Live
+em `2656f69` nas capturas do Render fornecidas pelo usuário. Validação
+pós-publicação só de leitura, sem defeito encontrado; a recusa de quem não é
+proprietário e os pagamentos com dados reais ficam pendentes (seção 12).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -574,6 +579,9 @@ O que o lote entrega está em `docs/plans/portal-independente-da-operacao.md`
 
 ## 11. Visão geral e listagem comercial do portal (#88): mesclado, NÃO publicado
 
+> Publicado depois deste registro: API e web Live em `2656f69` (seção 12). O
+> texto abaixo fica como histórico de antes da publicação.
+
 **Candidato à publicação (ainda não publicado):**
 **`2656f691bbd43123d49b48e65b8edb08c1061d68`**, merge do #88 na integration
 em 2026-11-04 01:08 UTC (merge normal, condicionado ao head, com
@@ -656,3 +664,127 @@ Nenhum código mudou por causa do ensaio.
   - os pagamentos são sempre os do mês corrente, no horário de Brasília.
 - Nenhum deploy, operação no Render, conexão com banco real, migration,
   alteração de contas ou de preços foi feito nesta etapa.
+
+## 12. Publicação do #88 no piloto e validação (2026-11-04)
+
+### 12.1 Versões publicadas
+
+Evidência: capturas do painel do Render fornecidas pelo usuário, com os nomes
+dos dois serviços. O deploy foi feito pelo usuário; nenhuma operação no Render
+partiu desta sessão.
+
+- `agenda-cloud-piloto-api`: Live em `2656f69`;
+- `agenda-cloud-piloto-web`: Live em `2656f69`;
+- `2656f69` = `2656f691bbd43123d49b48e65b8edb08c1061d68`, merge do #88
+  (seção 11), que já contém o #87.
+
+Banco: as 14 migrations do piloto já estavam aplicadas (seção 8.1). Este lote
+não tem migration; nada foi aplicado nem repetido, e não houve conexão direta
+com o banco.
+
+### 12.2 Validação pós-publicação
+
+Feita em 2026-11-04 por volta de 01:30–01:55 UTC, no navegador local
+(Chromium do Playwright 1.63.0, com janela, fuso America/Sao_Paulo). O
+usuário digitou o login direto no navegador; a senha não passou pelo chat. O
+roteiro só fez leituras: telas do portal e as APIs `GET` pelo proxy da mesma
+origem (`/agenda_api/platform/...`). Nenhuma reserva, pagamento, contrato,
+cortesia, concessão, preço, conta ou configuração comercial foi criada ou
+alterada. A Aparência foi trocada para Escuro e voltou à escolha anterior
+("Seguir aparelho"); é uma preferência só deste navegador. Capturas e respostas
+brutas ficaram só na máquina local, fora do repositório, porque têm nomes e
+e-mails reais.
+
+Os números abaixo valem para esse momento. Não comparar com contagens
+antigas.
+
+1. **Entrada, navegação e saída:** OK.
+   - O login pelo `/portal` levou a `/portal/visao-geral`.
+   - Menu lateral com as 8 seções, "Visão geral" com `aria-current=page`.
+   - Celular (390 e 360 px): seções recolhidas, abrem pelo botão "Menu",
+     fecham ao navegar para Estabelecimentos, sem rolagem horizontal.
+   - Aparência no menu do usuário com Claro / Escuro / Seguir aparelho;
+     Escuro aplicou `data-tema="escuro"`.
+   - "Sair" voltou para `/portal`. Depois disso, `GET /platform/overview`
+     respondeu 401 e `/portal/visao-geral` levou a
+     `/portal?next=%2Fportal%2Fvisao-geral`.
+2. **Totais e "Precisa de atenção":** batem com a listagem e com os filtros
+   da API.
+   - Tela e `GET /platform/overview`: 3 cadastrados, 3 com acesso liberado,
+     0 bloqueados (0 pela situação, 0 pela validade), 0 terminando em até 7
+     dias, 0 suspensos, 3 com condição contratada pendente.
+   - Modalidades: sem vencimento 1, validade ainda não definida 2, demais 0.
+   - Recontagem pelos itens de `GET /platform/establishments` (todas as
+     páginas): os mesmos números em cada campo.
+   - Totais da API por filtro: `ACCESS_ALLOWED` 3, `ACCESS_BLOCKED` 0,
+     `EXPIRING_SOON` 0, `VALIDITY_BLOCKED` 0, `CONTRACT_PENDING` 3,
+     `status=SUSPENDED` 0.
+   - "Precisa de atenção" vazia (total 0), coerente com 0 vencidos, ausentes
+     ou terminando. O limite de 20 itens não pôde ser exercitado.
+   - Os 3 cadastrados têm situação "Em teste" (`TRIAL`), mas nenhum está na
+     modalidade "Teste gratuito": situação e modalidade são separadas por
+     regra.
+3. **Pagamentos do mês:** critério confere; não há dado real para exercitá-lo.
+   - Texto da tela: confirmados manualmente no portal, não anulados, com data
+     de recebimento entre 01/11/2026 e 30/11/2026, no horário de Brasília
+     (America/Sao_Paulo). Soma os valores registrados, sem recalcular pelo
+     catálogo ou contrato.
+   - API: mês `2026-11`, `from` 2026-11-01, `to` 2026-11-30, BRL, 0
+     pagamentos, R$ 0,00, 0 anulados.
+   - `GET /platform/subscription-payments`: 0 registros em todos os meses.
+     Por isso data de recebimento, fuso e anulações foram conferidos só pelo
+     critério e pelo código, não por um pagamento real. A listagem não expõe
+     a origem da confirmação (`MANUAL`); esse recorte só aparece na soma da
+     Visão geral.
+4. **Listagem:** OK.
+   - Plano por estabelecimento (Max, Max e o terceiro com outro plano).
+   - "Condição contratada: Pendente: sem valor contratado" nos 3, sem zero
+     nem "grátis".
+   - Catálogo em linha separada, por ciclo, com o trimestral como total de 3
+     meses (por exemplo, "mensal R$ 119,90 · trimestral R$ 323,90 por 3
+     meses").
+   - Situação "Em operação" e "Acesso liberado"; validade em texto próprio,
+     sem data inventada ("Opera como antes até a regularização" e "Não vence
+     enquanto a concessão estiver em vigor").
+5. **Filtros e links:** OK.
+   - Abrir a listagem com `filtro=` ou `situacao=` na URL e recarregar a
+     página manteve a URL, o valor do campo e o resultado.
+   - Escolher o filtro no formulário e pesquisar levou o filtro para a URL;
+     "Limpar filtros" removeu a busca.
+   - Os 6 links dos indicadores (`ACCESS_ALLOWED`, `ACCESS_BLOCKED`,
+     `EXPIRING_SOON`, `VALIDITY_BLOCKED`, `CONTRACT_PENDING` e
+     `situacao=SUSPENDED`) abriram a listagem filtrada.
+   - Contagem lida na tela: 3, 0, 0 e 0 para liberado, bloqueado, terminando
+     e suspensos, iguais à API. Para `CONTRACT_PENDING` e `VALIDITY_BLOCKED` o
+     roteiro não capturou a frase de contagem (leu o texto de ajuda do
+     filtro); os totais da API são 3 e 0, e campo e URL se mantiveram depois
+     de recarregar.
+6. **Endereços antigos e operação:** OK.
+   - Respostas 307: `/plataforma` e `/administracao` e
+     `/conta/administracao` para `/portal`; `/plataforma/estabelecimentos?filtro=EXPIRING_SOON`
+     para `/portal/estabelecimentos?filtro=EXPIRING_SOON`;
+     `/administracao/planos` para `/portal/planos`;
+     `/conta/administracao/usuarios` para `/portal/usuarios`.
+   - Operação (`/conta/visao-geral`), com a mesma sessão: nenhum link para
+     `/portal` no computador nem no menu do celular.
+7. **Recusa de quem não é proprietário:** **pendente.** Não havia conta não
+   proprietária disponível e autorizada nesta sessão; nenhuma conta foi criada
+   e nenhum papel foi alterado para testar.
+   - Só sem sessão: `GET /platform/overview`, `/platform/establishments` e
+     `/platform/subscription-payments`, direto na API pública, responderam 401.
+
+Nenhum defeito encontrado.
+
+### 12.3 Pendências reais
+
+- Recusa pela interface e pela API com uma conta não proprietária já
+  existente e autorizada.
+- Pagamentos do mês com dados reais, quando houver o primeiro pagamento
+  confirmado: data de recebimento, fuso e anulado fora da soma.
+- "Precisa de atenção" com itens reais e o limite de 20.
+- Limitações que continuam:
+  - os totais incluem contas de teste e da equipe, porque ainda não há
+    classificação de uso interno;
+  - pagamentos só do mês corrente, no horário de Brasília.
+- Nenhum novo deploy, migration, conexão direta com banco, nem alteração de
+  conta, preço ou configuração comercial foi feito nesta etapa.
