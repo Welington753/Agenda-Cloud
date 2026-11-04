@@ -97,6 +97,22 @@ const MEMBERSHIP_COLUMNS = `m.id, m.tenant_id AS "tenantId", ${TENANT_NAME} AS "
 const MEMBERSHIP_FROM = `FROM memberships m JOIN tenants t ON t.id = m.tenant_id`;
 const MEMBERSHIP_SELECT = `SELECT ${MEMBERSHIP_COLUMNS} ${MEMBERSHIP_FROM}`;
 
+/** Conta só de funcionário: nenhum papel de plataforma, nenhum vínculo nem
+ * convite pendente de DONO, e ao menos um vínculo ou convite pendente de
+ * outro papel. Fica fora da lista global de contas (continua na equipe de
+ * cada estabelecimento e na ficha); quem não tem vínculo nenhum (responsável
+ * ainda sem estabelecimento, conta antiga, proprietário da plataforma)
+ * continua. Nada é apagado nem alterado. "Pendente" é o mesmo de
+ * `INVITE_STATUS_SQL`: convite vencido não conta, nem para manter nem para
+ * tirar a conta da lista (a equipe do estabelecimento também não o mostra). */
+export const STAFF_ONLY_ACCOUNT_SQL = `(u.platform_role IS NULL
+  AND NOT EXISTS (SELECT 1 FROM memberships dm WHERE dm.user_id = u.id AND dm.role = 'DONO')
+  AND NOT EXISTS (SELECT 1 FROM invites di WHERE di.target_user_id = u.id AND di.status = 'PENDING'
+    AND di.establishment_role = 'DONO' AND di.expires_at > now())
+  AND (EXISTS (SELECT 1 FROM memberships sm WHERE sm.user_id = u.id AND sm.role <> 'DONO')
+    OR EXISTS (SELECT 1 FROM invites si WHERE si.target_user_id = u.id AND si.status = 'PENDING'
+      AND si.type = 'ESTABLISHMENT' AND si.establishment_role <> 'DONO' AND si.expires_at > now())))`;
+
 @Injectable()
 export class AccountsDirectoryService {
   constructor(private readonly dataSource: DataSource) {}
@@ -178,7 +194,9 @@ export class AccountsDirectoryService {
 
   listUsers(actorId: string, query: UsersQuery) {
     return this.read(actorId, async (manager) => {
-      const base: string[] = [];
+      // Antes da busca, da paginação e dos contadores: contas só de
+      // funcionário não entram em nenhum deles.
+      const base: string[] = [`NOT ${STAFF_ONLY_ACCOUNT_SQL}`];
       const values: unknown[] = [];
       if (query.q) {
         values.push(escaparLike(query.q));

@@ -1,7 +1,9 @@
 "use client";
 
-// Todas as contas que entram no sistema (não os clientes da agenda):
-// antigas, administradores, sem estabelecimento e pendentes. Busca por nome
+// Contas de responsáveis e da plataforma (não os clientes da agenda):
+// antigas, administradores, sem estabelecimento e pendentes. Contas só de
+// funcionário ficam na equipe de cada estabelecimento; o servidor as tira
+// antes da busca, da paginação e dos contadores. Busca por nome
 // ou e-mail, filtros por situação, estabelecimento e papel. Os contadores são
 // do conjunto filtrado inteiro (sem o filtro de situação, que eles
 // detalham), nunca da página carregada.
@@ -49,8 +51,8 @@ export default function UsuariosPage() {
         <div>
           <h1 className="text-2xl font-bold">Usuários</h1>
           <p className="mt-1 max-w-xl text-sm text-ink-soft">
-            Contas com acesso ao sistema. Clientes que marcam horário ficam na agenda de cada estabelecimento e não
-            aparecem aqui.
+            Responsáveis pelos estabelecimentos e contas da plataforma. Quem é só funcionário aparece na equipe de
+            cada estabelecimento, e clientes que marcam horário ficam na agenda dele; nenhum dos dois aparece aqui.
           </p>
         </div>
         <Botao variante="secundaria" onClick={recarregar} className="min-h-11">
