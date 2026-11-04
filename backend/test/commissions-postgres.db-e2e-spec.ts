@@ -475,6 +475,9 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     ]);
     await expect(comissoes.report(gerente, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
     await expect(comissoes.rules(gerente, c.tenantId, c.ana)).rejects.toThrow(ForbiddenException);
+    // O levantamento de vagas de pilot-team-manager-check lista só os primeiros
+    // estabelecimentos com gerente, no mesmo banco: o gerente sai daqui.
+    await db.query(`DELETE FROM memberships WHERE user_id = $1`, [gerente]);
 
     // Funcionária sem a concessão: recusada, também no relatório geral.
     const anaSem = await funcionario(c, c.ana, 'PROFISSIONAL', ['COMISSOES_VISUALIZAR']);
