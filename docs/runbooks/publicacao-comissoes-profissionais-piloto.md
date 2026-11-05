@@ -92,13 +92,17 @@ precisa passar; com nenhuma ou com as duas, `ESTADO: divergente`.
 **`after-professional-commissions` exige:**
 
 - as quinze migrations;
-- os quinze objetos com a definição exata (`SCHEMA_OBJECTS_OK: 15/15`):
+- os quinze objetos (`SCHEMA_OBJECTS_OK: 15/15`):
   - os dois valores de enum;
   - `appointment_item_id varchar(30)`, anulável e sem padrão;
   - as cinco colunas anuláveis;
-  - `uq_appointment_items_tenant_id`;
-  - a FK composta;
-  - `ck_commission_entries_rule_snapshot`;
+  - `uq_appointment_items_tenant_id` (unique),
+    `fk_commission_entries_tenant_appointment_item` (FK composta) e
+    `ck_commission_entries_rule_snapshot` (check). Nessas três, a conferência
+    verifica **só o nome e o tipo** da constraint (`pg_constraint.contype`),
+    não a definição completa (colunas, tabela referenciada, expressão). O
+    estado "antes" exige que nenhuma delas exista, e é a migration do mesmo
+    commit que as cria;
   - o índice parcial e os dois novos, cada um com a definição exata;
   - a linha `pf_pc_equipe_comissoes` (`plan_equipe` + `feat_comissoes`);
 - comissões exatamente no `plan_equipe` e no `plan_pro`.
