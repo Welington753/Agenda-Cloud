@@ -11,6 +11,8 @@
 //   antigo (/conta/solicitacoes), que o site encaminha para o novo. A PÁGINA confere a sessão,
 //   o vínculo com o estabelecimento e a permissão antes de mostrar qualquer
 //   dado; sem sessão, o login preserva o destino. Abrir nunca confirma nada.
+// - Janelas do portal da plataforma (`/portal`, `/portal/**`) nunca são
+//   reaproveitadas: o toque usa uma janela da operação ou abre uma nova.
 // - Reenvio do mesmo aviso (depois de uma falha) usa a mesma etiqueta: o
 //   aparelho substitui a notificação em vez de empilhar duas.
 "use strict";
@@ -28,6 +30,12 @@ function destinoDaNotificacao(dados) {
   if (typeof estabelecimento !== "string" || !ID_VALIDO.test(estabelecimento)) return LISTA;
   if (typeof solicitacao !== "string" || !ID_VALIDO.test(solicitacao)) return LISTA;
   return `${LISTA}?estabelecimento=${encodeURIComponent(estabelecimento)}&solicitacao=${encodeURIComponent(solicitacao)}`;
+}
+
+// `/portal` e `/portal/**`, comparando o caminho exato ou com a barra (não
+// pega `/portalx`). Ver src/lib/administracao/rotas.ts.
+function ehJanelaDoPortal(caminho) {
+  return caminho === "/portal" || caminho.startsWith("/portal/");
 }
 
 function lerConteudo(evento) {
@@ -74,7 +82,11 @@ self.addEventListener("notificationclick", (evento) => {
     (async () => {
       const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const janela of janelas) {
-        if (new URL(janela.url).origin !== self.location.origin) continue;
+        const endereco = new URL(janela.url);
+        if (endereco.origin !== self.location.origin) continue;
+        // Janela do portal da plataforma (o aplicativo "Portal AC", com
+        // manifest próprio): nunca é escolhida nem navegada para a operação.
+        if (ehJanelaDoPortal(endereco.pathname)) continue;
         try {
           const navegada = "navigate" in janela ? await janela.navigate(url) : null;
           await (navegada || janela).focus();

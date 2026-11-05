@@ -5,8 +5,9 @@
 // "maskable" (Android recorta em círculo ou gota).
 import { ImageResponse } from "next/og";
 
-const DESTAQUE = "#b5651d";
-const TINTA = "#1c1a17";
+// Também usadas pelo ícone do portal (icone-portal.tsx).
+export const DESTAQUE = "#b5651d";
+export const TINTA = "#1c1a17";
 
 export function respostaDoIcone(tamanho: number, opcoes: { seguro?: boolean } = {}): ImageResponse {
   const escala = opcoes.seguro ? 0.62 : 0.72;
