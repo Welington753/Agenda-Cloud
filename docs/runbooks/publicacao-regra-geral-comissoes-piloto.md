@@ -365,6 +365,21 @@ O 409 no cadastro de profissional do Pro em uma rodada foi o limite de vagas
 do plano, não o schema. Os extras fictícios foram desativados antes das
 rodadas seguintes.
 
+> **Resultado comprovado: a API `92cc6ae` sobre o schema 16 ignora "Recebe
+> comissão" desligado.** No ensaio, o dono desligou o profissional do Max pela
+> API C16 (`PUT .../commissions/settings/<profissional>` → 200). Depois, com a
+> API `92cc6ae` no ar, a conclusão de um atendimento desse profissional
+> **apurou R$ 15,00** (regra fixa do serviço, sem escopo). Com a API C16, a
+> mesma conclusão não apurou nada.
+>
+> - A `92cc6ae` não lê `professional_commission_settings`. Pela leitura do
+>   código, ela também ignora a regra geral do profissional; isso não foi
+>   ensaiado por HTTP.
+> - Profissional cadastrado por ela fica sem configuração e, por isso, recebe.
+>
+> Por isso, voltar a API para `92cc6ae` depois da 16 **não é uma recuperação
+> equivalente**. Ver "Recuperação".
+
 | Web × API | Resultado | Como foi visto |
 | --- | --- | --- |
 | web `92cc6ae` × API C16 (entre os deploys) | funciona sem o cartão; o validador antigo aceita a resposta nova (só confere campos que já existiam); profissional cadastrado nasce desligado sem como ligar | leitura do código: `ehRegrasDoProfissional` de `92cc6ae` |
@@ -386,12 +401,48 @@ rodadas seguintes.
 | durante o kit da 15 ou da 16 | `ERRO` antes da frase, frase errada, `55P03` | nada gravado; repetir em outro momento | — |
 | durante o kit | código 3 ou janela fechada | rodar `conferir` e seguir o estado lido (ensaiado: leu "antes") | repetir `aplicar` antes da `conferir` |
 | durante o kit | código 2 | rodar `conferir`; comparar numa cópia restaurada | repetir `aplicar` |
-| 15 | defeito da API `92cc6ae` | corrigir para frente; ou web e depois API para `2656f69` (não apura; registre o período) | `migration:revert` (recusa com apuração por item) |
+| 15 | defeito da API `92cc6ae` | corrigir para frente; ou web e depois API para `2656f69`, que **não equivale**: não apura, e conclusões feitas nela nunca são apuradas. Combine com os donos não concluir atendimento nos estabelecimentos com comissões enquanto ela estiver no ar, e registre o período | `migration:revert` (recusa com apuração por item) |
 | 16, API anterior no ar | migration aplicada, API C16 ainda não publicada | publicar a API C16; a janela continua valendo | reabrir cadastro e conclusão |
 | 16, API C16 no ar | defeito de tela do web novo | voltar **só o web** para `92cc6ae`. A apuração continua certa; o cartão some e profissional novo nasce desligado sem como ligar (não cadastre até corrigir) | — |
 | 16, API C16 no ar | defeito da API nova | corrigir para frente (commit novo, revisado, com checks; API e depois web) | — |
-| 16, API C16 no ar | defeito grave e o dono decide voltar a API | web e depois API para `92cc6ae`. **Não é recuperação completa**: enquanto ela estiver no ar, "Recebe comissão" desligado e a regra geral são **ignorados** (ensaiado), e profissional novo fica sem configuração (recebe). Registre o período | voltar só a API e deixar o web C16 (a tela de comissões não carrega) |
+| 16, API C16 no ar | defeito grave e o dono decide voltar a API | **não é recuperação equivalente**; siga "Voltar a API com o schema 16" abaixo | voltar só a API e deixar o web C16 (a tela de comissões não carrega); reabrir conclusões nos estabelecimentos com comissões enquanto a API anterior estiver no ar |
 | 16 | problema de dados | parar; investigar numa cópia restaurada | — |
+
+### Voltar a API com o schema 16
+
+Voltar a API depois da 16 tira o sistema do ar parcialmente: nenhuma API
+anterior respeita as configurações gravadas.
+
+| API de volta | O que acontece com o schema 16 |
+| --- | --- |
+| `92cc6ae` | Apura **ignorando "Recebe comissão" desligado** (ensaiado: R$ 15,00 de profissional desligado). Apura sem escopo e ignora a regra geral (leitura do código). Profissional cadastrado fica sem configuração e recebe |
+| `2656f69` | Não apura nada. Conclusão feita nela **nunca** é apurada: não há apuração retroativa |
+
+As duas apurações erradas são permanentes. O histórico de apurações é
+imutável, e a `92cc6ae` grava valores que a configuração do dono recusaria.
+
+**Antes de voltar a API (decisão do dono):**
+
+1. Combine com os donos a mesma indisponibilidade da janela de transição:
+   - ninguém conclui atendimento nos estabelecimentos com o recurso de
+     comissões;
+   - ninguém cadastra profissional em nenhum estabelecimento.
+
+   **Sem esse bloqueio combinado, não volte a API.** A opção mais forte
+   (suspender o web) vale também aqui, com as mesmas ressalvas e sem ensaio.
+2. Publique web e depois API para `92cc6ae`. Anote o instante em que a API
+   anterior ficou **Live** (UTC, do painel do Render).
+3. O bloqueio dura até a API C16 corrigida e o web C16 voltarem a ficar
+   **Live**, nessa ordem.
+4. Antes de reabrir o uso, rode a consulta
+   `janela-regra-geral-comissoes-somente-leitura.sql`, com autorização para a
+   leitura, usando o instante do passo 2 no lugar de `<JANELA_DESDE>`.
+   - Se ela listar profissionais `API_ANTERIOR` ou apurações sem escopo, o
+     bloqueio falhou. Regularize como em "Com `VIOLADA`".
+   - A linha `JANELA_DE_TRANSICAO` da fase `conferir` **não** cobre este
+     período: ela usa o início da janela da migration.
+
+Corrigir para frente continua sendo o caminho preferido.
 
 **`migration:revert` da 16:** o `down` recusa quando há configuração gravada
 ou apuração com escopo ("o down apagaria histórico e foi recusado"). Sem
