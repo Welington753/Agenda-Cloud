@@ -20,6 +20,12 @@ Públicos distintos:
 
 ### Acesso e contrato
 
+> **Regra substituída.** Os itens abaixo registram a regra deste lote. Desde o
+> portal da plataforma (`docs/plans/portal-da-plataforma.md`), só
+> `MASTER_OWNER` ativo abre o portal. `MASTER_ADMIN` e `MASTER_SUPPORT` não
+> abrem nada, com ou sem `ESTABLISHMENTS_MANAGE`. A fonte é
+> `backend/src/platform/platform-access.ts`.
+
 - Usa a sessão HttpOnly real e o mesmo `SessionGuard`.
 - `MASTER_OWNER` ativo consulta todos os estabelecimentos.
 - `MASTER_ADMIN`/`MASTER_SUPPORT` ativos precisam da permissão explícita

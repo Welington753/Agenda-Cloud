@@ -409,6 +409,130 @@ E2 (demonstração) e E4 (scripts, depois do PR #74) entram quando decididos.
 
 ## 9. Estado e retomada
 
+**Checkpoint de 2026-11-05 (manhã, PC do trabalho): validação do #94, três merges e um deployment não previsto.**
+
+**Validação funcional do PR #94** (head `be3df76`, base `c7ba858`):
+
+- Feita só com ambiente local descartável: PostgreSQL 18 com TLS e dados
+  fictícios, sem Neon, sem o piloto e sem credenciais reais.
+- Resultados:
+  - db-e2e completo em banco novo: 29 arquivos, 273 testes;
+  - oito suítes de navegador: push, comissões, agendamento-publico,
+    acesso-usuario, gerente, auth, appointments e administracao;
+  - inspeção das capturas em 360, 390 e 1280 px.
+- Nenhum bug comprovado.
+- Lacunas cobertas pelo PR #95:
+  - troca de plano Pro → Básico → Pro sem perder histórico e sem
+    retroativo;
+  - dono de estabelecimento Max sem acesso de plataforma.
+
+**Merges na integration** (normais, com `[skip render]`, condicionados ao
+head revisado, sem bypass nem auto-merge):
+
+| PR | Head | Merge | CI do head |
+| --- | --- | --- | --- |
+| #94 push | `be3df76` | `d730da29b9648f31837d9d88a5695a080812aff5` | verde, job `127257361920` |
+| #95 testes da validação | `7db4471` | `75d677b4d9ee761dd1cb696ef119661f49f48fe8` | verde, job `127279272776` |
+| #96 `refactor/tamanho-arquivos` | `cb0fa07` | `92cc6ae99856ce43c019f25125bd4140cb916133` | verde, job `127279631730` |
+
+- **#96:** só testes do frontend. São os mesmos 29 testes de
+  `appointments-api` (17 + 12) e os 23 de `http-client`, e o `lint:types`
+  ficou sem aviso.
+- **Spec de migration:**
+  - `backend/src/database/migrations-runtime-compiled.spec.ts` é unitária
+    (`npm test` do backend) e roda em todo CI de `test-frontend-auth.yml`.
+    Passou (4 testes) no job do #94, junto com
+    `1793491200000-ProfessionalCommissions.spec.ts` e
+    `aplicar-somente-a-pendente.db-e2e-spec.ts`.
+  - No Windows ela não roda (`spawn npm ENOENT`). Por isso não foi
+    executada localmente.
+  - `test-migration-lote6b2.yml` não se aplica a #94, #95 nem #96: nenhum
+    deles toca os caminhos do filtro.
+
+**Deployment não previsto no piloto:**
+
+- **O que aconteceu:** o GitHub registra deployments de `d730da2` (merge do
+  #94) nos dois serviços, criados às 13:40 UTC, três minutos depois do
+  merge (13:37:25 UTC).
+  - API: `success` às 13:41:29.
+  - Web: `success` às 13:43:36.
+  - Criador: a conta do dono, como em todos os deployments anteriores.
+- **Causa: não identificada.**
+  - Ninguém nesta sessão publicou, e nenhum workflow roda em push.
+  - O título do merge tinha `[skip render]`, e `render.yaml` diz
+    `autoDeployTrigger: "off"`.
+  - Os merges #91 e #93 (dia 4 e manhã do dia 5) e #95 e #96 (13:52 e
+    13:53 UTC) não geraram deployment.
+  - Precedente parecido: o deployment de `c40a91b` saiu seis minutos depois
+    do merge do #90.
+  - Conferir no painel do Render o gatilho dos deploys
+    `dep-dbm8efajnfac738nuju0` (API) e `dep-dbm8eh8ae00c738lfak0` (web), e
+    a configuração de Auto-Deploy dos dois serviços.
+- **Risco:** `d730da2` contém as comissões (#91). Pela "Compatibilidade" de
+  `docs/runbooks/publicacao-comissoes-profissionais-piloto.md`, a API nova
+  sobre o piloto com catorze migrations responde **500** nestes casos:
+  - concluir atendimento num estabelecimento com o recurso (Max, ou Básico
+    com exceção ligada);
+  - o relatório e as regras de comissão.
+- **Não conferido:** o estado do piloto. Nada foi acessado daqui.
+- **O PR desta documentação não foi mesclado** enquanto a causa não for
+  conhecida.
+
+**Decisão:** operações reais ficam **só no PC de casa**:
+
+- publicação;
+- migration no piloto;
+- backup e restauração reais;
+- qualquer acesso ao Neon ou ao piloto.
+
+No PC do trabalho, só ambiente local descartável, dados fictícios e
+serviços simulados.
+
+**Próximo passo concreto (em casa):**
+
+1. Conferir no painel do Render o gatilho dos dois deploys e o Auto-Deploy.
+2. Decidir com o dono:
+   - voltar API e web para `c40a91b`, a publicação anterior, seguindo a
+     "Recuperação" do runbook; ou
+   - aplicar `ProfessionalCommissions1793491200000` pelo kit
+     (`abrir-comissoes-profissionais-piloto.ps1`).
+
+   Esta é uma situação nova: o kit espera API e web em `2656f69`.
+   Reconferir o estado esperado antes de usá-lo.
+3. Depois, mesclar o PR desta documentação.
+
+**Pendências registradas:**
+
+- O `CLAUDE.md` modificado da pasta principal (alterações pessoais, não
+  versionadas) ainda diz que admin e suporte entram com
+  `ESTABLISHMENTS_MANAGE`, e aponta `/conta/administracao` em vez de
+  `/portal/*`. As fontes versionadas estão corretas:
+  - o `CLAUDE.md` versionado aponta `/portal/*`;
+  - `docs/arquitetura/mapa-tecnico.md` e `portal-da-plataforma.md` dizem
+    que o portal é só do `MASTER_OWNER`.
+
+  Os dois planos antigos ganharam a nota "Regra substituída". O arquivo
+  pessoal não foi tocado: ajustar à mão.
+- Sugestões da validação, não implementadas e sem decisão:
+  - link para o cliente cancelar ou remarcar;
+  - WhatsApp do estabelecimento no recibo;
+  - desligar avisos na tela de acesso pausado;
+  - seletor de mês no relatório de comissões;
+  - plural em vez de "(s)".
+- O envio de avisos não confere a validade do acesso, só a situação do
+  estabelecimento. Não há regra documentada sobre isso.
+
+**Só neste computador:**
+
+- A worktree `C:\Projetos\Agenda-Cloud-validacao-94`:
+  - branches `validacao/funcional-pr94` e `docs/continuidade-validacao-pr94`;
+  - `node_modules` próprio na raiz;
+  - junction em `backend/node_modules` para
+    `Agenda-Cloud-publicacao-comissoes`.
+- O `CLAUDE.md` pessoal da pasta principal foi preservado.
+
+---
+
 **Checkpoint de 2026-10-29 (tarde): PR #81 mesclado.**
 
 - **Merge normal na integration:**
