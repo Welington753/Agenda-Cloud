@@ -51,6 +51,11 @@ integration passa a ter 15 migrations; o banco real continua com 14. A
 publicação desse SHA fica **bloqueada** até existir e ser ensaiado o kit
 protegido da 15ª migration (seções 17.3 e 18).
 
+**Atualização de 2026-11-05 (PC do trabalho, merge do #93):** o kit protegido
+da 15ª migration foi revisado e mesclado na integration em `c7ba858`, **sem
+publicação**. Esse é o SHA definitivo da próxima operação. API e web
+continuam em `2656f69`; o banco real continua com 14 migrations (seção 20).
+
 ## 0. SHA operacional da futura publicação
 
 **`8916f180cad7397074e54c25ef237ffc7c797681`**: merge do #86 na integration
@@ -1230,8 +1235,12 @@ foi aplicada em banco real e nenhum banco real foi acessado.
   kits anteriores, com os códigos de saída 0 (sucesso), 1 (parou sem gravar),
   2 (aplicada, conferência posterior falhou) e 3 (incerto).
 - Estados exatos `before-professional-commissions` (14) e
-  `after-professional-commissions` (15, 15/15 objetos com a definição exata e
-  a linha `pf_pc_equipe_comissoes`).
+  `after-professional-commissions` (15, 15/15 objetos e a linha
+  `pf_pc_equipe_comissoes`). Enum, colunas e índices são conferidos com a
+  definição exata; as três constraints novas (`uq_appointment_items_tenant_id`,
+  `fk_commission_entries_tenant_appointment_item` e
+  `ck_commission_entries_rule_snapshot`) só por nome e tipo, não pela
+  definição completa (ver a seção 20).
 - Depois do COMMIT, confere catálogo, planos, preços, exceções e "sem
   vencimento" contra o backup novo.
 - O levantamento mostra quantos estabelecimentos passam a apurar comissões.
@@ -1268,8 +1277,8 @@ foi aplicada em banco real e nenhum banco real foi acessado.
 ### 19.4 Itens só neste PC
 
 - **Worktrees:**
-  - `C:ProjetosAgenda-Cloud-kit-comissoes` (branch do #93);
-  - `C:ProjetosAgenda-Cloud-publicado-2656f69` (versão publicada,
+  - `C:\Projetos\Agenda-Cloud-kit-comissoes` (branch do #93);
+  - `C:\Projetos\Agenda-Cloud-publicado-2656f69` (versão publicada,
     destacada, usada para a API anterior);
   - as da seção 17.4.
   - Os `node_modules` delas são junctions para os de
@@ -1287,3 +1296,61 @@ foi aplicada em banco real e nenhum banco real foi acessado.
 2. No SHA definitivo da integration, com autorização expressa: `preparar`,
    `restauracao` e `aplicar` no piloto.
 3. Publicar a API e depois o web, do mesmo SHA.
+
+## 20. #93 mesclado: kit da 15ª migration na integration, nada publicado
+
+Registro de 2026-11-05 (PC do trabalho). Nada foi publicado, nenhuma migration
+foi aplicada em banco real e nenhum banco real foi acessado. Nenhum ensaio foi
+repetido.
+
+- **Integration:** `c7ba85850d22fef76299ece452852aea905863d0`, merge normal do
+  #93 com `[skip render]`.
+  - Pais: `9e548a3` (integration anterior) e `07bae50` (head do #93).
+  - A árvore é idêntica à do head mesclado (mesma tree).
+  - É o **SHA definitivo** da próxima operação: worktree, backups,
+    comprovantes, API e web.
+- **Publicado:** API e web continuam em `2656f69`.
+- **Banco real:** continua com 14 migrations. A 15ª,
+  `ProfessionalCommissions1793491200000`, segue pendente.
+
+### 20.1 Revisão do #93
+
+- **Concluída:** nenhum defeito que impeça a operação.
+- **Base da revisão:** o head `3aa3442`, com CI verde.
+  - Desde o commit ensaiado `d3d5ce1`, o código do kit não mudou
+    (`git diff d3d5ce1 3aa3442 -- backend/scripts backend/src` vazio). Os
+    ensaios da seção 19.2 continuam valendo para ele.
+- **Única correção:** o runbook, no commit `07bae50` (só documentação; nenhum
+  runtime alterado). CI verde nos dois workflows nesse head antes do merge.
+- **Constraints:** nas três constraints novas, a conferência verifica **só o
+  nome e o tipo** (`pg_constraint.contype`), não a definição completa:
+  - `uq_appointment_items_tenant_id`;
+  - `fk_commission_entries_tenant_appointment_item`;
+  - `ck_commission_entries_rule_snapshot`.
+
+  O estado "antes" exige que nenhuma delas exista, e a migration do mesmo
+  commit as cria. Enum, colunas e índices continuam conferidos com a definição
+  exata.
+- **Seção 19.4:** os caminhos das worktrees foram corrigidos (tinham perdido
+  as barras).
+
+### 20.2 Atendimentos já concluídos
+
+**Não existe apuração automática retroativa.** Os atendimentos concluídos pela
+API antiga (`2656f69`) não geram comissão, nem antes nem depois da migration.
+Isso vale também para os concluídos entre a migration e a publicação da API
+nova. A comissão é gravada só na conclusão feita pela API nova.
+
+### 20.3 Próximo passo
+
+1. Fazer a operação protegida do runbook
+   `publicacao-comissoes-profissionais-piloto.md` no SHA `c7ba858`, com
+   autorização expressa:
+   - worktree nova, destacada, com `npm ci` próprio;
+   - `conferir`, depois `preparar`, com **backup próprio**;
+   - `restauracao`, com **restauração conferida própria**;
+   - `aplicar`.
+
+   Os comprovantes do ensaio (`d3d5ce1`) não valem.
+2. Com `ESTADO: after-professional-commissions`, publicar a API e depois o
+   web, ambos de `c7ba858`.
