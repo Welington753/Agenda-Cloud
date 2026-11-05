@@ -262,6 +262,16 @@ describe.skipIf(!DIRECT_URL)('Web Push de novas solicitações contra PostgreSQL
     return linha ?? null;
   }
 
+  /** Todas as linhas deste endpoint, em qualquer estabelecimento, com tudo o
+   * que uma gravação poderia mudar. */
+  async function linhasDoEndpoint(endpoint: string) {
+    return (await dataSource.query(
+      `SELECT id, tenant_id, user_id, session_id, status, revoked_reason, p256dh, auth, failure_count, updated_at
+         FROM push_subscriptions WHERE endpoint = $1 ORDER BY tenant_id, id`,
+      [endpoint],
+    )) as { tenant_id: string; user_id: string; status: string; p256dh: string; auth: string }[];
+  }
+
   async function erroDe(promessa: Promise<unknown>): Promise<HttpException> {
     try {
       await promessa;
@@ -533,6 +543,212 @@ describe.skipIf(!DIRECT_URL)('Web Push de novas solicitações contra PostgreSQL
     await pedir(publico, c, DEZ);
     await disparador.executar();
     expect(servico.para(compartilhado)).toHaveLength(0);
+  });
+
+  // ----------------------------------------------------------- transferência entre usuários
+
+  it('mesmo endpoint com outras chaves: recusa genérica, sem tocar nas linhas alheias (mesmo e outro estabelecimento)', async () => {
+    const servico = new ServicoDePushFalso();
+    const { publico, push, disparador } = montar(servico);
+    const a = await criarCenario(publico);
+    const b = await criarCenario(publico);
+    const colega = await novoUsuario('Colega', a.tenantId);
+    const celular = novoAparelho();
+    await push.ativar(a.dono, a.tenantId, { endpoint: celular.endpoint, keys: celular.keys });
+    const antes = await linhasDoEndpoint(celular.endpoint);
+    expect(antes).toHaveLength(1);
+
+    // Quem conhece só o endpoint usa chaves próprias (outro "navegador").
+    const intruso = novoAparelho();
+    for (const [quem, tenantId] of [
+      [colega, a.tenantId],
+      [b.dono, b.tenantId],
+    ] as const) {
+      const erro = await erroDe(push.ativar(quem, tenantId, { endpoint: celular.endpoint, keys: intruso.keys }));
+      expect(erro).toBeInstanceOf(BadRequestException);
+      // A mesma resposta das chaves inválidas: não revela que o aparelho existe.
+      const invalidas = await erroDe(push.ativar(quem, tenantId, { endpoint: celular.endpoint, keys: { p256dh: 'x', auth: 'y' } }));
+      expect(erro.getResponse()).toEqual(invalidas.getResponse());
+    }
+    // Só a chave pública trocada, ou só o segredo trocado: também recusa.
+    const meioIgual = novoAparelho();
+    for (const keys of [
+      { p256dh: meioIgual.keys.p256dh, auth: celular.keys.auth },
+      { p256dh: celular.keys.p256dh, auth: meioIgual.keys.auth },
+    ]) {
+      expect(await erroDe(push.ativar(b.dono, b.tenantId, { endpoint: celular.endpoint, keys }))).toBeInstanceOf(BadRequestException);
+    }
+    expect(await linhasDoEndpoint(celular.endpoint)).toEqual(antes);
+    expect((await push.estado(a.dono, a.tenantId, celular.endpoint)).active).toBe(true);
+
+    // O aviso continua indo para o dono, cifrado com as chaves dele.
+    await pedir(publico, a, DEZ);
+    await disparador.executar();
+    const [req] = servico.para(celular);
+    expect(celular.decifrar(req.body)).toMatchObject({ estabelecimento: a.tenantId });
+  });
+
+  it('recusa atômica: a linha alheia com outras chaves impede também a revogação das que conferem', async () => {
+    const { publico, push } = montar(null);
+    const t1 = await criarCenario(publico);
+    const t2 = await criarCenario(publico);
+    const antigo = await novoUsuario('Antigo', t1.tenantId);
+    const novo = await novoUsuario('Novo', t1.tenantId);
+    const endpoint = novoAparelho().endpoint;
+    const chavesAntigas = novoAparelho().keys;
+    const chavesAtuais = novoAparelho().keys;
+    // Linha desativada de um usuário de T1 (chaves antigas) e linha ativa do
+    // dono de T2 (chaves atuais), no mesmo endpoint.
+    await push.ativar(antigo, t1.tenantId, { endpoint, keys: chavesAntigas });
+    await push.desativar(antigo, t1.tenantId, endpoint);
+    await push.ativar(t2.dono, t2.tenantId, { endpoint, keys: chavesAtuais });
+    const antes = await linhasDoEndpoint(endpoint);
+    expect(antes.map((l) => l.status).sort()).toEqual(['ACTIVE', 'REVOKED']);
+
+    // As chaves conferem com a ativa de T2, mas não com a de T1 que seria
+    // reaproveitada: nada muda, nem a revogação da ativa de T2.
+    expect(await erroDe(push.ativar(novo, t1.tenantId, { endpoint, keys: chavesAtuais }))).toBeInstanceOf(BadRequestException);
+    expect(await linhasDoEndpoint(endpoint)).toEqual(antes);
+  });
+
+  it('transferência com as mesmas chaves continua valendo, inclusive de outro estabelecimento', async () => {
+    const servico = new ServicoDePushFalso();
+    const { publico, push, disparador } = montar(servico);
+    const a = await criarCenario(publico);
+    const b = await criarCenario(publico);
+    const celular = novoAparelho();
+    await push.ativar(a.dono, a.tenantId, { endpoint: celular.endpoint, keys: celular.keys });
+    await push.ativar(b.dono, b.tenantId, { endpoint: celular.endpoint, keys: celular.keys });
+    const linhas = await linhasDoEndpoint(celular.endpoint);
+    expect(linhas.find((l) => l.tenant_id === a.tenantId)).toMatchObject({ user_id: a.dono.userId, status: 'REVOKED' });
+    expect(linhas.find((l) => l.tenant_id === b.tenantId)).toMatchObject({ user_id: b.dono.userId, status: 'ACTIVE' });
+    expect(await inscricao(celular.endpoint, a.tenantId)).toMatchObject({ revoked_reason: 'OUTRO_USUARIO' });
+
+    // Destinatários: o aparelho deixa de receber os avisos de A e passa a
+    // receber os de B.
+    await pedir(publico, a, DEZ);
+    await disparador.executar();
+    expect(servico.para(celular)).toHaveLength(0);
+    await pedir(publico, b, DEZ);
+    await disparador.executar();
+    const recebidas = servico.para(celular);
+    expect(recebidas).toHaveLength(1);
+    expect(celular.decifrar(recebidas[0].body)).toMatchObject({ estabelecimento: b.tenantId });
+  });
+
+  it('atualização da própria inscrição aceita chaves novas sem tocar nas linhas de terceiros', async () => {
+    const servico = new ServicoDePushFalso();
+    const { publico, push, disparador } = montar(servico);
+    const a = await criarCenario(publico);
+    const b = await criarCenario(publico);
+    const celular = novoAparelho();
+    // Terceiro (dono de B) usou o aparelho antes e desativou: linha dele fica.
+    await push.ativar(b.dono, b.tenantId, { endpoint: celular.endpoint, keys: celular.keys });
+    await push.desativar(b.dono, b.tenantId, celular.endpoint);
+    const deTerceiro = (await linhasDoEndpoint(celular.endpoint)).find((l) => l.tenant_id === b.tenantId);
+
+    await push.ativar(a.dono, a.tenantId, { endpoint: celular.endpoint, keys: celular.keys });
+    const renovado = novoAparelho();
+    await push.ativar(a.dono, a.tenantId, { endpoint: celular.endpoint, keys: renovado.keys });
+    const linhas = await linhasDoEndpoint(celular.endpoint);
+    expect(linhas.find((l) => l.tenant_id === a.tenantId)).toMatchObject({
+      user_id: a.dono.userId,
+      status: 'ACTIVE',
+      p256dh: renovado.keys.p256dh,
+      auth: renovado.keys.auth,
+    });
+    expect(linhas.find((l) => l.tenant_id === b.tenantId)).toEqual(deTerceiro);
+    expect(linhas).toHaveLength(2);
+
+    // Destinatário: o aviso de A vai cifrado com as chaves novas (as antigas
+    // não decifram mais); a linha desativada do terceiro não recebe o de B.
+    await pedir(publico, a, DEZ);
+    await pedir(publico, b, DEZ);
+    await disparador.executar();
+    const recebidas = servico.para(celular);
+    expect(recebidas).toHaveLength(1);
+    expect(renovado.decifrar(recebidas[0].body)).toMatchObject({ estabelecimento: a.tenantId });
+    expect(() => celular.decifrar(recebidas[0].body)).toThrow();
+  });
+
+  it('concorrência: dois usuários, chaves diferentes, mesmo endpoint novo: um grava, o outro é recusado', async () => {
+    const { publico, push } = montar(null);
+    const a = await criarCenario(publico);
+    const b = await criarCenario(publico);
+    const colega = await novoUsuario('Colega', a.tenantId);
+    for (let rodada = 0; rodada < 5; rodada += 1) {
+      const endpoint = novoAparelho().endpoint;
+      const chavesA = novoAparelho().keys;
+      const chavesB = novoAparelho().keys;
+      const chavesColega = novoAparelho().keys;
+      const resultados = await Promise.allSettled([
+        push.ativar(a.dono, a.tenantId, { endpoint, keys: chavesA }),
+        push.ativar(b.dono, b.tenantId, { endpoint, keys: chavesB }),
+        push.ativar(colega, a.tenantId, { endpoint, keys: chavesColega }),
+      ]);
+      const aceitos = resultados.filter((r) => r.status === 'fulfilled');
+      const recusados = resultados.filter((r) => r.status === 'rejected');
+      expect(aceitos).toHaveLength(1);
+      for (const r of recusados) expect((r as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+      const linhas = await linhasDoEndpoint(endpoint);
+      expect(linhas).toHaveLength(1);
+      expect(linhas[0].status).toBe('ACTIVE');
+      const vencedor = resultados.findIndex((r) => r.status === 'fulfilled');
+      expect(linhas[0].p256dh).toBe([chavesA, chavesB, chavesColega][vencedor].p256dh);
+    }
+
+    // Mesmas chaves ao mesmo tempo (mesmo navegador, duas contas): os dois
+    // gravam, e no fim o aparelho avisa uma pessoa só.
+    const compartilhado = novoAparelho();
+    await Promise.all([
+      push.ativar(a.dono, a.tenantId, { endpoint: compartilhado.endpoint, keys: compartilhado.keys }),
+      push.ativar(b.dono, b.tenantId, { endpoint: compartilhado.endpoint, keys: compartilhado.keys }),
+    ]);
+    expect((await linhasDoEndpoint(compartilhado.endpoint)).filter((l) => l.status === 'ACTIVE')).toHaveLength(1);
+  });
+
+  // ----------------------------------------------------------- acesso comercial vencido
+
+  it('acesso vencido: desativar continua possível e só alcança a própria linha; o resto segue bloqueado', async () => {
+    const { publico, push } = montar(null);
+    const a = await criarCenario(publico);
+    const b = await criarCenario(publico);
+    const colega = await novoUsuario('Colega', a.tenantId);
+    const doDono = novoAparelho();
+    const doColega = novoAparelho();
+    const deB = novoAparelho();
+    await push.ativar(a.dono, a.tenantId, { endpoint: doDono.endpoint, keys: doDono.keys });
+    await push.ativar(colega, a.tenantId, { endpoint: doColega.endpoint, keys: doColega.keys });
+    await push.ativar(b.dono, b.tenantId, { endpoint: deB.endpoint, keys: deB.keys });
+    // Sem período e sem a marca de anterior ao controle: vencido (commercial/).
+    await dataSource.query('UPDATE tenants SET access_legacy_since = NULL WHERE id = $1', [a.tenantId]);
+
+    const vencido = await erroDe(push.estado(a.dono, a.tenantId, doDono.endpoint));
+    expect(vencido).toBeInstanceOf(ForbiddenException);
+    expect(vencido.getResponse()).toMatchObject({ code: 'ACESSO_VENCIDO' });
+    const novo = novoAparelho();
+    expect((await erroDe(push.ativar(a.dono, a.tenantId, { endpoint: novo.endpoint, keys: novo.keys }))).getResponse()).toMatchObject({
+      code: 'ACESSO_VENCIDO',
+    });
+    expect(await linhasDoEndpoint(novo.endpoint)).toEqual([]);
+
+    // O endpoint do colega na mão do dono: o filtro por user_id não deixa
+    // desativar a linha alheia.
+    const doColegaAntes = await linhasDoEndpoint(doColega.endpoint);
+    expect(await push.desativar(a.dono, a.tenantId, doColega.endpoint)).toEqual({ active: false });
+    expect(await linhasDoEndpoint(doColega.endpoint)).toEqual(doColegaAntes);
+
+    // Quem não tem vínculo com A: 404, nada muda.
+    const doDonoAntes = await linhasDoEndpoint(doDono.endpoint);
+    expect(await erroDe(push.desativar(b.dono, a.tenantId, doDono.endpoint))).toBeInstanceOf(NotFoundException);
+    expect(await linhasDoEndpoint(doDono.endpoint)).toEqual(doDonoAntes);
+
+    await push.desativar(a.dono, a.tenantId, doDono.endpoint);
+    expect(await inscricao(doDono.endpoint, a.tenantId)).toMatchObject({ status: 'REVOKED', revoked_reason: 'DESATIVADO_PELO_USUARIO' });
+    await push.desativar(colega, a.tenantId, doColega.endpoint);
+    expect(await inscricao(doColega.endpoint, a.tenantId)).toMatchObject({ status: 'REVOKED' });
+    // O outro estabelecimento não é afetado.
+    expect(await inscricao(deB.endpoint, b.tenantId)).toMatchObject({ status: 'ACTIVE' });
   });
 
   it('cadastro recusa destino fora dos serviços de push e chaves inválidas; push desligado responde 503', async () => {

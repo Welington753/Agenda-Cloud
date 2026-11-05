@@ -55,7 +55,7 @@ export class PushService {
     if (!endpointAceito(dto.endpoint)) throw new BadRequestException(PUSH_UNSUPPORTED_SERVICE_MESSAGE);
     if (!chavesDoAparelhoValidas(dto.keys)) throw new BadRequestException(PUSH_INVALID_KEYS_MESSAGE);
 
-    await this.dataSource.transaction((tx) =>
+    const gravada = await this.dataSource.transaction((tx) =>
       gravarInscricao(
         tx,
         {
@@ -70,6 +70,9 @@ export class PushService {
         this.agora(),
       ),
     );
+    // Endpoint já inscrito por outra pessoa com outras chaves: a mesma
+    // resposta das chaves inválidas, sem dizer que o aparelho existe.
+    if (gravada === null) throw new BadRequestException(PUSH_INVALID_KEYS_MESSAGE);
     return { active: true };
   }
 
@@ -87,12 +90,15 @@ export class PushService {
   }
 
   /** Desativar vale mesmo sem a permissão de ver a agenda (quem perdeu a
-   * permissão ainda pode desligar); exige só o vínculo. */
+   * permissão ainda pode desligar) e com o acesso comercial vencido (desligar
+   * nunca depende de pagamento); exige o vínculo e só alcança a linha do
+   * próprio usuário. */
   async desativar(identidade: IdentityContext, tenantId: string, endpoint: string): Promise<{ active: false }> {
     const manager = this.dataSource.manager;
     const autorizado = await resolveAuthorizedTenant(manager, identidade.userId, tenantId, {
       permitido: () => true,
       mensagemProibido: PUSH_FORBIDDEN_MESSAGE,
+      dispensarAcessoComercial: true,
     });
     await revogarInscricao(
       manager,
