@@ -55,6 +55,12 @@ de convite ou redefinição de senha pelo link enviado ao endereço.
 
 ## Papéis e permissões com efeito real
 
+> **Regra substituída.** A tabela abaixo registra a regra deste lote. Desde o
+> portal da plataforma (`docs/plans/portal-da-plataforma.md`), só
+> `MASTER_OWNER` ativo abre o portal. `MASTER_ADMIN` e `MASTER_SUPPORT` não
+> abrem nada, com ou sem `ESTABLISHMENTS_MANAGE`. A fonte é
+> `backend/src/platform/platform-access.ts`.
+
 Plataforma (`platform-access.ts`, relida do banco a cada operação):
 
 | Papel | Consultar | Empresas e contas sem papel de plataforma | Papéis da plataforma |
