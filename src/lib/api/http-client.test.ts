@@ -85,16 +85,18 @@ describe("apiRequest", () => {
 
   it("hospedagem no lugar da API: pede a partida direto à API, sem repetir o POST", async () => {
     reiniciarPedidosDePartida();
-    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
-      url.endsWith("/auth/login")
-        ? new Response(JSON.stringify({ message: "API indisponível." }), {
-            status: 502,
-            headers: {
-              "x-agenda-proxy-error": "upstream-unavailable",
-              "x-agenda-acordar-api": "https://api.exemplo.test",
-            },
-          })
-        : new Response(null, { status: 200 }),
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith("/auth/login")
+          ? new Response(JSON.stringify({ message: "API indisponível." }), {
+              status: 502,
+              headers: {
+                "x-agenda-proxy-error": "upstream-unavailable",
+                "x-agenda-acordar-api": "https://api.exemplo.test",
+              },
+            })
+          : new Response(null, { status: 200 }),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
