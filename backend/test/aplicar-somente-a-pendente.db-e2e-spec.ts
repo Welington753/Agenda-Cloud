@@ -108,7 +108,8 @@ describe.skipIf(!url)('aplicarSomenteAPendente nas etapas do portal e dos nomes 
       const compiladas = ds.migrations.map((m) => m.name ?? m.constructor.name);
       expect(compiladas.slice(0, MIGRATIONS_ATE_NOMES_CONGELADOS.length)).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
       posterioresAoKit = compiladas.slice(MIGRATIONS_ATE_NOMES_CONGELADOS.length);
-      expect(posterioresAoKit).toEqual(['ProfessionalCommissions1793491200000']);
+      // Lista explícita: uma migration nova só entra aqui de propósito.
+      expect(posterioresAoKit).toEqual(['ProfessionalCommissions1793491200000', 'ProfessionalCommissionSettings1793577600000']);
       ds.migrations.splice(MIGRATIONS_ATE_COMERCIAL.length);
       await ds.runMigrations({ transaction: 'all' });
     } finally {

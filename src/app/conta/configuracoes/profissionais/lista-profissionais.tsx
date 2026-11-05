@@ -11,7 +11,7 @@
 // informação sem campo de verdade no backend.
 import Link from "next/link";
 import clsx from "clsx";
-import { Ban, CalendarClock, CalendarSearch, Percent, Pencil, RotateCcw } from "lucide-react";
+import { Ban, CalendarClock, CalendarSearch, CheckCircle2, CircleSlash, Percent, Pencil, RotateCcw } from "lucide-react";
 import { rotaComissoesDoProfissional } from "@/lib/conta/rotas";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
 import { Badge } from "@/components/ui/badge-base";
@@ -30,6 +30,8 @@ interface ListaProfissionaisProps {
   podeConsultarDisponibilidade?: boolean;
   /** Regras de comissão por serviço (recurso do plano + permissão do dono). */
   podeConfigurarComissoes?: boolean;
+  /** "Recebe comissão" por profissional (só com a configuração de comissões). */
+  recebeComissao?: Record<string, boolean>;
   aoEditar: (profissional: ProfissionalReal) => void;
   aoPedirDesativacao: (profissional: ProfissionalReal) => void;
   aoCancelarDesativacao: () => void;
@@ -45,6 +47,7 @@ export function ListaProfissionais({
   podeGerenciar = true,
   podeConsultarDisponibilidade = true,
   podeConfigurarComissoes = false,
+  recebeComissao,
   aoEditar,
   aoPedirDesativacao,
   aoCancelarDesativacao,
@@ -85,9 +88,21 @@ export function ListaProfissionais({
                     >
                       {profissional.name}
                     </h2>
-                    <Badge cor={profissional.active ? "sucesso" : "neutro"}>
-                      {profissional.active ? "Ativo" : "Inativo"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge cor={profissional.active ? "sucesso" : "neutro"}>
+                        {profissional.active ? "Ativo" : "Inativo"}
+                      </Badge>
+                      {podeConfigurarComissoes && recebeComissao?.[profissional.id] !== undefined && (
+                        <Badge cor="neutro" data-testid="recebe-comissao">
+                          {recebeComissao[profissional.id] ? (
+                            <CheckCircle2 size={12} aria-hidden="true" className="mr-1 inline" />
+                          ) : (
+                            <CircleSlash size={12} aria-hidden="true" className="mr-1 inline" />
+                          )}
+                          {recebeComissao[profissional.id] ? "Recebe comissão" : "Não recebe comissão"}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 

@@ -50,6 +50,52 @@ export function viewToRule(view: RuleView): StoredRule {
   return { type: view.kind === 'PERCENTAGE' ? CommissionType.PERCENTAGE : CommissionType.FIXED, value: view.value ?? 0 };
 }
 
+// ---------------------------------------------------------------------------
+// CONFIGURAÇÃO DO PROFISSIONAL E PRECEDÊNCIA (tabela
+// `professional_commission_settings`, migration 1793577600000)
+//
+// - "Recebe comissão" desligado: nenhuma apuração nova para o profissional,
+//   quaisquer que sejam as regras guardadas (decidido na apuração).
+// - Ligado, por serviço: a exceção do serviço (inclusive "sem comissão") vence
+//   a regra geral; sem as duas, "não configurada" (sem valor, conferência).
+// - Sem linha gravada: o estado de antes da regra geral (recebe, sem regra
+//   geral), que preserva profissionais e regras existentes.
+// A MESMA função decide a regra na apuração e na tela de regras.
+
+/** Origem da regra aplicada, gravada na apuração (`applied_rule_scope`). */
+export type RuleScope = 'SERVICE' | 'DEFAULT';
+
+export interface CommissionSettings {
+  receivesCommission: boolean;
+  /** Regra geral: `PERCENTAGE` (1 a 10000) ou `FIXED` (centavos por serviço); `null` sem regra geral. */
+  defaultRule: StoredRule | null;
+}
+
+/** Sem linha em `professional_commission_settings`: recebe, sem regra geral. */
+export const CONFIGURACAO_SEM_LINHA: Readonly<CommissionSettings> = Object.freeze({
+  receivesCommission: true,
+  defaultRule: null,
+});
+
+export type EffectiveRule = { scope: RuleScope; rule: StoredRule } | { scope: null; rule: null };
+
+export function regraEfetiva(excecao: StoredRule | null, regraGeral: StoredRule | null): EffectiveRule {
+  if (excecao) return { scope: 'SERVICE', rule: excecao };
+  if (regraGeral) return { scope: 'DEFAULT', rule: regraGeral };
+  return { scope: null, rule: null };
+}
+
+/** Origem de um item JÁ APURADO, para o relatório. `LEGACY_SERVICE`: regra
+ * por serviço gravada antes da regra geral (escopo NULL com regra), que não é
+ * rotulada como exceção; `null`: item sem regra na conclusão. */
+export type AppliedRuleSource = RuleScope | 'LEGACY_SERVICE' | null;
+
+export function origemDaRegraApurada(appliedType: string | null, scope: string | null): AppliedRuleSource {
+  if (appliedType === null) return null;
+  if (scope === 'SERVICE' || scope === 'DEFAULT') return scope;
+  return 'LEGACY_SERVICE';
+}
+
 export interface ItemCommission {
   professionalCents: number | null;
   establishmentCents: number | null;

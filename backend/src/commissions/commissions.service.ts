@@ -22,25 +22,49 @@ import {
   canManageCommissionRules,
   canViewCommissions,
 } from './commission-access.js';
-import { ruleToView, viewToRule, type RuleView, type StoredRule } from './commission-calculation.js';
+import {
+  CONFIGURACAO_SEM_LINHA,
+  regraEfetiva,
+  ruleToView,
+  viewToRule,
+  type CommissionSettings,
+  type RuleScope,
+  type RuleView,
+  type StoredRule,
+} from './commission-calculation.js';
 import { commissionReport } from './commission-report.js';
-import type { CommissionReportQuery, CommissionRuleDto } from './commissions.dto.js';
+import type { CommissionReportQuery, CommissionRuleDto, CommissionSettingsDto } from './commissions.dto.js';
 
 const PROFESSIONAL_NOT_FOUND_MESSAGE = 'Profissional não encontrado.';
 const SERVICE_NOT_FOUND_MESSAGE = 'Serviço não encontrado.';
 
 export interface ProfessionalRulesView {
   professional: { id: string; name: string; active: boolean };
+  /** "Recebe comissão" e a regra geral. Desligado, as regras continuam
+   * guardadas, mas nenhuma conclusão gera comissão. */
+  settings: {
+    receivesCommission: boolean;
+    /** `null`: sem regra geral. Nunca "sem comissão". */
+    defaultRule: RuleView | null;
+  };
   services: {
     service: { id: string; name: string; priceCents: number | null; active: boolean };
     /** O profissional atende este serviço hoje. Regra de serviço que ele não
      * atende mais continua listada, e só vale se ele voltar a atender. */
     linked: boolean;
-    /** `null`: não configurada. */
+    /** Exceção do serviço; `null`: sem exceção (usa a regra geral). */
     rule: RuleView | null;
+    /** A regra que a próxima conclusão aplicaria com o profissional
+     * recebendo (mesma precedência da apuração, `regraEfetiva`). */
+    effective: { source: RuleScope | null; rule: RuleView | null };
     updatedAt: string | null;
   }[];
 }
+
+const descreverConfiguracao = (c: CommissionSettings) =>
+  c.receivesCommission
+    ? `recebe, regra geral ${c.defaultRule ? descrever(ruleToView(c.defaultRule)) : 'não definida'}`
+    : 'não recebe';
 
 const descrever = (regra: RuleView | null) =>
   regra === null
@@ -121,6 +145,79 @@ export class CommissionsService {
     return this.lerRegras(this.dataSource.manager, tenant, professionalId);
   }
 
+  /** Liga ou desliga "Recebe comissão" e define a regra geral. Vale só para
+   * as próximas conclusões; desligar não apaga regras nem apurações. */
+  async setSettings(
+    userId: string,
+    tenantId: string,
+    professionalId: string,
+    dto: CommissionSettingsDto,
+    now = new Date(),
+  ): Promise<ProfessionalRulesView> {
+    const tenant = await this.dataSource.transaction(async (manager) => {
+      const autorizado = await this.autorizar(manager, userId, tenantId, true);
+      const profissional = await this.travarProfissional(manager, autorizado.tenantId, professionalId);
+      const anterior = await this.lerConfiguracao(manager, autorizado.tenantId, professionalId);
+      const nova: CommissionSettings = {
+        receivesCommission: dto.receivesCommission,
+        defaultRule: dto.defaultRule ? viewToRule(dto.defaultRule) : null,
+      };
+      const igual =
+        anterior.stored &&
+        anterior.settings.receivesCommission === nova.receivesCommission &&
+        anterior.settings.defaultRule?.type === nova.defaultRule?.type &&
+        anterior.settings.defaultRule?.value === nova.defaultRule?.value;
+      if (igual) return autorizado.tenantId;
+      await manager.query(
+        `INSERT INTO professional_commission_settings
+            (tenant_id, professional_id, receives_commission, default_type, default_value, created_at, updated_at)
+         VALUES ($1, $2, $3, $4::commission_type, $5, $6, $6)
+         ON CONFLICT (tenant_id, professional_id) DO UPDATE SET receives_commission = EXCLUDED.receives_commission,
+           default_type = EXCLUDED.default_type, default_value = EXCLUDED.default_value, updated_at = EXCLUDED.updated_at`,
+        [autorizado.tenantId, professionalId, nova.receivesCommission, nova.defaultRule?.type ?? null, nova.defaultRule?.value ?? null, now],
+      );
+      const vista = (c: CommissionSettings) => ({
+        receivesCommission: c.receivesCommission,
+        defaultRule: c.defaultRule ? ruleToView(c.defaultRule) : null,
+      });
+      await recordAudit(
+        manager,
+        {
+          action: 'COMMISSION_RULE_CHANGED',
+          actor: await loadActor(manager, userId),
+          tenantId: autorizado.tenantId,
+          summary: `Comissão de ${profissional.name}: ${descreverConfiguracao(anterior.settings)} → ${descreverConfiguracao(nova)}.`,
+          previousData: { professionalId, settings: vista(anterior.settings) },
+          newData: { professionalId, settings: vista(nova) },
+        },
+        now,
+      );
+      return autorizado.tenantId;
+    });
+    return this.lerRegras(this.dataSource.manager, tenant, professionalId);
+  }
+
+  /** "Recebe comissão" de cada profissional, para a lista de profissionais. */
+  async settingsSummary(userId: string, tenantId: string) {
+    const manager = this.dataSource.manager;
+    const autorizado = await this.autorizar(manager, userId, tenantId, true);
+    const linhas = linhasDe<{ id: string; receives_commission: boolean | null }>(
+      await manager.query(
+        `SELECT p.id, pcs.receives_commission
+           FROM professionals p
+           LEFT JOIN professional_commission_settings pcs ON pcs.tenant_id = p.tenant_id AND pcs.professional_id = p.id
+          WHERE p.tenant_id = $1 ORDER BY p.name, p.id`,
+        [autorizado.tenantId],
+      ),
+    );
+    return {
+      professionals: linhas.map((l) => ({
+        professionalId: l.id,
+        receivesCommission: l.receives_commission ?? CONFIGURACAO_SEM_LINHA.receivesCommission,
+      })),
+    };
+  }
+
   async report(userId: string, tenantId: string, query: CommissionReportQuery, now = new Date()) {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       await manager.query('SET TRANSACTION READ ONLY');
@@ -152,7 +249,10 @@ export class CommissionsService {
     });
   }
 
-  private async travarAlvo(manager: EntityManager, tenantId: string, professionalId: string, serviceId: string) {
+  /** `FOR UPDATE` na linha do profissional: serializa com outras mudanças de
+   * regra ou configuração e com a apuração (`FOR KEY SHARE`,
+   * commission-accrual.ts), que nunca vê uma mudança pela metade. */
+  private async travarProfissional(manager: EntityManager, tenantId: string, professionalId: string) {
     const [profissional] = linhasDe<{ id: string; name: string }>(
       await manager.query('SELECT id, name FROM professionals WHERE tenant_id = $1 AND id = $2 FOR UPDATE', [
         tenantId,
@@ -160,6 +260,28 @@ export class CommissionsService {
       ]),
     );
     if (!profissional) throw new NotFoundException(PROFESSIONAL_NOT_FOUND_MESSAGE);
+    return profissional;
+  }
+
+  /** `stored: false`: sem linha, o estado anterior à regra geral. */
+  private async lerConfiguracao(manager: EntityManager, tenantId: string, professionalId: string) {
+    const [linha] = linhasDe<{ receives_commission: boolean; default_type: StoredRule['type'] | null; default_value: number | null }>(
+      await manager.query(
+        `SELECT receives_commission, default_type::text AS default_type, default_value
+           FROM professional_commission_settings WHERE tenant_id = $1 AND professional_id = $2`,
+        [tenantId, professionalId],
+      ),
+    );
+    if (!linha) return { stored: false, settings: CONFIGURACAO_SEM_LINHA };
+    const settings: CommissionSettings = {
+      receivesCommission: linha.receives_commission,
+      defaultRule: linha.default_type === null ? null : { type: linha.default_type, value: Number(linha.default_value) },
+    };
+    return { stored: true, settings };
+  }
+
+  private async travarAlvo(manager: EntityManager, tenantId: string, professionalId: string, serviceId: string) {
+    const profissional = await this.travarProfissional(manager, tenantId, professionalId);
     const [servico] = linhasDe<{ id: string; name: string }>(
       await manager.query('SELECT id, name FROM services WHERE tenant_id = $1 AND id = $2', [tenantId, serviceId]),
     );
@@ -231,19 +353,29 @@ export class CommissionsService {
         [tenantId, professionalId],
       ),
     );
+    const { settings } = await this.lerConfiguracao(manager, tenantId, professionalId);
     return {
       professional: profissional,
-      services: linhas.map((l) => ({
-        service: {
-          id: l.id,
-          name: l.name,
-          priceCents: l.price_cents === null ? null : Number(l.price_cents),
-          active: l.active,
-        },
-        linked: l.linked,
-        rule: l.type === null ? null : ruleToView({ type: l.type, value: Number(l.value) }),
-        updatedAt: l.updated_at ? new Date(l.updated_at).toISOString() : null,
-      })),
+      settings: {
+        receivesCommission: settings.receivesCommission,
+        defaultRule: settings.defaultRule ? ruleToView(settings.defaultRule) : null,
+      },
+      services: linhas.map((l) => {
+        const excecao: StoredRule | null = l.type === null ? null : { type: l.type, value: Number(l.value) };
+        const efetiva = regraEfetiva(excecao, settings.defaultRule);
+        return {
+          service: {
+            id: l.id,
+            name: l.name,
+            priceCents: l.price_cents === null ? null : Number(l.price_cents),
+            active: l.active,
+          },
+          linked: l.linked,
+          rule: excecao ? ruleToView(excecao) : null,
+          effective: { source: efetiva.scope, rule: efetiva.rule ? ruleToView(efetiva.rule) : null },
+          updatedAt: l.updated_at ? new Date(l.updated_at).toISOString() : null,
+        };
+      }),
     };
   }
 }

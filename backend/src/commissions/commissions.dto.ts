@@ -13,6 +13,21 @@ export const commissionRuleSchema = z.discriminatedUnion('kind', [
 ]);
 export type CommissionRuleDto = z.infer<typeof commissionRuleSchema>;
 
+/** "Recebe comissão" e a regra geral do profissional. A regra geral é
+ * opcional e não tem "sem comissão" (para isso, desligar). */
+export const commissionSettingsSchema = z
+  .object({
+    receivesCommission: z.boolean(),
+    defaultRule: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('PERCENTAGE'), value: z.number().int().min(1).max(PONTOS_BASE_100_POR_CENTO) }).strict(),
+        z.object({ kind: z.literal('FIXED'), value: z.number().int().min(1).max(MAIOR_COMISSAO_FIXA_EM_CENTAVOS) }).strict(),
+      ])
+      .nullable(),
+  })
+  .strict();
+export type CommissionSettingsDto = z.infer<typeof commissionSettingsSchema>;
+
 /** O período do Início (datas locais inclusivas, no máximo 366 dias; sem as
  * duas, o mês corrente) e, opcional, um profissional. */
 export const commissionReportQuerySchema = z

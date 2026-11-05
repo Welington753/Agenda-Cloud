@@ -29,6 +29,8 @@ import {
   type DadosFormularioProfissional,
 } from "./formulario-profissional";
 import { ListaProfissionais } from "./lista-profissionais";
+import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
+import { caminhoConfiguracoes, ehResumoDeRecebeComissao } from "@/lib/api/comissoes-api";
 
 type Edicao =
   { modo: "fechado" } | { modo: "novo" } | { modo: "editar"; profissional: ProfissionalReal };
@@ -48,6 +50,16 @@ export default function ProfissionaisPage() {
   const { estado, gravando, recarregar, criar, editar, desativar, reativar, definirServicos } =
     useProfissionaisReais(tenantIdAtivo);
   const { estado: estadoServicos } = useServicosReais(tenantIdAtivo);
+  // "Recebe comissão" de cada profissional: só para quem configura comissões.
+  const podeConfigurarComissoes = tem("COMISSOES_CONFIGURAR");
+  const { estado: resumoComissao, recarregar: recarregarResumoComissao } = useLeituraPlataforma(
+    podeConfigurarComissoes && tenantIdAtivo ? caminhoConfiguracoes(tenantIdAtivo) : null,
+    ehResumoDeRecebeComissao,
+  );
+  const recebeComissao =
+    resumoComissao.status === "pronto"
+      ? Object.fromEntries(resumoComissao.dados.professionals.map((p) => [p.professionalId, p.receivesCommission]))
+      : undefined;
 
   const [edicao, setEdicao] = useState<Edicao>({ modo: "fechado" });
   // Guarda a gravação de PONTA A PONTA de um "Salvar" na edição (que pode ser
@@ -139,6 +151,7 @@ export default function ProfissionaisPage() {
         return;
       }
       notificar("Profissional cadastrado.", "sucesso");
+      if (podeConfigurarComissoes) recarregarResumoComissao();
       setEdicao({ modo: "fechado" });
     } finally {
       setSalvandoFormulario(false);
@@ -257,7 +270,8 @@ export default function ProfissionaisPage() {
             <ListaProfissionais
               podeGerenciar={podeGerenciar}
               podeConsultarDisponibilidade={tem("DISPONIBILIDADE")}
-              podeConfigurarComissoes={tem("COMISSOES_CONFIGURAR")}
+              podeConfigurarComissoes={podeConfigurarComissoes}
+              recebeComissao={recebeComissao}
               profissionais={estado.profissionais}
               gravando={gravando}
               confirmando={confirmando}
