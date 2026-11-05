@@ -484,7 +484,8 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       // O endpoint não é id de recurso de B: é o segredo do próprio
       // aparelho, que só o navegador dele conhece. Um aparelho avisa uma
       // pessoa só (push-subscriptions.repository.ts), então o mesmo endpoint
-      // inscrito por outra conta passa a ser dela; não há troca a tentar.
+      // inscrito por outra conta COM AS MESMAS CHAVES passa a ser dela; com
+      // outras chaves é recusado (test/push-postgres.db-e2e-spec.ts).
       ['PUT /tenants/:tenantId/push-subscription', 'dono', (t) => `${p(t)}/push-subscription`, (_t, r) => ({ endpoint: r.endpoint, keys: r.aparelho }), 200, false],
       ['POST /tenants/:tenantId/push-subscription/status', 'dono', (t) => `${p(t)}/push-subscription/status`, (_t, r) => ({ endpoint: r.endpoint }), 200, false],
       ['DELETE /tenants/:tenantId/push-subscription', 'dono', (t) => `${p(t)}/push-subscription`, (_t, r) => ({ endpoint: r.endpoint }), 200, false],

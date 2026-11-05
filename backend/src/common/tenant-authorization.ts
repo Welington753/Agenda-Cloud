@@ -97,6 +97,11 @@ export interface PoliticaDeAcesso {
   /** Recurso do plano que a área usa (ver commercial/feature-areas.ts).
    * Sem recurso: núcleo, presente em todo plano. */
   recurso?: FeatureKey | null;
+  /** Só para operação que apenas DESLIGA algo do próprio usuário (ex.:
+   * desativar avisos neste aparelho): dispensa a validade comercial e o
+   * recurso do plano. Vínculo, situação do vínculo, situação administrativa
+   * e a política continuam valendo. Ausente: exige, como toda rota. */
+  dispensarAcessoComercial?: boolean;
 }
 
 /**
@@ -129,7 +134,9 @@ export async function resolveAuthorizedTenant(
   if (!tenant || !isTenantUsableForSession(tenant.status)) {
     throw new NotFoundException(TENANT_NOT_FOUND_MESSAGE);
   }
-  await requireCommercialAccess(manager, tenantId, politica.recurso ?? null);
+  if (politica.dispensarAcessoComercial !== true) {
+    await requireCommercialAccess(manager, tenantId, politica.recurso ?? null);
+  }
 
   const gravados = await manager.find(MembershipPermissionOverride, {
     where: { tenantId, membershipId: membership.id },
