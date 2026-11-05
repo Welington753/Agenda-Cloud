@@ -92,8 +92,8 @@ describe.skipIf(!url)('conferência de ProfessionalCommissionSettings contra Pos
       ).rows;
       await c.query(
         `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since)
-         VALUES ($1, $1, 'OTHER', 'America/Sao_Paulo', 'plan_pro', 'ACTIVE', now())`,
-        [tenant],
+         VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', 'plan_pro', 'ACTIVE', now())`,
+        [tenant, tenant],
       );
       await c.query(
         `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, 'Unidade', '', 'America/Sao_Paulo', true)`,
