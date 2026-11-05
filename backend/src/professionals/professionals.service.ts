@@ -252,6 +252,16 @@ export class ProfessionalsService {
         );
       }
 
+      // Profissional novo começa SEM receber comissão: o dono liga e define a
+      // regra em Profissionais → Comissões (commissions/). Sem esta linha, o
+      // profissional ficaria no estado anterior à regra geral (recebe), que
+      // vale só para quem já existia.
+      await tx.query(
+        `INSERT INTO professional_commission_settings (tenant_id, professional_id, receives_commission)
+         VALUES ($1, $2, false)`,
+        [authorized.tenantId, professional.id],
+      );
+
       return professional;
     });
 

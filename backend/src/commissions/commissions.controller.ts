@@ -1,6 +1,7 @@
-// Comissões do estabelecimento (dono): regras por profissional e serviço e o
-// relatório apurado. Sessão obrigatória; a autorização no estabelecimento é
-// refeita pelo serviço em toda requisição.
+// Comissões do estabelecimento (dono): "Recebe comissão" e regra geral por
+// profissional, exceções por serviço e o relatório apurado. Sessão
+// obrigatória; a autorização no estabelecimento é refeita pelo serviço em
+// toda requisição.
 import { Body, Controller, Delete, Get, Header, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
@@ -9,10 +10,12 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   commissionReportQuerySchema,
   commissionRuleSchema,
+  commissionSettingsSchema,
   professionalIdSchema,
   serviceIdSchema,
   type CommissionReportQuery,
   type CommissionRuleDto,
+  type CommissionSettingsDto,
 } from './commissions.dto.js';
 import { CommissionsService } from './commissions.service.js';
 
@@ -34,6 +37,26 @@ export class CommissionsController {
     @Query(new ZodValidationPipe(commissionReportQuerySchema)) query: CommissionReportQuery,
   ) {
     return this.commissions.report(identidade(req).userId, tenantId, query);
+  }
+
+  /** "Recebe comissão" de cada profissional (lista de profissionais). */
+  @Get('settings')
+  @Header('Cache-Control', 'private, no-store')
+  settingsSummary(@Req() req: AuthenticatedRequest, @Param('tenantId') tenantId: string) {
+    return this.commissions.settingsSummary(identidade(req).userId, tenantId);
+  }
+
+  /** "Recebe comissão" e regra geral de um profissional. Caminho próprio:
+   * `rules/:professionalId/:serviceId` aceitaria qualquer id no lugar. */
+  @Put('settings/:professionalId')
+  @Header('Cache-Control', 'private, no-store')
+  setSettings(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('professionalId', profissionalPipe) professionalId: string,
+    @Body(new ZodValidationPipe(commissionSettingsSchema)) dto: CommissionSettingsDto,
+  ) {
+    return this.commissions.setSettings(identidade(req).userId, tenantId, professionalId, dto);
   }
 
   @Get('rules/:professionalId')

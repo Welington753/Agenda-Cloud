@@ -6,6 +6,7 @@
 // recebimento do cliente aparece à parte (só para o dono).
 import { AlertTriangle, CheckCircle2, CircleSlash, Info, Wallet } from "lucide-react";
 import {
+  ROTULO_ORIGEM_APURADA,
   ROTULO_RECEBIMENTO,
   ROTULO_SITUACAO,
   rotuloDaRegra,
@@ -121,6 +122,7 @@ export function RelatorioComissoes({ relatorio, visaoDoDono }: { relatorio: Rela
                         <span className="text-ink-soft">
                           {" "}
                           · {formatarPrecoServico(item.priceCents)} · {rotuloDaRegra(item.rule)}
+                          {item.ruleSource !== null && ` (${ROTULO_ORIGEM_APURADA[item.ruleSource]})`}
                         </span>
                       </span>
                       <span className="tabular-nums text-ink">{item.commissionCents === null ? "—" : formatarMoeda(item.commissionCents)}</span>

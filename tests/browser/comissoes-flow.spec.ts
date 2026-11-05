@@ -3,12 +3,15 @@
 //
 // 0. No Básico (código `essencial`) não há comissões, nem na tela nem no
 //    servidor. O resto roda no Pro (código `equipe`).
-// 1. O dono define, em Profissionais → Comissões, percentual num serviço e
-//    valor fixo noutro ("Não configurada" é o ponto de partida; zero pede
-//    "Sem comissão").
-// 2. Uma reserva com os dois serviços é concluída (duas vezes): o relatório
-//    mostra a soma calculada no servidor pelo preço de cada item, uma vez só,
-//    como comissão APURADA, não paga.
+// 1. Profissional novo começa sem receber comissão. O dono define, em
+//    Profissionais → Comissões, exceções (percentual num serviço, valor fixo
+//    noutro; zero pede "Sem comissão"); desligado, a tela avisa que elas não
+//    geram comissão, e um atendimento concluído assim não apura nada.
+// 2. O dono liga "Recebe comissão" com regra geral fixa por serviço. Uma
+//    reserva com os três serviços é concluída (duas vezes): o relatório mostra
+//    a soma calculada no servidor item a item (exceção > regra geral), uma vez
+//    só, como comissão APURADA, não paga. Repetir a conclusão do atendimento
+//    feito com ela desligada continua sem comissão.
 // 3. Mudar a regra depois não muda o que já foi apurado.
 // 4. O funcionário só vê as próprias comissões quando o dono libera; nunca o
 //    relatório do estabelecimento nem o recebimento do cliente.
@@ -63,7 +66,10 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
     };
     const corte = await servico("Corte", 5000);
     const barba = await servico("Barba", 2500);
-    const r = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/professionals`, { data: { name: "Ana Lima", serviceIds: [corte, barba] } });
+    const sobrancelha = await servico("Sobrancelha", 2000);
+    const r = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/professionals`, {
+      data: { name: "Ana Lima", serviceIds: [corte, barba, sobrancelha] },
+    });
     expect(r.status()).toBe(201);
     const professionalId = ((await r.json()) as { professional: { id: string } }).professional.id;
 
@@ -83,59 +89,92 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
 
     // ------------------------------------------- 1. regras pela tela
     await page.goto("/conta/configuracoes/profissionais");
+    await expect(page.getByRole("article", { name: "Ana Lima" }).getByTestId("recebe-comissao")).toHaveText("Não recebe comissão");
     await page.getByRole("link", { name: "Comissões de Ana Lima" }).click();
     await expect(page).toHaveURL(new RegExp(`/conta/configuracoes/profissionais/${professionalId}/comissoes$`));
     await expect(page.getByTestId("aviso-apuracao")).toContainText("Não é pagamento ao profissional");
     const regra = (nome: string) => page.getByTestId("regra-de-comissao").filter({ hasText: nome });
+    const configuracao = page.getByTestId("configuracao-comissao");
+    await expect(configuracao.getByTestId("estado-recebe-comissao")).toHaveText("Não recebe comissão");
+    await expect(page.getByTestId("aviso-nao-recebe")).toContainText("ficam guardadas, mas não geram comissão");
     await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("Não configurada");
-    await regra("Corte").getByLabel("Comissão").selectOption({ label: "Percentual do preço" });
+    await regra("Corte").getByLabel("Comissão neste serviço").selectOption({ label: "Percentual do preço" });
     await regra("Corte").getByLabel("Percentual (%)").fill("0");
     await regra("Corte").getByRole("button", { name: "Salvar" }).click();
     await expect(regra("Corte").getByRole("alert")).toContainText("Sem comissão");
     await regra("Corte").getByLabel("Percentual (%)").fill("40");
     await regra("Corte").getByRole("button", { name: "Salvar" }).click();
-    await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("40%");
-    await regra("Barba").getByLabel("Comissão").selectOption({ label: "Valor fixo" });
+    await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("Exceção · 40%");
+    await regra("Barba").getByLabel("Comissão neste serviço").selectOption({ label: "Valor fixo" });
     await regra("Barba").getByLabel("Valor (R$)").fill("10");
     await regra("Barba").getByRole("button", { name: "Salvar" }).click();
-    await expect(regra("Barba").getByTestId("regra-atual")).toHaveText(/R\$\s10,00 fixo/);
-    await capturar(page, "regras");
+    await expect(regra("Barba").getByTestId("regra-atual")).toHaveText(/Exceção · R\$\s10,00 fixo/);
+    await capturar(page, "regras-desligado");
 
-    // ------------------------------------------- 2. conclusão e relatório
+    // Atendimentos fictícios em andamento, concluídos pela API.
     const consumidor = id();
     await db.query(
       `INSERT INTO consumers (id, tenant_id, name, whatsapp, whatsapp_normalized) VALUES ($1, $2, 'Cliente Fiel', '(11) 98888-1111', $3)`,
       [consumidor, tenantId, `5511${Math.floor(Math.random() * 1e9)}`],
     );
-    const reserva = id();
-    const inicio = new Date(Math.floor((Date.now() - 2 * 3_600_000) / 60_000) * 60_000);
-    await db.query(
-      `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot,
-          professional_id, start_at, end_at, status)
-       VALUES ($1, $2, $3, $4, 'Cliente Fiel', '(11) 98888-1111', $5, $6, $7, 'IN_PROGRESS')`,
-      [reserva, tenantId, dono.unit.id, consumidor, professionalId, inicio, new Date(inicio.getTime() + 60 * 60_000)],
-    );
-    for (const [position, [serviceId, preco]] of [[corte, 5000], [barba, 2500]].entries()) {
+    const emAndamento = async (horasAtras: number) => {
+      const reservaId = id();
+      const comeco = new Date(Math.floor((Date.now() - horasAtras * 3_600_000) / 60_000) * 60_000);
       await db.query(
-        `INSERT INTO appointment_items (id, tenant_id, appointment_id, service_id, duration_minutes_snapshot, price_cents_snapshot, position)
-         VALUES ($1, $2, $3, $4, 30, $5, $6)`,
-        [id(), tenantId, reserva, serviceId, preco, position],
+        `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot,
+            professional_id, start_at, end_at, status)
+         VALUES ($1, $2, $3, $4, 'Cliente Fiel', '(11) 98888-1111', $5, $6, $7, 'IN_PROGRESS')`,
+        [reservaId, tenantId, dono.unit.id, consumidor, professionalId, comeco, new Date(comeco.getTime() + 90 * 60_000)],
       );
-    }
-    for (let vez = 0; vez < 2; vez += 1) {
-      const concluir = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/appointments/${reserva}/complete`, {
-        data: { expectedStartAt: inicio.toISOString() },
+      for (const [position, [serviceId, preco]] of [[corte, 5000], [barba, 2500], [sobrancelha, 2000]].entries()) {
+        await db.query(
+          `INSERT INTO appointment_items (id, tenant_id, appointment_id, service_id, duration_minutes_snapshot, price_cents_snapshot, position)
+           VALUES ($1, $2, $3, $4, 30, $5, $6)`,
+          [id(), tenantId, reservaId, serviceId, preco, position],
+        );
+      }
+      return { reservaId, comeco };
+    };
+    const concluirPelaApi = async ({ reservaId, comeco }: { reservaId: string; comeco: Date }) => {
+      const concluir = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/appointments/${reservaId}/complete`, {
+        data: { expectedStartAt: comeco.toISOString() },
       });
       expect(concluir.status()).toBe(201);
-    }
+    };
+    const apuracoes = async (reservaId: string) =>
+      Number((await db.query("SELECT count(*) AS n FROM commission_entries WHERE appointment_id = $1", [reservaId])).rows[0].n);
+    // Desligada: concluir não apura, mesmo com exceções guardadas.
+    const desligada = await emAndamento(4);
+    await concluirPelaApi(desligada);
+    expect(await apuracoes(desligada.reservaId)).toBe(0);
+
+    // ------------------------------------------- 2. liga, conclui e consulta
+    await configuracao.getByLabel("Recebe comissão").check();
+    await configuracao.getByLabel("Regra geral").selectOption({ label: "Valor fixo por serviço realizado" });
+    await configuracao.getByLabel("Valor por serviço (R$)").fill("5");
+    await configuracao.getByRole("button", { name: "Salvar comissão do profissional" }).click();
+    await expect(configuracao.getByTestId("estado-recebe-comissao")).toHaveText("Recebe comissão");
+    await expect(page.getByTestId("aviso-nao-recebe")).toHaveCount(0);
+    await expect(regra("Sobrancelha").getByTestId("regra-atual")).toHaveText(/Regra geral · R\$\s5,00 fixo/);
+    await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("Exceção · 40%");
+    await capturar(page, "regras");
+    // Repetir a conclusão do atendimento feito com ela desligada: nada.
+    await concluirPelaApi(desligada);
+    expect(await apuracoes(desligada.reservaId)).toBe(0);
+
+    const reserva = await emAndamento(2);
+    const inicio = reserva.comeco;
+    for (let vez = 0; vez < 2; vez += 1) await concluirPelaApi(reserva);
     const dataLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(inicio);
     await page.goto(`/conta/comissoes?de=${dataLocal}&ate=${dataLocal}`);
     await expect(page.getByTestId("aviso-apuracao")).toBeVisible();
-    await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s30,00/);
+    // 40% de R$ 50 + R$ 10 fixos (exceções) + R$ 5 (regra geral).
+    await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s35,00/);
     const apurado = page.getByTestId("atendimento-apurado");
     await expect(apurado).toHaveCount(1);
     await expect(apurado).toContainText("Cliente Fiel");
-    await expect(apurado).toContainText("40%");
+    await expect(apurado).toContainText("40% (exceção do serviço)");
+    await expect(apurado).toContainText("(regra geral)");
     await expect(apurado).toContainText("Sem recebimento registrado");
     await expect(page.getByTestId("comissoes-por-profissional")).toContainText("Ana Lima");
     await capturar(page, "relatorio");
@@ -144,9 +183,9 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
     await page.goto(`/conta/configuracoes/profissionais/${professionalId}/comissoes`);
     await regra("Corte").getByLabel("Percentual (%)").fill("50");
     await regra("Corte").getByRole("button", { name: "Salvar" }).click();
-    await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("50%");
+    await expect(regra("Corte").getByTestId("regra-atual")).toHaveText("Exceção · 50%");
     await page.goto(`/conta/comissoes?de=${dataLocal}&ate=${dataLocal}`);
-    await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s30,00/);
+    await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s35,00/);
 
     // ------------------------------------------- 4. o funcionário
     // O mesmo login passa a ser funcionário ligado a Ana: o servidor decide
@@ -173,10 +212,10 @@ test("dono configura e consulta comissões; funcionário vê só as próprias qu
     const proprias = await page.request.get(`${API_DE_TESTE}/tenants/${tenantId}/my-agenda/commissions?from=${dataLocal}&to=${dataLocal}`);
     expect(proprias.status()).toBe(200);
     const corpo = (await proprias.json()) as { totalAccruedCents: number };
-    expect(corpo.totalAccruedCents).toBe(3000);
+    expect(corpo.totalAccruedCents).toBe(3500);
     expect(JSON.stringify(corpo)).not.toMatch(/clientPayment|RECEBIDO|SEM_RECEBIMENTO/);
     if (dataLocal.slice(0, 7) === new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date()).slice(0, 7)) {
-      await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s30,00/);
+      await expect(page.getByTestId("total-apurado-valor")).toHaveText(/R\$\s35,00/);
       await expect(page.getByTestId("atendimento-apurado")).not.toContainText("recebimento");
     }
     await capturar(page, "proprias");

@@ -16,27 +16,50 @@ export interface RegraDeComissao {
   value: number | null;
 }
 
+/** De onde vem a regra: exceção do serviço ou regra geral do profissional. */
+export type OrigemDaRegra = "SERVICE" | "DEFAULT";
+
 export interface ServicoComRegra {
   service: { id: string; name: string; priceCents: number | null; active: boolean };
   /** O profissional atende este serviço hoje. */
   linked: boolean;
-  /** `null`: não configurada. */
+  /** Exceção do serviço; `null`: sem exceção (usa a regra geral). */
   rule: RegraDeComissao | null;
+  /** A regra que a próxima conclusão aplicaria com o profissional recebendo,
+   * calculada no servidor com a MESMA precedência da apuração. */
+  effective: { source: OrigemDaRegra | null; rule: RegraDeComissao | null };
   updatedAt: string | null;
+}
+
+/** Regra geral: só percentual ou fixo por serviço realizado. */
+export interface RegraGeral {
+  kind: "PERCENTAGE" | "FIXED";
+  value: number;
 }
 
 export interface RegrasDoProfissional {
   professional: { id: string; name: string; active: boolean };
+  /** Desligado: as regras ficam guardadas, mas nenhuma conclusão gera comissão. */
+  settings: { receivesCommission: boolean; defaultRule: RegraGeral | null };
   services: ServicoComRegra[];
+}
+
+export interface ResumoDeRecebeComissao {
+  professionals: { professionalId: string; receivesCommission: boolean }[];
 }
 
 export type SituacaoDoItem = "OK" | "NAO_CONFIGURADA" | "SEM_PRECO" | "ACIMA_DO_PRECO";
 export type RecebimentoDoCliente = "RECEBIDO" | "SEM_RECEBIMENTO" | "ESTORNADO";
 
+/** Origem da regra de um item já apurado. `LEGACY_SERVICE`: regra por serviço
+ * gravada antes da regra geral (não é chamada de exceção); `null`: sem regra. */
+export type OrigemApurada = OrigemDaRegra | "LEGACY_SERVICE" | null;
+
 export interface ItemApurado {
   serviceName: string;
   priceCents: number | null;
   rule: RegraDeComissao | null;
+  ruleSource: OrigemApurada;
   commissionCents: number | null;
   situation: SituacaoDoItem;
 }
@@ -86,8 +109,22 @@ const numero = (v: unknown): v is number => typeof v === "number" && Number.isFi
 const numeroOuNulo = (v: unknown) => v === null || numero(v);
 const TIPOS: readonly unknown[] = ["NONE", "PERCENTAGE", "FIXED"];
 
+const ORIGENS: readonly unknown[] = ["SERVICE", "DEFAULT"];
+const ORIGENS_APURADAS: readonly unknown[] = ["SERVICE", "DEFAULT", "LEGACY_SERVICE", null];
+
 function ehRegra(v: unknown): v is RegraDeComissao {
   return objeto(v) && TIPOS.includes(v.kind) && numeroOuNulo(v.value);
+}
+
+function ehRegraGeral(v: unknown): v is RegraGeral {
+  return objeto(v) && (v.kind === "PERCENTAGE" || v.kind === "FIXED") && numero(v.value);
+}
+
+/** Origem e regra vêm juntas: sem regra, sem origem. */
+function ehEfetiva(v: unknown): boolean {
+  if (!objeto(v)) return false;
+  if (v.source === null) return v.rule === null;
+  return ORIGENS.includes(v.source) && ehRegra(v.rule);
 }
 
 export function ehRegrasDoProfissional(v: unknown): v is RegrasDoProfissional {
@@ -96,6 +133,9 @@ export function ehRegrasDoProfissional(v: unknown): v is RegrasDoProfissional {
     objeto(v.professional) &&
     texto(v.professional.id) &&
     texto(v.professional.name) &&
+    objeto(v.settings) &&
+    typeof v.settings.receivesCommission === "boolean" &&
+    (v.settings.defaultRule === null || ehRegraGeral(v.settings.defaultRule)) &&
     Array.isArray(v.services) &&
     v.services.every(
       (s) =>
@@ -105,8 +145,17 @@ export function ehRegrasDoProfissional(v: unknown): v is RegrasDoProfissional {
         texto(s.service.name) &&
         numeroOuNulo(s.service.priceCents) &&
         typeof s.linked === "boolean" &&
-        (s.rule === null || ehRegra(s.rule)),
+        (s.rule === null || ehRegra(s.rule)) &&
+        ehEfetiva(s.effective),
     )
+  );
+}
+
+export function ehResumoDeRecebeComissao(v: unknown): v is ResumoDeRecebeComissao {
+  return (
+    objeto(v) &&
+    Array.isArray(v.professionals) &&
+    v.professionals.every((p) => objeto(p) && texto(p.professionalId) && typeof p.receivesCommission === "boolean")
   );
 }
 
@@ -127,6 +176,7 @@ function ehAtendimento(v: unknown): v is AtendimentoApurado {
         numeroOuNulo(i.priceCents) &&
         numeroOuNulo(i.commissionCents) &&
         (i.rule === null || ehRegra(i.rule)) &&
+        ORIGENS_APURADAS.includes(i.ruleSource) &&
         texto(i.situation),
     )
   );
@@ -156,7 +206,10 @@ export const caminhoRegras = (tenantId: string, professionalId: string) =>
   `${caminhoComissoes(tenantId)}/rules/${encodeURIComponent(professionalId)}`;
 export const caminhoRegra = (tenantId: string, professionalId: string, serviceId: string) =>
   `${caminhoRegras(tenantId, professionalId)}/${encodeURIComponent(serviceId)}`;
-export const caminhoProprias = (tenantId: string) => `/tenants/${encodeURIComponent(tenantId)}/my-agenda/commissions`;
+export const caminhoConfiguracoes = (tenantId: string) => `${caminhoComissoes(tenantId)}/settings`;
+export const caminhoConfiguracao = (tenantId: string, professionalId: string) =>
+  `${caminhoConfiguracoes(tenantId)}/${encodeURIComponent(professionalId)}`;
+export const caminhoProprias =(tenantId: string) => `/tenants/${encodeURIComponent(tenantId)}/my-agenda/commissions`;
 
 /** Percentual digitado ("12,5") em pontos-base (1250), sem ponto flutuante:
  * é a mesma conta de centavos com duas casas. */
@@ -182,6 +235,21 @@ export function rotuloDaRegra(regra: RegraDeComissao | null): string {
   if (regra.kind === "PERCENTAGE") return `${pontosBaseParaCampo(regra.value ?? 0)}%`;
   return `${formatarMoeda(regra.value ?? 0)} fixo`;
 }
+
+/** Etiqueta da regra que vale num serviço: "Exceção · 12,5%", "Regra geral ·
+ * R$ 10,00 fixo" ou "Não configurada". */
+export function rotuloDaEfetiva(efetiva: ServicoComRegra["effective"]): string {
+  if (efetiva.source === null || efetiva.rule === null) return "Não configurada";
+  return `${efetiva.source === "SERVICE" ? "Exceção" : "Regra geral"} · ${rotuloDaRegra(efetiva.rule)}`;
+}
+
+/** Origem de um item apurado, para o relatório. Nada para item sem regra
+ * (a situação "Sem regra na conclusão" já explica). */
+export const ROTULO_ORIGEM_APURADA: Record<Exclude<OrigemApurada, null>, string> = {
+  SERVICE: "exceção do serviço",
+  DEFAULT: "regra geral",
+  LEGACY_SERVICE: "regra por serviço",
+};
 
 export const ROTULO_SITUACAO: Record<string, string> = {
   NAO_CONFIGURADA: "Sem regra na conclusão",
