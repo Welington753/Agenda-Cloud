@@ -100,6 +100,30 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
       ForbiddenException,
     );
   });
+  it('DONO de estabelecimento no plano Max, com todos os recursos por exceção, continua sem acesso de plataforma', async () => {
+    const donoMax = id(),
+      tenantMax = id();
+    await db.query(`INSERT INTO users (id,name,email,platform_role) VALUES ($1,'Dono Max',$2,NULL)`, [
+      donoMax,
+      `${donoMax}@example.test`,
+    ]);
+    await db.query(
+      `INSERT INTO tenants (id,slug,category,timezone,plan_id,status,access_legacy_since)
+       SELECT $1,$2,'OTHER','America/Sao_Paulo',id,'ACTIVE',now() FROM plans WHERE code = 'pro'`,
+      // Slug sem o marcador: as buscas dos outros casos contam só A e B.
+      [tenantMax, `dono-max-${tenantMax}`],
+    );
+    await db.query(
+      `INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled)
+       SELECT substr(md5(random()::text || id), 1, 24), $1, id, true FROM features`,
+      [tenantMax],
+    );
+    await db.query(`INSERT INTO memberships (id,user_id,tenant_id,role) VALUES ($1,$2,$3,'DONO')`, [id(), donoMax, tenantMax]);
+    await expect(service.list(donoMax, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
+    await expect(service.detail(donoMax, tenantMax)).rejects.toThrow(ForbiddenException);
+    await expect(service.detail(donoMax, tenantA)).rejects.toThrow(ForbiddenException);
+  });
+
   it('página não perde nem duplica estabelecimentos; total não é tamanho da página', async () => {
     const first = await service.list(master, {
       q: marker,

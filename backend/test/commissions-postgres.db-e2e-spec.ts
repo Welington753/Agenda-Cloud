@@ -399,6 +399,39 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     expect(vazio.appointments).toEqual([]);
   });
 
+  it('troca de plano Pro → Básico → Pro: histórico intacto, sem apuração no Básico e sem retroativo na volta', async () => {
+    const c = await cenario('rebaixado', 'equipe');
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, { kind: 'PERCENTAGE', value: 2000 });
+    const funcionaria = await funcionario(c, c.ana, 'PROFISSIONAL', ['COMISSOES_PROPRIAS_VISUALIZAR']);
+    const noPro = await reservar(c, [c.corte], as(DIA, 9));
+    await concluir(c, noPro.id, as(DIA, 9));
+    const fotografia = await linhas(noPro.id);
+    // 20% de 42,50 = 8,50.
+    expect(fotografia.map((l) => l.professional_cents)).toEqual([850]);
+
+    // Rebaixado para o Básico: relatório, regras e a visão própria recusam; concluir segue normal, sem apurar.
+    await db.query('UPDATE tenants SET plan_id = $2 WHERE id = $1', [c.tenantId, planos.essencial]);
+    await expect(comissoes.report(c.dono, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+    await expect(comissoes.rules(c.dono, c.tenantId, c.ana)).rejects.toThrow(ForbiddenException);
+    await expect(agendaPropria.commissions(funcionaria, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+    const noBasico = await reservar(c, [c.corte], as(DIA, 10));
+    expect((await concluir(c, noBasico.id, as(DIA, 10))).status).toBe('COMPLETED');
+    expect(await linhas(noBasico.id)).toEqual([]);
+    // A regra gravada e a apuração anterior continuam no banco, sem mudança.
+    expect(await linhas(noPro.id)).toEqual(fotografia);
+    expect(
+      await db.query('SELECT type::text AS type, value FROM commission_rules WHERE tenant_id = $1', [c.tenantId]),
+    ).toEqual([{ type: 'PERCENTAGE', value: 2000 }]);
+
+    // De volta ao Pro: o histórico reaparece igual, e o concluído no Básico continua sem comissão.
+    await db.query('UPDATE tenants SET plan_id = $2 WHERE id = $1', [c.tenantId, planos.equipe]);
+    const relatorio = await comissoes.report(c.dono, c.tenantId, MES);
+    expect(relatorio.totalAccruedCents).toBe(850);
+    expect(relatorio.appointments.map((a) => a.id)).toEqual([noPro.id]);
+    expect((await agendaPropria.commissions(funcionaria, c.tenantId, MES)).totalAccruedCents).toBe(850);
+    expect(await linhas(noBasico.id)).toEqual([]);
+  });
+
   it('cancelado e falta fora do total; concluído não cancela; reabertura futura preserva a fotografia', async () => {
     const c = await cenario('ciclo');
     await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, { kind: 'PERCENTAGE', value: 4000 });
