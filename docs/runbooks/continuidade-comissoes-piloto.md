@@ -84,6 +84,46 @@ não foram alteradas.
 - O backup de 05/11 (`c7ba858`) foi preservado e não vale para este commit.
 - **Não executados:** `aplicar`, migration 16, deploy e rollback.
 
+## Migration 15 aplicada no piloto (09/11/2026)
+
+O dono autorizou expressamente, em 09/11/2026, aplicar **somente**
+`ProfessionalCommissions1793491200000` no piloto, pelo kit da 15 na worktree
+`C:\Projetos\Agenda-Cloud-m15-92cc6ae` (`92cc6ae`). A URL foi digitada pelo
+dono no prompt oculto, e a frase também.
+
+- `aplicar` (execução `2026-11-09T12-52-09-593Z`): comprovante de
+  `comissoes-preparar-2026-11-09T12-45-44-343Z` aceito dentro da validade; o
+  kit fez o backup novo obrigatório `comissoes-aplicar-2026-11-09T12-52-09-593Z`
+  (190.069 bytes, sha256 `9cb36603…6bd9`). Migration aplicada às
+  12:53:23 UTC. `DESFECHO: aplicada_e_conferida`, código 0: 15 migrations,
+  `15/15`, baseline sem falhas (relatado pelo dono a partir da janela).
+- `conferir` (execução `2026-11-09T12-54-54-792Z`, concluída 12:55:33 UTC):
+  `after-professional-commissions`, nenhuma sessão da migration ativa
+  (registro em `operacoes.jsonl`).
+- Render, só leitura, depois da `conferir`: API e web continuam Live em
+  `92cc6ae` (deploys de 05/11). Sem deploy nesta etapa.
+- **Estado atual: ponto de parada estável do estado 15** com API e web
+  `92cc6ae`. As comissões por serviço voltam a apurar.
+- **Não executados:** migration 16, deploy e rollback. Todos os backups foram
+  preservados.
+
+**Próxima etapa: kit da 16 no C16 `879cef8`**, em outra sessão, com janela de
+transição combinada com os donos (ver "Janela de transição" em
+`publicacao-regra-geral-comissoes-piloto.md`):
+
+1. Worktree limpa no C16 com `npm ci` próprio em `backend` (nunca junção).
+   `git diff e42fb81 879cef8 -- backend/scripts backend/src` foi conferido
+   vazio em 09/11/2026.
+2. `conferir` do kit da 16. Esperado: `before-commission-settings`,
+   `MIGRATIONS_APPLIED: 15`, `SCHEMA_OBJECTS_OK: 0/7`, nenhuma sessão ativa.
+3. Consulta de impacto (só leitura, com autorização) e combinação da janela.
+4. `preparar` e `restauracao` (backup novo; o comprovante vale 24 h).
+5. `aplicar` da 16 (autorização expressa), API C16, web C16 e `conferir` com
+   `JANELA_DE_TRANSICAO: ok`.
+
+O runbook da 16 ainda diz "backups e restaurações reais só no computador de
+casa". A autorização de 09/11/2026 acima substitui essa restrição.
+
 As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
 já foram feitos; a worktree de revisão do #99 não é mais necessária.
 
