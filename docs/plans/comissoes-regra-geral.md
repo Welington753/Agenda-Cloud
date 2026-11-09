@@ -109,8 +109,8 @@ Nenhum executável de kit mudou: o da 15 continua recusando um runtime com
 migrations posteriores (`ERR_MIGRATIONS_COMPILADAS_INESPERADAS`) e só serve no
 commit dele. As specs históricas passaram a nomear as posteriores numa lista
 explícita (`aplicar-somente-a-pendente`, `pilot-comissoes-profissionais-check`,
-`lote6b2`), e a da 15 prova a recusa do kit como está. Publicar a 16 no piloto
-exige kit próprio, fora deste lote.
+`lote6b2`), e a da 15 prova a recusa do kit como está. A 16 tem kit próprio,
+no lote seguinte: `docs/runbooks/publicacao-regra-geral-comissoes-piloto.md`.
 
 ## Validação
 

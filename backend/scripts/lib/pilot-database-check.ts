@@ -62,6 +62,13 @@ import {
   objetosComissoesPresentes,
   TOTAL_OBJETOS_COMISSOES,
 } from './comissoes-profissionais-schema.js';
+import {
+  falhasAntesDaRegraGeral,
+  falhasDepoisDaRegraGeral,
+  lerEstadoRegraGeral,
+  objetosRegraGeralPresentes,
+  TOTAL_OBJETOS_REGRA_GERAL,
+} from './regra-geral-comissoes-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -86,7 +93,9 @@ export type PilotExpectation =
   | 'after-platform-portal'
   | 'after-appointment-snapshots'
   | 'before-professional-commissions'
-  | 'after-professional-commissions';
+  | 'after-professional-commissions'
+  | 'before-commission-settings'
+  | 'after-commission-settings';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -106,6 +115,8 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'after-appointment-snapshots',
   'before-professional-commissions',
   'after-professional-commissions',
+  'before-commission-settings',
+  'after-commission-settings',
 ];
 
 interface EnvLike {
@@ -321,6 +332,18 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
         expectation === 'before-professional-commissions' ? falhasAntesDeComissoes(estado) : falhasDepoisDeComissoes(estado);
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosComissoesPresentes(estado)}/${TOTAL_OBJETOS_COMISSOES}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    // Antes (15, o baseline válido) e depois (16) de ProfessionalCommissionSettings.
+    // O "depois" é permanente: dados gravados pela API nova não o invalidam.
+    if (expectation === 'before-commission-settings' || expectation === 'after-commission-settings') {
+      const estado = await lerEstadoRegraGeral(client);
+      const falhas =
+        expectation === 'before-commission-settings' ? falhasAntesDaRegraGeral(estado) : falhasDepoisDaRegraGeral(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosRegraGeralPresentes(estado)}/${TOTAL_OBJETOS_REGRA_GERAL}`);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
