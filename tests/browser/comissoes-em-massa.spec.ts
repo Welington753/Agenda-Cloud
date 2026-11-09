@@ -15,7 +15,9 @@
 //    profissionais não mudam.
 // 5. Edição individual da Bia: manter é o padrão; remover mostra a lista e
 //    pede confirmação; uma exceção mudada por fora recusa (409), a lista é
-//    relida e a confirmação volta a ser exigida.
+//    relida e a confirmação volta a ser exigida. Uma alteração não salva no
+//    editor do serviço sobrevive à releitura e à remoção, com aviso, até o
+//    dono descartá-la; sem rascunho, o editor mostra o valor gravado.
 // 6. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
 //
 // Invocação própria (`npm run test:browser:comissoes-em-massa`): 1 aceite de
@@ -186,11 +188,16 @@ test("dono aplica comissão a vários profissionais com prévia, 409 por mudanç
     await expect(salvar).toBeDisabled();
     await cartao.getByTestId("confirmar-remocao-excecoes").check();
     await expect(salvar).toBeEnabled();
+    const editorCorte = page.getByTestId("regra-de-comissao").filter({ hasText: "Corte" });
+    await editorCorte.getByLabel("Valor (R$)").fill("7,00");
     // A exceção muda por fora antes de salvar: 409, lista relida, nova confirmação.
     expect((await page.request.put(`${api}/commissions/rules/${bia}/${corte}`, { data: { kind: "FIXED", value: 600 } })).status()).toBe(200);
     await salvar.click();
     await expect(cartao.getByRole("alert")).toContainText("exceções por serviço deste profissional mudaram");
     await expect(cartao.getByTestId("excecoes-a-remover")).toContainText(/Corte: R\$\s6,00 fixo/);
+    await expect(editorCorte.getByTestId("regra-atual")).toHaveText(/Exceção · R\$\s6,00 fixo/);
+    await expect(editorCorte.getByLabel("Valor (R$)")).toHaveValue("7,00");
+    await expect(editorCorte.getByTestId("aviso-regra-mudou")).toBeVisible();
     await expect(cartao.getByTestId("confirmar-remocao-excecoes")).not.toBeChecked();
     await expect(salvar).toBeDisabled();
     expect((await regras(bia)).services.find((s) => s.service.id === corte)?.effective.source).toBe("SERVICE");
@@ -200,6 +207,11 @@ test("dono aplica comissão a vários profissionais com prévia, 409 por mudanç
     await expect(page.getByText("Comissão de Bia Souza salva e 1 exceção por serviço removida.")).toBeVisible();
     await expect(page.getByTestId("regra-atual")).toHaveText(/Regra geral · R\$\s12,00 fixo/);
     await expect(cartao.getByTestId("excecoes-na-configuracao")).toHaveCount(0);
+    // O rascunho do Corte continua, com aviso; descartar mostra o valor gravado.
+    await expect(editorCorte.getByLabel("Valor (R$)")).toHaveValue("7,00");
+    await editorCorte.getByRole("button", { name: "Descartar minha alteração" }).click();
+    await expect(editorCorte.getByLabel("Comissão neste serviço")).toHaveValue("USAR_GERAL");
+    await expect(editorCorte.getByTestId("aviso-regra-mudou")).toHaveCount(0);
     expect((await regras(bia)).services.find((s) => s.service.id === corte)?.effective).toEqual({
       source: "DEFAULT",
       rule: { kind: "FIXED", value: 1200 },
