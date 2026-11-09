@@ -6,6 +6,7 @@ import { lerValor, rotuloDaRegra, type RegraGeral } from "@/lib/api/comissoes-ap
 import type {
   AlcanceEmMassa,
   ConfiguracaoGeral,
+  EscolhaDeExcecoes,
   ModoEmMassa,
   PreviaEmMassa,
   ResultadoEmMassa,
@@ -20,6 +21,8 @@ export interface FormularioEmMassa {
   tipo: "PERCENTAGE" | "FIXED";
   valor: string;
   modo: ModoEmMassa;
+  /** Só vale em SUBSTITUIR; em PRESERVAR as exceções sempre ficam. */
+  excecoes: EscolhaDeExcecoes;
 }
 
 export interface PedidoEmMassa {
@@ -27,6 +30,8 @@ export interface PedidoEmMassa {
   professionalIds?: string[];
   defaultRule: RegraGeral;
   mode: ModoEmMassa;
+  /** Só `REMOVE`, e só em SUBSTITUIR; sem o campo, o servidor mantém. */
+  exceptions?: "REMOVE";
 }
 
 export function montarPedido(f: FormularioEmMassa): { ok: true; pedido: PedidoEmMassa } | { ok: false; erro: string } {
@@ -43,17 +48,20 @@ export function montarPedido(f: FormularioEmMassa): { ok: true; pedido: PedidoEm
       ...(f.alcance === "SELECTED" ? { professionalIds: [...new Set(f.selecionados)] } : {}),
       defaultRule: lido.corpo,
       mode: f.modo,
+      ...(f.modo === "REPLACE" && f.excecoes === "REMOVE" ? { exceptions: "REMOVE" as const } : {}),
     },
   };
 }
 
 /** Corpo da aplicação: o pedido da prévia, a impressão dela e, em
- * SUBSTITUIR, a confirmação explícita. */
+ * SUBSTITUIR, a confirmação explícita; removendo exceções, também a
+ * confirmação da remoção (a tela só habilita aplicar depois das duas). */
 export function corpoDaAplicacao(pedido: PedidoEmMassa, previa: Pick<PreviaEmMassa, "fingerprint">) {
   return {
     ...pedido,
     fingerprint: previa.fingerprint,
     ...(pedido.mode === "REPLACE" ? { confirmReplace: true as const } : {}),
+    ...(pedido.exceptions === "REMOVE" ? { confirmRemoveExceptions: true as const } : {}),
   };
 }
 
@@ -84,7 +92,7 @@ export const ROTULO_MODO: Record<ModoEmMassa, { titulo: string; descricao: strin
   REPLACE: {
     titulo: "Substituir configurações gerais",
     descricao:
-      "Todos os profissionais do alcance passam a usar esta regra geral, e “Recebe comissão” é ligado, mesmo para quem estava desligado.",
+      "Todos os profissionais do alcance passam a usar esta regra geral, e “Recebe comissão” é ligado, mesmo para quem estava desligado. As exceções por serviço só saem se você escolher removê-las.",
   },
 };
 

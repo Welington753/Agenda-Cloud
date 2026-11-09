@@ -50,8 +50,10 @@ describe("forma das respostas", () => {
       professional: { id: "p", name: "Ana", active: true },
       settings: { receivesCommission: false, defaultRule: { kind: "FIXED", value: 1000 } },
       services: [servico],
+      exceptionsFingerprint: "e".repeat(64),
     };
     expect(ehRegrasDoProfissional(ok)).toBe(true);
+    expect(ehRegrasDoProfissional({ ...ok, exceptionsFingerprint: undefined })).toBe(false);
     expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, rule: { kind: "OUTRO", value: 1 } }] })).toBe(false);
     // Sem a configuração, ou com "sem comissão" como regra geral: formato inválido.
     expect(ehRegrasDoProfissional({ ...ok, settings: undefined })).toBe(false);

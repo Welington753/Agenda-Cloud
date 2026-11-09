@@ -6,19 +6,22 @@ describe("aplicação em massa", () => {
     target: "ALL",
     mode: "PRESERVE",
     defaultRule: { kind: "PERCENTAGE", value: 1000 },
+    exceptions: "REMOVE",
     fingerprint: "f".repeat(64),
-    summary: { change: 1, preserve: 1, unchanged: 0, total: 2 },
+    summary: { change: 1, preserve: 1, unchanged: 0, total: 2, exceptionsRemoved: 1 },
     professionals: [
       {
         professional: { id: "p1", name: "Ana" },
         current: { receivesCommission: true, defaultRule: null },
         next: { receivesCommission: true, defaultRule: { kind: "PERCENTAGE", value: 1000 } },
+        exceptions: { services: [{ service: { id: "s1", name: "Barba" }, rule: { kind: "PERCENTAGE", value: 1500 } }], removed: true },
         outcome: "CHANGE",
       },
       {
         professional: { id: "p2", name: "Bia" },
         current: { receivesCommission: false, defaultRule: null },
         next: { receivesCommission: false, defaultRule: null },
+        exceptions: { services: [], removed: false },
         outcome: "PRESERVE",
       },
     ],
@@ -35,6 +38,12 @@ describe("aplicação em massa", () => {
     expect(ehPreviaEmMassa({ ...previa, summary: { ...previa.summary, change: "1" } })).toBe(false);
     expect(ehPreviaEmMassa({ ...previa, professionals: [{ ...previa.professionals[0], outcome: "MERGE" }] })).toBe(false);
     expect(ehPreviaEmMassa({ ...previa, professionals: [{ ...previa.professionals[0], next: { receivesCommission: true, defaultRule: { kind: "NONE", value: null } } }] })).toBe(false);
+    expect(ehPreviaEmMassa({ ...previa, exceptions: "APAGAR" })).toBe(false);
+    expect(ehPreviaEmMassa({ ...previa, summary: { ...previa.summary, exceptionsRemoved: undefined } })).toBe(false);
+    expect(ehPreviaEmMassa({ ...previa, professionals: [{ ...previa.professionals[0], exceptions: undefined }] })).toBe(false);
+    expect(
+      ehPreviaEmMassa({ ...previa, professionals: [{ ...previa.professionals[0], exceptions: { services: [{ service: { id: "s" }, rule: null }], removed: true } }] }),
+    ).toBe(false);
     expect(ehAplicacaoEmMassa(previa)).toBe(false);
     expect(ehAplicacaoEmMassa({ ...previa, applied: true, operationId: "op" })).toBe(true);
   });

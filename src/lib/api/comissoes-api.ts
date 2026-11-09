@@ -42,6 +42,9 @@ export interface RegrasDoProfissional {
   /** Desligado: as regras ficam guardadas, mas nenhuma conclusão gera comissão. */
   settings: { receivesCommission: boolean; defaultRule: RegraGeral | null };
   services: ServicoComRegra[];
+  /** Impressão das exceções por serviço lidas agora: volta no pedido de
+   * remoção, recusado (409 `EXCECOES_DESATUALIZADAS`) se elas mudaram. */
+  exceptionsFingerprint: string;
 }
 
 export interface ResumoDeRecebeComissao {
@@ -112,7 +115,7 @@ const TIPOS: readonly unknown[] = ["NONE", "PERCENTAGE", "FIXED"];
 const ORIGENS: readonly unknown[] = ["SERVICE", "DEFAULT"];
 const ORIGENS_APURADAS: readonly unknown[] = ["SERVICE", "DEFAULT", "LEGACY_SERVICE", null];
 
-function ehRegra(v: unknown): v is RegraDeComissao {
+export function ehRegra(v: unknown): v is RegraDeComissao {
   return objeto(v) && TIPOS.includes(v.kind) && numeroOuNulo(v.value);
 }
 
@@ -136,6 +139,7 @@ export function ehRegrasDoProfissional(v: unknown): v is RegrasDoProfissional {
     objeto(v.settings) &&
     typeof v.settings.receivesCommission === "boolean" &&
     (v.settings.defaultRule === null || ehRegraGeral(v.settings.defaultRule)) &&
+    texto(v.exceptionsFingerprint) &&
     Array.isArray(v.services) &&
     v.services.every(
       (s) =>

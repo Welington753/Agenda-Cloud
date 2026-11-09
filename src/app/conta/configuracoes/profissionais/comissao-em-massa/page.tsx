@@ -4,10 +4,12 @@
 // profissionais ativos de uma vez, com prévia antes de gravar. PRESERVAR (o
 // padrão) só completa quem recebe comissão sem regra geral; SUBSTITUIR troca
 // a regra geral de todos e liga "Recebe comissão", com confirmação
-// explícita. Exceções por serviço e comissões já apuradas não mudam. O
+// explícita. Comissões já apuradas não mudam. Exceções por serviço ficam,
+// a não ser que, em SUBSTITUIR, o dono escolha removê-las: a prévia mostra
+// quem perde quais exceções e a remoção pede uma segunda confirmação. O
 // servidor decide o resultado de cada profissional e recusa (409) se algo
-// mudou desde a prévia; aí a prévia é refeita e revisada de novo. Ver
-// docs/plans/comissoes-aplicacao-em-massa.md.
+// (inclusive uma exceção) mudou desde a prévia; aí a prévia é refeita e
+// revisada de novo. Ver docs/plans/comissoes-aplicacao-em-massa.md.
 import { useState, type FormEvent } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import clsx from "clsx";
@@ -21,11 +23,11 @@ import {
   ehAplicacaoEmMassa,
   ehPreviaEmMassa,
   type AlcanceEmMassa,
+  type EscolhaDeExcecoes,
   type ModoEmMassa,
   type PreviaEmMassa,
 } from "@/lib/api/comissoes-em-massa-api";
 import {
-  MAXIMO_EM_MASSA,
   ROTULO_MODO,
   ROTULO_RESULTADO_APLICADO,
   ROTULO_RESULTADO_PREVIA,
@@ -35,16 +37,22 @@ import {
   rotuloDoBotaoAplicar,
   type PedidoEmMassa,
 } from "@/lib/profissionais/comissao-em-massa";
+import { AVISO_SUBSTITUIR_NAO_REMOVE } from "@/lib/profissionais/excecoes-de-comissao";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
+import { EscolhaDasExcecoes } from "@/components/conta/escolha-de-excecoes";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { CAMPO } from "../[professionalId]/comissoes/cartao-recebe-comissao";
-import { AvisoDoQueNaoMuda, ConfirmacaoDeSubstituicao, Contadores, ListaDeProfissionais } from "./previa-em-massa";
+import { EscolhaDeAlcance } from "./escolha-de-alcance";
+import { AvisoDoQueNaoMuda, ConfirmacaoDeSubstituicao, Contadores, ListaDeProfissionais, RemocaoNaPrevia } from "./previa-em-massa";
 
 const OPCAO = "flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--radius-control)] border border-border p-3 text-sm text-ink";
+
+/** A remoção pede confirmação própria quando há exceção a remover. */
+const falta = (dados: PreviaEmMassa, pedido: PedidoEmMassa) => pedido.exceptions === "REMOVE" && dados.summary.exceptionsRemoved > 0;
 
 export default function ComissaoEmMassaPage() {
   const { estado: sessao } = useRealAuth();
@@ -84,9 +92,11 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
   const [tipo, setTipo] = useState<"PERCENTAGE" | "FIXED">("PERCENTAGE");
   const [valor, setValor] = useState("");
   const [modo, setModo] = useState<ModoEmMassa>("PRESERVE");
+  const [excecoes, setExcecoes] = useState<EscolhaDeExcecoes>("KEEP");
   const [previa, setPrevia] = useState<{ pedido: PedidoEmMassa; dados: PreviaEmMassa } | null>(null);
   const [resultado, setResultado] = useState<PreviaEmMassa | null>(null);
   const [confirmado, setConfirmado] = useState(false);
+  const [confirmadoRemocao, setConfirmadoRemocao] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -98,6 +108,7 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
       setPrevia(null);
       setResultado(null);
       setConfirmado(false);
+      setConfirmadoRemocao(false);
       setErro(null);
       setAviso(null);
     };
@@ -116,13 +127,14 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
     }
     setPrevia({ pedido, dados: r.dados });
     setConfirmado(false);
+    setConfirmadoRemocao(false);
     return true;
   }
 
   async function verPrevia(evento: FormEvent) {
     evento.preventDefault();
     if (ocupado) return;
-    const montado = montarPedido({ alcance, selecionados, tipo, valor, modo });
+    const montado = montarPedido({ alcance, selecionados, tipo, valor, modo, excecoes });
     if (!montado.ok) return setErro(montado.erro);
     setErro(null);
     setAviso(null);
@@ -135,6 +147,7 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
   async function aplicar() {
     if (!previa || ocupado) return;
     if (previa.pedido.mode === "REPLACE" && !confirmado) return setErro("Confirme a substituição para aplicar.");
+    if (falta(previa.dados, previa.pedido) && !confirmadoRemocao) return setErro("Confirme a remoção das exceções para aplicar.");
     setErro(null);
     setAviso(null);
     setOcupado(true);
@@ -152,6 +165,7 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
     setResultado(r.dados);
     setPrevia(null);
     setConfirmado(false);
+    setConfirmadoRemocao(false);
     const n = r.dados.summary.change;
     notificar(n === 1 ? "Comissão aplicada a 1 profissional." : `Comissão aplicada a ${n} profissionais.`, "sucesso");
   }
@@ -178,54 +192,13 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
       <Cartao>
         <CartaoCorpo>
           <form onSubmit={(e) => void verPrevia(e)} className="space-y-5" data-testid="formulario-em-massa" aria-label="Aplicação em massa">
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-semibold text-ink">Profissionais</legend>
-              <label className={OPCAO}>
-                <input
-                  type="radio"
-                  name="alcance"
-                  className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]"
-                  checked={alcance === "ALL"}
-                  onChange={() => mudou(setAlcance)("ALL")}
-                />
-                <span>
-                  Todos os profissionais ativos ({ativos.length})
-                  <span className="block text-xs text-ink-soft">Profissionais inativos ficam de fora.</span>
-                </span>
-              </label>
-              <label className={OPCAO}>
-                <input
-                  type="radio"
-                  name="alcance"
-                  className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]"
-                  checked={alcance === "SELECTED"}
-                  onChange={() => mudou(setAlcance)("SELECTED")}
-                />
-                <span>Escolher profissionais</span>
-              </label>
-              {alcance === "SELECTED" && (
-                <div className="space-y-2 pl-1" data-testid="escolha-de-profissionais">
-                  <p className="text-xs text-ink-soft">
-                    {selecionados.length} de {ativos.length} escolhidos · até {MAXIMO_EM_MASSA} por vez
-                  </p>
-                  <ul className="grid gap-2 sm:grid-cols-2">
-                    {ativos.map((p) => (
-                      <li key={p.id} className="min-w-0">
-                        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border border-border px-3 text-sm text-ink">
-                          <input
-                            type="checkbox"
-                            className="size-5 shrink-0 accent-[var(--color-accent)]"
-                            checked={selecionados.includes(p.id)}
-                            onChange={(e) => alternar(p.id, e.currentTarget.checked)}
-                          />
-                          <span className="min-w-0 break-words">{p.name}</span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </fieldset>
+            <EscolhaDeAlcance
+              alcance={alcance}
+              aoMudarAlcance={mudou(setAlcance)}
+              ativos={ativos}
+              selecionados={selecionados}
+              aoAlternar={alternar}
+            />
 
             <fieldset>
               <legend className="mb-2 text-sm font-semibold text-ink">Regra geral</legend>
@@ -266,7 +239,11 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
                     value={m}
                     className="mt-0.5 size-5 shrink-0 accent-[var(--color-accent)]"
                     checked={modo === m}
-                    onChange={() => mudou(setModo)(m)}
+                    onChange={() => {
+                      mudou(setModo)(m);
+                      // PRESERVAR nunca remove exceções.
+                      if (m === "PRESERVE") setExcecoes("KEEP");
+                    }}
                   />
                   <span>
                     <span className="font-medium">{ROTULO_MODO[m].titulo}</span>
@@ -275,6 +252,15 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
                 </label>
               ))}
             </fieldset>
+
+            {modo === "REPLACE" && (
+              <div className="space-y-2">
+                <EscolhaDasExcecoes nome="excecoes-em-massa" escolha={excecoes} aoEscolher={mudou(setExcecoes)} />
+                <p className="text-xs text-ink-soft">
+                  {excecoes === "KEEP" ? AVISO_SUBSTITUIR_NAO_REMOVE : "A prévia mostra quem perde quais exceções antes de aplicar."}
+                </p>
+              </div>
+            )}
 
             {erro && !previa && (
               <p role="alert" className="text-sm text-danger">
@@ -300,12 +286,23 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
             </p>
           )}
           <Contadores dados={previa.dados} rotuloAlterados="Serão alterados" />
-          <ListaDeProfissionais dados={previa.dados} rotulos={ROTULO_RESULTADO_PREVIA} titulo="Profissionais da prévia" />
+          <ListaDeProfissionais dados={previa.dados} rotulos={ROTULO_RESULTADO_PREVIA} titulo="Profissionais da prévia" aplicado={false} />
           {previa.pedido.mode === "REPLACE" && previa.dados.summary.change > 0 && (
             <ConfirmacaoDeSubstituicao
+              removendo={previa.pedido.exceptions === "REMOVE"}
               confirmado={confirmado}
               aoMudar={(v) => {
                 setConfirmado(v);
+                setErro(null);
+              }}
+            />
+          )}
+          {previa.pedido.exceptions === "REMOVE" && (
+            <RemocaoNaPrevia
+              dados={previa.dados}
+              confirmado={confirmadoRemocao}
+              aoMudar={(v) => {
+                setConfirmadoRemocao(v);
                 setErro(null);
               }}
             />
@@ -319,7 +316,12 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
             type="button"
             className="min-h-11 w-full sm:w-auto"
             onClick={() => void aplicar()}
-            disabled={ocupado || previa.dados.summary.change === 0 || (previa.pedido.mode === "REPLACE" && !confirmado)}
+            disabled={
+              ocupado ||
+              previa.dados.summary.change === 0 ||
+              (previa.pedido.mode === "REPLACE" && !confirmado) ||
+              (falta(previa.dados, previa.pedido) && !confirmadoRemocao)
+            }
             aria-busy={ocupado}
           >
             {rotuloDoBotaoAplicar(previa.dados.summary.change)}
@@ -334,7 +336,7 @@ function AplicacaoEmMassa({ tenantId }: { tenantId: string }) {
             Comissão aplicada
           </h2>
           <Contadores dados={resultado} rotuloAlterados="Alterados" />
-          <ListaDeProfissionais dados={resultado} rotulos={ROTULO_RESULTADO_APLICADO} titulo="Resultado da operação" />
+          <ListaDeProfissionais dados={resultado} rotulos={ROTULO_RESULTADO_APLICADO} titulo="Resultado da operação" aplicado />
         </section>
       )}
     </div>

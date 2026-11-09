@@ -50,14 +50,16 @@ export default function ComissoesDoProfissionalPage() {
   const { estado: sessao } = useRealAuth();
   const { professionalId } = useParams<{ professionalId: string }>();
   const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
-  const { estado, recarregar } = useLeituraPlataforma(
+  const { estado, recarregar, anterior } = useLeituraPlataforma(
     tenantId ? caminhoRegras(tenantId, professionalId) : null,
     ehRegrasDoProfissional,
   );
   // A resposta de cada gravação já traz a lista atualizada; uma leitura nova
   // do servidor substitui o que foi gravado sobre a anterior.
   const [salvo, setSalvo] = useState<{ sobre: RegrasDoProfissional; dados: RegrasDoProfissional } | null>(null);
-  const lido = estado.status === "pronto" ? estado.dados : null;
+  // Durante uma releitura (exceções mudaram por fora), a leitura anterior
+  // mantém a tela montada: o aviso e os campos do cartão não somem.
+  const lido = estado.status === "pronto" ? estado.dados : anterior;
   const atual = lido && salvo?.sobre === lido ? salvo.dados : lido;
   if (sessao.status !== "autenticado" || !tenantId) return null;
   const aoSalvar = (dados: RegrasDoProfissional) => lido && setSalvo({ sobre: lido, dados });
@@ -84,7 +86,7 @@ export default function ComissoesDoProfissionalPage() {
       )}
       {atual && (
         <>
-          <CartaoRecebeComissao tenantId={tenantId} dados={atual} aoSalvar={aoSalvar} />
+          <CartaoRecebeComissao tenantId={tenantId} dados={atual} aoSalvar={aoSalvar} aoRecarregar={recarregar} />
           <h2 className="text-base font-semibold text-ink">Exceções por serviço</h2>
           {!atual.settings.receivesCommission && (
             <p
@@ -100,7 +102,9 @@ export default function ComissoesDoProfissionalPage() {
           ) : (
             <ul className="space-y-3" data-testid="regras-de-comissao">
               {atual.services.map((s) => (
-                <li key={s.service.id}>
+                // A chave inclui a exceção: quando ela muda por fora (remoção
+                // pela regra geral), o editor recomeça com o valor gravado.
+                <li key={`${s.service.id}:${s.rule?.kind ?? "GERAL"}:${s.rule?.value ?? ""}`}>
                   <EditorDaRegra
                     tenantId={tenantId}
                     professionalId={professionalId}

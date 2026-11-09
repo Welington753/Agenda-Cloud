@@ -9,7 +9,7 @@ import {
   type FormularioEmMassa,
 } from "./comissao-em-massa";
 
-const base: FormularioEmMassa = { alcance: "ALL", selecionados: [], tipo: "PERCENTAGE", valor: "10", modo: "PRESERVE" };
+const base: FormularioEmMassa = { alcance: "ALL", selecionados: [], tipo: "PERCENTAGE", valor: "10", modo: "PRESERVE", excecoes: "KEEP" };
 
 describe("montarPedido", () => {
   it("todos: sem lista, percentual em pontos-base", () => {
@@ -24,6 +24,17 @@ describe("montarPedido", () => {
       ok: true,
       pedido: { target: "SELECTED", professionalIds: ["a", "b"], defaultRule: { kind: "FIXED", value: 1550 }, mode: "REPLACE" },
     });
+  });
+
+  it("remover exceções só vai no pedido em SUBSTITUIR", () => {
+    expect(montarPedido({ ...base, modo: "REPLACE", excecoes: "REMOVE" })).toEqual({
+      ok: true,
+      pedido: { target: "ALL", defaultRule: { kind: "PERCENTAGE", value: 1000 }, mode: "REPLACE", exceptions: "REMOVE" },
+    });
+    const preservando = montarPedido({ ...base, modo: "PRESERVE", excecoes: "REMOVE" });
+    expect(preservando.ok && "exceptions" in preservando.pedido).toBe(false);
+    const mantendo = montarPedido({ ...base, modo: "REPLACE", excecoes: "KEEP" });
+    expect(mantendo.ok && "exceptions" in mantendo.pedido).toBe(false);
   });
 
   it("todos ignora a seleção guardada", () => {
@@ -60,6 +71,17 @@ describe("corpoDaAplicacao", () => {
       mode: "REPLACE",
       fingerprint: "abc",
       confirmReplace: true,
+    });
+  });
+
+  it("substituir removendo exceções: as duas confirmações", () => {
+    expect(corpoDaAplicacao({ ...pedido, mode: "REPLACE", exceptions: "REMOVE" }, { fingerprint: "abc" })).toEqual({
+      ...pedido,
+      mode: "REPLACE",
+      exceptions: "REMOVE",
+      fingerprint: "abc",
+      confirmReplace: true,
+      confirmRemoveExceptions: true,
     });
   });
 });
