@@ -114,6 +114,59 @@ describe("service worker (public/sw.js)", () => {
     expect(comJanela.abertas).toEqual([]);
   });
 
+  it("só há janela do portal: não navega nem foca o portal, abre o destino da operação", async () => {
+    const destino = "/conta/agendamentos/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
+    for (const caminho of ["/portal", "/portal?next=%2Fportal%2Fusuarios", "/portal/visao-geral", "/portal/estabelecimentos/abc"]) {
+      const navegadas: string[] = [];
+      const sw = carregarServiceWorker([
+        {
+          url: `https://agenda.example.test${caminho}`,
+          navigate: (u) => {
+            navegadas.push(u);
+            return Promise.resolve(null);
+          },
+        },
+      ]);
+      await sw.tocar({ destino });
+      expect(navegadas).toEqual([]);
+      expect(sw.focadas).toEqual([]);
+      expect(sw.abertas).toEqual([`https://agenda.example.test${destino}`]);
+    }
+  });
+
+  it("janela do portal e janela da operação: reaproveita só a da operação", async () => {
+    const destino = "/conta/agendamentos/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
+    const navegadas: string[] = [];
+    const navegar = (u: string) => {
+      navegadas.push(u);
+      return Promise.resolve(null);
+    };
+    const sw = carregarServiceWorker([
+      { url: "https://agenda.example.test/portal/visao-geral", navigate: navegar },
+      { url: "https://agenda.example.test/conta/clientes", navigate: navegar },
+    ]);
+    await sw.tocar({ destino });
+    expect(navegadas).toEqual([`https://agenda.example.test${destino}`]);
+    expect(sw.focadas).toEqual(["https://agenda.example.test/conta/clientes"]);
+    expect(sw.abertas).toEqual([]);
+  });
+
+  it("caminho que só começa com 'portal' (sem a barra) não é janela do portal", async () => {
+    const destino = "/conta/agendamentos/solicitacoes";
+    const navegadas: string[] = [];
+    const sw = carregarServiceWorker([
+      {
+        url: "https://agenda.example.test/portalx",
+        navigate: (u) => {
+          navegadas.push(u);
+          return Promise.resolve(null);
+        },
+      },
+    ]);
+    await sw.tocar({ destino });
+    expect(navegadas).toEqual([`https://agenda.example.test${destino}`]);
+  });
+
   it("notificação entregue antes da mudança abre o endereço antigo, que o site encaminha", async () => {
     const destino = "/conta/solicitacoes?estabelecimento=tenantabc123&solicitacao=apptxyz789";
     const sw = carregarServiceWorker();

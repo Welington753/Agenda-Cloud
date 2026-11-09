@@ -12,6 +12,9 @@ on:
       - integration/nestjs-typeorm-frontend
     paths:
       - "src/**"
+      # public/sw.js (service worker do Web Push) e demais estáticos servidos
+      # pelo next start que os fluxos de navegador exercitam.
+      - "public/**"
       - "tests/browser/**"
       - "playwright.config.ts"
       - "playwright.proxy.config.ts"
@@ -364,6 +367,26 @@ jobs:
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-visao-geral
         run: npm run test:browser:portal-visao-geral
+
+      # Portal instalável ("Portal AC"): manifest, apple-touch-icon e título
+      # próprios no HTML do portal; operação, login e agendamento público
+      # seguem com o "Agenda Cloud"; login MASTER_OWNER sem sessão e volta à
+      # Visão geral, destinos externos ignorados, recusa de quem não é
+      # proprietário da plataforma. Invocação própria (2 aceites de convite,
+      # 2 logins). Não prova instalação no iPhone (roteiro no aparelho).
+      - name: Run installable platform portal (own manifest and icon, login and return, safe next; 2 logins)
+        id: browser_portal_instalavel
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/portal-instalavel
+        run: npm run test:browser:portal-instalavel
 
       # Invocação SEPARADA (aceite de convite: limite de 10 por 15 min por IP,
       # em memória no backend): empresa criada pela tela, e-mail na caixa
@@ -977,6 +1000,7 @@ jobs:
             steps.browser_appointments.outcome == 'failure' ||
             steps.browser_clients.outcome == 'failure' ||
             steps.browser_administracao.outcome == 'failure' ||
+            steps.browser_portal_instalavel.outcome == 'failure' ||
             steps.browser_contas.outcome == 'failure' ||
             steps.browser_equipe.outcome == 'failure' ||
             steps.browser_acesso_usuario.outcome == 'failure' ||
