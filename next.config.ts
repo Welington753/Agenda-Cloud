@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import { erroDeApiUrlDePublicacao } from "./src/lib/publicacao/api-url";
 import { ENCAMINHAMENTOS_ADMINISTRACAO_ANTIGA } from "./src/lib/administracao/rotas";
 import { ENCAMINHAMENTOS_CONTA_ANTIGA } from "./src/lib/conta/rotas";
+import { API_BASE_URL } from "./src/lib/config";
+import { regrasDeCabecalhos } from "./src/lib/site/cabecalhos";
 
 // No build da hospedagem, `NEXT_PUBLIC_API_URL` é obrigatório: ele é
 // embutido no JavaScript do navegador e não muda depois do build (ver
@@ -13,20 +15,15 @@ if (erroDeApiUrl) {
 }
 
 const nextConfig: NextConfig = {
-  // Service worker das notificações (public/sw.js): sempre a versão nova,
-  // nunca de cache, e só scripts da própria origem. Ele mesmo não guarda
-  // página, sessão nem resposta da API (não há manipulador de fetch).
+  // Segurança em todas as respostas, `noindex` nas áreas privadas e o
+  // service worker sem cache (ver src/lib/site/cabecalhos.ts). Calculado no
+  // build: `API_BASE_URL` e `API_PROXY_TARGET` entram na CSP (connect-src).
   async headers() {
-    return [
-      {
-        source: "/sw.js",
-        headers: [
-          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
-          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
-          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
-        ],
-      },
-    ];
+    return regrasDeCabecalhos({
+      apiBaseUrl: API_BASE_URL,
+      destinoProxy: process.env.API_PROXY_TARGET,
+      desenvolvimento: process.env.NODE_ENV === "development",
+    });
   },
   // O portal da plataforma mora em `/portal`, com entrada própria; os
   // endereços antigos levam para lá (ver src/lib/administracao/rotas.ts). Solicitações, Serviços,
