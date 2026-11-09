@@ -50,6 +50,40 @@ ou em `agenda_dev`:** nenhum deploy, migration, backup ou restauração.
   substituem); depois, publicação do C_final e validação do Portal AC no
   iPhone (`continuidade-portal-instalavel.md`).
 
+## Autorização de 09/11/2026: backups reais no PC do trabalho
+
+O dono autorizou, em 09/11/2026, fazer backups reais do piloto **no PC do
+trabalho** e restaurá-los **exclusivamente em PostgreSQL descartável local**,
+para conferir e ensaiar. Essa decisão substitui a restrição anterior de
+backups e restaurações reais só no PC de casa.
+
+- A restauração nunca é feita sobre o piloto, o Neon ou `agenda_dev`.
+- Todos os backups existentes em `%USERPROFILE%\AgendaCloud-operacoes` são
+  preservados.
+- A autorização cobre as fases `conferir`, `preparar` e `restauracao`. Ela
+  **não** cobre `aplicar`, a migration 16, deploy nem rollback: cada um
+  continua exigindo autorização expressa no momento.
+- Os SHAs operacionais acima não mudaram.
+
+**Feito em 09/11/2026, PC do trabalho, kit da 15 em `92cc6ae`** (worktree
+`C:\Projetos\Agenda-Cloud-m15-92cc6ae`, `node_modules` próprio, `pg_dump`
+17.11). Render conferido antes: API e web Live em `92cc6ae`, não em
+`2656f69` como o runbook da 15 supunha. As guardas do kit leem só o banco e
+não foram alteradas.
+
+- `conferir`: `before-professional-commissions`, 14 migrations, nenhuma
+  sessão da migration ativa.
+- `preparar`: backup `comissoes-preparar-2026-11-09T12-45-44-343Z`, 190.069
+  bytes, 44 tabelas, servidor 17.11, sha256 `745344f9…a0b0a2`.
+- `restauracao` no PostgreSQL 17.11 descartável local:
+  `restauracao_e_ensaio_ok` (contagens e md5 iguais; na cópia, só
+  ProfessionalCommissions; estado depois conferido; descartável apagado).
+- O comprovante é aceito pela regra da fase `aplicar` até
+  **10/11/2026 12:46:38 UTC** (24 h do ponto de recuperação). Depois disso,
+  repita `preparar` e `restauracao`.
+- O backup de 05/11 (`c7ba858`) foi preservado e não vale para este commit.
+- **Não executados:** `aplicar`, migration 16, deploy e rollback.
+
 As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
 já foram feitos; a worktree de revisão do #99 não é mais necessária.
 
@@ -172,8 +206,10 @@ momento. Qualquer `ERRO:` para a sequência.
    6. `conferir` com `JANELA_DE_TRANSICAO: ok`; fim da janela.
 5. **Publicação sempre migration → API → web.** Voltar é web → API.
 
-**Backups e restaurações reais só no PC de casa,** na pasta
-`%USERPROFILE%\AgendaCloud-operacoes`, fora do repositório.
+**Backups e restaurações reais** ficam na pasta
+`%USERPROFILE%\AgendaCloud-operacoes`, fora do repositório. Desde 09/11/2026
+podem ser feitos também no PC do trabalho, com restauração só em PostgreSQL
+descartável local (ver "Autorização de 09/11/2026").
 
 ## Janela de manutenção e limites do rollback
 
@@ -235,4 +271,5 @@ Começa em Planejamento quando for retomado.
   deve ser usado. Normalmente OFF.
 - **Comissão fixa:** é por serviço realizado (cada item concluído), não por
   atendimento.
-- **Backups:** reais ficam para o PC de casa.
+- **Backups:** reais podem ser feitos no PC de casa ou, desde 09/11/2026, no
+  PC do trabalho; restauração só em PostgreSQL descartável local.
