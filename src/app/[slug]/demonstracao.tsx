@@ -1,12 +1,15 @@
 "use client";
 
-// `/<slug>` é o endereço curto do estabelecimento e ainda abriga a página
-// pública da demonstração (localStorage). Slug da demonstração neste
-// navegador: a demonstração, como antes. Qualquer outro vai para a página
-// real (`/agendar/<slug>`), que trata estabelecimento inexistente e
-// indisponível. As rotas fixas da raiz (`/login`, `/conta`...) nunca chegam
-// aqui: o Next resolve a rota fixa antes da dinâmica.
-import { useEffect } from "react";
+// Página pública da DEMONSTRAÇÃO (localStorage, legado) no endereço curto
+// `/<slug>`. O servidor (page.tsx) decide antes quem chega aqui:
+// - `PaginaDaDemonstracao`: slug da semente fixa da demonstração. Se o
+//   navegador apagou ou renomeou esse estabelecimento, vai para a página real,
+//   como antes.
+// - `DemonstracaoOuNaoEncontrada`: dentro do 404 (not-found.tsx), quando a API
+//   confirmou que não há estabelecimento real com o slug. Um estabelecimento
+//   criado na demonstração deste navegador ainda aparece; para qualquer outro
+//   visitante (e para quem não roda JavaScript) fica a página 404 do servidor.
+import { useEffect, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { estabelecimentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
 import { useClientData } from "@/lib/hooks/use-client-data";
@@ -17,12 +20,8 @@ import { ModeloClassico } from "@/components/publico/modelo-classico";
 import { ModeloModerno } from "@/components/publico/modelo-moderno";
 import { linkPublico } from "@/lib/agendamento-publico/agendamento-publico";
 
-export default function PaginaPublicaEstabelecimento() {
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug;
-  const router = useRouter();
-
-  const { dados, carregando } = useClientData(() => {
+function useDemonstracao(slug: string) {
+  return useClientData(() => {
     const estabelecimento = estabelecimentoRepository.obterPorSlug(slug);
     if (!estabelecimento) return null;
     const profissionais = profissionalRepository
@@ -33,6 +32,27 @@ export default function PaginaPublicaEstabelecimento() {
       .filter((s) => s.ativoNoAgendamentoPublico);
     return { estabelecimento, profissionais, servicos };
   }, [slug]);
+}
+
+type Dados = NonNullable<ReturnType<typeof useDemonstracao>["dados"]>;
+
+function Vitrine({ slug, dados }: { slug: string; dados: Dados }) {
+  const { estabelecimento, profissionais, servicos } = dados;
+  const terminologia = obterTerminologia(estabelecimento.categoria);
+  const agendamentoPublicoHabilitado =
+    featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico") &&
+    podeReceberAgendamentoPublico(estabelecimento.status);
+
+  const props = { slug, estabelecimento, profissionais, servicos, terminologia, agendamentoPublicoHabilitado };
+
+  // Nenhum código separado por estabelecimento: os dois modelos recebem os
+  // mesmos dados, só a apresentação (`modelo-classico.tsx`/`modelo-moderno.tsx`) muda.
+  return estabelecimento.identidadeVisual.modelo === "moderno" ? <ModeloModerno {...props} /> : <ModeloClassico {...props} />;
+}
+
+export function PaginaDaDemonstracao({ slug }: { slug: string }) {
+  const router = useRouter();
+  const { dados, carregando } = useDemonstracao(slug);
 
   const foraDaDemonstracao = !carregando && !dados;
   useEffect(() => {
@@ -48,16 +68,17 @@ export default function PaginaPublicaEstabelecimento() {
       </div>
     );
   }
+  return <Vitrine slug={slug} dados={dados} />;
+}
 
-  const { estabelecimento, profissionais, servicos } = dados;
-  const terminologia = obterTerminologia(estabelecimento.categoria);
-  const agendamentoPublicoHabilitado =
-    featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico") &&
-    podeReceberAgendamentoPublico(estabelecimento.status);
-
-  const props = { slug, estabelecimento, profissionais, servicos, terminologia, agendamentoPublicoHabilitado };
-
-  // Nenhum código separado por estabelecimento: os dois modelos recebem os
-  // mesmos dados, só a apresentação (`modelo-classico.tsx`/`modelo-moderno.tsx`) muda.
-  return estabelecimento.identidadeVisual.modelo === "moderno" ? <ModeloModerno {...props} /> : <ModeloClassico {...props} />;
+export function DemonstracaoOuNaoEncontrada({ children }: { children: ReactNode }) {
+  const params = useParams<{ slug: string }>();
+  let slug = params.slug;
+  try {
+    slug = decodeURIComponent(slug);
+  } catch {
+    // slug mal codificado: nenhum estabelecimento da demonstração o tem.
+  }
+  const { dados } = useDemonstracao(slug);
+  return dados ? <Vitrine slug={slug} dados={dados} /> : children;
 }

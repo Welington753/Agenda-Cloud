@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import { cache } from "react";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { MarcadorAparelho } from "@/components/aparencia/aparencia";
-import { lerConfiguracaoProxy } from "@/lib/api/proxy-config";
-import { lerPaginaNoServidor } from "@/lib/agendamento-publico/pagina-no-servidor";
+import { lerPaginaDaRequisicao as lerPagina } from "@/lib/agendamento-publico/leitura-da-requisicao";
 import {
   DESCRICAO_PAGINA_PUBLICA_GENERICA,
   TITULO_PAGINA_PUBLICA_GENERICO,
@@ -20,16 +17,13 @@ import { enderecoAbsoluto, lerConfiguracaoDoSite } from "@/lib/site/origem-do-si
 // Agendamento público: segue SEMPRE a aparência do aparelho do cliente,
 // mesmo que o dono tenha escolhido um tema na área privada deste navegador.
 //
-// Layout de SERVIDOR: lê a página pública uma vez por requisição (`cache`
-// junta a leitura do layout e a dos metadados) para dar título, descrição,
-// endereço canônico e dados estruturados do estabelecimento certo, e para
-// responder 404 de verdade quando a API confirma que ele não existe ou que a
-// página está desligada. A tela continua no navegador (page.tsx), sem mudança.
+// Layout de SERVIDOR: lê a página pública uma vez por requisição (a mesma
+// leitura serve o layout e os metadados, ver leitura-da-requisicao.ts) para
+// dar título, descrição, endereço canônico e dados estruturados do
+// estabelecimento certo, e para responder 404 de verdade quando a API
+// confirma que ele não existe ou que a página está desligada. A tela continua
+// no navegador (page.tsx), sem mudança.
 // Regras da leitura: lib/agendamento-publico/pagina-no-servidor.ts.
-const lerPagina = cache(async (slug: string) => {
-  const proxy = lerConfiguracaoProxy(process.env);
-  return lerPaginaNoServidor(slug, proxy.ok ? proxy.configuracao : null, await headers());
-});
 
 export async function generateMetadata({ params }: LayoutProps<"/agendar/[slug]">): Promise<Metadata> {
   const { slug } = await params;
