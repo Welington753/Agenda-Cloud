@@ -22,7 +22,7 @@ import { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppointmentsService } from '../src/appointments/appointments.service.js';
 import { AvailabilityService } from '../src/availability/availability.service.js';
-import { apurarNaConclusao, reverterApuracao } from '../src/commissions/commission-accrual.js';
+import { apurarNaConclusao, configuracaoTravada, reverterApuracao } from '../src/commissions/commission-accrual.js';
 import { CommissionsService } from '../src/commissions/commissions.service.js';
 import { ConsumersService } from '../src/consumers/consumers.service.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
@@ -85,6 +85,7 @@ interface Linha {
   price_cents_snapshot: number | null;
   applied_type: string | null;
   applied_value: number | null;
+  applied_rule_scope: string | null;
   professional_cents: number | null;
   establishment_cents: number | null;
   status: string;
@@ -145,6 +146,11 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     for (const p of [ana, bia]) {
       await horarios.replace(dono.id, tenant.id, p.id, { days: [{ weekday: WEEKDAY, intervals: [{ start: '08:00', end: '20:00' }] }] });
     }
+    // Profissional cadastrado agora começa sem receber comissão. Os cenários
+    // abaixo partem de "recebe, sem regra geral" (o estado de quem já existia
+    // antes da regra geral); os casos próprios da configuração ligam e
+    // desligam pelo serviço.
+    await m.query('UPDATE professional_commission_settings SET receives_commission = true WHERE tenant_id = $1', [tenant.id]);
     const consumidor = await clientes.create(dono.id, tenant.id, {
       name: `Cliente ${nome}`,
       whatsapp: `(11) 9${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`,
@@ -179,7 +185,8 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
   const linhas = (appointmentId: string) =>
     db.query(
       `SELECT ce.appointment_item_id, ce.service_id, ce.price_cents_snapshot, ce.applied_type::text AS applied_type,
-              ce.applied_value, ce.professional_cents, ce.establishment_cents, ce.status::text AS status, ce.calculated_at
+              ce.applied_value, ce.applied_rule_scope, ce.professional_cents, ce.establishment_cents, ce.status::text AS status,
+              ce.calculated_at
          FROM commission_entries ce JOIN appointment_items ai ON ai.id = ce.appointment_item_id
         WHERE ce.appointment_id = $1 ORDER BY ai.position`,
       [appointmentId],
@@ -598,4 +605,371 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     // As apurações continuam gravadas.
     expect(((await db.query('SELECT count(*)::int AS n FROM commission_entries WHERE tenant_id = $1', [c.tenantId])) as { n: number }[])[0].n).toBe(3);
   });
+  // ------------------------------------------------------------------------
+  // "Recebe comissão" e regra geral (migration ProfessionalCommissionSettings,
+  // docs/plans/comissoes-regra-geral.md).
+  // ------------------------------------------------------------------------
+
+  const pct = (value: number) => ({ kind: 'PERCENTAGE' as const, value });
+  const fixo = (value: number) => ({ kind: 'FIXED' as const, value });
+  const total = async (c: Cenario) => (await comissoes.report(c.dono, c.tenantId, MES)).totalAccruedCents;
+  const contar = async (appointmentId: string) =>
+    ((await db.query('SELECT count(*)::int AS n FROM commission_entries WHERE appointment_id = $1', [appointmentId])) as { n: number }[])[0].n;
+  const resumo = (l: Linha) => [l.service_id, l.applied_rule_scope, l.applied_type, l.applied_value, l.professional_cents];
+
+  /** Prova de BLOQUEIO, não de lentidão: espera até `quantas` sessões estarem
+   * paradas numa trava (`wait_event_type = 'Lock'`) por causa da sessão `pid`,
+   * direta ou indiretamente (a segunda de uma fila espera a primeira),
+   * executando uma instrução com `trecho`. Não depende de tempo: falha se em
+   * 10 s isso não acontecer (a trava não existe). */
+  async function esperarBloqueadas(pid: number, trecho: string, quantas = 1) {
+    const limite = Date.now() + 10_000;
+    for (;;) {
+      const esperando = (await db.query(
+        `SELECT pid, query, pg_blocking_pids(pid) AS por FROM pg_stat_activity WHERE wait_event_type = 'Lock'`,
+      )) as { pid: number; query: string; por: number[] }[];
+      const causadas = new Set([pid]);
+      for (let mudou = true; mudou; ) {
+        mudou = false;
+        for (const e of esperando) {
+          if (!causadas.has(e.pid) && e.por.some((p) => causadas.has(p))) {
+            causadas.add(e.pid);
+            mudou = true;
+          }
+        }
+      }
+      const bloqueadas = esperando.filter((e) => e.pid !== pid && causadas.has(e.pid));
+      if (bloqueadas.filter((b) => b.query.includes(trecho)).length >= quantas) return;
+      if (Date.now() > limite) {
+        throw new Error(`Esperava ${quantas} sessão(ões) bloqueada(s) por ${pid} em "${trecho}": ${JSON.stringify(bloqueadas)}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  it('profissional anterior à regra geral (sem configuração gravada): recebe, sem regra geral, "não configurada" sem valor', async () => {
+    const c = await cenario('legado');
+    await db.query('DELETE FROM professional_commission_settings WHERE tenant_id = $1', [c.tenantId]);
+    const vista = await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, pct(4000));
+    expect(vista.settings).toEqual({ receivesCommission: true, defaultRule: null });
+    expect(vista.services.map((s) => [s.service.name, s.effective])).toEqual([
+      ['Avaliação', { source: null, rule: null }],
+      ['Barba', { source: null, rule: null }],
+      ['Corte', { source: 'SERVICE', rule: pct(4000) }],
+    ]);
+    // Mudar uma exceção não grava configuração: continua no estado anterior.
+    expect((await db.query('SELECT count(*)::int AS n FROM professional_commission_settings WHERE tenant_id = $1', [c.tenantId])) as { n: number }[]).toEqual([
+      { n: 0 },
+    ]);
+    expect((await comissoes.settingsSummary(c.dono, c.tenantId)).professionals).toEqual(
+      expect.arrayContaining([
+        { professionalId: c.ana, receivesCommission: true },
+        { professionalId: c.bia, receivesCommission: true },
+      ]),
+    );
+    const reserva = await reservar(c, [c.corte, c.barba], as(DIA, 9));
+    await concluir(c, reserva.id, as(DIA, 9));
+    expect((await linhas(reserva.id)).map(resumo)).toEqual([
+      [c.corte, 'SERVICE', 'PERCENTAGE', 4000, 1700],
+      [c.barba, null, null, null, null],
+    ]);
+    // Apuração gravada antes da regra geral (escopo NULL com regra): no
+    // relatório, regra antiga por serviço, nunca "exceção"; sem regra
+    // continua sem origem e em conferência.
+    await db.query(`UPDATE commission_entries SET applied_rule_scope = NULL WHERE appointment_id = $1`, [reserva.id]);
+    const [atendimento] = (await comissoes.report(c.dono, c.tenantId, MES)).appointments;
+    expect(atendimento.items.map((i) => [i.serviceName, i.ruleSource, i.situation])).toEqual([
+      ['Corte', 'LEGACY_SERVICE', 'OK'],
+      ['Barba', null, 'NAO_CONFIGURADA'],
+    ]);
+    expect(atendimento.commissionCents).toBe(1700);
+  });
+
+  it('profissional novo começa desligado: regras guardadas não geram comissão; religar e repetir a conclusão não é retroativo', async () => {
+    const c = await cenario('novo');
+    const carla = await profissionais.create(c.dono, c.tenantId, { name: 'Carla novo', serviceIds: [c.corte, c.barba] });
+    await horarios.replace(c.dono, c.tenantId, carla.id, { days: [{ weekday: WEEKDAY, intervals: [{ start: '08:00', end: '20:00' }] }] });
+    const regras = await comissoes.setRule(c.dono, c.tenantId, carla.id, c.corte, pct(4000));
+    expect(regras.settings).toEqual({ receivesCommission: false, defaultRule: null });
+    // A tela mostra o que valeria; quem decide se gera é "Recebe comissão".
+    expect(regras.services.find((s) => s.service.id === c.corte)!.effective).toEqual({ source: 'SERVICE', rule: pct(4000) });
+    expect((await comissoes.settingsSummary(c.dono, c.tenantId)).professionals).toEqual(
+      expect.arrayContaining([{ professionalId: carla.id, receivesCommission: false }]),
+    );
+
+    const desligada = await reservar(c, [c.corte, c.barba], as(DIA, 9), carla.id);
+    await concluir(c, desligada.id, as(DIA, 9));
+    expect(await contar(desligada.id)).toBe(0);
+
+    const ligada = await comissoes.setSettings(c.dono, c.tenantId, carla.id, { receivesCommission: true, defaultRule: fixo(1000) });
+    expect(ligada.settings).toEqual({ receivesCommission: true, defaultRule: fixo(1000) });
+    // Repetir a conclusão do atendimento feito com ela desligada não apura.
+    await concluir(c, desligada.id, as(DIA, 9));
+    expect(await contar(desligada.id)).toBe(0);
+    expect(await total(c)).toBe(0);
+
+    const depois = await reservar(c, [c.corte, c.barba], as(DIA, 10), carla.id);
+    await concluir(c, depois.id, as(DIA, 10));
+    const apuradas = (await linhas(depois.id)).map(resumo);
+    expect(apuradas).toEqual([
+      [c.corte, 'SERVICE', 'PERCENTAGE', 4000, 1700],
+      [c.barba, 'DEFAULT', 'FIXED', 1000, 1000],
+    ]);
+
+    // Desligar guarda regra geral e exceções, não mexe no histórico e
+    // impede apuração nova.
+    const off = await comissoes.setSettings(c.dono, c.tenantId, carla.id, { receivesCommission: false, defaultRule: fixo(1000) });
+    expect(off.settings).toEqual({ receivesCommission: false, defaultRule: fixo(1000) });
+    expect(off.services.find((s) => s.service.id === c.corte)!.rule).toEqual(pct(4000));
+    const deNovoDesligada = await reservar(c, [c.corte], as(DIA, 11), carla.id);
+    await concluir(c, deNovoDesligada.id, as(DIA, 11));
+    expect(await contar(deNovoDesligada.id)).toBe(0);
+    expect((await linhas(depois.id)).map(resumo)).toEqual(apuradas);
+    expect(await total(c)).toBe(2700);
+
+    const auditoria = (await db.query(
+      `SELECT summary FROM audit_logs WHERE tenant_id = $1 AND action = 'COMMISSION_RULE_CHANGED' AND summary LIKE 'Comissão de Carla novo:%'
+        ORDER BY occurred_at, id`,
+      [c.tenantId],
+    )) as { summary: string }[];
+    expect(auditoria.map((a) => a.summary)).toEqual([
+      'Comissão de Carla novo: não recebe → recebe, regra geral R$ 10.00 fixo.',
+      'Comissão de Carla novo: recebe, regra geral R$ 10.00 fixo → não recebe.',
+    ]);
+    // Repetir a mesma configuração não grava nem audita.
+    await comissoes.setSettings(c.dono, c.tenantId, carla.id, { receivesCommission: false, defaultRule: fixo(1000) });
+    expect(
+      ((await db.query(`SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = $1 AND summary LIKE 'Comissão de Carla novo:%'`, [
+        c.tenantId,
+      ])) as { n: number }[])[0].n,
+    ).toBe(2);
+  });
+
+  it('precedência da apuração = a mostrada na tela: exceção (inclusive "sem comissão") > regra geral; fixo por serviço realizado', async () => {
+    const c = await cenario('precedencia');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: fixo(1000) });
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, pct(1000));
+    const vista = await comissoes.setRule(c.dono, c.tenantId, c.ana, c.barba, { kind: 'NONE' });
+    const reserva = await reservar(c, [c.corte, c.barba, c.avaliacao], as(DIA, 9));
+    await concluir(c, reserva.id, as(DIA, 9));
+    const apuradas = await linhas(reserva.id);
+    for (const linha of apuradas) {
+      const naTela = vista.services.find((s) => s.service.id === linha.service_id)!.effective;
+      expect([linha.applied_rule_scope, linha.applied_type, linha.applied_value]).toEqual([
+        naTela.source,
+        naTela.rule ? (naTela.rule.kind === 'NONE' ? 'PERCENTAGE' : naTela.rule.kind) : null,
+        naTela.rule ? (naTela.rule.value ?? 0) : null,
+      ]);
+    }
+    // 10% de 42,50; "sem comissão" na Barba; R$ 10 fixos na Avaliação, sob consulta.
+    expect(apuradas.map((l) => [l.service_id, l.applied_rule_scope, l.professional_cents, l.establishment_cents])).toEqual([
+      [c.corte, 'SERVICE', 425, 3825],
+      [c.barba, 'SERVICE', 0, 2500],
+      [c.avaliacao, 'DEFAULT', 1000, null],
+    ]);
+    const [atendimento] = (await comissoes.report(c.dono, c.tenantId, MES)).appointments;
+    expect(atendimento.items.map((i) => i.ruleSource)).toEqual(['SERVICE', 'SERVICE', 'DEFAULT']);
+    expect(atendimento.commissionCents).toBe(1425);
+
+    // Mudar a regra geral e remover uma exceção depois não recalcula.
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: pct(5000) });
+    const semExcecao = await comissoes.clearRule(c.dono, c.tenantId, c.ana, c.corte);
+    expect(semExcecao.services.find((s) => s.service.id === c.corte)).toMatchObject({
+      rule: null,
+      effective: { source: 'DEFAULT', rule: pct(5000) },
+    });
+    expect(await linhas(reserva.id)).toEqual(apuradas);
+    expect(await total(c)).toBe(1425);
+  });
+
+  it('mudanças simultâneas às conclusões: cada apuração usa uma configuração que existiu inteira', async () => {
+    const c = await cenario('concorrencia');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: fixo(1000) });
+    const inicios = [8, 9, 10, 11, 12, 13, 14, 15].map((h) => as(DIA, h));
+    const reservas = [];
+    for (const inicio of inicios) reservas.push(await reservar(c, [c.corte, c.barba], inicio));
+    relogio = DEPOIS;
+    // Estados que existiram, em ordem: A {geral R$ 10}; B {geral 50%};
+    // C {geral 50%, Barba sem comissão}. Uma leitura com a configuração de A e
+    // a exceção de C misturaria os dois e é proibida.
+    const mudancas = (async () => {
+      await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: pct(5000) });
+      await comissoes.setRule(c.dono, c.tenantId, c.ana, c.barba, { kind: 'NONE' });
+    })();
+    await Promise.all([
+      mudancas,
+      ...reservas.map((r, i) => agendamentos.changeStatus(c.dono, c.tenantId, r.id, 'complete', { expectedStartAt: inicios[i] })),
+    ]);
+    const validos = [
+      JSON.stringify([[c.corte, 'DEFAULT', 'FIXED', 1000, 1000], [c.barba, 'DEFAULT', 'FIXED', 1000, 1000]]),
+      JSON.stringify([[c.corte, 'DEFAULT', 'PERCENTAGE', 5000, 2125], [c.barba, 'DEFAULT', 'PERCENTAGE', 5000, 1250]]),
+      JSON.stringify([[c.corte, 'DEFAULT', 'PERCENTAGE', 5000, 2125], [c.barba, 'SERVICE', 'PERCENTAGE', 0, 0]]),
+    ];
+    for (const r of reservas) expect(validos).toContain(JSON.stringify((await linhas(r.id)).map(resumo)));
+
+    // Desligar durante conclusões: cada atendimento tem todas as linhas ou nenhuma.
+    const outras = [];
+    for (const h of [16, 17, 18, 19]) outras.push({ r: await reservar(c, [c.corte, c.barba], as(DIA, h)), inicio: as(DIA, h) });
+    relogio = DEPOIS;
+    await Promise.all([
+      comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: false, defaultRule: pct(5000) }),
+      ...outras.map(({ r, inicio }) => agendamentos.changeStatus(c.dono, c.tenantId, r.id, 'complete', { expectedStartAt: inicio })),
+    ]);
+    for (const { r } of outras) expect([0, 2]).toContain(await contar(r.id));
+  });
+
+  it('a conclusão espera uma mudança de configuração em curso e apura com a configuração inteira de depois', async () => {
+    const c = await cenario('trava');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: fixo(1000) });
+    const inicio = as(DIA, 9);
+    const reserva = await reservar(c, [c.corte, c.barba], inicio);
+    // Uma mudança em curso, como a de `setSettings`/`setRule`: trava o
+    // profissional e grava a regra geral e uma exceção, ainda sem commit.
+    const mudanca = db.createQueryRunner();
+    await mudanca.connect();
+    await mudanca.startTransaction();
+    let terminou = false;
+    try {
+      const [{ pid }] = (await mudanca.query('SELECT pg_backend_pid() AS pid')) as { pid: number }[];
+      await mudanca.query('SELECT 1 FROM professionals WHERE tenant_id = $1 AND id = $2 FOR UPDATE', [c.tenantId, c.ana]);
+      await mudanca.query(
+        `UPDATE professional_commission_settings SET default_type = 'PERCENTAGE', default_value = 5000 WHERE tenant_id = $1 AND professional_id = $2`,
+        [c.tenantId, c.ana],
+      );
+      relogio = DEPOIS;
+      const conclusao = agendamentos.changeStatus(c.dono, c.tenantId, reserva.id, 'complete', { expectedStartAt: inicio }).then(() => {
+        terminou = true;
+      });
+      // A conclusão está parada na trava da apuração (`FOR KEY SHARE` no
+      // profissional) que esta mudança segura; só então a mudança termina.
+      await esperarBloqueadas(pid, 'FOR KEY SHARE');
+      expect(terminou).toBe(false);
+      await mudanca.query(
+        `INSERT INTO commission_rules (id, tenant_id, professional_id, service_id, type, value, created_at, updated_at)
+         VALUES (substr(md5(random()::text), 1, 24), $1, $2, $3, 'PERCENTAGE', 0, now(), now())`,
+        [c.tenantId, c.ana, c.barba],
+      );
+      await mudanca.commitTransaction();
+      await conclusao;
+    } finally {
+      if (mudanca.isTransactionActive) await mudanca.rollbackTransaction();
+      await mudanca.release();
+    }
+    expect(terminou).toBe(true);
+    expect((await linhas(reserva.id)).map(resumo)).toEqual([
+      [c.corte, 'DEFAULT', 'PERCENTAGE', 5000, 2125],
+      [c.barba, 'SERVICE', 'PERCENTAGE', 0, 0],
+    ]);
+  });
+
+  it('mudanças de configuração e de exceção esperam a apuração em curso, que termina com a configuração de antes', async () => {
+    const c = await cenario('trava-inversa');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: fixo(1000) });
+    const antes = { receivesCommission: true, defaultRule: { type: 'FIXED', value: 1000 } };
+    const excecoes = async (manager: { query: (sql: string, p: unknown[]) => Promise<unknown> }) =>
+      (await manager.query('SELECT count(*)::int AS n FROM commission_rules WHERE tenant_id = $1 AND professional_id = $2', [
+        c.tenantId,
+        c.ana,
+      ])) as { n: number }[];
+    // Uma apuração em curso: já travou o profissional e leu a configuração
+    // (a mesma função de `apurarNaConclusao`), ainda sem commit.
+    const apuracao = db.createQueryRunner();
+    await apuracao.connect();
+    await apuracao.startTransaction();
+    let mudou = false;
+    let mudancas: Promise<void> | undefined;
+    try {
+      const [{ pid }] = (await apuracao.query('SELECT pg_backend_pid() AS pid')) as { pid: number }[];
+      expect(await configuracaoTravada(apuracao.manager, c.tenantId, c.ana)).toEqual(antes);
+      mudancas = Promise.all([
+        comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: false, defaultRule: null }),
+        comissoes.setRule(c.dono, c.tenantId, c.ana, c.barba, { kind: 'NONE' }),
+      ]).then(() => {
+        mudou = true;
+      });
+      // As duas mudanças estão paradas no `FOR UPDATE` do profissional.
+      await esperarBloqueadas(pid, 'FOR UPDATE', 2);
+      expect(mudou).toBe(false);
+      // Enquanto isso, a apuração continua vendo só a configuração de antes.
+      expect(await configuracaoTravada(apuracao.manager, c.tenantId, c.ana)).toEqual(antes);
+      expect(await excecoes(apuracao.manager)).toEqual([{ n: 0 }]);
+      await apuracao.commitTransaction();
+      await mudancas;
+    } finally {
+      if (apuracao.isTransactionActive) await apuracao.rollbackTransaction();
+      await apuracao.release();
+      await mudancas?.catch(() => undefined);
+    }
+    expect(mudou).toBe(true);
+    expect(await configuracaoTravada(db.manager, c.tenantId, c.ana)).toEqual({ receivesCommission: false, defaultRule: null });
+    expect(await excecoes(db.manager)).toEqual([{ n: 1 }]);
+  });
+
+  it('reabertura futura: com o profissional desligado a fotografia fica revertida; religado, volta a MESMA, sem recalcular', async () => {
+    const c = await cenario('reativacao');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: fixo(1000) });
+    const feita = await reservar(c, [c.corte, c.barba], as(DIA, 9));
+    await concluir(c, feita.id, as(DIA, 9));
+    const fotografia = (await linhas(feita.id)).map(resumo);
+    expect(fotografia).toEqual([
+      [c.corte, 'DEFAULT', 'FIXED', 1000, 1000],
+      [c.barba, 'DEFAULT', 'FIXED', 1000, 1000],
+    ]);
+    const reabrir = () =>
+      db.transaction(async (m) => {
+        await m.query(`UPDATE appointments SET status = 'IN_PROGRESS' WHERE id = $1`, [feita.id]);
+        await reverterApuracao(m, { tenantId: c.tenantId, id: feita.id }, DEPOIS);
+      });
+    await reabrir();
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: false, defaultRule: fixo(1000) });
+    await concluir(c, feita.id, as(DIA, 9));
+    expect((await linhas(feita.id)).map((l) => l.status)).toEqual(['REVERSED', 'REVERSED']);
+    expect(await contar(feita.id)).toBe(2);
+    expect(await total(c)).toBe(0);
+
+    await reabrir();
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: pct(5000) });
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, { kind: 'NONE' });
+    await concluir(c, feita.id, as(DIA, 9));
+    const reativadas = await linhas(feita.id);
+    expect(reativadas.map((l) => l.status)).toEqual(['CONFIRMED', 'CONFIRMED']);
+    expect(reativadas.map(resumo)).toEqual(fotografia);
+    expect(await total(c)).toBe(2000);
+  });
+
+  it('configuração: só o dono com a gestão de comissões; funcionário e gerente não alteram nem ligam a própria; isolamento', async () => {
+    const c = await cenario('config-acesso');
+    const outro = await cenario('config-acesso-outro');
+    const ligar = { receivesCommission: true, defaultRule: pct(5000) };
+    const funcionarioDaAna = await funcionario(c, c.ana, 'PROFISSIONAL', ['COMISSOES_PROPRIAS_VISUALIZAR']);
+    await expect(comissoes.setSettings(funcionarioDaAna, c.tenantId, c.ana, ligar)).rejects.toThrow(ForbiddenException);
+    await expect(comissoes.settingsSummary(funcionarioDaAna, c.tenantId)).rejects.toThrow(ForbiddenException);
+    await expect(comissoes.setRule(funcionarioDaAna, c.tenantId, c.ana, c.corte, pct(5000))).rejects.toThrow(ForbiddenException);
+    const gerente = await funcionario(c, c.bia, 'GERENTE', ['COMISSOES_PROPRIAS_VISUALIZAR']);
+    await expect(comissoes.setSettings(gerente, c.tenantId, c.bia, ligar)).rejects.toThrow(ForbiddenException);
+    await db.query(`DELETE FROM memberships WHERE user_id = $1`, [gerente]);
+    // Ids cruzados respondem como inexistentes.
+    await expect(comissoes.setSettings(c.dono, c.tenantId, outro.ana, ligar)).rejects.toThrow(NotFoundException);
+    await expect(comissoes.setSettings(outro.dono, c.tenantId, c.ana, ligar)).rejects.toThrow(NotFoundException);
+    await expect(comissoes.settingsSummary(outro.dono, c.tenantId)).rejects.toThrow(NotFoundException);
+    expect((await comissoes.settingsSummary(outro.dono, outro.tenantId)).professionals.map((p) => p.professionalId).sort()).toEqual(
+      [outro.ana, outro.bia].sort(),
+    );
+    // Nada foi gravado pelas recusas.
+    expect((await comissoes.rules(c.dono, c.tenantId, c.ana)).settings).toEqual({ receivesCommission: true, defaultRule: null });
+    // Dono com a configuração restringida.
+    const [{ id: membroDono }] = (await db.query('SELECT id FROM memberships WHERE tenant_id = $1 AND user_id = $2', [c.tenantId, c.dono])) as {
+      id: string;
+    }[];
+    await db.query(
+      `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
+       VALUES (substr(md5(random()::text), 1, 24), $1, $2, 'COMISSOES_GERENCIAR', 'DENIED')`,
+      [c.tenantId, membroDono],
+    );
+    await expect(comissoes.setSettings(c.dono, c.tenantId, c.ana, ligar)).rejects.toThrow(ForbiddenException);
+    // Básico: sem o recurso, recusado.
+    const basico = await cenario('config-basico', 'essencial');
+    await expect(comissoes.setSettings(basico.dono, basico.tenantId, basico.ana, ligar)).rejects.toThrow(ForbiddenException);
+  });
+
 });

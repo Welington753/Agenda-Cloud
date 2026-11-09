@@ -1,14 +1,17 @@
 "use client";
 
-// Regras de comissão de um profissional, serviço a serviço (dono). Quatro
-// escolhas: "Não configurada" (sem regra), "Sem comissão" (zero escolhido),
-// percentual sobre o preço do serviço na reserva, ou valor fixo. Mudar uma
-// regra vale só para as próximas conclusões: o que já foi apurado guarda a
-// própria fotografia. O servidor confere tudo de novo (recurso do plano,
-// permissão e se o profissional atende o serviço).
+// Comissão de um profissional (dono): "Recebe comissão", regra geral e
+// exceções por serviço. Precedência, a mesma da apuração (calculada no
+// servidor, campo `effective`): exceção do serviço (inclusive "Sem
+// comissão") > regra geral > não configurada (conferência). Desligado,
+// tudo fica guardado, mas nenhuma conclusão gera comissão. Mudar algo vale só
+// para as próximas conclusões: o que já foi apurado guarda a própria
+// fotografia. O servidor confere tudo de novo (recurso do plano, permissão e
+// se o profissional atende o serviço).
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { AlertTriangle, CircleSlash } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { acaoAdministrativa, mensagemDoResultado } from "@/lib/administracao/api-contas";
@@ -16,13 +19,12 @@ import {
   caminhoRegra,
   caminhoRegras,
   ehRegrasDoProfissional,
-  percentualParaPontosBase,
   pontosBaseParaCampo,
-  rotuloDaRegra,
+  rotuloDaEfetiva,
   type RegrasDoProfissional,
   type ServicoComRegra,
 } from "@/lib/api/comissoes-api";
-import { centavosParaCampo, formatarPrecoServico, precoParaCentavos } from "@/lib/servicos/dinheiro";
+import { centavosParaCampo, formatarPrecoServico } from "@/lib/servicos/dinheiro";
 import { ROTA_COMISSOES, ROTA_PROFISSIONAIS } from "@/lib/conta/rotas";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { AvisoDeApuracao } from "@/components/conta/relatorio-comissoes";
@@ -31,6 +33,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { CAMPO, CartaoRecebeComissao, lerValor } from "./cartao-recebe-comissao";
 
 const MENSAGEM_DE_LEITURA = {
   sessao: "Sua sessão precisa ser verificada novamente. Entre de novo.",
@@ -40,8 +43,7 @@ const MENSAGEM_DE_LEITURA = {
   servidor: "Não foi possível carregar as comissões.",
 } as const;
 
-const CAMPO = "mt-1 block min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm text-ink";
-type Escolha = "NAO_CONFIGURADA" | "NONE" | "PERCENTAGE" | "FIXED";
+type Escolha = "USAR_GERAL" | "NONE" | "PERCENTAGE" | "FIXED";
 
 export default function ComissoesDoProfissionalPage() {
   const { estado: sessao } = useRealAuth();
@@ -57,11 +59,12 @@ export default function ComissoesDoProfissionalPage() {
   const lido = estado.status === "pronto" ? estado.dados : null;
   const atual = lido && salvo?.sobre === lido ? salvo.dados : lido;
   if (sessao.status !== "autenticado" || !tenantId) return null;
+  const aoSalvar = (dados: RegrasDoProfissional) => lido && setSalvo({ sobre: lido, dados });
 
   return (
     <PaginaConta
       titulo={atual ? `Comissões de ${atual.professional.name}` : "Comissões"}
-      descricao="Defina, para cada serviço que o profissional atende, como a comissão é calculada."
+      descricao="Defina se o profissional recebe comissão, a regra geral e as exceções por serviço."
       voltar={{ href: ROTA_PROFISSIONAIS, rotulo: "Voltar a Profissionais" }}
     >
       <AvisoDeApuracao />
@@ -80,6 +83,17 @@ export default function ComissoesDoProfissionalPage() {
       )}
       {atual && (
         <>
+          <CartaoRecebeComissao tenantId={tenantId} dados={atual} aoSalvar={aoSalvar} />
+          <h2 className="text-base font-semibold text-ink">Exceções por serviço</h2>
+          {!atual.settings.receivesCommission && (
+            <p
+              className="flex items-start gap-2 rounded-[var(--radius-control)] border border-border bg-paper-muted p-3 text-sm text-ink"
+              data-testid="aviso-nao-recebe"
+            >
+              <CircleSlash size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+              “Recebe comissão” está desligado: as regras abaixo ficam guardadas, mas não geram comissão.
+            </p>
+          )}
           {atual.services.length === 0 ? (
             <p className="text-sm text-ink-soft">Este profissional ainda não atende nenhum serviço.</p>
           ) : (
@@ -90,7 +104,8 @@ export default function ComissoesDoProfissionalPage() {
                     tenantId={tenantId}
                     professionalId={professionalId}
                     item={s}
-                    aoSalvar={(dados) => lido && setSalvo({ sobre: lido, dados })}
+                    temRegraGeral={atual.settings.defaultRule !== null}
+                    aoSalvar={aoSalvar}
                   />
                 </li>
               ))}
@@ -109,15 +124,17 @@ function EditorDaRegra({
   tenantId,
   professionalId,
   item,
+  temRegraGeral,
   aoSalvar,
 }: {
   tenantId: string;
   professionalId: string;
   item: ServicoComRegra;
+  temRegraGeral: boolean;
   aoSalvar: (regras: RegrasDoProfissional) => void;
 }) {
   const { notificar } = useToast();
-  const inicial: Escolha = item.rule === null ? "NAO_CONFIGURADA" : item.rule.kind;
+  const inicial: Escolha = item.rule === null ? "USAR_GERAL" : item.rule.kind;
   const [escolha, setEscolha] = useState<Escolha>(inicial);
   const [valor, setValor] = useState(
     item.rule?.kind === "PERCENTAGE"
@@ -129,21 +146,16 @@ function EditorDaRegra({
   const [erro, setErro] = useState<string | null>(null);
   const [gravando, setGravando] = useState(false);
   const idBase = `regra-${item.service.id}`;
+  const naoConfigurada = item.effective.source === null;
 
   async function salvar(evento: FormEvent) {
     evento.preventDefault();
     if (gravando) return;
     let corpo: { kind: string; value?: number } | null = null;
-    if (escolha === "PERCENTAGE") {
-      const lido = percentualParaPontosBase(valor);
+    if (escolha === "PERCENTAGE" || escolha === "FIXED") {
+      const lido = lerValor(escolha, valor, "Para não pagar comissão neste serviço, escolha “Sem comissão”.");
       if (!lido.ok) return setErro(lido.erro);
-      corpo = { kind: "PERCENTAGE", value: lido.pontos };
-    } else if (escolha === "FIXED") {
-      const lido = precoParaCentavos(valor);
-      if (!lido.ok) return setErro(lido.erro);
-      if (lido.centavos === null || lido.centavos <= 0) return setErro("Para não pagar comissão, escolha “Sem comissão”.");
-      if (lido.centavos > 100_000_000) return setErro("Valor acima do máximo aceito.");
-      corpo = { kind: "FIXED", value: lido.centavos };
+      corpo = lido.corpo;
     } else if (escolha === "NONE") {
       corpo = { kind: "NONE" };
     }
@@ -172,8 +184,9 @@ function EditorDaRegra({
                 {!item.service.active && " · serviço inativo"}
               </p>
             </div>
-            <Badge cor={item.rule === null ? "aviso" : "neutro"} data-testid="regra-atual">
-              {rotuloDaRegra(item.rule)}
+            <Badge cor={naoConfigurada ? "aviso" : "neutro"} data-testid="regra-atual">
+              {naoConfigurada && <AlertTriangle size={14} aria-hidden="true" className="mr-1 inline" />}
+              {rotuloDaEfetiva(item.effective)}
             </Badge>
           </div>
           {!item.linked && (
@@ -181,7 +194,7 @@ function EditorDaRegra({
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium text-ink" htmlFor={`${idBase}-tipo`}>
-              Comissão
+              Comissão neste serviço
               <select
                 id={`${idBase}-tipo`}
                 className={CAMPO}
@@ -191,7 +204,7 @@ function EditorDaRegra({
                   setErro(null);
                 }}
               >
-                <option value="NAO_CONFIGURADA">Não configurada</option>
+                <option value="USAR_GERAL">Usar regra geral</option>
                 <option value="NONE">Sem comissão</option>
                 <option value="PERCENTAGE">Percentual do preço</option>
                 <option value="FIXED">Valor fixo</option>
@@ -211,6 +224,9 @@ function EditorDaRegra({
               </label>
             )}
           </div>
+          {escolha === "USAR_GERAL" && !temRegraGeral && (
+            <p className="text-xs text-ink-soft">Sem regra geral: este serviço fica não configurado e vai para conferência.</p>
+          )}
           {escolha === "PERCENTAGE" && item.service.priceCents === null && (
             <p className="text-xs text-ink-soft">Serviço sob consulta: sem preço na reserva, o percentual não tem valor e o atendimento fica para conferência.</p>
           )}

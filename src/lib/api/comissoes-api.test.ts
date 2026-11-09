@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  ROTULO_ORIGEM_APURADA,
   ehRegrasDoProfissional,
   ehRelatorioDeComissoes,
+  ehResumoDeRecebeComissao,
   percentualParaPontosBase,
   pontosBaseParaCampo,
+  rotuloDaEfetiva,
   rotuloDaRegra,
 } from "./comissoes-api";
 
@@ -35,12 +38,43 @@ describe("percentual em pontos-base", () => {
 
 describe("forma das respostas", () => {
   it("regras do profissional", () => {
+    const servico = {
+      service: { id: "s", name: "Corte", priceCents: null, active: true },
+      linked: true,
+      rule: null,
+      effective: { source: "DEFAULT", rule: { kind: "FIXED", value: 1000 } },
+      updatedAt: null,
+    };
     const ok = {
       professional: { id: "p", name: "Ana", active: true },
-      services: [{ service: { id: "s", name: "Corte", priceCents: null, active: true }, linked: true, rule: null, updatedAt: null }],
+      settings: { receivesCommission: false, defaultRule: { kind: "FIXED", value: 1000 } },
+      services: [servico],
     };
     expect(ehRegrasDoProfissional(ok)).toBe(true);
-    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...ok.services[0], rule: { kind: "OUTRO", value: 1 } }] })).toBe(false);
+    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, rule: { kind: "OUTRO", value: 1 } }] })).toBe(false);
+    // Sem a configuração, ou com "sem comissão" como regra geral: formato inválido.
+    expect(ehRegrasDoProfissional({ ...ok, settings: undefined })).toBe(false);
+    expect(ehRegrasDoProfissional({ ...ok, settings: { receivesCommission: true, defaultRule: { kind: "NONE", value: null } } })).toBe(false);
+    // Origem e regra vêm juntas.
+    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, effective: { source: null, rule: null } }] })).toBe(true);
+    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, effective: { source: null, rule: { kind: "FIXED", value: 1 } } }] })).toBe(false);
+    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, effective: { source: "SERVICE", rule: null } }] })).toBe(false);
+    expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, effective: undefined }] })).toBe(false);
+  });
+
+  it("etiqueta da regra que vale e origem do item apurado", () => {
+    expect(rotuloDaEfetiva({ source: "SERVICE", rule: { kind: "NONE", value: null } })).toBe("Exceção · Sem comissão");
+    expect(rotuloDaEfetiva({ source: "DEFAULT", rule: { kind: "PERCENTAGE", value: 4000 } })).toBe("Regra geral · 40%");
+    expect(rotuloDaEfetiva({ source: null, rule: null })).toBe("Não configurada");
+    // Regra antiga por serviço não é chamada de exceção.
+    expect(ROTULO_ORIGEM_APURADA.LEGACY_SERVICE).toBe("regra por serviço");
+    expect(ROTULO_ORIGEM_APURADA.SERVICE).toBe("exceção do serviço");
+  });
+
+  it("resumo de quem recebe comissão", () => {
+    expect(ehResumoDeRecebeComissao({ professionals: [{ professionalId: "p", receivesCommission: false }] })).toBe(true);
+    expect(ehResumoDeRecebeComissao({ professionals: [{ professionalId: "p" }] })).toBe(false);
+    expect(ehResumoDeRecebeComissao({})).toBe(false);
   });
 
   it("relatório: comissão apurada, nunca pagamento", () => {

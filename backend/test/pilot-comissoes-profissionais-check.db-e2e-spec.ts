@@ -43,6 +43,9 @@ if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
 }
 const CONSULTAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/runbooks/consultas');
 const PLANOS_DO_CATALOGO = ['plan_essencial', 'plan_equipe', 'plan_pro'];
+/** Migrations criadas depois deste kit. O kit as recusa de propósito; só os
+ * testes as conhecem, por nome, e uma nova só entra aqui de propósito. */
+const MIGRATIONS_POSTERIORES_AO_KIT = ['ProfessionalCommissionSettings1793577600000'] as const;
 const FONTE_COMPILADA =new URL('../dist-migrations/database/migrations-data-source.js', import.meta.url);
 
 type Resposta = { command: string; rows: Record<string, unknown>[] };
@@ -68,8 +71,9 @@ describe.skipIf(!url)('conferência de ProfessionalCommissions contra PostgreSQL
 
   it('banco com as quinze migrations passa no "depois" e é recusado no "antes"', async () => {
     const lido = await comLeitor(lerEstadoComissoes);
-    // Outras suítes podem ter migrations depois desta no futuro: o recorte
-    // confere as quinze, na ordem.
+    // O banco de testes já tem as migrations criadas depois desta, numa lista
+    // explícita; o recorte confere as quinze, na ordem.
+    expect(lido.migrationNames).toEqual([...MIGRATIONS_ATE_COMISSOES, ...MIGRATIONS_POSTERIORES_AO_KIT]);
     // Outras suítes também criam planos de teste com todos os recursos no
     // banco compartilhado; aqui contam só os três do catálogo (no piloto, e no
     // banco temporário abaixo, a conferência vale para todos os planos).
@@ -180,16 +184,17 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissions (banco
   };
 
   let posteriores: string[] = [];
-  async function aplicar(esperadasAntes: readonly string[]) {
+  async function aplicar(esperadasAntes: readonly string[], comoOKit = false) {
     const linhas: string[] = [];
     let iniciou = false;
     try {
       const aplicadas = await aplicarSomenteAPendente(destino(), {
         esperadasAntes: [...esperadasAntes],
         pendente: MIGRATION,
-        // Migrations criadas depois desta no futuro: o kit as recusaria de
-        // propósito; aqui ficam de fora para provar a aplicação desta.
-        ...(posteriores.length ? { posteriores } : {}),
+        // Migrations criadas depois desta: o kit as recusaria de propósito
+        // (`comoOKit`, a mesma chamada de aplicar-comissoes-profissionais-
+        // piloto.mjs); aqui ficam de fora para provar a aplicação desta.
+        ...(posteriores.length && !comoOKit ? { posteriores } : {}),
         aplicacao: 'agenda-cloud-migration-teste',
         log: (l) => linhas.push(l),
         aoIniciar: () => {
@@ -215,6 +220,7 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissions (banco
       const compiladas = ds.migrations.map((m) => m.name ?? m.constructor.name);
       expect(compiladas.slice(0, MIGRATIONS_ATE_COMISSOES.length)).toEqual([...MIGRATIONS_ATE_COMISSOES]);
       posteriores = compiladas.slice(MIGRATIONS_ATE_COMISSOES.length);
+      expect(posteriores).toEqual([...MIGRATIONS_POSTERIORES_AO_KIT]);
       ds.migrations.splice(MIGRATIONS_ATE_NOMES_CONGELADOS.length);
       await ds.runMigrations({ transaction: 'all' });
     } finally {
@@ -244,6 +250,11 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissions (banco
     // Pendente errada ou histórico errado: para antes de qualquer comando.
     const errado = await aplicar(MIGRATIONS_ATE_COMISSOES);
     expect(errado).toMatchObject({ codigo: 'ERR_HISTORICO_DE_MIGRATIONS_INESPERADO', iniciou: false });
+    // O kit como está, num runtime com migrations posteriores compiladas:
+    // recusa antes de qualquer comando. Ele só serve no commit dele.
+    const comPosteriores = await aplicar(MIGRATIONS_ATE_NOMES_CONGELADOS, true);
+    expect(comPosteriores).toMatchObject({ codigo: 'ERR_MIGRATIONS_COMPILADAS_INESPERADAS', iniciou: false });
+    expect(await historico()).toEqual([...MIGRATIONS_ATE_NOMES_CONGELADOS]);
 
     const r = await aplicar(MIGRATIONS_ATE_NOMES_CONGELADOS);
     expect(r).toMatchObject({ codigo: null, iniciou: true, aplicadas: [MIGRATION] });

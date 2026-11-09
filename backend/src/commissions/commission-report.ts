@@ -21,7 +21,15 @@
 import type { EntityManager } from 'typeorm';
 import { dataLocalDe } from '../availability/time-zone.js';
 import { linhasDe } from '../common/linhas-de.js';
-import { ruleToView, situacaoDoItem, type ItemSituation, type RuleView, type StoredRule } from './commission-calculation.js';
+import {
+  origemDaRegraApurada,
+  ruleToView,
+  situacaoDoItem,
+  type AppliedRuleSource,
+  type ItemSituation,
+  type RuleView,
+  type StoredRule,
+} from './commission-calculation.js';
 
 /** Teto de atendimentos detalhados (os totais contam o período todo). */
 export const LIMITE_DE_ATENDIMENTOS = 200;
@@ -86,6 +94,7 @@ interface ItemRow {
   price_cents: number | null;
   applied_type: StoredRule['type'] | null;
   applied_value: number | null;
+  applied_rule_scope: string | null;
   professional_cents: number | null;
   establishment_cents: number | null;
 }
@@ -94,6 +103,8 @@ export interface ReportItem {
   serviceName: string;
   priceCents: number | null;
   rule: RuleView | null;
+  /** De onde veio a regra apurada (ver `origemDaRegraApurada`). */
+  ruleSource: AppliedRuleSource;
   commissionCents: number | null;
   situation: ItemSituation;
 }
@@ -158,7 +169,7 @@ export async function commissionReport(manager: EntityManager, opcoes: ReportOpt
               ${opcoes.withClientPayment ? RECEBIMENTO_SQL : `'SEM_RECEBIMENTO'`} AS client_payment,
               ce.status::text AS entry_status, COALESCE(ai.service_name_snapshot, sv.name) AS service_name,
               ce.price_cents_snapshot AS price_cents, ce.applied_type::text AS applied_type, ce.applied_value,
-              ce.professional_cents, ce.establishment_cents
+              ce.applied_rule_scope, ce.professional_cents, ce.establishment_cents
          FROM alvo
          JOIN commission_entries ce ON ce.tenant_id = $1 AND ce.appointment_id = alvo.appointment_id
          JOIN appointments a ON a.tenant_id = ce.tenant_id AND a.id = ce.appointment_id
@@ -203,6 +214,7 @@ export async function commissionReport(manager: EntityManager, opcoes: ReportOpt
       serviceName: linha.service_name ?? '',
       priceCents: preco,
       rule: tipo === null ? null : ruleToView({ type: tipo, value: Number(linha.applied_value) }),
+      ruleSource: origemDaRegraApurada(tipo, linha.applied_rule_scope),
       commissionCents: comissao,
       situation: situacaoDoItem({ appliedType: tipo, priceCents: preco, professionalCents: comissao }),
     };

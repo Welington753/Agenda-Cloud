@@ -35,10 +35,18 @@ function proximoId(prefixo: string): string {
 }
 
 class FakeManager {
-  /** Só a validade e o recurso do plano (commercial-gate.ts). */
-  async query(sql: string): Promise<unknown[]> {
+  /** Configurações de comissão gravadas no cadastro (commissions/). */
+  configuracoesDeComissao: unknown[][] = [];
+
+  /** Só a validade e o recurso do plano (commercial-gate.ts) e a
+   * configuração de comissão do profissional novo. */
+  async query(sql: string, params: unknown[] = []): Promise<unknown[]> {
     const comercial = commercialQueryFake(sql);
     if (comercial) return comercial;
+    if (/^\s*INSERT INTO professional_commission_settings \(tenant_id, professional_id, receives_commission\)\s+VALUES \(\$1, \$2, false\)\s*$/.test(sql)) {
+      this.configuracoesDeComissao.push(params);
+      return [];
+    }
     throw new Error(`Consulta inesperada no teste: ${sql}`);
   }
 
@@ -319,7 +327,7 @@ describe('isolamento entre estabelecimentos', () => {
 
 describe('criação com serviços', () => {
   it('cria o profissional e os vínculos juntos, iniciais/cor derivadas do nome', async () => {
-    const { profissionais } = montar();
+    const { profissionais, manager } = montar();
     const criado = await profissionais.create(USUARIO_DONO, TENANT_A, {
       name: 'João Silva',
       serviceIds: ['service_a1', 'service_a2'],
@@ -329,6 +337,8 @@ describe('criação com serviços', () => {
     expect(criado.avatarInitials).toBe('JS');
     expect(criado.active).toBe(true);
     expect(criado.services.map((s) => s.serviceId).sort()).toEqual(['service_a1', 'service_a2']);
+    // Começa sem receber comissão (o dono liga em Profissionais → Comissões).
+    expect(manager.configuracoesDeComissao).toEqual([[TENANT_A, criado.id]]);
   });
 
   it('serviço inexistente, inativo ou de outro tenant rejeita a criação inteira — nada é gravado', async () => {
