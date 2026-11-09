@@ -153,6 +153,46 @@ local. O comprovante da 15 não foi reutilizado.
 donos; `aplicar` (autorização expressa; a janela começa em `JANELA_DESDE`);
 API C16; web C16; `conferir` com `JANELA_DE_TRANSICAO: ok`; avisar os donos.
 
+## Migration 16 aplicada, API e web C16 publicados (09/11/2026)
+
+O dono autorizou expressamente, em 09/11/2026, aplicar **somente**
+`ProfessionalCommissionSettings1793577600000` pelo kit da 16 na worktree
+`C:\Projetos\Agenda-Cloud-m16-879cef8` (C16), publicar a API e depois o web
+no C16 e rodar a `conferir` final. A URL e a frase foram digitadas pelo dono.
+
+- **Janela combinada:** todos os estabelecimentos do piloto são testes do
+  dono; não há clientes. O dono manteve, durante toda a transição, a pausa de
+  cadastro de profissionais e de conclusão de atendimentos. A consulta de
+  impacto **não** foi rodada. Nenhum serviço foi suspenso no Render.
+- **Antes do `aplicar`:** worktree limpa em `879cef8`,
+  `git diff e42fb81 879cef8 -- backend/scripts backend/src` vazio; Render com
+  API e web Live em `92cc6ae`; comprovante
+  `regra-geral-comissoes-preparar-2026-11-09T13-00-39-755Z` dentro da validade
+  (até 10/11/2026 13:01 UTC).
+- **`aplicar`** (execução `2026-11-09T13-09-24-558Z`): backup novo obrigatório
+  `regra-geral-comissoes-aplicar-2026-11-09T13-09-24-558Z` (192.088 bytes,
+  sha256 `26042d11…0242`). `JANELA_DESDE` = `2026-11-09T13:10:09.918993Z`.
+  Migration aplicada às 13:10:24 UTC; registro `aplicada_e_conferida`
+  (13:10:42 UTC), que o kit só grava com o estado
+  `after-commission-settings` conferido (16 migrations, `7/7`) e
+  `TRANSICAO: ok`.
+- **API C16:** `agenda-cloud-piloto-api`, deploy `dep-dboscs6417fc7398vef0`
+  (Render CLI, commit específico), Live às 13:12:07 UTC, SHA
+  `879cef8f378d1007f606ba67246ae7e5535df905`. `auth/me` sem cookie: 401 pelo
+  web e direto na API.
+- **Web C16:** `agenda-cloud-piloto-web`, deploy `dep-dbosds6c6qcc738k3llg`,
+  Live às 13:16:04 UTC, mesmo SHA. `/login` 200; `/agenda_api/auth/me` 401.
+- **`conferir`** (execução `2026-11-09T13-16-38-431Z`, concluída 13:17:04 UTC):
+  `after-commission-settings`, nenhuma sessão da migration ativa,
+  `JANELA_DE_TRANSICAO: ok`. **Fim da janela:** o uso foi liberado ao dono.
+- **Estado atual: estado 16 estável**, com API e web em C16 `879cef8`.
+- **Não executados:** rollback, suspensão de serviço e testes manuais de tela
+  (ficam com o dono, sem gravar configuração ou regra só para testar). Todos os
+  backups foram preservados.
+- **Próximo passo, em outra sessão e com autorização:** publicar o C_final
+  `8e8577d` (Portal AC) e validar no iPhone
+  (`continuidade-portal-instalavel.md`). Ainda **não** publicado.
+
 As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
 já foram feitos; a worktree de revisão do #99 não é mais necessária.
 
