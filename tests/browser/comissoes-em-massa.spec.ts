@@ -7,10 +7,16 @@
 //    desligado é preservado; o inativo fica fora. Avisos do que não muda.
 // 2. Uma mudança paralela (pela API) depois da prévia: aplicar recebe 409, a
 //    tela refaz a prévia e pede nova revisão; depois aplica.
-// 3. SUBSTITUIR: o botão só habilita com a confirmação explícita; aplica,
-//    liga "Recebe comissão" de quem estava desligado e mostra o resultado.
-//    A exceção por serviço continua guardada.
-// 4. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
+// 3. SUBSTITUIR mantendo exceções (padrão): o botão só habilita com a
+//    confirmação explícita; aplica, liga "Recebe comissão" de quem estava
+//    desligado e mostra o resultado. A exceção por serviço continua guardada.
+// 4. SUBSTITUIR removendo exceções só da Ana (escolhida): a prévia mostra
+//    quais exceções saem; aplicar exige as duas confirmações; os outros
+//    profissionais não mudam.
+// 5. Edição individual da Bia: manter é o padrão; remover mostra a lista e
+//    pede confirmação; uma exceção mudada por fora recusa (409), a lista é
+//    relida e a confirmação volta a ser exigida.
+// 6. Capturas em claro e escuro, 1280, 390 e 360 px, sem rolagem horizontal.
 //
 // Invocação própria (`npm run test:browser:comissoes-em-massa`): 1 aceite de
 // convite e nenhum login extra.
@@ -73,8 +79,8 @@ test("dono aplica comissão a vários profissionais com prévia, 409 por mudanç
     await page.goto("/conta/configuracoes/profissionais");
     await page.getByRole("link", { name: "Aplicar comissão a vários" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais\/comissao-em-massa$/);
-    await expect(page.getByTestId("aviso-o-que-nao-muda")).toContainText("Exceções por serviço");
-    await expect(page.getByTestId("aviso-o-que-nao-muda")).toContainText("comissões já apuradas");
+    await expect(page.getByTestId("aviso-o-que-nao-muda")).toContainText("ao substituir, você escolha removê-las");
+    await expect(page.getByTestId("aviso-o-que-nao-muda")).toContainText("Comissões já apuradas não são afetadas");
     await expect(page.getByText("Todos os profissionais ativos (3)")).toBeVisible();
     await expect(page.getByLabel("Preservar configurações existentes")).toBeChecked();
     await page.getByRole("button", { name: "Ver prévia" }).click();
@@ -117,8 +123,11 @@ test("dono aplica comissão a vários profissionais com prévia, 409 por mudanç
     await page.getByRole("button", { name: "Ver prévia" }).click();
     await expect(previa.getByTestId("contador-alterados")).toContainText("3");
     await expect(linha("Carla Dias")).toContainText(/Recebe · R\$\s12,00 fixo/);
+    await expect(page.getByLabel("Manter exceções por serviço")).toBeChecked();
+    await expect(linha("Ana Lima").getByTestId("excecoes-do-profissional")).toHaveText("1 exceção mantida: Corte (40%)");
     const aplicar = previa.getByRole("button", { name: "Aplicar a 3 profissionais" });
     await expect(previa.getByTestId("aviso-substituicao")).toContainText("serão trocadas por esta regra");
+    await expect(previa.getByTestId("aviso-substituicao")).toContainText("substituir sozinho não remove exceções");
     await expect(aplicar).toBeDisabled();
     await capturar(page, "previa-substituir");
     await previa.getByTestId("confirmar-substituicao").check();
@@ -133,11 +142,69 @@ test("dono aplica comissão a vários profissionais com prévia, 409 por mudanç
     const regras = async (professionalId: string) =>
       (await (await page.request.get(`${api}/commissions/rules/${professionalId}`)).json()) as {
         settings: { receivesCommission: boolean; defaultRule: { kind: string; value: number } | null };
-        services: { service: { id: string }; effective: { source: string | null } }[];
+        services: { service: { id: string }; effective: { source: string | null; rule?: unknown } }[];
       };
     expect((await regras(carla)).settings).toEqual({ receivesCommission: true, defaultRule: { kind: "FIXED", value: 1200 } });
     expect((await regras(ana)).services.find((s) => s.service.id === corte)?.effective.source).toBe("SERVICE");
     expect((await regras(davi)).settings).toEqual({ receivesCommission: false, defaultRule: null });
+
+    // ------------------- 4. SUBSTITUIR removendo exceções, só da Ana
+    await page.getByLabel("Escolher profissionais").check();
+    await page.getByTestId("escolha-de-profissionais").getByLabel("Ana Lima").check();
+    await page.getByLabel("Tipo").selectOption({ label: "Percentual do preço de cada serviço" });
+    await page.getByLabel("Percentual (%)").fill("20");
+    await page.getByLabel("Remover exceções por serviço").check();
+    await page.getByRole("button", { name: "Ver prévia" }).click();
+    await expect(previa.getByTestId("profissional-em-massa")).toHaveCount(1);
+    await expect(previa.getByTestId("contador-excecoes-removidas")).toContainText("1");
+    await expect(linha("Ana Lima").getByTestId("excecoes-do-profissional")).toHaveText("1 exceção será removida: Corte (40%)");
+    await expect(previa.getByTestId("aviso-remocao-excecoes")).toContainText("Ana Lima: Corte (40%)");
+    const aplicarRemovendo = previa.getByRole("button", { name: "Aplicar a 1 profissional" });
+    await previa.getByTestId("confirmar-substituicao").check();
+    await expect(aplicarRemovendo).toBeDisabled();
+    await capturar(page, "previa-remover-excecoes");
+    await previa.getByTestId("confirmar-remocao-excecoes").check();
+    await expect(aplicarRemovendo).toBeEnabled();
+    await aplicarRemovendo.click();
+    await expect(resultado.getByRole("listitem", { name: "Ana Lima" }).getByTestId("excecoes-do-profissional")).toHaveText(
+      "1 exceção removida: Corte (40%)",
+    );
+    const daAna = await regras(ana);
+    expect(daAna.settings).toEqual({ receivesCommission: true, defaultRule: { kind: "PERCENTAGE", value: 2000 } });
+    expect(daAna.services.find((s) => s.service.id === corte)?.effective.source).toBe("DEFAULT");
+    expect((await regras(carla)).settings).toEqual({ receivesCommission: true, defaultRule: { kind: "FIXED", value: 1200 } });
+
+    // ------------- 5. edição individual: remover exceções da Bia
+    expect((await page.request.put(`${api}/commissions/rules/${bia}/${corte}`, { data: { kind: "FIXED", value: 500 } })).status()).toBe(200);
+    await page.goto(`/conta/configuracoes/profissionais/${bia}/comissoes`);
+    const cartao = page.getByTestId("configuracao-comissao");
+    await expect(cartao.getByLabel("Manter exceções por serviço")).toBeChecked();
+    await expect(cartao).toContainText("sozinho não remove exceções por serviço");
+    await cartao.getByLabel("Remover exceções por serviço").check();
+    await expect(cartao.getByTestId("excecoes-a-remover")).toContainText(/Corte: R\$\s5,00 fixo/);
+    const salvar = cartao.getByRole("button", { name: "Salvar e remover exceções" });
+    await expect(salvar).toBeDisabled();
+    await cartao.getByTestId("confirmar-remocao-excecoes").check();
+    await expect(salvar).toBeEnabled();
+    // A exceção muda por fora antes de salvar: 409, lista relida, nova confirmação.
+    expect((await page.request.put(`${api}/commissions/rules/${bia}/${corte}`, { data: { kind: "FIXED", value: 600 } })).status()).toBe(200);
+    await salvar.click();
+    await expect(cartao.getByRole("alert")).toContainText("exceções por serviço deste profissional mudaram");
+    await expect(cartao.getByTestId("excecoes-a-remover")).toContainText(/Corte: R\$\s6,00 fixo/);
+    await expect(cartao.getByTestId("confirmar-remocao-excecoes")).not.toBeChecked();
+    await expect(salvar).toBeDisabled();
+    expect((await regras(bia)).services.find((s) => s.service.id === corte)?.effective.source).toBe("SERVICE");
+    await cartao.getByTestId("confirmar-remocao-excecoes").check();
+    await capturar(page, "individual-remover-excecoes");
+    await salvar.click();
+    await expect(page.getByText("Comissão de Bia Souza salva e 1 exceção por serviço removida.")).toBeVisible();
+    await expect(page.getByTestId("regra-atual")).toHaveText(/Regra geral · R\$\s12,00 fixo/);
+    await expect(cartao.getByTestId("excecoes-na-configuracao")).toHaveCount(0);
+    expect((await regras(bia)).services.find((s) => s.service.id === corte)?.effective).toEqual({
+      source: "DEFAULT",
+      rule: { kind: "FIXED", value: 1200 },
+    });
+
     await page.goto("/conta/configuracoes/profissionais");
     await expect(page.getByRole("article", { name: "Carla Dias" }).getByTestId("recebe-comissao")).toHaveText("Recebe comissão");
   } finally {
