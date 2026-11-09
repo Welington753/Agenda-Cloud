@@ -5,6 +5,7 @@ const PILOTO = {
   apiBaseUrl: "/agenda_api",
   destinoProxy: "https://agenda-exemplo-api.onrender.com",
   desenvolvimento: false,
+  indexavel: true,
 };
 
 function diretivas(politica: string): Map<string, string> {
@@ -30,14 +31,14 @@ describe("CSP", () => {
 
   it("chamada direta (CI): a origem da API entra no connect-src, sem caminho", () => {
     const d = diretivas(
-      politicaDeConteudo({ apiBaseUrl: "http://127.0.0.1:3001", destinoProxy: undefined, desenvolvimento: false }),
+      politicaDeConteudo({ ...PILOTO, apiBaseUrl: "http://127.0.0.1:3001", destinoProxy: undefined }),
     );
     expect(d.get("connect-src")).toBe("'self' http://127.0.0.1:3001");
   });
 
   it("valores estranhos não abrem conexão nenhuma", () => {
     const d = diretivas(
-      politicaDeConteudo({ apiBaseUrl: "javascript:alert(1)", destinoProxy: "não é url", desenvolvimento: false }),
+      politicaDeConteudo({ ...PILOTO, apiBaseUrl: "javascript:alert(1)", destinoProxy: "não é url" }),
     );
     expect(d.get("connect-src")).toBe("'self'");
   });
@@ -95,5 +96,12 @@ describe("regras do next.config", () => {
       expect(fonte.startsWith("/agendar")).toBe(false);
       expect(fonte).not.toBe("/:path*");
     }
+    expect(regras[0].headers.some((h) => h.key === "X-Robots-Tag")).toBe(false);
+  });
+
+  it("pré-visualização: noindex em toda resposta, pela regra geral", () => {
+    const geral = regrasDeCabecalhos({ ...PILOTO, indexavel: false })[0];
+    expect(geral.source).toBe("/:path*");
+    expect(geral.headers).toContainEqual({ key: "X-Robots-Tag", value: "noindex, nofollow" });
   });
 });

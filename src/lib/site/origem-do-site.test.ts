@@ -28,8 +28,11 @@ describe("origem do site: só do ambiente, só HTTPS exata", () => {
     expect(lerConfiguracaoDoSite({})).toEqual({ origem: null, indexavel: true });
   });
 
-  it("pré-visualização de pull request do Render: não indexável", () => {
-    expect(lerConfiguracaoDoSite({ ...RENDER, IS_PULL_REQUEST: "true" }).indexavel).toBe(false);
+  it("pré-visualização de pull request do Render: não indexável e sem o endereço da prévia", () => {
+    expect(lerConfiguracaoDoSite({ ...RENDER, IS_PULL_REQUEST: "true" })).toEqual({ origem: null, indexavel: false });
+    expect(
+      lerConfiguracaoDoSite({ ...RENDER, IS_PULL_REQUEST: "true", APP_PUBLIC_ORIGIN: "https://agenda.exemplo.test" }).origem,
+    ).toBe("https://agenda.exemplo.test");
     expect(lerConfiguracaoDoSite({ ...RENDER, IS_PULL_REQUEST: "false" }).indexavel).toBe(true);
   });
 

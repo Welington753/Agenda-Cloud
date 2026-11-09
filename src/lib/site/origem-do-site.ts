@@ -14,9 +14,10 @@ export interface ConfiguracaoDoSite {
   /** Origem HTTPS exata (`https://host[:porta]`), ou `null` quando ausente ou
    * inválida: nesse caso nenhum endereço absoluto é publicado. */
   origem: string | null;
-  /** `false` em ambiente de pré-visualização (pull request no Render): o
-   * robots.txt bloqueia tudo e as páginas levam `noindex`. Sem origem, o site
-   * continua indexável, só sem endereços absolutos (canonical e sitemap). */
+  /** `false` em ambiente de pré-visualização (pull request no Render): toda
+   * resposta leva `X-Robots-Tag: noindex` e as páginas, `noindex` nos
+   * metadados. Sem origem, o site continua indexável, só sem endereços
+   * absolutos (canonical e sitemap). */
   indexavel: boolean;
 }
 
@@ -33,7 +34,10 @@ function origemHttpsExata(valor: string | undefined): string | null {
 export function lerConfiguracaoDoSite(ambiente: Ambiente): ConfiguracaoDoSite {
   // Render define IS_PULL_REQUEST=true nas pré-visualizações de pull request.
   const previa = ambiente.IS_PULL_REQUEST === "true";
-  const origem = origemHttpsExata(valorDaOrigemPublica(ambiente));
+  // Na pré-visualização, `RENDER_EXTERNAL_URL` é o endereço da própria
+  // prévia: nunca vai para Open Graph, JSON-LD ou canonical. Só um domínio
+  // definido de propósito (`APP_PUBLIC_ORIGIN`) vale ali.
+  const origem = origemHttpsExata(previa ? ambiente.APP_PUBLIC_ORIGIN : valorDaOrigemPublica(ambiente));
   return { origem, indexavel: !previa };
 }
 

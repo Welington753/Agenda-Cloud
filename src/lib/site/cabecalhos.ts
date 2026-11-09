@@ -11,7 +11,8 @@
 // 2. `X-Robots-Tag: noindex` nas áreas que nunca devem aparecer em busca
 //    (conta, portal, login, convite, senha, demonstração). Elas continuam
 //    rastreáveis no robots.txt de propósito: um endereço bloqueado ali não
-//    tem o `noindex` lido e pode ser indexado só pelo link.
+//    tem o `noindex` lido e pode ser indexado só pelo link. Na
+//    pré-visualização de pull request, `noindex` em TODA resposta.
 
 type Cabecalho = { key: string; value: string };
 type Regra = { source: string; headers: Cabecalho[] };
@@ -24,6 +25,8 @@ export interface EntradaCabecalhos {
   destinoProxy: string | undefined;
   /** `next dev` precisa de `eval` (React em desenvolvimento). */
   desenvolvimento: boolean;
+  /** `false` na pré-visualização (`lerConfiguracaoDoSite`, lido no build). */
+  indexavel: boolean;
 }
 
 /** Áreas fora da busca. Padrões do next.config (`:path*` inclui a raiz). */
@@ -98,15 +101,20 @@ export function cabecalhosDeSeguranca(entrada: EntradaCabecalhos): Cabecalho[] {
   ];
 }
 
+const NOINDEX: Cabecalho = { key: "X-Robots-Tag", value: "noindex, nofollow" };
+
 /** Regras do `headers()` do next.config, na ordem de aplicação: quando duas
  * regras definem a mesma chave, vale a última (por isso o service worker,
  * com CSP própria e mais estrita, vem depois da regra geral). */
 export function regrasDeCabecalhos(entrada: EntradaCabecalhos): Regra[] {
   return [
-    { source: "/:path*", headers: cabecalhosDeSeguranca(entrada) },
+    {
+      source: "/:path*",
+      headers: [...cabecalhosDeSeguranca(entrada), ...(entrada.indexavel ? [] : [NOINDEX])],
+    },
     ...ROTAS_SEM_INDEXACAO.map((source) => ({
       source,
-      headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      headers: [NOINDEX],
     })),
     // Service worker das notificações (public/sw.js): sempre a versão nova,
     // nunca de cache, e só scripts da própria origem. Ele mesmo não guarda

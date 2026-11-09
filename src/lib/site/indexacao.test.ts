@@ -32,7 +32,7 @@ describe("robots.txt", () => {
     expect(regrasDoRobots(SEM_ORIGEM)).toEqual({ rules: { userAgent: "*", allow: "/", disallow: "/agenda_api/" } });
   });
 
-  it("pré-visualização: tudo bloqueado", () => {
-    expect(regrasDoRobots(PREVIA)).toEqual({ rules: { userAgent: "*", disallow: "/" } });
+  it("pré-visualização: sem bloqueio nem sitemap (o noindex de cada resposta precisa ser lido)", () => {
+    expect(regrasDoRobots(PREVIA)).toEqual({ rules: { userAgent: "*", allow: "/" } });
   });
 });
