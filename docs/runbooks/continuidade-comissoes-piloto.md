@@ -8,6 +8,51 @@ Procedimento completo: `publicacao-regra-geral-comissoes-piloto.md` (15 e 16)
 e `publicacao-comissoes-profissionais-piloto.md` (kit da 15). Esta nota não
 substitui os runbooks; só registra onde o trabalho parou.
 
+## Atualização de 09/11/2026: PRs mesclados, publicação pendente
+
+Feito no PC do trabalho. **Nada foi publicado nem executado no piloto, no Neon
+ou em `agenda_dev`:** nenhum deploy, migration, backup ou restauração.
+
+- **Render, só leitura (Render CLI, 09/11/2026):** API
+  (`agenda-cloud-piloto-api`) e web (`agenda-cloud-piloto-web`) com
+  `autoDeploy=no` e `autoDeployTrigger=off`. Os dois continuam Live em `92cc6ae`,
+  por deploys manuais de 05/11 (API `dep-dbmdlttbedkc739pu4mg`, web
+  `dep-dbmb658ae00c738sj7eg`). Os merges não dispararam deploy.
+- **Merges** (merge commit, preso ao head revisado, `[skip render]` no título;
+  branches mantidas):
+  - #98 (head `0ff8f46`) → `137d388575e6e2e4fd69deb7472cbb0d755566ce`.
+  - #99 (head `7a0ce84`): base trocada para a integração; ficaram só os 5
+    commits do kit e da documentação. Merge →
+    **C16 = `879cef8f378d1007f606ba67246ae7e5535df905`**.
+    - `git diff 7a0ce84 879cef8` vazio (árvore idêntica ao head revisado).
+    - `git diff e42fb81 879cef8 -- backend/scripts backend/src` vazio (kit
+      ensaiado).
+  - #100, Portal AC (head `208f2c8`) →
+    **C_final = `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`**. De C16 para
+    C_final só mudam os 16 arquivos do Portal; nada em `backend/`.
+- **CI no C_final:** `test-frontend-auth` por `workflow_dispatch` na integração,
+  run 42611417755, `head_sha` = `8e8577d`, sucesso em 11,7 min. Passaram
+  `comissoes-flow` (navegador), `commissions-postgres` (17) e
+  `pilot-regra-geral-comissoes-check` (2) no db-e2e, os unitários do kit da 16
+  (32 + 8) e `portal-instalavel` (3/3). Esse resultado vale para `8e8577d`;
+  para o C16 vale a árvore idêntica a `7a0ce84`, coberta pelos runs listados
+  abaixo.
+- **SHAs operacionais:**
+
+  | Etapa | SHA |
+  | --- | --- |
+  | kit da 15, API e web do estado 15 | `92cc6ae99856ce43c019f25125bd4140cb916133` |
+  | kit da 16, API e web da 16 | C16 `879cef8f378d1007f606ba67246ae7e5535df905` |
+  | Portal AC (deploy separado, depois do estado 16 estável) | C_final `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` |
+
+- **Pendente, em casa:** publicação das migrations 15 e 16 conforme a
+  sequência abaixo, com backups e comprovantes reais novos (os ensaios não os
+  substituem); depois, publicação do C_final e validação do Portal AC no
+  iPhone (`continuidade-portal-instalavel.md`).
+
+As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
+já foram feitos; a worktree de revisão do #99 não é mais necessária.
+
 ## Último estado relatado do piloto (não reconferido)
 
 Este é o último estado **visto em 05/11/2026**, pelos logs e pelo Render CLI,

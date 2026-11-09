@@ -2,6 +2,29 @@
 
 Nota para retomar o trabalho em qualquer máquina. Atualizada em 05/11/2026.
 
+## Atualização de 09/11/2026: mesclado, publicação e iPhone pendentes
+
+- PR #100 mesclado na integração (merge commit, `[skip render]`):
+  **C_final = `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`**, sobre o C16
+  `879cef8f378d1007f606ba67246ae7e5535df905` das comissões.
+- **CI do PR #100 (head `208f2c8`):** a tentativa 1 do run 42095434698 falhou
+  antes dos testes, ao ligar o TLS do PostgreSQL descartável (`psql` sem
+  socket logo depois do `pg_isready`; instabilidade da preparação, não do
+  código). A tentativa 2 (job 129121693322) passou, com `portal-instalavel` 3/3.
+- **CI no C_final:** `test-frontend-auth` por `workflow_dispatch`, run
+  42611417755, `head_sha` = `8e8577d`, sucesso; `portal-instalavel` 3/3 e as
+  suítes de comissões passaram.
+- **Nada publicado:** API e web continuam em `92cc6ae`, Auto-Deploy desligado
+  (Render CLI, 09/11/2026).
+- **Pendente:**
+  1. migrations 15 e 16 e deploy do C16, pelo runbook das comissões;
+  2. passo 0 no iPhone, antes do deploy do C_final;
+  3. deploy do C_final (API e web do mesmo commit, API primeiro, Manual
+     Deploy);
+  4. validação no iPhone, passo 1 abaixo.
+
+As seções seguintes são o registro de 05/11/2026 (antes do commit e do PR).
+
 ## Onde está
 
 - Branch `feat/portal-app-instalavel`, worktree `C:\Projetos\Agenda-Cloud-portal-pwa`.
