@@ -192,6 +192,12 @@ no C16 e rodar a `conferir` final. A URL e a frase foram digitadas pelo dono.
 - **Próximo passo, em outra sessão e com autorização:** publicar o C_final
   `8e8577d` (Portal AC) e validar no iPhone
   (`continuidade-portal-instalavel.md`). Ainda **não** publicado.
+- **Atualização, 09/11/2026 tarde:** o C_final já estava Live nos dois
+  serviços (API `dep-dbosjcijnfac73ftrdug` Live 13:26:16 UTC, web
+  `dep-dbosjeajnfac73ftrio0` Live 13:27:42 UTC, deploys manuais), depois da
+  `conferir` das 13:16. O C_final não muda backend nem migrations; o banco
+  segue no estado 16. Validação HTTP e pendências do iPhone em
+  `continuidade-portal-instalavel.md`.
 
 As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
 já foram feitos; a worktree de revisão do #99 não é mais necessária.

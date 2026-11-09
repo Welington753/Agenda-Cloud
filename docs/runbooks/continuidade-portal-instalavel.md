@@ -1,6 +1,56 @@
 # Continuidade: dois aplicativos instaláveis (Agenda Cloud e Portal AC)
 
-Nota para retomar o trabalho em qualquer máquina. Atualizada em 05/11/2026.
+Nota para retomar o trabalho em qualquer máquina. Atualizada em 09/11/2026.
+
+## Atualização de 09/11/2026, tarde: C_final publicado no piloto, iPhone pendente
+
+- **C_final já estava Live quando a sessão autorizada começou.** A conferência
+  read-only no Render CLI mostrou os dois serviços em
+  `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, com deploys manuais:
+  - API `agenda-cloud-piloto-api`: `dep-dbosjcijnfac73ftrdug`, criado às
+    13:25:06 UTC, Live às 13:26:16 UTC (Nest iniciou às 13:26:10);
+  - web `agenda-cloud-piloto-web`: `dep-dbosjeajnfac73ftrio0`, Live às
+    13:27:42 UTC.
+  - Os deploys anteriores (C16 `879cef8`: API `dep-dboscs6417fc7398vef0`, web
+    `dep-dbosds6c6qcc738k3llg`) estão `deactivated`.
+  - Auto-Deploy continua desligado (`autoDeploy: no`, trigger `off`).
+  - **Nenhum deploy novo foi criado nesta sessão**, porque o commit autorizado
+    já estava publicado na ordem API → web. A origem desses dois deploys
+    (quem disparou) não foi conferida aqui.
+- **Pré-requisitos conferidos:**
+  - última `conferir` do kit da 16 (execução `2026-11-09T13-16-38-431Z`, em
+    `operacoes.jsonl`): estado `after-commission-settings` (o estado que o
+    kit só atribui com 16 migrations e `7/7`), `sessoesDaMigration: 0`,
+    `janelaOk: true` (`JANELA_DE_TRANSICAO: ok`); feita às 13:16 UTC, antes
+    dos deploys do C_final, e não repetida nesta sessão;
+  - CI no C_final: run 42611417755, `head_sha` `8e8577d`, `completed/success`;
+  - `git diff 879cef8 8e8577d -- backend` vazio: o C_final não muda backend
+    nem migrations. Nenhuma migration foi executada e nenhum backup foi
+    restaurado.
+- **Validação HTTP no piloto (09/11/2026, depois dos deploys):**
+  - `/login` 200; `/agenda_api/auth/me` sem sessão 401; `auth/me` direto na
+    API 401;
+  - `/portal` e `/portal/visao-geral` (200) anunciam um único manifest,
+    `/portal/manifest.webmanifest`, e um único `apple-touch-icon`,
+    `/portal/apple-icon`, com título e `apple-mobile-web-app-title`
+    "Portal AC";
+  - manifest do portal: `id` e `start_url` `/portal/visao-geral`,
+    `scope` `/portal`, nome "Portal AC"; ícones `/portal/icone-*.png` e
+    `/portal/apple-icon` respondem 200 `image/png`;
+  - `/login` e `/conta/visao-geral` continuam com `/manifest.webmanifest` e
+    `/apple-icon`, título "Agenda Cloud";
+  - manifest da operação (`id`/`start_url` `/conta/visao-geral`, `scope` `/`)
+    é idêntico ao da base `92cc6ae` guardada em
+    `C:\Projetos\portal-pwa-evid\base\manifest.json`; `icone-192.png`,
+    `icone-512.png`, `icone-maskable-512.png` e o `apple-icon` são iguais à
+    base, byte a byte;
+  - logs da API e do web desde 13:24 UTC sem linhas de erro.
+- **Passo 0 do iPhone (comportamento anterior do atalho): não registrado.** O
+  usuário ainda não informou o que viu antes do deploy, e o deploy já estava
+  feito quando a sessão começou. Nada foi observado pelo Claude no aparelho.
+  Registrar aqui somente o que o usuário confirmar.
+- **Pendente:** validação no iPhone (passo 1 abaixo), feita e confirmada pelo
+  usuário.
 
 ## Atualização de 09/11/2026: mesclado, publicação e iPhone pendentes
 
