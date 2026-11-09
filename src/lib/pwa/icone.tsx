@@ -11,60 +11,63 @@ export const TINTA = "#1c1a17";
 
 export function respostaDoIcone(tamanho: number, opcoes: { seguro?: boolean } = {}): ImageResponse {
   const escala = opcoes.seguro ? 0.62 : 0.72;
-  const lado = Math.round(tamanho * escala);
+  return new ImageResponse(desenhoDoIcone(tamanho, Math.round(tamanho * escala)), { width: tamanho, height: tamanho });
+}
+
+/** O desenho do ícone num quadrado de `tamanho`, com o calendário de lado
+ * `lado`. Também usado na imagem de compartilhamento
+ * (imagem-de-compartilhamento.tsx). */
+export function desenhoDoIcone(tamanho: number, lado: number) {
   const borda = Math.max(2, Math.round(lado * 0.07));
   const raio = Math.round(lado * 0.12);
   const ponto = Math.round(lado * 0.13);
-  return new ImageResponse(
-    (
+  return (
+    <div
+      style={{
+        width: tamanho,
+        height: tamanho,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: DESTAQUE,
+      }}
+    >
       <div
         style={{
-          width: "100%",
-          height: "100%",
+          width: lado,
+          height: lado,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: DESTAQUE,
+          flexDirection: "column",
+          background: "#ffffff",
+          borderRadius: raio,
+          overflow: "hidden",
         }}
       >
+        <div style={{ height: Math.round(lado * 0.26), background: TINTA, display: "flex" }} />
         <div
           style={{
-            width: lado,
-            height: lado,
+            flex: 1,
             display: "flex",
-            flexDirection: "column",
-            background: "#ffffff",
-            borderRadius: raio,
-            overflow: "hidden",
+            flexWrap: "wrap",
+            alignContent: "center",
+            justifyContent: "center",
+            gap: borda * 1.5,
+            padding: borda * 2,
           }}
         >
-          <div style={{ height: Math.round(lado * 0.26), background: TINTA, display: "flex" }} />
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexWrap: "wrap",
-              alignContent: "center",
-              justifyContent: "center",
-              gap: borda * 1.5,
-              padding: borda * 2,
-            }}
-          >
-            {Array.from({ length: 6 }, (_, i) => (
-              <div
-                key={i}
-                style={{
-                  width: ponto,
-                  height: ponto,
-                  borderRadius: Math.round(ponto / 4),
-                  background: i === 4 ? DESTAQUE : "#d9cfc2",
-                }}
-              />
-            ))}
-          </div>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                width: ponto,
+                height: ponto,
+                borderRadius: Math.round(ponto / 4),
+                background: i === 4 ? DESTAQUE : "#d9cfc2",
+              }}
+            />
+          ))}
         </div>
       </div>
-    ),
-    { width: tamanho, height: tamanho },
+    </div>
   );
 }

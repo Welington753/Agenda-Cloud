@@ -5,6 +5,8 @@ import { AuthProvider } from "@/lib/auth/auth-context";
 import { RealAuthProvider } from "@/lib/auth/real-auth-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { NOME_PRODUTO } from "@/lib/config";
+import { metadadosDaRaiz } from "@/lib/site/metadados-do-site";
+import { lerConfiguracaoDoSite } from "@/lib/site/origem-do-site";
 import { APARENCIA_PADRAO, SCRIPT_APARENCIA } from "@/lib/aparencia/tema";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -12,10 +14,11 @@ const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
 });
 
+// Título, descrição, Open Graph, verificação do Search Console e a origem
+// dos endereços absolutos (src/lib/site/metadados-do-site.ts). A origem vem
+// só do ambiente do servidor, nunca de cabeçalho da requisição.
 export const metadata: Metadata = {
-  title: `${NOME_PRODUTO} — Agenda e gestão para pequenos negócios`,
-  description:
-    "Agenda e gestão simples para salões, clínicas, estúdios, pet shops, terapeutas, consultores e outros negócios com horário marcado.",
+  ...metadadosDaRaiz(lerConfiguracaoDoSite(process.env), process.env),
   // Aplicativo instalável (manifest.ts): no iPhone, "Adicionar à Tela de
   // Início" abre em tela cheia — e só assim o iOS permite notificações.
   appleWebApp: { capable: true, title: NOME_PRODUTO, statusBarStyle: "default" },
