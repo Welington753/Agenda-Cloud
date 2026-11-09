@@ -1,11 +1,80 @@
-import type { ReactNode } from "react";
+import type { Metadata } from "next";
+import { cache } from "react";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
 import { MarcadorAparelho } from "@/components/aparencia/aparencia";
+import { lerConfiguracaoProxy } from "@/lib/api/proxy-config";
+import { lerPaginaNoServidor } from "@/lib/agendamento-publico/pagina-no-servidor";
+import {
+  DESCRICAO_PAGINA_PUBLICA_GENERICA,
+  TITULO_PAGINA_PUBLICA_GENERICO,
+  caminhoDaPaginaPublica,
+  descricaoDaPaginaPublica,
+  jsonLdDaPaginaPublica,
+  tituloDaPaginaPublica,
+} from "@/lib/agendamento-publico/metadados-publicos";
+import { serializarJsonLd } from "@/lib/site/dados-estruturados";
+import { IMAGEM_DE_COMPARTILHAMENTO, METADADOS_NAO_ENCONTRADA, OPEN_GRAPH_COMUM } from "@/lib/site/metadados-do-site";
+import { enderecoAbsoluto, lerConfiguracaoDoSite } from "@/lib/site/origem-do-site";
 
 // Agendamento público: segue SEMPRE a aparência do aparelho do cliente,
 // mesmo que o dono tenha escolhido um tema na área privada deste navegador.
-export default function AgendarLayout({ children }: { children: ReactNode }) {
+//
+// Layout de SERVIDOR: lê a página pública uma vez por requisição (`cache`
+// junta a leitura do layout e a dos metadados) para dar título, descrição,
+// endereço canônico e dados estruturados do estabelecimento certo, e para
+// responder 404 de verdade quando a API confirma que ele não existe ou que a
+// página está desligada. A tela continua no navegador (page.tsx), sem mudança.
+// Regras da leitura: lib/agendamento-publico/pagina-no-servidor.ts.
+const lerPagina = cache(async (slug: string) => {
+  const proxy = lerConfiguracaoProxy(process.env);
+  return lerPaginaNoServidor(slug, proxy.ok ? proxy.configuracao : null, await headers());
+});
+
+export async function generateMetadata({ params }: LayoutProps<"/agendar/[slug]">): Promise<Metadata> {
+  const { slug } = await params;
+  const leitura = await lerPagina(slug);
+  if (leitura.tipo === "inexistente") return METADADOS_NAO_ENCONTRADA;
+  if (leitura.tipo === "desconhecida") {
+    return { title: TITULO_PAGINA_PUBLICA_GENERICO, description: DESCRICAO_PAGINA_PUBLICA_GENERICA };
+  }
+  const site = lerConfiguracaoDoSite(process.env);
+  const caminho = caminhoDaPaginaPublica(leitura.slug);
+  const titulo = tituloDaPaginaPublica(leitura.pagina.establishment.name);
+  const descricao = descricaoDaPaginaPublica(leitura.pagina);
+  return {
+    title: titulo,
+    description: descricao,
+    alternates: site.indexavel && site.origem ? { canonical: caminho } : undefined,
+    openGraph: {
+      ...OPEN_GRAPH_COMUM,
+      url: site.origem ? caminho : undefined,
+      title: titulo,
+      description: descricao,
+      images: site.origem ? [IMAGEM_DE_COMPARTILHAMENTO] : undefined,
+    },
+    twitter: { card: "summary_large_image", images: site.origem ? [IMAGEM_DE_COMPARTILHAMENTO.url] : undefined },
+  };
+}
+
+export default async function AgendarLayout({ children, params }: LayoutProps<"/agendar/[slug]">) {
+  const { slug } = await params;
+  const leitura = await lerPagina(slug);
+  if (leitura.tipo === "inexistente") notFound();
+
+  const url =
+    leitura.tipo === "encontrada"
+      ? enderecoAbsoluto(lerConfiguracaoDoSite(process.env), caminhoDaPaginaPublica(leitura.slug))
+      : null;
+
   return (
     <>
+      {leitura.tipo === "encontrada" && url && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializarJsonLd(jsonLdDaPaginaPublica(leitura.pagina, url)) }}
+        />
+      )}
       <MarcadorAparelho />
       {children}
     </>
