@@ -42,6 +42,9 @@ export interface RegrasDoProfissional {
   /** Desligado: as regras ficam guardadas, mas nenhuma conclusão gera comissão. */
   settings: { receivesCommission: boolean; defaultRule: RegraGeral | null };
   services: ServicoComRegra[];
+  /** Impressão das exceções por serviço lidas agora: volta no pedido de
+   * remoção, recusado (409 `EXCECOES_DESATUALIZADAS`) se elas mudaram. */
+  exceptionsFingerprint: string;
 }
 
 export interface ResumoDeRecebeComissao {
@@ -112,11 +115,11 @@ const TIPOS: readonly unknown[] = ["NONE", "PERCENTAGE", "FIXED"];
 const ORIGENS: readonly unknown[] = ["SERVICE", "DEFAULT"];
 const ORIGENS_APURADAS: readonly unknown[] = ["SERVICE", "DEFAULT", "LEGACY_SERVICE", null];
 
-function ehRegra(v: unknown): v is RegraDeComissao {
+export function ehRegra(v: unknown): v is RegraDeComissao {
   return objeto(v) && TIPOS.includes(v.kind) && numeroOuNulo(v.value);
 }
 
-function ehRegraGeral(v: unknown): v is RegraGeral {
+export function ehRegraGeral(v: unknown): v is RegraGeral {
   return objeto(v) && (v.kind === "PERCENTAGE" || v.kind === "FIXED") && numero(v.value);
 }
 
@@ -136,6 +139,7 @@ export function ehRegrasDoProfissional(v: unknown): v is RegrasDoProfissional {
     objeto(v.settings) &&
     typeof v.settings.receivesCommission === "boolean" &&
     (v.settings.defaultRule === null || ehRegraGeral(v.settings.defaultRule)) &&
+    texto(v.exceptionsFingerprint) &&
     Array.isArray(v.services) &&
     v.services.every(
       (s) =>
@@ -209,7 +213,7 @@ export const caminhoRegra = (tenantId: string, professionalId: string, serviceId
 export const caminhoConfiguracoes = (tenantId: string) => `${caminhoComissoes(tenantId)}/settings`;
 export const caminhoConfiguracao = (tenantId: string, professionalId: string) =>
   `${caminhoConfiguracoes(tenantId)}/${encodeURIComponent(professionalId)}`;
-export const caminhoProprias =(tenantId: string) => `/tenants/${encodeURIComponent(tenantId)}/my-agenda/commissions`;
+export const caminhoProprias = (tenantId: string) => `/tenants/${encodeURIComponent(tenantId)}/my-agenda/commissions`;
 
 /** Percentual digitado ("12,5") em pontos-base (1250), sem ponto flutuante:
  * é a mesma conta de centavos com duas casas. */
@@ -220,6 +224,26 @@ export function percentualParaPontosBase(valor: string): { ok: true; pontos: num
   if (lido.centavos <= 0) return { ok: false, erro: "Para não pagar comissão, escolha “Sem comissão”." };
   if (lido.centavos > 10_000) return { ok: false, erro: "O percentual vai até 100%." };
   return { ok: true, pontos: lido.centavos };
+}
+
+/** Lê o campo de valor de um percentual ou de um valor fixo. `mensagemZero`:
+ * o que dizer para zero (a exceção tem "Sem comissão"; a regra geral não). */
+export function lerValor(
+  tipo: "PERCENTAGE" | "FIXED",
+  valor: string,
+  mensagemZero: string,
+): { ok: true; corpo: { kind: "PERCENTAGE" | "FIXED"; value: number } } | { ok: false; erro: string } {
+  const zero = precoParaCentavos(valor);
+  if (zero.ok && zero.centavos !== null && zero.centavos <= 0) return { ok: false, erro: mensagemZero };
+  if (tipo === "PERCENTAGE") {
+    const lido = percentualParaPontosBase(valor);
+    return lido.ok ? { ok: true, corpo: { kind: "PERCENTAGE", value: lido.pontos } } : lido;
+  }
+  const lido = precoParaCentavos(valor);
+  if (!lido.ok) return lido;
+  if (lido.centavos === null) return { ok: false, erro: "Informe o valor." };
+  if (lido.centavos > 100_000_000) return { ok: false, erro: "Valor acima do máximo aceito." };
+  return { ok: true, corpo: { kind: "FIXED", value: lido.centavos } };
 }
 
 export function pontosBaseParaCampo(pontos: number): string {

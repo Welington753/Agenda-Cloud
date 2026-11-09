@@ -39,6 +39,9 @@ export const ROTA_NOTIFICACOES = `${ROTA_CONFIGURACOES}/notificacoes`;
 export const ROTA_APARENCIA = `${ROTA_CONFIGURACOES}/aparencia`;
 export const ROTA_PERFIL = `${ROTA_CONFIGURACOES}/perfil`;
 
+/** Uma regra geral de comissão para vários profissionais de uma vez (dono). */
+export const ROTA_COMISSAO_EM_MASSA = `${ROTA_PROFISSIONAIS}/comissao-em-massa`;
+
 /** Regras de comissão de um profissional, por serviço. */
 export function rotaComissoesDoProfissional(id: string): string {
   return `${ROTA_PROFISSIONAIS}/${encodeURIComponent(id)}/comissoes`;

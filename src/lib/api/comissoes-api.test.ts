@@ -4,6 +4,7 @@ import {
   ehRegrasDoProfissional,
   ehRelatorioDeComissoes,
   ehResumoDeRecebeComissao,
+  lerValor,
   percentualParaPontosBase,
   pontosBaseParaCampo,
   rotuloDaEfetiva,
@@ -49,8 +50,10 @@ describe("forma das respostas", () => {
       professional: { id: "p", name: "Ana", active: true },
       settings: { receivesCommission: false, defaultRule: { kind: "FIXED", value: 1000 } },
       services: [servico],
+      exceptionsFingerprint: "e".repeat(64),
     };
     expect(ehRegrasDoProfissional(ok)).toBe(true);
+    expect(ehRegrasDoProfissional({ ...ok, exceptionsFingerprint: undefined })).toBe(false);
     expect(ehRegrasDoProfissional({ ...ok, services: [{ ...servico, rule: { kind: "OUTRO", value: 1 } }] })).toBe(false);
     // Sem a configuração, ou com "sem comissão" como regra geral: formato inválido.
     expect(ehRegrasDoProfissional({ ...ok, settings: undefined })).toBe(false);
@@ -90,5 +93,13 @@ describe("forma das respostas", () => {
     expect(ehRelatorioDeComissoes(ok)).toBe(true);
     expect(ehRelatorioDeComissoes({ ...ok, basis: "PAGA" })).toBe(false);
     expect(ehRelatorioDeComissoes({ ...ok, totalAccruedCents: "0" })).toBe(false);
+  });
+});
+
+describe("lerValor", () => {
+  it("lerValor: percentual, fixo e zero com a mensagem de quem chama", () => {
+    expect(lerValor("PERCENTAGE", "12,5", "zero")).toEqual({ ok: true, corpo: { kind: "PERCENTAGE", value: 1250 } });
+    expect(lerValor("FIXED", "9,90", "zero")).toEqual({ ok: true, corpo: { kind: "FIXED", value: 990 } });
+    expect(lerValor("FIXED", "0", "zero")).toEqual({ ok: false, erro: "zero" });
   });
 });

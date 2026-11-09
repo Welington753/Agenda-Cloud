@@ -19,12 +19,13 @@ import {
   caminhoRegra,
   caminhoRegras,
   ehRegrasDoProfissional,
-  pontosBaseParaCampo,
+  lerValor,
   rotuloDaEfetiva,
   type RegrasDoProfissional,
   type ServicoComRegra,
 } from "@/lib/api/comissoes-api";
-import { centavosParaCampo, formatarPrecoServico } from "@/lib/servicos/dinheiro";
+import { formatarPrecoServico } from "@/lib/servicos/dinheiro";
+import { editar, estadoDoEditor, type EscolhaDaExcecao, type RascunhoDaExcecao } from "@/lib/profissionais/rascunho-da-excecao";
 import { ROTA_COMISSOES, ROTA_PROFISSIONAIS } from "@/lib/conta/rotas";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { AvisoDeApuracao } from "@/components/conta/relatorio-comissoes";
@@ -33,7 +34,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { CAMPO, CartaoRecebeComissao, lerValor } from "./cartao-recebe-comissao";
+import { CAMPO, CartaoRecebeComissao } from "./cartao-recebe-comissao";
 
 const MENSAGEM_DE_LEITURA = {
   sessao: "Sua sessão precisa ser verificada novamente. Entre de novo.",
@@ -43,20 +44,20 @@ const MENSAGEM_DE_LEITURA = {
   servidor: "Não foi possível carregar as comissões.",
 } as const;
 
-type Escolha = "USAR_GERAL" | "NONE" | "PERCENTAGE" | "FIXED";
-
 export default function ComissoesDoProfissionalPage() {
   const { estado: sessao } = useRealAuth();
   const { professionalId } = useParams<{ professionalId: string }>();
   const tenantId = sessao.status === "autenticado" ? sessao.tenantIdAtivo : null;
-  const { estado, recarregar } = useLeituraPlataforma(
+  const { estado, recarregar, anterior } = useLeituraPlataforma(
     tenantId ? caminhoRegras(tenantId, professionalId) : null,
     ehRegrasDoProfissional,
   );
   // A resposta de cada gravação já traz a lista atualizada; uma leitura nova
   // do servidor substitui o que foi gravado sobre a anterior.
   const [salvo, setSalvo] = useState<{ sobre: RegrasDoProfissional; dados: RegrasDoProfissional } | null>(null);
-  const lido = estado.status === "pronto" ? estado.dados : null;
+  // Durante uma releitura (exceções mudaram por fora), a leitura anterior
+  // mantém a tela montada: o aviso e os campos do cartão não somem.
+  const lido = estado.status === "pronto" ? estado.dados : anterior;
   const atual = lido && salvo?.sobre === lido ? salvo.dados : lido;
   if (sessao.status !== "autenticado" || !tenantId) return null;
   const aoSalvar = (dados: RegrasDoProfissional) => lido && setSalvo({ sobre: lido, dados });
@@ -83,7 +84,7 @@ export default function ComissoesDoProfissionalPage() {
       )}
       {atual && (
         <>
-          <CartaoRecebeComissao tenantId={tenantId} dados={atual} aoSalvar={aoSalvar} />
+          <CartaoRecebeComissao tenantId={tenantId} dados={atual} aoSalvar={aoSalvar} aoRecarregar={recarregar} />
           <h2 className="text-base font-semibold text-ink">Exceções por serviço</h2>
           {!atual.settings.receivesCommission && (
             <p
@@ -99,6 +100,9 @@ export default function ComissoesDoProfissionalPage() {
           ) : (
             <ul className="space-y-3" data-testid="regras-de-comissao">
               {atual.services.map((s) => (
+                // Sem alteração pendente, o editor mostra o valor gravado
+                // (inclusive depois de remover exceções); um rascunho não salvo
+                // sobrevive à releitura, com aviso (rascunho-da-excecao.ts).
                 <li key={s.service.id}>
                   <EditorDaRegra
                     tenantId={tenantId}
@@ -134,15 +138,11 @@ function EditorDaRegra({
   aoSalvar: (regras: RegrasDoProfissional) => void;
 }) {
   const { notificar } = useToast();
-  const inicial: Escolha = item.rule === null ? "USAR_GERAL" : item.rule.kind;
-  const [escolha, setEscolha] = useState<Escolha>(inicial);
-  const [valor, setValor] = useState(
-    item.rule?.kind === "PERCENTAGE"
-      ? pontosBaseParaCampo(item.rule.value ?? 0)
-      : item.rule?.kind === "FIXED"
-        ? centavosParaCampo(item.rule.value)
-        : "",
-  );
+  const [rascunho, setRascunho] = useState<RascunhoDaExcecao | null>(null);
+  const {
+    campos: { escolha, valor },
+    mudouPorFora,
+  } = estadoDoEditor(item.rule, rascunho);
   const [erro, setErro] = useState<string | null>(null);
   const [gravando, setGravando] = useState(false);
   const idBase = `regra-${item.service.id}`;
@@ -167,6 +167,7 @@ function EditorDaRegra({
     if (r.tipo !== "ok") return setErro(mensagemDoResultado(r));
     if (!ehRegrasDoProfissional(r.dados)) return setErro("O servidor respondeu num formato inesperado. Atualize a página.");
     notificar(`Comissão de ${item.service.name} salva.`, "sucesso");
+    setRascunho(null);
     aoSalvar(r.dados);
   }
 
@@ -189,6 +190,18 @@ function EditorDaRegra({
               {rotuloDaEfetiva(item.effective)}
             </Badge>
           </div>
+          {mudouPorFora && (
+            <div
+              className="space-y-2 rounded-[var(--radius-control)] border border-border bg-warning-soft p-3 text-sm text-ink"
+              role="status"
+              data-testid="aviso-regra-mudou"
+            >
+              <p>A comissão deste serviço mudou enquanto você editava. Sua alteração ainda não foi salva.</p>
+              <Botao type="button" variante="secundaria" className="min-h-11" onClick={() => setRascunho(null)}>
+                Descartar minha alteração
+              </Botao>
+            </div>
+          )}
           {!item.linked && (
             <p className="text-xs text-ink-soft">O profissional não atende mais este serviço; a regra só vale se ele voltar a atender.</p>
           )}
@@ -200,7 +213,7 @@ function EditorDaRegra({
                 className={CAMPO}
                 value={escolha}
                 onChange={(e) => {
-                  setEscolha(e.target.value as Escolha);
+                  setRascunho(editar(item.rule, rascunho, { escolha: e.target.value as EscolhaDaExcecao, valor }));
                   setErro(null);
                 }}
               >
@@ -219,7 +232,7 @@ function EditorDaRegra({
                   inputMode="decimal"
                   placeholder={escolha === "PERCENTAGE" ? "Ex.: 40 ou 12,5" : "Ex.: 15,00"}
                   value={valor}
-                  onChange={(e) => setValor(e.target.value)}
+                  onChange={(e) => setRascunho(editar(item.rule, rascunho, { escolha, valor: e.target.value }))}
                 />
               </label>
             )}

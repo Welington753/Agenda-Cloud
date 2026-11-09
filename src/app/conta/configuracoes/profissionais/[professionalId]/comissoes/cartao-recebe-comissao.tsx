@@ -5,17 +5,31 @@
 // comissão. A regra geral é opcional: percentual sobre o preço de cada
 // serviço realizado ou valor fixo por serviço realizado. O servidor confere
 // tudo de novo e só a próxima conclusão usa o que for salvo.
+//
+// Exceções por serviço: mantidas por padrão (salvar a regra geral não as
+// remove). Remover é uma escolha explícita, com a lista do que sai e uma
+// confirmação; o pedido leva a impressão das exceções mostradas e o servidor
+// recusa (409 `EXCECOES_DESATUALIZADAS`) se elas mudaram: a lista é relida.
 import { useState, type FormEvent } from "react";
 import { CheckCircle2, CircleSlash } from "lucide-react";
 import { acaoAdministrativa, mensagemDoResultado } from "@/lib/administracao/api-contas";
 import {
   caminhoConfiguracao,
   ehRegrasDoProfissional,
-  percentualParaPontosBase,
+  lerValor,
   pontosBaseParaCampo,
   type RegrasDoProfissional,
 } from "@/lib/api/comissoes-api";
-import { centavosParaCampo, precoParaCentavos } from "@/lib/servicos/dinheiro";
+import { centavosParaCampo } from "@/lib/servicos/dinheiro";
+import {
+  AVISO_SUBSTITUIR_NAO_REMOVE,
+  MENSAGEM_EXCECOES_DESATUALIZADAS,
+  descreverExcecoes,
+  excecoesDoProfissional,
+  quantasExcecoes,
+  textoConfirmacaoRemocaoIndividual,
+} from "@/lib/profissionais/excecoes-de-comissao";
+import { ConfirmacaoDeRemocao, EscolhaDasExcecoes } from "@/components/conta/escolha-de-excecoes";
 import { Badge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -24,36 +38,19 @@ import { useToast } from "@/components/ui/toast";
 export const CAMPO =
   "mt-1 block min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm text-ink";
 
-/** Lê o campo de valor de um percentual ou de um valor fixo. `mensagemZero`:
- * o que dizer para zero (a exceção tem "Sem comissão"; a regra geral não). */
-export function lerValor(
-  tipo: "PERCENTAGE" | "FIXED",
-  valor: string,
-  mensagemZero: string,
-): { ok: true; corpo: { kind: "PERCENTAGE" | "FIXED"; value: number } } | { ok: false; erro: string } {
-  const zero = precoParaCentavos(valor);
-  if (zero.ok && zero.centavos !== null && zero.centavos <= 0) return { ok: false, erro: mensagemZero };
-  if (tipo === "PERCENTAGE") {
-    const lido = percentualParaPontosBase(valor);
-    return lido.ok ? { ok: true, corpo: { kind: "PERCENTAGE", value: lido.pontos } } : lido;
-  }
-  const lido = precoParaCentavos(valor);
-  if (!lido.ok) return lido;
-  if (lido.centavos === null) return { ok: false, erro: "Informe o valor." };
-  if (lido.centavos > 100_000_000) return { ok: false, erro: "Valor acima do máximo aceito." };
-  return { ok: true, corpo: { kind: "FIXED", value: lido.centavos } };
-}
-
 type EscolhaGeral = "NENHUMA" | "PERCENTAGE" | "FIXED";
 
 export function CartaoRecebeComissao({
   tenantId,
   dados,
   aoSalvar,
+  aoRecarregar,
 }: {
   tenantId: string;
   dados: RegrasDoProfissional;
   aoSalvar: (regras: RegrasDoProfissional) => void;
+  /** Relê as regras do servidor (exceções mudaram desde a leitura). */
+  aoRecarregar: () => void;
 }) {
   const { notificar } = useToast();
   const { settings } = dados;
@@ -68,7 +65,14 @@ export function CartaoRecebeComissao({
   );
   const [erro, setErro] = useState<string | null>(null);
   const [gravando, setGravando] = useState(false);
+  const [removerExcecoes, setRemoverExcecoes] = useState(false);
+  // A confirmação vale só para a lista exibida: se as exceções mudarem (nova
+  // leitura), a impressão muda e é preciso confirmar de novo.
+  const [confirmadoPara, setConfirmadoPara] = useState<string | null>(null);
   const id = "configuracao-comissao";
+  const excecoes = excecoesDoProfissional(dados);
+  const remover = removerExcecoes && escolha !== "NENHUMA" && excecoes.length > 0;
+  const confirmado = confirmadoPara === dados.exceptionsFingerprint;
 
   async function salvar(evento: FormEvent) {
     evento.preventDefault();
@@ -79,16 +83,31 @@ export function CartaoRecebeComissao({
       if (!lido.ok) return setErro(lido.erro);
       defaultRule = lido.corpo;
     }
+    if (remover && !confirmado) return setErro("Confirme a remoção das exceções por serviço.");
     setErro(null);
     setGravando(true);
     const r = await acaoAdministrativa<unknown>(caminhoConfiguracao(tenantId, dados.professional.id), "PUT", {
       receivesCommission: recebe,
       defaultRule,
+      ...(remover
+        ? { exceptions: "REMOVE", exceptionsFingerprint: dados.exceptionsFingerprint, confirmRemoveExceptions: true }
+        : {}),
     });
     setGravando(false);
+    if (r.tipo === "conflito" && r.codigo === "EXCECOES_DESATUALIZADAS") {
+      setErro(MENSAGEM_EXCECOES_DESATUALIZADAS);
+      return aoRecarregar();
+    }
     if (r.tipo !== "ok") return setErro(mensagemDoResultado(r));
     if (!ehRegrasDoProfissional(r.dados)) return setErro("O servidor respondeu num formato inesperado. Atualize a página.");
-    notificar(`Comissão de ${dados.professional.name} salva.`, "sucesso");
+    notificar(
+      remover
+        ? `Comissão de ${dados.professional.name} salva e ${quantasExcecoes(excecoes.length)} por serviço ${excecoes.length === 1 ? "removida" : "removidas"}.`
+        : `Comissão de ${dados.professional.name} salva.`,
+      "sucesso",
+    );
+    setRemoverExcecoes(false);
+    setConfirmadoPara(null);
     aoSalvar(r.dados);
   }
 
@@ -159,13 +178,48 @@ export function CartaoRecebeComissao({
                 ? "Sem regra geral, os serviços sem exceção ficam não configurados e vão para conferência."
                 : "Serviços sem exceção usam a regra geral. Uma exceção, inclusive “Sem comissão”, vale no lugar dela."}
           </p>
+          {excecoes.length > 0 && (
+            <div className="space-y-3" data-testid="excecoes-na-configuracao">
+              <EscolhaDasExcecoes
+                nome="excecoes-individual"
+                legenda={`Exceções por serviço (${quantasExcecoes(excecoes.length)}: ${descreverExcecoes(excecoes)})`}
+                escolha={remover ? "REMOVE" : "KEEP"}
+                aoEscolher={(e) => {
+                  setRemoverExcecoes(e === "REMOVE");
+                  setConfirmadoPara(null);
+                  setErro(null);
+                }}
+                motivoSemRemover={escolha === "NENHUMA" ? "Defina uma regra geral para que ela valha nos serviços sem exceção." : null}
+              />
+              {!remover && <p className="text-xs text-ink-soft">{AVISO_SUBSTITUIR_NAO_REMOVE}</p>}
+              {remover && (
+                <ConfirmacaoDeRemocao
+                  titulo={`${quantasExcecoes(excecoes.length)} por serviço ${excecoes.length === 1 ? "será removida" : "serão removidas"}`}
+                  texto={textoConfirmacaoRemocaoIndividual(dados.professional.name, excecoes.length)}
+                  confirmado={confirmado}
+                  aoMudar={(v) => {
+                    setConfirmadoPara(v ? dados.exceptionsFingerprint : null);
+                    setErro(null);
+                  }}
+                >
+                  <ul className="list-disc space-y-1 pl-5" data-testid="excecoes-a-remover">
+                    {excecoes.map((e) => (
+                      <li key={e.serviceId} className="break-words">
+                        {e.nome}: {e.regra}
+                      </li>
+                    ))}
+                  </ul>
+                </ConfirmacaoDeRemocao>
+              )}
+            </div>
+          )}
           {erro && (
             <p role="alert" className="text-sm text-danger">
               {erro}
             </p>
           )}
-          <Botao type="submit" className="min-h-11" disabled={gravando} aria-busy={gravando}>
-            Salvar comissão do profissional
+          <Botao type="submit" className="min-h-11" disabled={gravando || (remover && !confirmado)} aria-busy={gravando}>
+            {remover ? "Salvar e remover exceções" : "Salvar comissão do profissional"}
           </Botao>
         </form>
       </CartaoCorpo>

@@ -1,18 +1,22 @@
 // Comissões do estabelecimento (dono): "Recebe comissão" e regra geral por
-// profissional, exceções por serviço e o relatório apurado. Sessão
-// obrigatória; a autorização no estabelecimento é refeita pelo serviço em
-// toda requisição.
-import { Body, Controller, Delete, Get, Header, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+// profissional (um a um ou em massa), exceções por serviço e o relatório
+// apurado. Sessão obrigatória; a autorização no estabelecimento é refeita
+// pelo serviço em toda requisição.
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
 import { SessionGuard } from '../auth/session.guard.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
+  commissionBulkApplySchema,
+  commissionBulkPreviewSchema,
   commissionReportQuerySchema,
   commissionRuleSchema,
   commissionSettingsSchema,
   professionalIdSchema,
   serviceIdSchema,
+  type CommissionBulkApplyDto,
+  type CommissionBulkPreviewDto,
   type CommissionReportQuery,
   type CommissionRuleDto,
   type CommissionSettingsDto,
@@ -57,6 +61,30 @@ export class CommissionsController {
     @Body(new ZodValidationPipe(commissionSettingsSchema)) dto: CommissionSettingsDto,
   ) {
     return this.commissions.setSettings(identidade(req).userId, tenantId, professionalId, dto);
+  }
+
+  /** Prévia da aplicação em massa da regra geral: nada é gravado. */
+  @Post('bulk-settings/preview')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  previewBulkSettings(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Body(new ZodValidationPipe(commissionBulkPreviewSchema)) dto: CommissionBulkPreviewDto,
+  ) {
+    return this.commissions.previewBulkSettings(identidade(req).userId, tenantId, dto);
+  }
+
+  /** Aplica a regra geral a vários profissionais, com a impressão da prévia. */
+  @Post('bulk-settings')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  applyBulkSettings(
+    @Req() req: AuthenticatedRequest,
+    @Param('tenantId') tenantId: string,
+    @Body(new ZodValidationPipe(commissionBulkApplySchema)) dto: CommissionBulkApplyDto,
+  ) {
+    return this.commissions.applyBulkSettings(identidade(req).userId, tenantId, dto);
   }
 
   @Get('rules/:professionalId')

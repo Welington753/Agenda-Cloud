@@ -35,6 +35,7 @@
     "test:browser:calendario-funcionario": "playwright test tests/browser/calendario-funcionario-flow.spec.ts",
     "test:browser:recebimentos": "playwright test tests/browser/recebimentos-flow.spec.ts",
     "test:browser:comissoes": "playwright test tests/browser/comissoes-flow.spec.ts",
+    "test:browser:comissoes-em-massa": "playwright test tests/browser/comissoes-em-massa.spec.ts",
     "test:browser:whatsapp": "playwright test tests/browser/whatsapp-contato-flow.spec.ts",
     "test:browser:agendamento-publico": "playwright test tests/browser/agendamento-publico-flow.spec.ts",
     "test:browser:avisos-solicitacoes": "playwright test tests/browser/avisos-solicitacoes-flow.spec.ts",
