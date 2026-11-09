@@ -70,6 +70,8 @@ Render. **Não publique com base só nessas anotações.**
   `agenda-cloud-piloto-api` e `agenda-cloud-piloto-web`.
 - URL direta do piloto, Endpoint ID do piloto e Endpoint ID proibido, vindos
   do gerenciador de senhas.
+- Console do Neon com permissão para criar branches no projeto do piloto
+  (passo 1).
 - PostgreSQL 17.11 ou mais novo para Windows (`-PgBin`).
 - Pasta `%USERPROFILE%\AgendaCloud-operacoes`, onde ficam os backups
   existentes. Não apague nenhum.
@@ -94,44 +96,110 @@ expressa do dono naquele momento.
 - Anote os IDs dos deploys Live atuais: são o destino do rollback.
 - Se algum serviço estiver em outro SHA, pare e reavalie.
 
-### 1. Backup e validação
+### 1. Ponto de recuperação: branch do Neon
 
-**Lacuna do procedimento existente.** Nenhum script do repositório faz
-backup protegido de um banco que **já** está no estado 16:
+**Decisão (09/11/2026): branch do Neon.** Antes da publicação, cria-se uma branch do
+Neon com dados e estrutura do piloto. O kit da 16 não muda: a fase `preparar`
+continua recusando o estado 16 (`ERR_MIGRATION_JA_APLICADA`) e não é usada
+aqui. Os backups de 09/11 ficam no PC do trabalho, são de **antes** da 16 e
+servem só para consulta.
 
-- a fase `preparar` do kit da 16 só faz backup no estado "antes" e recusa o
-  estado 16 com `ERR_MIGRATION_JA_APLICADA`;
-- o backup diário (`backup-piloto-automatico.md`) estava sem configuração no
-  último registro (29/10/2026).
+Esta publicação não escreve no schema. A branch protege contra gravações
+erradas da API nova (por exemplo, exceções removidas por engano). Não é
+pré-requisito de migration.
 
-Os backups de 09/11 estão no `AgendaCloud-operacoes` do **PC do trabalho** e
-são de **antes** da 16 (`regra-geral-comissoes-aplicar-2026-11-09T13-09-24-558Z`).
-Servem para consulta, nunca para restaurar sobre o piloto.
+Faça os passos 1, 2 e 3 em sequência, sem pausa longa antes do passo 4. Criar
+a branch é uma escrita no **projeto** do Neon, não nos dados do piloto, e
+precisa de autorização do dono na hora.
 
-Esta publicação não escreve no schema. O backup é rede de segurança contra
-gravações erradas da API nova (por exemplo, exceções removidas por engano),
-não pré-requisito de migration. Escolha **uma** opção antes de começar:
+**1.1 Confirmar projeto e origem (só leitura, console do Neon).**
 
-- **A. Branch do Neon** (o "backup (branch do Neon)" de
-  `publicacao-piloto-render.md`, seção 8). No console do Neon, no projeto do
-  piloto, crie uma branch a partir do estado atual, com nome datado, logo
-  antes do passo 4.
-  - Validação: a branch aparece com o horário de criação, e o tamanho é
-    compatível com o da principal.
-  - Não conecte a API a ela.
-  - Para consultar ou restaurar numa cópia, use o endpoint dela, nunca o do
-    piloto.
-  - É uma escrita no projeto do Neon (não nos dados) e precisa de
-    autorização. Pode contar no limite de branches do plano gratuito.
-- **B. Backup diário**, se já estiver configurado: uma execução manual
-  (*Run workflow*) logo antes do passo 4, validada pela seção 4 de
-  `backup-piloto-automatico.md`: `RESTAURACAO_IGUAL: true` e
-  `RESULTADO: backup_ok`.
-- **C. Sem backup novo.** Fica só o histórico de 6 h do Neon Free. Aceitável
-  apenas se o dono decidir por escrito.
+- O projeto aberto é o do piloto. O Endpoint ID da branch padrão é
+  `<ep-piloto>`, e nenhum endpoint do projeto é `<ep-proibido>`.
+- Anote a **branch de origem**: a branch padrão do projeto, onde está o
+  endpoint `<ep-piloto>`. Anote o nome e o ID. Não presuma o nome; confira
+  no console.
+- Em **Settings**, anote o plano do projeto e a janela de histórico
+  (*history window* / *instant restore*). No Free, o padrão é 6 h.
+- Em **Billing** / **Usage**, anote quantas branches existem, o limite do
+  plano e se uma branch nova gera cobrança. Se o console indicar custo que
+  o dono não autorizou, ou se o limite de branches estiver esgotado, **pare**.
+  Não apague branch antiga para abrir espaço sem decisão do dono.
 
-Não faça `pg_dump` manual fora de um kit: o projeto não tem guarda nem
-comprovante para isso.
+**1.2 Criar a branch (escrita no projeto, com autorização).**
+
+Em **Branches → New branch**:
+
+- **Parent:** a branch de origem anotada em 1.1.
+- **Dados:** o ponto atual (*Current point in time* / *head*), com dados.
+  **Nunca** *Schema only* e nunca um horário passado.
+- **Nome:** `pre-publicacao-5d74556-AAAAMMDD-HHMM`, com a hora em UTC.
+- **Compute:** crie com compute (o tamanho mínimo basta). Ele é necessário
+  para conferir a branch.
+- **Expiração:** deixe **sem expiração**. A branch precisa existir durante
+  toda a validação e no período de observação depois dela (veja 1.4).
+
+Anote na pasta de operações deste computador (`AgendaCloud-operacoes`),
+**nunca no repositório, num PR ou numa conversa**:
+
+- ID do projeto, nome e ID da branch de origem;
+- nome e ID da branch nova, e o Endpoint ID dela (`<ep-backup>`);
+- o horário de criação em UTC e o ponto de origem que o console mostrar
+  (horário e, se aparecer, o LSN);
+- o plano, a janela de histórico e o que o console disse sobre custo.
+
+`<ep-backup>` precisa ser diferente de `<ep-piloto>` e de `<ep-proibido>`.
+Se não for, pare.
+
+**1.3 Conferir que a branch está acessível e no estado 16 (só leitura).**
+
+Em Git Bash, na worktree do alvo. A conferência abre uma transação
+`READ ONLY` e termina com `ROLLBACK`, então não grava nada:
+
+```bash
+cd /c/Projetos/Agenda-Cloud-publicacao-5d74556/backend
+read -rs PILOT_DIRECT_URL && export PILOT_DIRECT_URL   # cole a URL direta DA BRANCH NOVA, Enter (não ecoa)
+export PILOT_ENDPOINT_ID=<ep-backup> PRODUCTION_ENDPOINT_ID=<ep-proibido>
+PILOT_EXPECT=after-commission-settings npm run pilot:check-database
+unset PILOT_DIRECT_URL PILOT_ENDPOINT_ID
+```
+
+`PILOT_ENDPOINT_ID` recebe aqui o endpoint **da branch**. A guarda compara a
+URL com esse ID e recusa a conexão se a URL for de outro endpoint.
+
+O esperado é o mesmo do passo 2.2: `TARGET_ENDPOINT_MATCH: true`,
+`DISTINCT_FROM_PRODUCTION: true`, `TLS_VERIFICATION: true`,
+`MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`,
+`BASELINE_FAILURES: none`, `RESULT: SUCCESS`.
+
+Se a branch não conectar ou não der o esperado, pare. Sem ponto de
+recuperação conferido, não há deploy.
+
+Não rode a fase `conferir` do kit contra a branch: ela grava no
+`operacoes.jsonl` como se fosse o piloto.
+
+**1.4 Preservar a branch.**
+
+- A API e o web **nunca** apontam para ela.
+- Nenhum teste que grave dados usa a branch, incluindo o passo 6.
+- Não use *Reset from parent* nela: isso trocaria o ponto de recuperação
+  pelo estado atual do piloto.
+- Mantenha a branch durante toda a publicação e por pelo menos 7 dias depois
+  do passo 6 sem incidente. Só o dono decide quando apagá-la. Se preferir
+  expiração automática, defina-a só depois desse prazo (o Neon aceita no
+  máximo 30 dias à frente).
+- O compute da branch pode ficar suspenso; ele volta sozinho na próxima
+  conexão. Se o plano cobrar por compute ou por branch, combine com o dono
+  quanto tempo manter.
+
+**Retenção, para registro.** Segundo a documentação do Neon (consultada em
+09/11/2026; confira no console):
+
+- A branch guarda os dados do ponto de origem enquanto existir,
+  independentemente da janela de histórico do projeto.
+- Expiração só existe se for definida; por padrão, não há.
+- A janela de histórico (6 h no Free) vale para o restauro instantâneo e
+  não substitui a branch.
 
 ### 2. Conferência do banco (só leitura)
 
@@ -239,8 +307,10 @@ Rode de novo a fase `conferir` (passo 2.1). Esperado:
 
 ### 6. Validação funcional das comissões
 
-Use **somente** um estabelecimento de teste com o recurso de comissões,
-escolhido pelo dono. Cada gravação é real e auditada. Antes, anote o estado
+Grave **somente** no estabelecimento de teste que o dono identificou e
+autorizou para esta validação. Anote o nome dele na pasta de operações antes
+de começar. Nenhuma escrita em outro estabelecimento e nenhuma escrita na
+branch do passo 1. Cada gravação é real e auditada. Antes, anote o estado
 inicial: prints da tela de comissões de cada profissional usado e o total do
 relatório de comissões do período.
 
@@ -278,8 +348,9 @@ uma exceção por serviço em P1 e em P2.
 9. **Recusa.** Uma conta de gerente ou profissional, se houver no
    estabelecimento de teste, não vê nem consegue usar a comissão em massa.
 
-Concluir atendimento para ver a apuração com a regra nova é **opcional** e
-cria um registro financeiro permanente. Só faça com autorização expressa.
+**Fora da validação inicial:** concluir atendimento para ver a apuração com
+a regra nova. Isso cria comissão permanente (registro financeiro que não se
+edita). Fica para uma etapa posterior, com autorização expressa do dono.
 
 Ao terminar, devolva as configurações de teste ao que o dono quiser. As
 exceções removidas não voltam sozinhas: recrie-as pela tela. O nome e o valor
@@ -290,8 +361,10 @@ de cada uma estão nos prints e na auditoria.
 Pare **antes** do deploy (nada a desfazer) quando:
 
 - o Render não mostra API e web em `8e8577d`;
-- a decisão de backup do passo 1 não foi tomada, ou a opção escolhida não
-  validou;
+- o projeto ou a branch de origem não conferem, a branch do passo 1 não foi
+  criada, ou a conferência dela (1.3) não deu o esperado;
+- a branch geraria custo não autorizado, ou o limite de branches do plano
+  está esgotado;
 - o passo 2 não dá exatamente o esperado.
 
 Pare **depois** do deploy e avalie o rollback quando:
@@ -323,7 +396,8 @@ fica no estado 16.
 - **Dados gravados pela versão nova continuam válidos** para a `8e8577d`: são
   configurações e regras nas mesmas tabelas. O rollback **não** restaura
   exceções removidas. Quem decide recriá-las é o dono, pela tela, com a
-  auditoria como referência.
+  auditoria e a branch do passo 1 como referência (veja "Recuperar dados da
+  branch").
 - **Nunca:**
   - voltar a API para `92cc6ae` ou `2656f69` (não respeitam o schema 16;
     ver "Voltar a API com o schema 16" no runbook da 16);
@@ -333,6 +407,42 @@ fica no estado 16.
 - **Corrigir para frente** é o caminho preferido para defeitos que não
   bloqueiam: commit novo, revisado, com CI verde, publicado na ordem API e
   depois web.
+
+## Recuperar dados da branch (sem sobrescrever o piloto)
+
+A branch do passo 1 é **fonte de consulta**. O piloto continua recebendo
+uso real depois dela, e trocar o piloto pela branch apagaria esse uso.
+
+**Nunca**, no piloto ou na branch padrão do projeto:
+
+- *Restore* / *Reset from parent* / restaurar a partir da branch do passo 1;
+- promover a branch do passo 1 a padrão ou apontar a API para ela;
+- `pg_restore`, `pg_dump` ou SQL de escrita copiado da branch.
+
+**Caminho:**
+
+1. No piloto, pela auditoria (`COMMISSION_RULE_CHANGED`) do estabelecimento
+   de teste, identifique o que mudou por engano: profissional, serviço e
+   horário.
+2. Na branch, leia os valores anteriores **só leitura**, filtrando pelo
+   estabelecimento. Use o SQL Editor do console com a branch do passo 1
+   selecionada (confira o nome no seletor antes de rodar) ou `psql` em
+   modo só leitura:
+
+   ```bash
+   read -rs BACKUP_URL   # URL direta DA BRANCH DO PASSO 1, Enter (não ecoa)
+   PGOPTIONS='-c default_transaction_read_only=on' "<pasta bin>/psql" "$BACKUP_URL"
+   unset BACKUP_URL
+   ```
+
+   Consultas só com `SELECT` em `professional_commission_settings` e
+   `commission_rules`, sempre com `WHERE tenant_id = '<id do estabelecimento de teste>'`.
+   Não copie a saída para o repositório, um PR ou uma conversa.
+3. O dono recria os valores **pela tela**, como dono. Cada gravação passa
+   pela API, pelas permissões e pela auditoria.
+4. Se o volume ou a natureza do problema não couber na tela (por exemplo,
+   apuração alterada), pare. Corrigir dados por SQL exige plano escrito,
+   ensaio numa cópia descartável e autorização, em sessão própria.
 
 ## Acompanhamentos conhecidos (não bloqueiam)
 
