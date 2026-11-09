@@ -8,6 +8,200 @@ Procedimento completo: `publicacao-regra-geral-comissoes-piloto.md` (15 e 16)
 e `publicacao-comissoes-profissionais-piloto.md` (kit da 15). Esta nota não
 substitui os runbooks; só registra onde o trabalho parou.
 
+## Atualização de 09/11/2026: PRs mesclados, publicação pendente
+
+Feito no PC do trabalho. **Nada foi publicado nem executado no piloto, no Neon
+ou em `agenda_dev`:** nenhum deploy, migration, backup ou restauração.
+
+- **Render, só leitura (Render CLI, 09/11/2026):** API
+  (`agenda-cloud-piloto-api`) e web (`agenda-cloud-piloto-web`) com
+  `autoDeploy=no` e `autoDeployTrigger=off`. Os dois continuam Live em `92cc6ae`,
+  por deploys manuais de 05/11 (API `dep-dbmdlttbedkc739pu4mg`, web
+  `dep-dbmb658ae00c738sj7eg`). Os merges não dispararam deploy.
+- **Merges** (merge commit, preso ao head revisado, `[skip render]` no título;
+  branches mantidas):
+  - #98 (head `0ff8f46`) → `137d388575e6e2e4fd69deb7472cbb0d755566ce`.
+  - #99 (head `7a0ce84`): base trocada para a integração; ficaram só os 5
+    commits do kit e da documentação. Merge →
+    **C16 = `879cef8f378d1007f606ba67246ae7e5535df905`**.
+    - `git diff 7a0ce84 879cef8` vazio (árvore idêntica ao head revisado).
+    - `git diff e42fb81 879cef8 -- backend/scripts backend/src` vazio (kit
+      ensaiado).
+  - #100, Portal AC (head `208f2c8`) →
+    **C_final = `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`**. De C16 para
+    C_final só mudam os 16 arquivos do Portal; nada em `backend/`.
+- **CI no C_final:** `test-frontend-auth` por `workflow_dispatch` na integração,
+  run 42611417755, `head_sha` = `8e8577d`, sucesso em 11,7 min. Passaram
+  `comissoes-flow` (navegador), `commissions-postgres` (17) e
+  `pilot-regra-geral-comissoes-check` (2) no db-e2e, os unitários do kit da 16
+  (32 + 8) e `portal-instalavel` (3/3). Esse resultado vale para `8e8577d`;
+  para o C16 vale a árvore idêntica a `7a0ce84`, coberta pelos runs listados
+  abaixo.
+- **SHAs operacionais:**
+
+  | Etapa | SHA |
+  | --- | --- |
+  | kit da 15, API e web do estado 15 | `92cc6ae99856ce43c019f25125bd4140cb916133` |
+  | kit da 16, API e web da 16 | C16 `879cef8f378d1007f606ba67246ae7e5535df905` |
+  | Portal AC (deploy separado, depois do estado 16 estável) | C_final `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` |
+
+- **Pendente, em casa:** publicação das migrations 15 e 16 conforme a
+  sequência abaixo, com backups e comprovantes reais novos (os ensaios não os
+  substituem); depois, publicação do C_final e validação do Portal AC no
+  iPhone (`continuidade-portal-instalavel.md`).
+
+## Autorização de 09/11/2026: backups reais no PC do trabalho
+
+O dono autorizou, em 09/11/2026, fazer backups reais do piloto **no PC do
+trabalho** e restaurá-los **exclusivamente em PostgreSQL descartável local**,
+para conferir e ensaiar. Essa decisão substitui a restrição anterior de
+backups e restaurações reais só no PC de casa.
+
+- A restauração nunca é feita sobre o piloto, o Neon ou `agenda_dev`.
+- Todos os backups existentes em `%USERPROFILE%\AgendaCloud-operacoes` são
+  preservados.
+- A autorização cobre as fases `conferir`, `preparar` e `restauracao`. Ela
+  **não** cobre `aplicar`, a migration 16, deploy nem rollback: cada um
+  continua exigindo autorização expressa no momento.
+- Os SHAs operacionais acima não mudaram.
+
+**Feito em 09/11/2026, PC do trabalho, kit da 15 em `92cc6ae`** (worktree
+`C:\Projetos\Agenda-Cloud-m15-92cc6ae`, `node_modules` próprio, `pg_dump`
+17.11). Render conferido antes: API e web Live em `92cc6ae`, não em
+`2656f69` como o runbook da 15 supunha. As guardas do kit leem só o banco e
+não foram alteradas.
+
+- `conferir`: `before-professional-commissions`, 14 migrations, nenhuma
+  sessão da migration ativa.
+- `preparar`: backup `comissoes-preparar-2026-11-09T12-45-44-343Z`, 190.069
+  bytes, 44 tabelas, servidor 17.11, sha256 `745344f9…a0b0a2`.
+- `restauracao` no PostgreSQL 17.11 descartável local:
+  `restauracao_e_ensaio_ok` (contagens e md5 iguais; na cópia, só
+  ProfessionalCommissions; estado depois conferido; descartável apagado).
+- O comprovante é aceito pela regra da fase `aplicar` até
+  **10/11/2026 12:46:38 UTC** (24 h do ponto de recuperação). Depois disso,
+  repita `preparar` e `restauracao`.
+- O backup de 05/11 (`c7ba858`) foi preservado e não vale para este commit.
+- **Não executados:** `aplicar`, migration 16, deploy e rollback.
+
+## Migration 15 aplicada no piloto (09/11/2026)
+
+O dono autorizou expressamente, em 09/11/2026, aplicar **somente**
+`ProfessionalCommissions1793491200000` no piloto, pelo kit da 15 na worktree
+`C:\Projetos\Agenda-Cloud-m15-92cc6ae` (`92cc6ae`). A URL foi digitada pelo
+dono no prompt oculto, e a frase também.
+
+- `aplicar` (execução `2026-11-09T12-52-09-593Z`): comprovante de
+  `comissoes-preparar-2026-11-09T12-45-44-343Z` aceito dentro da validade; o
+  kit fez o backup novo obrigatório `comissoes-aplicar-2026-11-09T12-52-09-593Z`
+  (190.069 bytes, sha256 `9cb36603…6bd9`). Migration aplicada às
+  12:53:23 UTC. `DESFECHO: aplicada_e_conferida`, código 0: 15 migrations,
+  `15/15`, baseline sem falhas (relatado pelo dono a partir da janela).
+- `conferir` (execução `2026-11-09T12-54-54-792Z`, concluída 12:55:33 UTC):
+  `after-professional-commissions`, nenhuma sessão da migration ativa
+  (registro em `operacoes.jsonl`).
+- Render, só leitura, depois da `conferir`: API e web continuam Live em
+  `92cc6ae` (deploys de 05/11). Sem deploy nesta etapa.
+- **Estado atual: ponto de parada estável do estado 15** com API e web
+  `92cc6ae`. As comissões por serviço voltam a apurar.
+- **Não executados:** migration 16, deploy e rollback. Todos os backups foram
+  preservados.
+
+**Próxima etapa: kit da 16 no C16 `879cef8`**, em outra sessão, com janela de
+transição combinada com os donos (ver "Janela de transição" em
+`publicacao-regra-geral-comissoes-piloto.md`):
+
+1. Worktree limpa no C16 com `npm ci` próprio em `backend` (nunca junção).
+   `git diff e42fb81 879cef8 -- backend/scripts backend/src` foi conferido
+   vazio em 09/11/2026.
+2. `conferir` do kit da 16. Esperado: `before-commission-settings`,
+   `MIGRATIONS_APPLIED: 15`, `SCHEMA_OBJECTS_OK: 0/7`, nenhuma sessão ativa.
+3. Consulta de impacto (só leitura, com autorização) e combinação da janela.
+4. `preparar` e `restauracao` (backup novo; o comprovante vale 24 h).
+5. `aplicar` da 16 (autorização expressa), API C16, web C16 e `conferir` com
+   `JANELA_DE_TRANSICAO: ok`.
+
+O runbook da 16 ainda diz "backups e restaurações reais só no computador de
+casa". A autorização de 09/11/2026 acima substitui essa restrição.
+
+## Migration 16 preparada no piloto (09/11/2026)
+
+O dono confirmou a conferência independente da 15 (`after-professional-commissions`,
+15 migrations, `15/15`, `BASELINE_FAILURES: none`) e autorizou a preparação da
+16 neste PC: conferir, backup novo e restauração no PostgreSQL descartável
+local. O comprovante da 15 não foi reutilizado.
+
+- Worktree limpa `C:\Projetos\Agenda-Cloud-m16-879cef8`, destacada em
+  `879cef8f378d1007f606ba67246ae7e5535df905`, com `npm ci` próprio em
+  `backend`. `backend/package-lock.json` igual ao de `92cc6ae`. PostgreSQL
+  17.11 em `C:\Projetos\pg17x\pgsql\bin`.
+- `conferir` (execução `2026-11-09T12-59-36-743Z`):
+  `before-commission-settings`, nenhuma sessão da migration ativa, janela ok.
+- `preparar` (execução `2026-11-09T13-00-39-755Z`): `backup_feito`, pasta
+  `regra-geral-comissoes-preparar-2026-11-09T13-00-39-755Z`, 192.088 bytes,
+  sha256 `8037285d…9466`. Ponto de recuperação 13:01:21 UTC.
+- `restauracao` (concluída 13:02:12 UTC, PostgreSQL 17.11 local):
+  `restauracao_e_ensaio_ok`, 44 tabelas, contagens e md5 iguais, migration
+  ensaiada na cópia com estado depois `after-commission-settings`.
+- **Validade do comprovante:** 24 h a partir do ponto de recuperação, ou seja,
+  até **10/11/2026 13:01 UTC (10:01 em Brasília)**. Depois disso, repetir
+  `preparar` e `restauracao`.
+- **Não executados:** consulta de impacto, `aplicar` da 16, suspensão de
+  serviço e deploy. Todos os backups anteriores foram preservados.
+
+**Falta, nesta ordem:** consulta de impacto e janela combinada com todos os
+donos; `aplicar` (autorização expressa; a janela começa em `JANELA_DESDE`);
+API C16; web C16; `conferir` com `JANELA_DE_TRANSICAO: ok`; avisar os donos.
+
+## Migration 16 aplicada, API e web C16 publicados (09/11/2026)
+
+O dono autorizou expressamente, em 09/11/2026, aplicar **somente**
+`ProfessionalCommissionSettings1793577600000` pelo kit da 16 na worktree
+`C:\Projetos\Agenda-Cloud-m16-879cef8` (C16), publicar a API e depois o web
+no C16 e rodar a `conferir` final. A URL e a frase foram digitadas pelo dono.
+
+- **Janela combinada:** todos os estabelecimentos do piloto são testes do
+  dono; não há clientes. O dono manteve, durante toda a transição, a pausa de
+  cadastro de profissionais e de conclusão de atendimentos. A consulta de
+  impacto **não** foi rodada. Nenhum serviço foi suspenso no Render.
+- **Antes do `aplicar`:** worktree limpa em `879cef8`,
+  `git diff e42fb81 879cef8 -- backend/scripts backend/src` vazio; Render com
+  API e web Live em `92cc6ae`; comprovante
+  `regra-geral-comissoes-preparar-2026-11-09T13-00-39-755Z` dentro da validade
+  (até 10/11/2026 13:01 UTC).
+- **`aplicar`** (execução `2026-11-09T13-09-24-558Z`): backup novo obrigatório
+  `regra-geral-comissoes-aplicar-2026-11-09T13-09-24-558Z` (192.088 bytes,
+  sha256 `26042d11…0242`). `JANELA_DESDE` = `2026-11-09T13:10:09.918993Z`.
+  Migration aplicada às 13:10:24 UTC; registro `aplicada_e_conferida`
+  (13:10:42 UTC), que o kit só grava com o estado
+  `after-commission-settings` conferido (16 migrations, `7/7`) e
+  `TRANSICAO: ok`.
+- **API C16:** `agenda-cloud-piloto-api`, deploy `dep-dboscs6417fc7398vef0`
+  (Render CLI, commit específico), Live às 13:12:07 UTC, SHA
+  `879cef8f378d1007f606ba67246ae7e5535df905`. `auth/me` sem cookie: 401 pelo
+  web e direto na API.
+- **Web C16:** `agenda-cloud-piloto-web`, deploy `dep-dbosds6c6qcc738k3llg`,
+  Live às 13:16:04 UTC, mesmo SHA. `/login` 200; `/agenda_api/auth/me` 401.
+- **`conferir`** (execução `2026-11-09T13-16-38-431Z`, concluída 13:17:04 UTC):
+  `after-commission-settings`, nenhuma sessão da migration ativa,
+  `JANELA_DE_TRANSICAO: ok`. **Fim da janela:** o uso foi liberado ao dono.
+- **Estado atual: estado 16 estável**, com API e web em C16 `879cef8`.
+- **Não executados:** rollback, suspensão de serviço e testes manuais de tela
+  (ficam com o dono, sem gravar configuração ou regra só para testar). Todos os
+  backups foram preservados.
+- **Próximo passo, em outra sessão e com autorização:** publicar o C_final
+  `8e8577d` (Portal AC) e validar no iPhone
+  (`continuidade-portal-instalavel.md`). Ainda **não** publicado.
+- **Atualização, 09/11/2026 tarde:** o C_final já estava Live nos dois
+  serviços (API `dep-dbosjcijnfac73ftrdug` Live 13:26:16 UTC, web
+  `dep-dbosjeajnfac73ftrio0` Live 13:27:42 UTC, deploys manuais), depois da
+  `conferir` das 13:16. O C_final não muda backend nem migrations; o banco
+  segue no estado 16. Validação HTTP e pendências do iPhone em
+  `continuidade-portal-instalavel.md`.
+
+As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
+já foram feitos; a worktree de revisão do #99 não é mais necessária.
+
 ## Último estado relatado do piloto (não reconferido)
 
 Este é o último estado **visto em 05/11/2026**, pelos logs e pelo Render CLI,
@@ -127,8 +321,10 @@ momento. Qualquer `ERRO:` para a sequência.
    6. `conferir` com `JANELA_DE_TRANSICAO: ok`; fim da janela.
 5. **Publicação sempre migration → API → web.** Voltar é web → API.
 
-**Backups e restaurações reais só no PC de casa,** na pasta
-`%USERPROFILE%\AgendaCloud-operacoes`, fora do repositório.
+**Backups e restaurações reais** ficam na pasta
+`%USERPROFILE%\AgendaCloud-operacoes`, fora do repositório. Desde 09/11/2026
+podem ser feitos também no PC do trabalho, com restauração só em PostgreSQL
+descartável local (ver "Autorização de 09/11/2026").
 
 ## Janela de manutenção e limites do rollback
 
@@ -190,4 +386,5 @@ Começa em Planejamento quando for retomado.
   deve ser usado. Normalmente OFF.
 - **Comissão fixa:** é por serviço realizado (cada item concluído), não por
   atendimento.
-- **Backups:** reais ficam para o PC de casa.
+- **Backups:** reais podem ser feitos no PC de casa ou, desde 09/11/2026, no
+  PC do trabalho; restauração só em PostgreSQL descartável local.
