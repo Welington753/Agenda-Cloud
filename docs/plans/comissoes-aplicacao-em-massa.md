@@ -193,7 +193,11 @@ exceções que saem e a confirmação; o botão vira "Salvar e remover exceçõe
 só habilita confirmado. A confirmação vale para a impressão mostrada: se o
 servidor responder `EXCECOES_DESATUALIZADAS`, a tela relê as regras (sem
 desmontar o cartão), mostra a lista nova e pede confirmação de novo. Os
-editores por serviço recomeçam quando a exceção muda por fora.
+editores por serviço (`src/lib/profissionais/rascunho-da-excecao.ts`) mostram
+o valor gravado enquanto não há alteração pendente, inclusive depois de uma
+remoção concluída; uma alteração ainda não salva sobrevive à releitura e à
+remoção, com o aviso "A comissão deste serviço mudou enquanto você editava" e
+o botão "Descartar minha alteração". Nada é descartado sem o dono pedir.
 
 ## Validação
 
@@ -272,6 +276,17 @@ editores por serviço recomeçam quando a exceção muda por fora.
   - mutação: sem o `FOR UPDATE` da aplicação, o caso de trava falha; sem as
     exceções na impressão da prévia, os dois casos de exceção mudada antes da
     aplicação falham.
+- Feito (09/11/2026, revisão final): a primeira versão recriava o editor do
+  serviço (chave com a regra) quando a exceção mudava por fora, o que
+  descartava em silêncio uma alteração não salva (releitura depois do 409 ou
+  remoção pelo cartão). Agora o rascunho fica, com aviso. Validação: web
+  96 arquivos de unitários (953 testes), `lint`, `lint:types` e `tsc`;
+  navegador `comissoes-em-massa` (ampliada com o rascunho do Corte),
+  `comissoes` e `professionals`. Backend sem mudança nessa etapa.
+- Acompanhamento (fora deste PR): `portal-instalavel-flow` falhou uma vez no CI
+  (head fd33111, link do manifesto duplicado) e passou no head seguinte e duas
+  vezes localmente. A área não é tocada por este PR; observar nos próximos
+  PRs antes de mexer.
 - Não feito: publicação. Não há migration nem kit: API e web saem juntas,
   pelo roteiro normal, quando o dono autorizar.
 - Próximo passo: CI do PR verde no head final, revisão e merge autorizado.
