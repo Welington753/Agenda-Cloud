@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { idSchema } from '../accounts/accounts.dto.js';
 import { dashboardQuerySchema } from '../dashboard/dashboard.dto.js';
+import { BULK_MODES, BULK_TARGETS, MAXIMO_DA_APLICACAO_EM_MASSA } from './commission-bulk.js';
 import { MAIOR_COMISSAO_FIXA_EM_CENTAVOS, PONTOS_BASE_100_POR_CENTO } from './commission-calculation.js';
 
 export const commissionRuleSchema = z.discriminatedUnion('kind', [
@@ -13,20 +14,65 @@ export const commissionRuleSchema = z.discriminatedUnion('kind', [
 ]);
 export type CommissionRuleDto = z.infer<typeof commissionRuleSchema>;
 
+/** Regra geral: só percentual ou fixo por serviço realizado. */
+const defaultRuleSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('PERCENTAGE'), value: z.number().int().min(1).max(PONTOS_BASE_100_POR_CENTO) }).strict(),
+  z.object({ kind: z.literal('FIXED'), value: z.number().int().min(1).max(MAIOR_COMISSAO_FIXA_EM_CENTAVOS) }).strict(),
+]);
+
 /** "Recebe comissão" e a regra geral do profissional. A regra geral é
  * opcional e não tem "sem comissão" (para isso, desligar). */
 export const commissionSettingsSchema = z
   .object({
     receivesCommission: z.boolean(),
-    defaultRule: z
-      .discriminatedUnion('kind', [
-        z.object({ kind: z.literal('PERCENTAGE'), value: z.number().int().min(1).max(PONTOS_BASE_100_POR_CENTO) }).strict(),
-        z.object({ kind: z.literal('FIXED'), value: z.number().int().min(1).max(MAIOR_COMISSAO_FIXA_EM_CENTAVOS) }).strict(),
-      ])
-      .nullable(),
+    defaultRule: defaultRuleSchema.nullable(),
   })
   .strict();
 export type CommissionSettingsDto = z.infer<typeof commissionSettingsSchema>;
+
+/** Aplicação em massa (docs/plans/comissoes-aplicacao-em-massa.md). "Todos":
+ * os profissionais ativos; "Escolher": de 1 a 200 ids, sem repetição. */
+const bulkBaseShape = {
+  target: z.enum(BULK_TARGETS),
+  professionalIds: z.array(idSchema).min(1).max(MAXIMO_DA_APLICACAO_EM_MASSA).optional(),
+  defaultRule: defaultRuleSchema,
+  mode: z.enum(BULK_MODES),
+};
+
+function conferirAlcance(valor: { target: string; professionalIds?: string[] }, ctx: z.RefinementCtx) {
+  if (valor.target === 'SELECTED' && !valor.professionalIds) {
+    ctx.addIssue({ code: 'custom', path: ['professionalIds'], message: 'Escolha ao menos um profissional.' });
+  }
+  if (valor.target === 'ALL' && valor.professionalIds) {
+    ctx.addIssue({ code: 'custom', path: ['professionalIds'], message: '"Todos" não leva lista de profissionais.' });
+  }
+  if (valor.professionalIds && new Set(valor.professionalIds).size !== valor.professionalIds.length) {
+    ctx.addIssue({ code: 'custom', path: ['professionalIds'], message: 'Profissional repetido na lista.' });
+  }
+}
+
+export const commissionBulkPreviewSchema = z.object(bulkBaseShape).strict().superRefine(conferirAlcance);
+export type CommissionBulkPreviewDto = z.infer<typeof commissionBulkPreviewSchema>;
+
+/** A aplicação leva a impressão da prévia revisada e, em SUBSTITUIR, a
+ * confirmação explícita de quem substitui as configurações individuais. */
+export const commissionBulkApplySchema = z
+  .object({
+    ...bulkBaseShape,
+    fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    confirmReplace: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((valor, ctx) => {
+    conferirAlcance(valor, ctx);
+    if (valor.mode === 'REPLACE' && valor.confirmReplace !== true) {
+      ctx.addIssue({ code: 'custom', path: ['confirmReplace'], message: 'Confirme a substituição das configurações gerais.' });
+    }
+    if (valor.mode === 'PRESERVE' && valor.confirmReplace !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['confirmReplace'], message: 'Só a substituição leva confirmação.' });
+    }
+  });
+export type CommissionBulkApplyDto = z.infer<typeof commissionBulkApplySchema>;
 
 /** O período do Início (datas locais inclusivas, no máximo 366 dias; sem as
  * duas, o mês corrente) e, opcional, um profissional. */

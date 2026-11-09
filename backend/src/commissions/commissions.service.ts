@@ -32,8 +32,24 @@ import {
   type RuleView,
   type StoredRule,
 } from './commission-calculation.js';
+import {
+  MAXIMO_DA_APLICACAO_EM_MASSA,
+  impressaoDaPrevia,
+  planejarAplicacao,
+  resumirResultados,
+  type BulkMode,
+  type BulkOutcome,
+  type BulkTarget,
+  type CurrentSettings,
+} from './commission-bulk.js';
 import { commissionReport } from './commission-report.js';
-import type { CommissionReportQuery, CommissionRuleDto, CommissionSettingsDto } from './commissions.dto.js';
+import type {
+  CommissionBulkApplyDto,
+  CommissionBulkPreviewDto,
+  CommissionReportQuery,
+  CommissionRuleDto,
+  CommissionSettingsDto,
+} from './commissions.dto.js';
 
 const PROFESSIONAL_NOT_FOUND_MESSAGE = 'Profissional não encontrado.';
 const SERVICE_NOT_FOUND_MESSAGE = 'Serviço não encontrado.';
@@ -60,6 +76,35 @@ export interface ProfessionalRulesView {
     updatedAt: string | null;
   }[];
 }
+
+interface SettingsView {
+  receivesCommission: boolean;
+  defaultRule: RuleView | null;
+}
+
+/** Prévia e resultado da aplicação em massa (mesma forma). */
+export interface BulkSettingsView {
+  target: BulkTarget;
+  mode: BulkMode;
+  defaultRule: RuleView;
+  /** Impressão do pedido e do estado do alcance; volta na aplicação. */
+  fingerprint: string;
+  summary: { change: number; preserve: number; unchanged: number; total: number };
+  professionals: {
+    professional: { id: string; name: string };
+    current: SettingsView;
+    next: SettingsView;
+    outcome: BulkOutcome;
+  }[];
+}
+
+const vistaDaConfiguracao = (c: CommissionSettings): SettingsView => ({
+  receivesCommission: c.receivesCommission,
+  defaultRule: c.defaultRule ? ruleToView(c.defaultRule) : null,
+});
+
+const descreverVista = (c: SettingsView) =>
+  c.receivesCommission ? `recebe, regra geral ${c.defaultRule ? descrever(c.defaultRule) : 'não definida'}` : 'não recebe';
 
 const descreverConfiguracao = (c: CommissionSettings) =>
   c.receivesCommission
@@ -195,6 +240,151 @@ export class CommissionsService {
       return autorizado.tenantId;
     });
     return this.lerRegras(this.dataSource.manager, tenant, professionalId);
+  }
+
+  /** Prévia da aplicação em massa: o que aconteceria com cada profissional do
+   * alcance, sem gravar nada. A impressão volta na aplicação. */
+  async previewBulkSettings(userId: string, tenantId: string, dto: CommissionBulkPreviewDto): Promise<BulkSettingsView> {
+    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+      await manager.query('SET TRANSACTION READ ONLY');
+      const autorizado = await this.autorizar(manager, userId, tenantId, true);
+      return this.planejarEmMassa(manager, autorizado.tenantId, dto, false);
+    });
+  }
+
+  /** Aplica a regra geral a vários profissionais de uma vez, se o estado
+   * travado ainda for o da prévia revisada (mesma impressão). Só grava
+   * `professional_commission_settings`: exceções por serviço e apurações
+   * ficam como estão. Um registro de auditoria por profissional alterado. */
+  async applyBulkSettings(
+    userId: string,
+    tenantId: string,
+    dto: CommissionBulkApplyDto,
+    now = new Date(),
+  ): Promise<BulkSettingsView & { applied: true; operationId: string }> {
+    return this.dataSource.transaction(async (manager) => {
+      const autorizado = await this.autorizar(manager, userId, tenantId, true);
+      const plano = await this.planejarEmMassa(manager, autorizado.tenantId, dto, true);
+      if (plano.fingerprint !== dto.fingerprint) {
+        throw new ConflictException({
+          code: 'PREVIA_DESATUALIZADA',
+          message: 'As comissões mudaram desde a prévia. Revise a prévia atualizada antes de aplicar.',
+        });
+      }
+      const operationId = generateId();
+      const alterados = plano.professionals.filter((p) => p.outcome === 'CHANGE');
+      if (alterados.length > 0) {
+        const regra = viewToRule(dto.defaultRule);
+        await manager.query(
+          `INSERT INTO professional_commission_settings
+              (tenant_id, professional_id, receives_commission, default_type, default_value, created_at, updated_at)
+           SELECT $1, alvo.id, true, $3::commission_type, $4, $5, $5 FROM unnest($2::varchar[]) AS alvo(id)
+           ON CONFLICT (tenant_id, professional_id) DO UPDATE SET receives_commission = EXCLUDED.receives_commission,
+             default_type = EXCLUDED.default_type, default_value = EXCLUDED.default_value, updated_at = EXCLUDED.updated_at`,
+          [autorizado.tenantId, alterados.map((p) => p.professional.id), regra.type, regra.value, now],
+        );
+        const actor = await loadActor(manager, userId);
+        const rotuloModo = dto.mode === 'REPLACE' ? 'substituir' : 'preservar';
+        for (const p of alterados) {
+          await recordAudit(
+            manager,
+            {
+              action: 'COMMISSION_RULE_CHANGED',
+              actor,
+              tenantId: autorizado.tenantId,
+              summary: `Comissão de ${p.professional.name} (aplicação em massa, ${rotuloModo}): ${descreverVista(p.current)} → ${descreverVista(p.next)}.`,
+              previousData: { professionalId: p.professional.id, settings: p.current },
+              newData: { professionalId: p.professional.id, settings: p.next, bulk: { operationId, mode: dto.mode } },
+            },
+            now,
+          );
+        }
+      }
+      return { ...plano, applied: true as const, operationId };
+    });
+  }
+
+  /** Alcance, configuração atual e resultado de cada profissional. Com
+   * `travar`, trava todo o alcance (`FOR UPDATE`, em ordem de id: duas
+   * aplicações simultâneas não se travam mutuamente) e só DEPOIS lê as
+   * configurações, em instrução separada (ver commission-accrual.ts). */
+  private async planejarEmMassa(
+    manager: EntityManager,
+    tenantId: string,
+    dto: CommissionBulkPreviewDto,
+    travar: boolean,
+  ): Promise<BulkSettingsView> {
+    const trava = travar ? 'FOR UPDATE' : '';
+    const alvos = linhasDe<{ id: string; name: string; active: boolean }>(
+      dto.target === 'ALL'
+        ? await manager.query(
+            `SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND active ORDER BY id LIMIT $2 ${trava}`,
+            [tenantId, MAXIMO_DA_APLICACAO_EM_MASSA + 1],
+          )
+        : await manager.query(
+            `SELECT id, name, active FROM professionals WHERE tenant_id = $1 AND id = ANY($2::varchar[]) ORDER BY id ${trava}`,
+            [tenantId, dto.professionalIds ?? []],
+          ),
+    );
+    if (dto.target === 'ALL' && alvos.length > MAXIMO_DA_APLICACAO_EM_MASSA) {
+      throw new ConflictException({
+        code: 'LIMITE_DA_APLICACAO_EM_MASSA',
+        message: `A aplicação em massa vai até ${MAXIMO_DA_APLICACAO_EM_MASSA} profissionais. Escolha os profissionais em partes.`,
+      });
+    }
+    if (dto.target === 'SELECTED' && alvos.length !== (dto.professionalIds ?? []).length) {
+      throw new NotFoundException(PROFESSIONAL_NOT_FOUND_MESSAGE);
+    }
+    if (alvos.some((p) => !p.active)) {
+      throw new ConflictException({
+        code: 'PROFISSIONAL_INATIVO',
+        message: 'A aplicação em massa vale só para profissionais ativos. Tire os inativos da escolha.',
+      });
+    }
+    const linhas = linhasDe<{
+      professional_id: string;
+      receives_commission: boolean;
+      default_type: StoredRule['type'] | null;
+      default_value: number | null;
+    }>(
+      await manager.query(
+        `SELECT professional_id, receives_commission, default_type::text AS default_type, default_value
+           FROM professional_commission_settings WHERE tenant_id = $1 AND professional_id = ANY($2::varchar[])`,
+        [tenantId, alvos.map((p) => p.id)],
+      ),
+    );
+    const gravadas = new Map(linhas.map((l) => [l.professional_id, l]));
+    const regra = viewToRule(dto.defaultRule);
+    const comAtual = alvos.map((p) => {
+      const l = gravadas.get(p.id);
+      const current: CurrentSettings = l
+        ? {
+            stored: true,
+            settings: {
+              receivesCommission: l.receives_commission,
+              defaultRule: l.default_type === null ? null : { type: l.default_type, value: Number(l.default_value) },
+            },
+          }
+        : { stored: false, settings: CONFIGURACAO_SEM_LINHA };
+      return { ...p, current, plano: planejarAplicacao(dto.mode, regra, current) };
+    });
+    const fingerprint = impressaoDaPrevia({ target: dto.target, mode: dto.mode, rule: regra, professionals: comAtual });
+    const professionals = comAtual
+      .map((p) => ({
+        professional: { id: p.id, name: p.name },
+        current: vistaDaConfiguracao(p.current.settings),
+        next: vistaDaConfiguracao(p.plano.next),
+        outcome: p.plano.outcome,
+      }))
+      .sort((a, b) => a.professional.name.localeCompare(b.professional.name, 'pt-BR') || (a.professional.id < b.professional.id ? -1 : 1));
+    return {
+      target: dto.target,
+      mode: dto.mode,
+      defaultRule: ruleToView(regra),
+      fingerprint,
+      summary: resumirResultados(professionals.map((p) => p.outcome)),
+      professionals,
+    };
   }
 
   /** "Recebe comissão" de cada profissional, para a lista de profissionais. */

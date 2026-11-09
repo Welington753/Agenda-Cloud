@@ -30,6 +30,8 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { hashPassword } from '../src/auth/password-hasher.js';
 import { TENANT_NOT_FOUND_MESSAGE } from '../src/common/tenant-authorization.js';
+import { impressaoDaPrevia } from '../src/commissions/commission-bulk.js';
+import { CONFIGURACAO_SEM_LINHA } from '../src/commissions/commission-calculation.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { DisparadorDePush } from '../src/push/push-dispatcher.js';
 import { comTodosOsRecursos } from './support/plano-de-teste.js';
@@ -487,6 +489,15 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         200,
         true,
       ],
+      [
+        'POST /tenants/:tenantId/commissions/bulk-settings/preview',
+        'dono',
+        (t) => `${p(t)}/commissions/bulk-settings/preview`,
+        (_t, r) => pedidoEmMassa(r),
+        200,
+        true,
+      ],
+      ['POST /tenants/:tenantId/commissions/bulk-settings', 'dono', (t) => `${p(t)}/commissions/bulk-settings`, emMassaComImpressao, 200, true],
       ['GET /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, null, 200, false],
       ['PUT /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, () => ({ enabled: true }), 200, false],
       ['GET /tenants/:tenantId/booking-requests', 'dono', (t) => `${p(t)}/booking-requests`, null, 200, false],
@@ -575,6 +586,30 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       ['POST /tenants/:tenantId/professionals/:professionalId/reactivate', 'dono', (t, r) => `${p(t)}/professionals/${r.livre}/reactivate`, null, 200, true],
       ['DELETE /tenants/:tenantId/team/members/:membershipId', 'dono', (t, r) => `${p(t)}/team/members/${r.membershipId}`, null, 204, true],
     ];
+
+    // Aplicação em massa: um profissional de `r`, e a impressão da prévia
+    // calculada do estado de `r` com a mesma função do servidor (sem sessão
+    // de B, que mudaria a conta dele no retrato).
+    function pedidoEmMassa(r: Est) {
+      return { target: 'SELECTED' as const, professionalIds: [r.professionalId], defaultRule: { kind: 'FIXED' as const, value: 1000 }, mode: 'PRESERVE' as const };
+    }
+    async function emMassaComImpressao(_t: Est, r: Est) {
+      const [p] = await q<{ id: string; active: boolean }>('SELECT id, active FROM professionals WHERE id = $1', [r.professionalId]);
+      const [l] = await q<{ receives_commission: boolean; default_type: 'PERCENTAGE' | 'FIXED' | null; default_value: number | null }>(
+        'SELECT receives_commission, default_type::text AS default_type, default_value FROM professional_commission_settings WHERE professional_id = $1',
+        [r.professionalId],
+      );
+      const current = l
+        ? { stored: true, settings: { receivesCommission: l.receives_commission, defaultRule: l.default_type ? { type: l.default_type, value: Number(l.default_value) } : null } }
+        : { stored: false, settings: CONFIGURACAO_SEM_LINHA };
+      const fingerprint = impressaoDaPrevia({
+        target: 'SELECTED',
+        mode: 'PRESERVE',
+        rule: { type: 'FIXED', value: 1000 },
+        professionals: [{ id: p.id, active: p.active, current }],
+      });
+      return { ...pedidoEmMassa(r), fingerprint };
+    }
 
     function inicioDe(qual: 'iniciar' | 'concluir' | 'faltar') {
       return async (_t: Est, r: Est) => ({ expectedStartAt: await inicio(r.reservas[qual]) });
