@@ -10,14 +10,15 @@
 // aqui.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PlusCircle, Store, UserRound } from "lucide-react";
+import { Percent, PlusCircle, Store, UserRound } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { useProfissionaisReais } from "@/lib/profissionais/use-profissionais-reais";
 import { mensagemFalhaProfissionais } from "@/lib/profissionais/mensagens";
 import { useServicosReais } from "@/lib/servicos/use-servicos-reais";
 import type { ProfissionalReal } from "@/lib/api/professionals-api";
-import { Botao } from "@/components/ui/button";
+import { Botao, LinkBotao } from "@/components/ui/button";
+import { ROTA_COMISSAO_EM_MASSA } from "@/lib/conta/rotas";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useAreas } from "@/lib/conta/use-areas";
@@ -199,10 +200,18 @@ export default function ProfissionaisPage() {
         estado.status === "carregada" &&
         edicao.modo === "fechado" &&
         estado.profissionais.length > 0 ? (
-          <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
-            <PlusCircle size={16} aria-hidden="true" />
-            Novo profissional
-          </Botao>
+          <div className="flex flex-wrap gap-2">
+            {podeConfigurarComissoes && (
+              <LinkBotao href={ROTA_COMISSAO_EM_MASSA} variante="secundaria" className="min-h-11">
+                <Percent size={16} aria-hidden="true" />
+                Aplicar comissão a vários
+              </LinkBotao>
+            )}
+            <Botao type="button" onClick={() => setEdicao({ modo: "novo" })} hidden={!podeGerenciar}>
+              <PlusCircle size={16} aria-hidden="true" />
+              Novo profissional
+            </Botao>
+          </div>
         ) : undefined
       }
     >

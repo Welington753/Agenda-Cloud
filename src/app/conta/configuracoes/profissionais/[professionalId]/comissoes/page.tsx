@@ -19,6 +19,7 @@ import {
   caminhoRegra,
   caminhoRegras,
   ehRegrasDoProfissional,
+  lerValor,
   pontosBaseParaCampo,
   rotuloDaEfetiva,
   type RegrasDoProfissional,
@@ -33,7 +34,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { CAMPO, CartaoRecebeComissao, lerValor } from "./cartao-recebe-comissao";
+import { CAMPO, CartaoRecebeComissao } from "./cartao-recebe-comissao";
 
 const MENSAGEM_DE_LEITURA = {
   sessao: "Sua sessão precisa ser verificada novamente. Entre de novo.",

@@ -11,11 +11,11 @@ import { acaoAdministrativa, mensagemDoResultado } from "@/lib/administracao/api
 import {
   caminhoConfiguracao,
   ehRegrasDoProfissional,
-  percentualParaPontosBase,
+  lerValor,
   pontosBaseParaCampo,
   type RegrasDoProfissional,
 } from "@/lib/api/comissoes-api";
-import { centavosParaCampo, precoParaCentavos } from "@/lib/servicos/dinheiro";
+import { centavosParaCampo } from "@/lib/servicos/dinheiro";
 import { Badge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -23,26 +23,6 @@ import { useToast } from "@/components/ui/toast";
 
 export const CAMPO =
   "mt-1 block min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm text-ink";
-
-/** Lê o campo de valor de um percentual ou de um valor fixo. `mensagemZero`:
- * o que dizer para zero (a exceção tem "Sem comissão"; a regra geral não). */
-export function lerValor(
-  tipo: "PERCENTAGE" | "FIXED",
-  valor: string,
-  mensagemZero: string,
-): { ok: true; corpo: { kind: "PERCENTAGE" | "FIXED"; value: number } } | { ok: false; erro: string } {
-  const zero = precoParaCentavos(valor);
-  if (zero.ok && zero.centavos !== null && zero.centavos <= 0) return { ok: false, erro: mensagemZero };
-  if (tipo === "PERCENTAGE") {
-    const lido = percentualParaPontosBase(valor);
-    return lido.ok ? { ok: true, corpo: { kind: "PERCENTAGE", value: lido.pontos } } : lido;
-  }
-  const lido = precoParaCentavos(valor);
-  if (!lido.ok) return lido;
-  if (lido.centavos === null) return { ok: false, erro: "Informe o valor." };
-  if (lido.centavos > 100_000_000) return { ok: false, erro: "Valor acima do máximo aceito." };
-  return { ok: true, corpo: { kind: "FIXED", value: lido.centavos } };
-}
 
 type EscolhaGeral = "NENHUMA" | "PERCENTAGE" | "FIXED";
 

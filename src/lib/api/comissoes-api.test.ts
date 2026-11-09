@@ -4,6 +4,7 @@ import {
   ehRegrasDoProfissional,
   ehRelatorioDeComissoes,
   ehResumoDeRecebeComissao,
+  lerValor,
   percentualParaPontosBase,
   pontosBaseParaCampo,
   rotuloDaEfetiva,
@@ -90,5 +91,13 @@ describe("forma das respostas", () => {
     expect(ehRelatorioDeComissoes(ok)).toBe(true);
     expect(ehRelatorioDeComissoes({ ...ok, basis: "PAGA" })).toBe(false);
     expect(ehRelatorioDeComissoes({ ...ok, totalAccruedCents: "0" })).toBe(false);
+  });
+});
+
+describe("lerValor", () => {
+  it("lerValor: percentual, fixo e zero com a mensagem de quem chama", () => {
+    expect(lerValor("PERCENTAGE", "12,5", "zero")).toEqual({ ok: true, corpo: { kind: "PERCENTAGE", value: 1250 } });
+    expect(lerValor("FIXED", "9,90", "zero")).toEqual({ ok: true, corpo: { kind: "FIXED", value: 990 } });
+    expect(lerValor("FIXED", "0", "zero")).toEqual({ ok: false, erro: "zero" });
   });
 });
