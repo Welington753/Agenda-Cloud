@@ -124,6 +124,35 @@ transição combinada com os donos (ver "Janela de transição" em
 O runbook da 16 ainda diz "backups e restaurações reais só no computador de
 casa". A autorização de 09/11/2026 acima substitui essa restrição.
 
+## Migration 16 preparada no piloto (09/11/2026)
+
+O dono confirmou a conferência independente da 15 (`after-professional-commissions`,
+15 migrations, `15/15`, `BASELINE_FAILURES: none`) e autorizou a preparação da
+16 neste PC: conferir, backup novo e restauração no PostgreSQL descartável
+local. O comprovante da 15 não foi reutilizado.
+
+- Worktree limpa `C:\Projetos\Agenda-Cloud-m16-879cef8`, destacada em
+  `879cef8f378d1007f606ba67246ae7e5535df905`, com `npm ci` próprio em
+  `backend`. `backend/package-lock.json` igual ao de `92cc6ae`. PostgreSQL
+  17.11 em `C:\Projetos\pg17x\pgsql\bin`.
+- `conferir` (execução `2026-11-09T12-59-36-743Z`):
+  `before-commission-settings`, nenhuma sessão da migration ativa, janela ok.
+- `preparar` (execução `2026-11-09T13-00-39-755Z`): `backup_feito`, pasta
+  `regra-geral-comissoes-preparar-2026-11-09T13-00-39-755Z`, 192.088 bytes,
+  sha256 `8037285d…9466`. Ponto de recuperação 13:01:21 UTC.
+- `restauracao` (concluída 13:02:12 UTC, PostgreSQL 17.11 local):
+  `restauracao_e_ensaio_ok`, 44 tabelas, contagens e md5 iguais, migration
+  ensaiada na cópia com estado depois `after-commission-settings`.
+- **Validade do comprovante:** 24 h a partir do ponto de recuperação, ou seja,
+  até **10/11/2026 13:01 UTC (10:01 em Brasília)**. Depois disso, repetir
+  `preparar` e `restauracao`.
+- **Não executados:** consulta de impacto, `aplicar` da 16, suspensão de
+  serviço e deploy. Todos os backups anteriores foram preservados.
+
+**Falta, nesta ordem:** consulta de impacto e janela combinada com todos os
+donos; `aplicar` (autorização expressa; a janela começa em `JANELA_DESDE`);
+API C16; web C16; `conferir` com `JANELA_DE_TRANSICAO: ok`; avisar os donos.
+
 As seções seguintes são o registro de 05/11/2026. Os itens 1 a 3 de "Falta"
 já foram feitos; a worktree de revisão do #99 não é mais necessária.
 
