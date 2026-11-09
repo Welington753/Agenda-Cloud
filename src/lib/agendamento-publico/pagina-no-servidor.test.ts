@@ -80,6 +80,16 @@ describe("leitura da página pública no servidor", () => {
     expect(r).toEqual({ tipo: "desconhecida" });
   });
 
+  it("API que não responde: o prazo real corta a espera e dá desconhecida", async () => {
+    const pendurada = (_url: URL, init: RequestInit) =>
+      new Promise<Response>((_resolve, rejeitar) => {
+        init.signal?.addEventListener("abort", () => rejeitar(init.signal?.reason));
+      });
+    const inicio = Date.now();
+    expect(await lerPaginaNoServidor("studio-exemplo", CONFIG, new Headers(), pendurada, 30)).toEqual({ tipo: "desconhecida" });
+    expect(Date.now() - inicio).toBeLessThan(2_000);
+  });
+
   it("sem configuração do proxy (desenvolvimento, chamada direta): não lê nada", async () => {
     const f = fetchQueResponde(json(200, { profile: PERFIL }));
     expect(await lerPaginaNoServidor("studio-exemplo", null, new Headers(), f)).toEqual({ tipo: "desconhecida" });
