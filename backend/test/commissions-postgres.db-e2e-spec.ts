@@ -1032,7 +1032,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
 
     const previa = await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido);
     expect(porNome(previa)).toEqual({ Ana: 'CHANGE', Bia: 'PRESERVE', Carla: 'PRESERVE', Davi: 'CHANGE', Edu: 'UNCHANGED' });
-    expect(previa.summary).toEqual({ change: 2, preserve: 2, unchanged: 1, total: 5 });
+    expect(previa.summary).toEqual({ change: 2, preserve: 2, unchanged: 1, total: 5, exceptionsRemoved: 0 });
     const carla = previa.professionals.find((p) => p.professional.id === c.carla);
     expect(carla).toMatchObject({ current: { receivesCommission: false, defaultRule: null }, next: { receivesCommission: false, defaultRule: null } });
     // A prévia não grava nada.
@@ -1079,7 +1079,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     expect(auditoria[0].new_data).toEqual({
       professionalId: c.ana,
       settings: { receivesCommission: true, defaultRule: pct(1000) },
-      bulk: { operationId: aplicada.operationId, mode: 'PRESERVE' },
+      bulk: { operationId: aplicada.operationId, mode: 'PRESERVE', exceptions: 'KEEP' },
     });
     // Repetir a mesma aplicação (rede caiu): 409, nada muda, e a prévia nova
     // mostra tudo como já está.
@@ -1088,7 +1088,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
       desatualizada,
     );
     expect(await configuracoes(c.tenantId)).toEqual(gravadas);
-    expect((await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido)).summary).toEqual({ change: 0, preserve: 2, unchanged: 3, total: 5 });
+    expect((await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido)).summary).toEqual({ change: 0, preserve: 2, unchanged: 3, total: 5, exceptionsRemoved: 0 });
   });
 
   it('em massa, SUBSTITUIR: troca a regra geral e liga "Recebe comissão" de todos os ativos; exceções intactas', async () => {
@@ -1099,7 +1099,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     expect(porNome(previa)).toEqual({ Ana: 'CHANGE', Bia: 'CHANGE', Carla: 'CHANGE', Davi: 'CHANGE', Edu: 'UNCHANGED' });
     expect(previa.professionals.every((p) => p.next.receivesCommission && p.next.defaultRule?.value === 1000)).toBe(true);
     const aplicada = await comissoes.applyBulkSettings(c.dono, c.tenantId, { ...pedido, fingerprint: previa.fingerprint, confirmReplace: true });
-    expect(aplicada.summary).toEqual({ change: 4, preserve: 0, unchanged: 1, total: 5 });
+    expect(aplicada.summary).toEqual({ change: 4, preserve: 0, unchanged: 1, total: 5, exceptionsRemoved: 0 });
     for (const id of [c.ana, c.bia, c.carla, c.davi, c.edu]) {
       expect((await comissoes.rules(c.dono, c.tenantId, id)).settings).toEqual({ receivesCommission: true, defaultRule: pct(1000) });
     }
@@ -1248,7 +1248,7 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     );
     const pedido = { target: 'ALL' as const, defaultRule: fixo(1000), mode: 'PRESERVE' as const };
     const previa = await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido);
-    expect(previa.summary).toEqual({ change: 200, preserve: 0, unchanged: 0, total: 200 });
+    expect(previa.summary).toEqual({ change: 200, preserve: 0, unchanged: 0, total: 200, exceptionsRemoved: 0 });
     const aplicada = await comissoes.applyBulkSettings(c.dono, c.tenantId, { ...pedido, fingerprint: previa.fingerprint });
     expect(aplicada.summary.change).toBe(200);
     expect(await auditoriaDaOperacao(c.tenantId, aplicada.operationId)).toHaveLength(200);
@@ -1301,6 +1301,296 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     );
     await expect(comissoes.applyBulkSettings(c.dono, c.tenantId, { ...pedido, fingerprint })).rejects.toThrow(ForbiddenException);
     expect({ c: await configuracoes(c.tenantId), outro: await configuracoes(outro.tenantId) }).toEqual(antes);
+  });
+
+  // ---------------------------------------------------------------------
+  // Exceções por serviço diante da regra geral: manter (padrão) ou remover,
+  // na edição individual e na aplicação em massa (só SUBSTITUIR).
+
+  const regrasDe = async (tenantId: string, professionalId: string) =>
+    (await db.query(
+      `SELECT service_id, type::text AS type, value FROM commission_rules WHERE tenant_id = $1 AND professional_id = $2 ORDER BY service_id`,
+      [tenantId, professionalId],
+    )) as unknown[];
+  const efetivas = async (c: Cenario, professionalId: string) =>
+    Object.fromEntries((await comissoes.rules(c.dono, c.tenantId, professionalId)).services.map((s) => [s.service.name, s.effective]));
+  const excecoesDesatualizadas = { response: { code: 'EXCECOES_DESATUALIZADAS' } };
+  const auditoriasDe = async (tenantId: string, professionalId: string) =>
+    (await db.query(
+      `SELECT summary, previous_data, new_data FROM audit_logs
+        WHERE tenant_id = $1 AND action = 'COMMISSION_RULE_CHANGED' AND new_data->>'professionalId' = $2 ORDER BY occurred_at, id`,
+      [tenantId, professionalId],
+    )) as { summary: string; previous_data: Record<string, unknown>; new_data: Record<string, unknown> }[];
+
+  it('individual: Ana Luiza 20% com exceção de 15% na barba; manter dá 15% na barba, remover dá 20%; histórico intacto', async () => {
+    const c = await cenario('excecoes-individual');
+    const outro = await cenario('excecoes-individual-outro');
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: pct(2000) });
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.barba, pct(1500));
+    await comissoes.setRule(c.dono, c.tenantId, c.bia, c.corte, pct(3000));
+    await comissoes.setRule(outro.dono, outro.tenantId, outro.ana, outro.barba, pct(1500));
+    const daBia = await regrasDe(c.tenantId, c.bia);
+    const doOutro = await regrasDe(outro.tenantId, outro.ana);
+
+    // Manter (o padrão, inclusive explícito): salvar a regra geral não remove
+    // a exceção, e a barba continua em 15%.
+    await comissoes.setSettings(c.dono, c.tenantId, c.ana, { receivesCommission: true, defaultRule: pct(2000), exceptions: 'KEEP' });
+    expect(await efetivas(c, c.ana)).toMatchObject({
+      Barba: { source: 'SERVICE', rule: pct(1500) },
+      Corte: { source: 'DEFAULT', rule: pct(2000) },
+    });
+    const mantida = await reservar(c, [c.corte, c.barba], as(DIA, 9));
+    await concluir(c, mantida.id, as(DIA, 9));
+    const fotografia = (await linhas(mantida.id)).map(resumo);
+    expect(fotografia).toEqual([
+      [c.corte, 'DEFAULT', 'PERCENTAGE', 2000, 850],
+      [c.barba, 'SERVICE', 'PERCENTAGE', 1500, 375],
+    ]);
+
+    // Uma exceção muda depois da leitura: a remoção é recusada sem gravar.
+    const lida = await comissoes.rules(c.dono, c.tenantId, c.ana);
+    expect(lida.exceptionsFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, fixo(500));
+    const remover = (exceptionsFingerprint: string) => ({
+      receivesCommission: true,
+      defaultRule: pct(2000),
+      exceptions: 'REMOVE' as const,
+      exceptionsFingerprint,
+      confirmRemoveExceptions: true as const,
+    });
+    const antes = await regrasDe(c.tenantId, c.ana);
+    await expect(comissoes.setSettings(c.dono, c.tenantId, c.ana, remover(lida.exceptionsFingerprint))).rejects.toMatchObject(
+      excecoesDesatualizadas,
+    );
+    expect(await regrasDe(c.tenantId, c.ana)).toEqual(antes);
+
+    // Permissão e isolamento continuam os mesmos.
+    const atual = await comissoes.rules(c.dono, c.tenantId, c.ana);
+    const funcionarioDaAna = await funcionario(c, c.ana, 'PROFISSIONAL', ['COMISSOES_PROPRIAS_VISUALIZAR']);
+    await expect(comissoes.setSettings(funcionarioDaAna, c.tenantId, c.ana, remover(atual.exceptionsFingerprint))).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(comissoes.setSettings(outro.dono, c.tenantId, c.ana, remover(atual.exceptionsFingerprint))).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(comissoes.setSettings(c.dono, c.tenantId, outro.ana, remover(atual.exceptionsFingerprint))).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(await regrasDe(c.tenantId, c.ana)).toEqual(antes);
+
+    // Remover com a lista revisada: a regra geral vale em todos os serviços.
+    const depois = await comissoes.setSettings(c.dono, c.tenantId, c.ana, remover(atual.exceptionsFingerprint));
+    expect(depois.services.every((s) => s.rule === null && s.effective.source === 'DEFAULT')).toBe(true);
+    expect(await regrasDe(c.tenantId, c.ana)).toEqual([]);
+    expect(await efetivas(c, c.ana)).toMatchObject({ Barba: { source: 'DEFAULT', rule: pct(2000) } });
+    // Só as da Ana: as da Bia e as de outro estabelecimento ficam.
+    expect(await regrasDe(c.tenantId, c.bia)).toEqual(daBia);
+    expect(await regrasDe(outro.tenantId, outro.ana)).toEqual(doOutro);
+    // O já apurado guarda a fotografia; a conclusão seguinte usa 20% na barba.
+    expect((await linhas(mantida.id)).map(resumo)).toEqual(fotografia);
+    const removida = await reservar(c, [c.corte, c.barba], as(OUTRO_DIA, 9));
+    await concluir(c, removida.id, as(OUTRO_DIA, 9));
+    expect((await linhas(removida.id)).map(resumo)).toEqual([
+      [c.corte, 'DEFAULT', 'PERCENTAGE', 2000, 850],
+      [c.barba, 'DEFAULT', 'PERCENTAGE', 2000, 500],
+    ]);
+    // Auditoria: a remoção, com o que valia em cada serviço.
+    const ultima = (await auditoriasDe(c.tenantId, c.ana)).at(-1);
+    expect(ultima?.summary).toBe(
+      `Comissão de Ana excecoes-individual: recebe, regra geral 20.00% (sem mudança); 2 exceções por serviço removidas: Barba 15.00%, Corte R$ 5.00 fixo.`,
+    );
+    expect(ultima?.new_data).toEqual({
+      professionalId: c.ana,
+      settings: { receivesCommission: true, defaultRule: pct(2000) },
+      removedExceptions: [
+        { serviceId: c.barba, serviceName: 'Barba', rule: pct(1500) },
+        { serviceId: c.corte, serviceName: 'Corte', rule: fixo(500) },
+      ],
+    });
+    // Repetir o pedido (rede caiu): a impressão antiga já não vale.
+    await expect(comissoes.setSettings(c.dono, c.tenantId, c.ana, remover(atual.exceptionsFingerprint))).rejects.toMatchObject(
+      excecoesDesatualizadas,
+    );
+  });
+
+  it('individuais: Ana Luiza 20%, Lucas 10% e Marcos R$ 15 por serviço; Marcos sem exceções gera R$ 15 em cada serviço', async () => {
+    const c = await cenario('excecoes-individuais');
+    const criar = async (n: string, serviceIds: string[]) => {
+      const p = await profissionais.create(c.dono, c.tenantId, { name: `${n} excecoes-individuais`, serviceIds });
+      await horarios.replace(c.dono, c.tenantId, p.id, { days: [{ weekday: WEEKDAY, intervals: [{ start: '08:00', end: '20:00' }] }] });
+      return p.id;
+    };
+    const lucas = await criar('Lucas', [c.corte]);
+    const marcos = await criar('Marcos', [c.corte, c.barba, c.avaliacao]);
+    // Marcos tinha uma exceção de 50% na barba.
+    await comissoes.setRule(c.dono, c.tenantId, marcos, c.barba, pct(5000));
+    const so = async (professionalId: string, defaultRule: { kind: 'PERCENTAGE' | 'FIXED'; value: number }, exceptions: 'KEEP' | 'REMOVE') => {
+      const pedido = { target: 'SELECTED' as const, professionalIds: [professionalId], defaultRule, mode: 'REPLACE' as const, exceptions };
+      const previa = await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido);
+      return comissoes.applyBulkSettings(c.dono, c.tenantId, {
+        ...pedido,
+        fingerprint: previa.fingerprint,
+        confirmReplace: true,
+        ...(exceptions === 'REMOVE' ? { confirmRemoveExceptions: true as const } : {}),
+      });
+    };
+    await so(c.ana, pct(2000), 'KEEP');
+    await so(lucas, pct(1000), 'KEEP');
+    const doMarcos = await so(marcos, fixo(1500), 'REMOVE');
+    expect(doMarcos.summary).toEqual({ change: 1, preserve: 0, unchanged: 0, total: 1, exceptionsRemoved: 1 });
+    // Cada um com a própria regra; só os escolhidos de cada vez mudaram.
+    expect((await comissoes.rules(c.dono, c.tenantId, c.ana)).settings).toEqual({ receivesCommission: true, defaultRule: pct(2000) });
+    expect((await comissoes.rules(c.dono, c.tenantId, lucas)).settings).toEqual({ receivesCommission: true, defaultRule: pct(1000) });
+    expect((await comissoes.rules(c.dono, c.tenantId, marcos)).settings).toEqual({ receivesCommission: true, defaultRule: fixo(1500) });
+    expect((await comissoes.rules(c.dono, c.tenantId, c.bia)).settings).toEqual({ receivesCommission: true, defaultRule: null });
+    // Marcos: R$ 15 em cada serviço concluído, qualquer que seja o preço
+    // (42,50, 25,00 e sob consulta).
+    const feita = await reservar(c, [c.corte, c.barba, c.avaliacao], as(DIA, 10), marcos);
+    await concluir(c, feita.id, as(DIA, 10));
+    expect((await linhas(feita.id)).map(resumo)).toEqual([
+      [c.corte, 'DEFAULT', 'FIXED', 1500, 1500],
+      [c.barba, 'DEFAULT', 'FIXED', 1500, 1500],
+      [c.avaliacao, 'DEFAULT', 'FIXED', 1500, 1500],
+    ]);
+    // Lucas: 10% do corte.
+    const doLucas = await reservar(c, [c.corte], as(DIA, 14), lucas);
+    await concluir(c, doLucas.id, as(DIA, 14));
+    expect((await linhas(doLucas.id)).map(resumo)).toEqual([[c.corte, 'DEFAULT', 'PERCENTAGE', 1000, 425]]);
+  });
+
+  it('em massa, SUBSTITUIR removendo exceções: só dos escolhidos, prévia mostra quais e quantas, atômico e auditado', async () => {
+    const c = await cenarioEmMassa('massa-excecoes');
+    const outro = await cenario('massa-excecoes-outro');
+    await comissoes.setRule(c.dono, c.tenantId, c.edu, c.corte, fixo(700));
+    await comissoes.setRule(outro.dono, outro.tenantId, outro.ana, outro.corte, pct(4000));
+    const doEdu = await regrasDe(c.tenantId, c.edu);
+    const doOutro = await regrasDe(outro.tenantId, outro.ana);
+    const feita = await reservar(c, [c.corte, c.barba], as(DIA, 9));
+    await concluir(c, feita.id, as(DIA, 9));
+    const apuradas = (await excecoesEApuracoes(c.tenantId)).apuradas;
+
+    const pedido = { target: 'SELECTED' as const, professionalIds: [c.ana, c.bia], defaultRule: pct(2000), mode: 'REPLACE' as const };
+    // Manter (padrão): as exceções aparecem, mas não serão removidas.
+    const mantendo = await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido);
+    expect(mantendo.exceptions).toBe('KEEP');
+    expect(mantendo.summary.exceptionsRemoved).toBe(0);
+    const anaMantendo = mantendo.professionals.find((p) => p.professional.id === c.ana);
+    expect(anaMantendo?.exceptions).toEqual({ services: [{ service: { id: c.corte, name: 'Corte' }, rule: { kind: 'NONE', value: null } }], removed: false });
+    // Remover: a prévia diz quem perde quais exceções.
+    const removendo = { ...pedido, exceptions: 'REMOVE' as const };
+    const previa = await comissoes.previewBulkSettings(c.dono, c.tenantId, removendo);
+    expect(previa.fingerprint).not.toBe(mantendo.fingerprint);
+    expect(previa.summary).toEqual({ change: 2, preserve: 0, unchanged: 0, total: 2, exceptionsRemoved: 1 });
+    expect(Object.fromEntries(previa.professionals.map((p) => [p.professional.name.split(' ')[0], p.exceptions.removed]))).toEqual({
+      Ana: true,
+      Bia: false,
+    });
+    const confirmado = { ...removendo, confirmReplace: true as const, confirmRemoveExceptions: true as const };
+    // A impressão de "manter" não serve para remover.
+    await expect(comissoes.applyBulkSettings(c.dono, c.tenantId, { ...confirmado, fingerprint: mantendo.fingerprint })).rejects.toMatchObject(
+      desatualizada,
+    );
+
+    // Atomicidade: se a remoção falhar, a regra geral também não muda.
+    const gatilho = `falha_excecoes_${sufixo}`;
+    await db.query(
+      `CREATE FUNCTION ${gatilho}() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'falha simulada'; END $f$`,
+    );
+    await db.query(
+      `CREATE TRIGGER ${gatilho} BEFORE DELETE ON commission_rules FOR EACH ROW WHEN (OLD.tenant_id = '${c.tenantId}') EXECUTE FUNCTION ${gatilho}()`,
+    );
+    const configuradas = await configuracoes(c.tenantId);
+    try {
+      await expect(comissoes.applyBulkSettings(c.dono, c.tenantId, { ...confirmado, fingerprint: previa.fingerprint })).rejects.toThrow(
+        'falha simulada',
+      );
+    } finally {
+      await db.query(`DROP TRIGGER ${gatilho} ON commission_rules`);
+      await db.query(`DROP FUNCTION ${gatilho}()`);
+    }
+    expect(await configuracoes(c.tenantId)).toEqual(configuradas);
+    expect((await regrasDe(c.tenantId, c.ana)).length).toBe(1);
+
+    const aplicada = await comissoes.applyBulkSettings(c.dono, c.tenantId, { ...confirmado, fingerprint: previa.fingerprint });
+    expect(aplicada).toMatchObject({ applied: true, exceptions: 'REMOVE', summary: previa.summary });
+    expect(await regrasDe(c.tenantId, c.ana)).toEqual([]);
+    expect(await efetivas(c, c.ana)).toMatchObject({ Corte: { source: 'DEFAULT', rule: pct(2000) } });
+    // Fora da escolha e de outro estabelecimento: intactas; apurações também.
+    expect(await regrasDe(c.tenantId, c.edu)).toEqual(doEdu);
+    expect(await regrasDe(outro.tenantId, outro.ana)).toEqual(doOutro);
+    expect((await excecoesEApuracoes(c.tenantId)).apuradas).toEqual(apuradas);
+    const auditoria = await auditoriaDaOperacao(c.tenantId, aplicada.operationId);
+    expect(auditoria.map((a) => a.summary)).toEqual([
+      'Comissão de Ana massa-excecoes (aplicação em massa, substituir): recebe, regra geral não definida → recebe, regra geral 20.00%; exceção por serviço removida: Corte sem comissão.',
+      'Comissão de Bia massa-excecoes (aplicação em massa, substituir): recebe, regra geral R$ 15.00 fixo → recebe, regra geral 20.00%.',
+    ]);
+    expect(auditoria[0].previous_data.exceptions).toEqual([{ serviceId: c.corte, serviceName: 'Corte', rule: { kind: 'NONE', value: null } }]);
+    expect(auditoria[0].new_data).toMatchObject({
+      removedExceptions: [{ serviceId: c.corte, serviceName: 'Corte', rule: { kind: 'NONE', value: null } }],
+      bulk: { operationId: aplicada.operationId, mode: 'REPLACE', exceptions: 'REMOVE' },
+    });
+    expect(auditoria[1].new_data).not.toHaveProperty('removedExceptions');
+
+    // Regra geral já igual: só a remoção da exceção altera o Edu.
+    const soEdu = { target: 'SELECTED' as const, professionalIds: [c.edu], defaultRule: pct(1000), mode: 'REPLACE' as const, exceptions: 'REMOVE' as const };
+    const doEduPrevia = await comissoes.previewBulkSettings(c.dono, c.tenantId, soEdu);
+    expect(doEduPrevia.professionals[0]).toMatchObject({ outcome: 'CHANGE', exceptions: { removed: true } });
+    // Uma exceção muda antes da aplicação: 409, nada gravado.
+    await comissoes.setRule(c.dono, c.tenantId, c.edu, c.corte, fixo(800));
+    const doEduAntes = await regrasDe(c.tenantId, c.edu);
+    await expect(
+      comissoes.applyBulkSettings(c.dono, c.tenantId, {
+        ...soEdu,
+        fingerprint: doEduPrevia.fingerprint,
+        confirmReplace: true,
+        confirmRemoveExceptions: true,
+      }),
+    ).rejects.toMatchObject(desatualizada);
+    expect(await regrasDe(c.tenantId, c.edu)).toEqual(doEduAntes);
+    // Mesmo mantendo exceções, uma exceção nova desatualiza a prévia.
+    const mantendoEdu = await comissoes.previewBulkSettings(c.dono, c.tenantId, { ...soEdu, exceptions: 'KEEP' });
+    await comissoes.clearRule(c.dono, c.tenantId, c.edu, c.corte);
+    await expect(
+      comissoes.applyBulkSettings(c.dono, c.tenantId, { ...soEdu, exceptions: 'KEEP', fingerprint: mantendoEdu.fingerprint, confirmReplace: true }),
+    ).rejects.toMatchObject(desatualizada);
+  });
+
+  it('em massa removendo exceções: espera uma mudança de exceção em curso e a recusa como prévia desatualizada', async () => {
+    const c = await cenarioEmMassa('massa-excecoes-trava');
+    const pedido = {
+      target: 'SELECTED' as const,
+      professionalIds: [c.ana],
+      defaultRule: pct(2000),
+      mode: 'REPLACE' as const,
+      exceptions: 'REMOVE' as const,
+      confirmReplace: true as const,
+      confirmRemoveExceptions: true as const,
+    };
+    const { fingerprint } = await comissoes.previewBulkSettings(c.dono, c.tenantId, pedido);
+    // `setRule` em curso: travou a Ana e mudou a exceção do corte.
+    const mudanca = db.createQueryRunner();
+    await mudanca.connect();
+    await mudanca.startTransaction();
+    let recusa: Promise<unknown> | undefined;
+    try {
+      const [{ pid }] = (await mudanca.query('SELECT pg_backend_pid() AS pid')) as { pid: number }[];
+      await mudanca.query('SELECT 1 FROM professionals WHERE tenant_id = $1 AND id = $2 FOR UPDATE', [c.tenantId, c.ana]);
+      await mudanca.query(
+        `UPDATE commission_rules SET type = 'FIXED', value = 900 WHERE tenant_id = $1 AND professional_id = $2 AND service_id = $3`,
+        [c.tenantId, c.ana, c.corte],
+      );
+      recusa = comissoes.applyBulkSettings(c.dono, c.tenantId, { ...pedido, fingerprint });
+      recusa.catch(() => undefined);
+      await esperarBloqueadas(pid, 'FOR UPDATE');
+      await mudanca.commitTransaction();
+      await expect(recusa).rejects.toMatchObject(desatualizada);
+    } finally {
+      if (mudanca.isTransactionActive) await mudanca.rollbackTransaction();
+      await mudanca.release();
+    }
+    // A exceção nova ficou; a regra geral não mudou.
+    expect(await regrasDe(c.tenantId, c.ana)).toEqual([{ service_id: c.corte, type: 'FIXED', value: 900 }]);
+    expect((await comissoes.rules(c.dono, c.tenantId, c.ana)).settings.defaultRule).toBeNull();
   });
 
 });

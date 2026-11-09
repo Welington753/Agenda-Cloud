@@ -599,13 +599,24 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         'SELECT receives_commission, default_type::text AS default_type, default_value FROM professional_commission_settings WHERE professional_id = $1',
         [r.professionalId],
       );
+      const exceptions = (
+        await q<{ service_id: string; type: 'PERCENTAGE' | 'FIXED'; value: number }>(
+          'SELECT service_id, type::text AS type, value FROM commission_rules WHERE professional_id = $1',
+          [r.professionalId],
+        )
+      ).map((e) => ({ serviceId: e.service_id, rule: { type: e.type, value: Number(e.value) } }));
       const current = l
-        ? { stored: true, settings: { receivesCommission: l.receives_commission, defaultRule: l.default_type ? { type: l.default_type, value: Number(l.default_value) } : null } }
-        : { stored: false, settings: CONFIGURACAO_SEM_LINHA };
+        ? {
+            stored: true,
+            settings: { receivesCommission: l.receives_commission, defaultRule: l.default_type ? { type: l.default_type, value: Number(l.default_value) } : null },
+            exceptions,
+          }
+        : { stored: false, settings: CONFIGURACAO_SEM_LINHA, exceptions };
       const fingerprint = impressaoDaPrevia({
         target: 'SELECTED',
         mode: 'PRESERVE',
         rule: { type: 'FIXED', value: 1000 },
+        exceptions: 'KEEP',
         professionals: [{ id: p.id, active: p.active, current }],
       });
       return { ...pedidoEmMassa(r), fingerprint };

@@ -42,6 +42,7 @@ import {
   type BulkTarget,
   type CurrentSettings,
 } from './commission-bulk.js';
+import { impressaoDasExcecoes, type ExceptionChoice, type StoredException } from './commission-exceptions.js';
 import { commissionReport } from './commission-report.js';
 import type {
   CommissionBulkApplyDto,
@@ -75,6 +76,19 @@ export interface ProfessionalRulesView {
     effective: { source: RuleScope | null; rule: RuleView | null };
     updatedAt: string | null;
   }[];
+  /** Impressão das exceções por serviço de agora: volta no pedido de
+   * remoção, que é recusado (409) se as exceções mudaram desde a leitura. */
+  exceptionsFingerprint: string;
+}
+
+/** Exceção por serviço lida com o nome do serviço (tela e auditoria). */
+interface ExcecaoLida extends StoredException {
+  serviceName: string;
+}
+
+interface ExceptionView {
+  service: { id: string; name: string };
+  rule: RuleView;
 }
 
 interface SettingsView {
@@ -87,16 +101,26 @@ export interface BulkSettingsView {
   target: BulkTarget;
   mode: BulkMode;
   defaultRule: RuleView;
-  /** Impressão do pedido e do estado do alcance; volta na aplicação. */
+  /** `REMOVE` (só em SUBSTITUIR): remove as exceções do alcance. */
+  exceptions: ExceptionChoice;
+  /** Impressão do pedido e do estado do alcance (inclusive as exceções);
+   * volta na aplicação. */
   fingerprint: string;
-  summary: { change: number; preserve: number; unchanged: number; total: number };
+  summary: { change: number; preserve: number; unchanged: number; total: number; exceptionsRemoved: number };
   professionals: {
     professional: { id: string; name: string };
     current: SettingsView;
     next: SettingsView;
+    /** As exceções do profissional e se serão (ou foram) removidas. */
+    exceptions: { services: ExceptionView[]; removed: boolean };
     outcome: BulkOutcome;
   }[];
 }
+
+type PlanoEmMassa = BulkSettingsView & {
+  /** Fica no servidor: o que gravar para cada profissional. */
+  mudancas: Map<string, { settingsChange: boolean; excecoes: ExcecaoLida[] }>;
+};
 
 const vistaDaConfiguracao = (c: CommissionSettings): SettingsView => ({
   receivesCommission: c.receivesCommission,
@@ -110,6 +134,22 @@ const descreverConfiguracao = (c: CommissionSettings) =>
   c.receivesCommission
     ? `recebe, regra geral ${c.defaultRule ? descrever(ruleToView(c.defaultRule)) : 'não definida'}`
     : 'não recebe';
+
+const vistaDaExcecao = (e: ExcecaoLida): ExceptionView => ({
+  service: { id: e.serviceId, name: e.serviceName },
+  rule: ruleToView(e.rule),
+});
+
+/** Auditoria: as exceções removidas, com o que valia em cada serviço. */
+const dadosDasExcecoes = (lista: readonly ExcecaoLida[]) =>
+  lista.map((e) => ({ serviceId: e.serviceId, serviceName: e.serviceName, rule: ruleToView(e.rule) }));
+
+/** "; exceção por serviço removida: Barba 15.00%" ou "" sem remoção. */
+function resumoDaRemocao(lista: readonly ExcecaoLida[]) {
+  if (lista.length === 0) return '';
+  const titulo = lista.length === 1 ? 'exceção por serviço removida' : `${lista.length} exceções por serviço removidas`;
+  return `; ${titulo}: ${lista.map((e) => `${e.serviceName} ${descrever(ruleToView(e.rule))}`).join(', ')}`;
+}
 
 const descrever = (regra: RuleView | null) =>
   regra === null
@@ -203,6 +243,18 @@ export class CommissionsService {
       const autorizado = await this.autorizar(manager, userId, tenantId, true);
       const profissional = await this.travarProfissional(manager, autorizado.tenantId, professionalId);
       const anterior = await this.lerConfiguracao(manager, autorizado.tenantId, professionalId);
+      // Remoção das exceções: só as que a tela mostrou. Lidas depois da
+      // trava do profissional, que `setRule`/`clearRule` também tomam.
+      let removidas: ExcecaoLida[] = [];
+      if (dto.exceptions === 'REMOVE') {
+        removidas = (await this.lerExcecoes(manager, autorizado.tenantId, [professionalId])).get(professionalId) ?? [];
+        if (impressaoDasExcecoes(removidas) !== dto.exceptionsFingerprint) {
+          throw new ConflictException({
+            code: 'EXCECOES_DESATUALIZADAS',
+            message: 'As exceções por serviço deste profissional mudaram. Revise a lista atualizada antes de remover.',
+          });
+        }
+      }
       const nova: CommissionSettings = {
         receivesCommission: dto.receivesCommission,
         defaultRule: dto.defaultRule ? viewToRule(dto.defaultRule) : null,
@@ -212,15 +264,23 @@ export class CommissionsService {
         anterior.settings.receivesCommission === nova.receivesCommission &&
         anterior.settings.defaultRule?.type === nova.defaultRule?.type &&
         anterior.settings.defaultRule?.value === nova.defaultRule?.value;
-      if (igual) return autorizado.tenantId;
-      await manager.query(
-        `INSERT INTO professional_commission_settings
-            (tenant_id, professional_id, receives_commission, default_type, default_value, created_at, updated_at)
-         VALUES ($1, $2, $3, $4::commission_type, $5, $6, $6)
-         ON CONFLICT (tenant_id, professional_id) DO UPDATE SET receives_commission = EXCLUDED.receives_commission,
-           default_type = EXCLUDED.default_type, default_value = EXCLUDED.default_value, updated_at = EXCLUDED.updated_at`,
-        [autorizado.tenantId, professionalId, nova.receivesCommission, nova.defaultRule?.type ?? null, nova.defaultRule?.value ?? null, now],
-      );
+      if (igual && removidas.length === 0) return autorizado.tenantId;
+      if (!igual) {
+        await manager.query(
+          `INSERT INTO professional_commission_settings
+              (tenant_id, professional_id, receives_commission, default_type, default_value, created_at, updated_at)
+           VALUES ($1, $2, $3, $4::commission_type, $5, $6, $6)
+           ON CONFLICT (tenant_id, professional_id) DO UPDATE SET receives_commission = EXCLUDED.receives_commission,
+             default_type = EXCLUDED.default_type, default_value = EXCLUDED.default_value, updated_at = EXCLUDED.updated_at`,
+          [autorizado.tenantId, professionalId, nova.receivesCommission, nova.defaultRule?.type ?? null, nova.defaultRule?.value ?? null, now],
+        );
+      }
+      if (removidas.length > 0) {
+        await manager.query(`DELETE FROM commission_rules WHERE tenant_id = $1 AND professional_id = $2`, [
+          autorizado.tenantId,
+          professionalId,
+        ]);
+      }
       const vista = (c: CommissionSettings) => ({
         receivesCommission: c.receivesCommission,
         defaultRule: c.defaultRule ? ruleToView(c.defaultRule) : null,
@@ -231,9 +291,21 @@ export class CommissionsService {
           action: 'COMMISSION_RULE_CHANGED',
           actor: await loadActor(manager, userId),
           tenantId: autorizado.tenantId,
-          summary: `Comissão de ${profissional.name}: ${descreverConfiguracao(anterior.settings)} → ${descreverConfiguracao(nova)}.`,
-          previousData: { professionalId, settings: vista(anterior.settings) },
-          newData: { professionalId, settings: vista(nova) },
+          summary: `Comissão de ${profissional.name}: ${
+            igual
+              ? `${descreverConfiguracao(nova)} (sem mudança)`
+              : `${descreverConfiguracao(anterior.settings)} → ${descreverConfiguracao(nova)}`
+          }${resumoDaRemocao(removidas)}.`,
+          previousData: {
+            professionalId,
+            settings: vista(anterior.settings),
+            ...(removidas.length > 0 ? { exceptions: dadosDasExcecoes(removidas) } : {}),
+          },
+          newData: {
+            professionalId,
+            settings: vista(nova),
+            ...(removidas.length > 0 ? { removedExceptions: dadosDasExcecoes(removidas) } : {}),
+          },
         },
         now,
       );
@@ -248,14 +320,17 @@ export class CommissionsService {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       await manager.query('SET TRANSACTION READ ONLY');
       const autorizado = await this.autorizar(manager, userId, tenantId, true);
-      return this.planejarEmMassa(manager, autorizado.tenantId, dto, false);
+      const { mudancas: _mudancas, ...previa } = await this.planejarEmMassa(manager, autorizado.tenantId, dto, false);
+      return previa;
     });
   }
 
   /** Aplica a regra geral a vários profissionais de uma vez, se o estado
-   * travado ainda for o da prévia revisada (mesma impressão). Só grava
-   * `professional_commission_settings`: exceções por serviço e apurações
-   * ficam como estão. Um registro de auditoria por profissional alterado. */
+   * travado ainda for o da prévia revisada (mesma impressão, que inclui as
+   * exceções). Grava `professional_commission_settings` e, só em SUBSTITUIR
+   * com `REMOVE`, apaga as exceções do alcance, tudo na mesma transação.
+   * Apurações ficam como estão. Um registro de auditoria por profissional
+   * alterado, com as exceções removidas. */
   async applyBulkSettings(
     userId: string,
     tenantId: string,
@@ -271,9 +346,12 @@ export class CommissionsService {
           message: 'As comissões mudaram desde a prévia. Revise a prévia atualizada antes de aplicar.',
         });
       }
+      const { mudancas, ...vista } = plano;
       const operationId = generateId();
-      const alterados = plano.professionals.filter((p) => p.outcome === 'CHANGE');
-      if (alterados.length > 0) {
+      const alterados = vista.professionals.filter((p) => p.outcome === 'CHANGE');
+      const comConfiguracaoNova = alterados.filter((p) => mudancas.get(p.professional.id)?.settingsChange);
+      const semExcecoes = alterados.filter((p) => p.exceptions.removed);
+      if (comConfiguracaoNova.length > 0) {
         const regra = viewToRule(dto.defaultRule);
         await manager.query(
           `INSERT INTO professional_commission_settings
@@ -281,39 +359,63 @@ export class CommissionsService {
            SELECT $1, alvo.id, true, $3::commission_type, $4, $5, $5 FROM unnest($2::varchar[]) AS alvo(id)
            ON CONFLICT (tenant_id, professional_id) DO UPDATE SET receives_commission = EXCLUDED.receives_commission,
              default_type = EXCLUDED.default_type, default_value = EXCLUDED.default_value, updated_at = EXCLUDED.updated_at`,
-          [autorizado.tenantId, alterados.map((p) => p.professional.id), regra.type, regra.value, now],
+          [autorizado.tenantId, comConfiguracaoNova.map((p) => p.professional.id), regra.type, regra.value, now],
         );
+      }
+      if (semExcecoes.length > 0) {
+        await manager.query(`DELETE FROM commission_rules WHERE tenant_id = $1 AND professional_id = ANY($2::varchar[])`, [
+          autorizado.tenantId,
+          semExcecoes.map((p) => p.professional.id),
+        ]);
+      }
+      if (alterados.length > 0) {
         const actor = await loadActor(manager, userId);
         const rotuloModo = dto.mode === 'REPLACE' ? 'substituir' : 'preservar';
         for (const p of alterados) {
+          const mudanca = mudancas.get(p.professional.id);
+          const removidas = mudanca?.excecoes ?? [];
+          const configuracao = mudanca?.settingsChange
+            ? `${descreverVista(p.current)} → ${descreverVista(p.next)}`
+            : `${descreverVista(p.current)} (sem mudança)`;
           await recordAudit(
             manager,
             {
               action: 'COMMISSION_RULE_CHANGED',
               actor,
               tenantId: autorizado.tenantId,
-              summary: `Comissão de ${p.professional.name} (aplicação em massa, ${rotuloModo}): ${descreverVista(p.current)} → ${descreverVista(p.next)}.`,
-              previousData: { professionalId: p.professional.id, settings: p.current },
-              newData: { professionalId: p.professional.id, settings: p.next, bulk: { operationId, mode: dto.mode } },
+              summary: `Comissão de ${p.professional.name} (aplicação em massa, ${rotuloModo}): ${configuracao}${resumoDaRemocao(removidas)}.`,
+              previousData: {
+                professionalId: p.professional.id,
+                settings: p.current,
+                ...(removidas.length > 0 ? { exceptions: dadosDasExcecoes(removidas) } : {}),
+              },
+              newData: {
+                professionalId: p.professional.id,
+                settings: p.next,
+                ...(removidas.length > 0 ? { removedExceptions: dadosDasExcecoes(removidas) } : {}),
+                bulk: { operationId, mode: dto.mode, exceptions: vista.exceptions },
+              },
             },
             now,
           );
         }
       }
-      return { ...plano, applied: true as const, operationId };
+      return { ...vista, applied: true as const, operationId };
     });
   }
 
-  /** Alcance, configuração atual e resultado de cada profissional. Com
-   * `travar`, trava todo o alcance (`FOR UPDATE`, em ordem de id: duas
+  /** Alcance, configuração atual, exceções e resultado de cada profissional.
+   * Com `travar`, trava todo o alcance (`FOR UPDATE`, em ordem de id: duas
    * aplicações simultâneas não se travam mutuamente) e só DEPOIS lê as
-   * configurações, em instrução separada (ver commission-accrual.ts). */
+   * configurações e as exceções, em instruções separadas (ver
+   * commission-accrual.ts). `setRule`/`clearRule` travam o mesmo
+   * profissional, então nenhuma exceção muda entre a leitura e a gravação. */
   private async planejarEmMassa(
     manager: EntityManager,
     tenantId: string,
     dto: CommissionBulkPreviewDto,
     travar: boolean,
-  ): Promise<BulkSettingsView> {
+  ): Promise<PlanoEmMassa> {
     const trava = travar ? 'FOR UPDATE' : '';
     const alvos = linhasDe<{ id: string; name: string; active: boolean }>(
       dto.target === 'ALL'
@@ -354,9 +456,16 @@ export class CommissionsService {
       ),
     );
     const gravadas = new Map(linhas.map((l) => [l.professional_id, l]));
+    const excecoesPorProfissional = await this.lerExcecoes(
+      manager,
+      tenantId,
+      alvos.map((p) => p.id),
+    );
     const regra = viewToRule(dto.defaultRule);
+    const escolha: ExceptionChoice = dto.exceptions ?? 'KEEP';
     const comAtual = alvos.map((p) => {
       const l = gravadas.get(p.id);
+      const excecoes = excecoesPorProfissional.get(p.id) ?? [];
       const current: CurrentSettings = l
         ? {
             stored: true,
@@ -364,16 +473,27 @@ export class CommissionsService {
               receivesCommission: l.receives_commission,
               defaultRule: l.default_type === null ? null : { type: l.default_type, value: Number(l.default_value) },
             },
+            exceptions: excecoes,
           }
-        : { stored: false, settings: CONFIGURACAO_SEM_LINHA };
-      return { ...p, current, plano: planejarAplicacao(dto.mode, regra, current) };
+        : { stored: false, settings: CONFIGURACAO_SEM_LINHA, exceptions: excecoes };
+      return { ...p, current, excecoes, plano: planejarAplicacao(dto.mode, regra, current, escolha) };
     });
-    const fingerprint = impressaoDaPrevia({ target: dto.target, mode: dto.mode, rule: regra, professionals: comAtual });
+    const fingerprint = impressaoDaPrevia({
+      target: dto.target,
+      mode: dto.mode,
+      rule: regra,
+      exceptions: escolha,
+      professionals: comAtual,
+    });
+    const mudancas: PlanoEmMassa['mudancas'] = new Map(
+      comAtual.map((p) => [p.id, { settingsChange: p.plano.settingsChange, excecoes: p.plano.removesExceptions ? p.excecoes : [] }]),
+    );
     const professionals = comAtual
       .map((p) => ({
         professional: { id: p.id, name: p.name },
         current: vistaDaConfiguracao(p.current.settings),
         next: vistaDaConfiguracao(p.plano.next),
+        exceptions: { services: p.excecoes.map(vistaDaExcecao), removed: p.plano.removesExceptions },
         outcome: p.plano.outcome,
       }))
       .sort((a, b) => a.professional.name.localeCompare(b.professional.name, 'pt-BR') || (a.professional.id < b.professional.id ? -1 : 1));
@@ -381,10 +501,41 @@ export class CommissionsService {
       target: dto.target,
       mode: dto.mode,
       defaultRule: ruleToView(regra),
+      exceptions: escolha,
       fingerprint,
-      summary: resumirResultados(professionals.map((p) => p.outcome)),
+      summary: resumirResultados(
+        professionals.map((p) => ({ outcome: p.outcome, exceptionsRemoved: p.exceptions.removed ? p.exceptions.services.length : 0 })),
+      ),
       professionals,
+      mudancas,
     };
+  }
+
+  /** Exceções por serviço dos profissionais, com o nome do serviço, em ordem
+   * de nome. Quem decide com base nelas trava antes os profissionais. */
+  private async lerExcecoes(manager: EntityManager, tenantId: string, professionalIds: string[]) {
+    const linhas = linhasDe<{
+      professional_id: string;
+      service_id: string;
+      name: string;
+      type: StoredRule['type'];
+      value: number;
+    }>(
+      await manager.query(
+        `SELECT cr.professional_id, cr.service_id, s.name, cr.type::text AS type, cr.value
+           FROM commission_rules cr JOIN services s ON s.tenant_id = cr.tenant_id AND s.id = cr.service_id
+          WHERE cr.tenant_id = $1 AND cr.professional_id = ANY($2::varchar[])
+          ORDER BY s.name, s.id`,
+        [tenantId, professionalIds],
+      ),
+    );
+    const porProfissional = new Map<string, ExcecaoLida[]>();
+    for (const l of linhas) {
+      const lista = porProfissional.get(l.professional_id) ?? [];
+      lista.push({ serviceId: l.service_id, serviceName: l.name, rule: { type: l.type, value: Number(l.value) } });
+      porProfissional.set(l.professional_id, lista);
+    }
+    return porProfissional;
   }
 
   /** "Recebe comissão" de cada profissional, para a lista de profissionais. */
@@ -544,7 +695,11 @@ export class CommissionsService {
       ),
     );
     const { settings } = await this.lerConfiguracao(manager, tenantId, professionalId);
+    const excecoes: StoredException[] = linhas.flatMap((l) =>
+      l.type === null ? [] : [{ serviceId: l.id, rule: { type: l.type, value: Number(l.value) } }],
+    );
     return {
+      exceptionsFingerprint: impressaoDasExcecoes(excecoes),
       professional: profissional,
       settings: {
         receivesCommission: settings.receivesCommission,

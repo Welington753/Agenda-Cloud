@@ -20,13 +20,15 @@ const PREVIA = {
   target: 'ALL',
   mode: 'PRESERVE',
   defaultRule: { kind: 'PERCENTAGE', value: 1000 },
+  exceptions: 'KEEP',
   fingerprint: IMPRESSAO,
-  summary: { change: 1, preserve: 0, unchanged: 0, total: 1 },
+  summary: { change: 1, preserve: 0, unchanged: 0, total: 1, exceptionsRemoved: 0 },
   professionals: [
     {
       professional: { id: 'prof_1', name: 'Ana' },
       current: { receivesCommission: true, defaultRule: null },
       next: { receivesCommission: true, defaultRule: { kind: 'PERCENTAGE', value: 1000 } },
+      exceptions: { services: [], removed: false },
       outcome: 'CHANGE',
     },
   ],
@@ -37,15 +39,17 @@ describe('rotas da aplicação de comissões em massa (e2e)', () => {
   let app: INestApplication<App>;
   let previewMock: ReturnType<typeof vi.fn>;
   let applyMock: ReturnType<typeof vi.fn>;
+  let settingsMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     previewMock = vi.fn().mockResolvedValue(PREVIA);
     applyMock = vi.fn().mockResolvedValue({ ...PREVIA, applied: true, operationId: 'op_1' });
+    settingsMock = vi.fn().mockResolvedValue({ ok: true });
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DataSource)
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(CommissionsService)
-      .useValue({ previewBulkSettings: previewMock, applyBulkSettings: applyMock })
+      .useValue({ previewBulkSettings: previewMock, applyBulkSettings: applyMock, setSettings: settingsMock })
       .overrideGuard(SessionGuard)
       .useValue({
         canActivate: (context: { switchToHttp: () => { getRequest: () => Record<string, unknown> } }) => {
@@ -82,9 +86,44 @@ describe('rotas da aplicação de comissões em massa (e2e)', () => {
     ['substituir sem confirmação', { ...CORPO, mode: 'REPLACE', fingerprint: IMPRESSAO }],
     ['sem impressão', CORPO],
     ['201 escolhidos', { ...CORPO, target: 'SELECTED', professionalIds: Array.from({ length: 201 }, (_, i) => `p${i}`), fingerprint: IMPRESSAO }],
+    ['preservar removendo exceções', { ...CORPO, exceptions: 'REMOVE', confirmRemoveExceptions: true, fingerprint: IMPRESSAO }],
+    [
+      'remover exceções sem confirmar a remoção',
+      { ...CORPO, mode: 'REPLACE', confirmReplace: true, exceptions: 'REMOVE', fingerprint: IMPRESSAO },
+    ],
   ])('POST aplicar recusa %s com 400, sem chamar o serviço', async (_nome, corpo) => {
     await request(app.getHttpServer()).post('/tenants/tenant_a/commissions/bulk-settings').send(corpo).expect(400);
     expect(applyMock).not.toHaveBeenCalled();
+  });
+
+  it('POST aplica substituindo e removendo exceções, com as duas confirmações', async () => {
+    const corpo = { ...CORPO, mode: 'REPLACE', exceptions: 'REMOVE', fingerprint: IMPRESSAO, confirmReplace: true, confirmRemoveExceptions: true };
+    await request(app.getHttpServer()).post('/tenants/tenant_a/commissions/bulk-settings').send(corpo).expect(200);
+    expect(applyMock).toHaveBeenCalledWith('user_1', 'tenant_a', corpo);
+  });
+
+  it('PUT da configuração individual: remover exceções exige regra geral, impressão e confirmação', async () => {
+    const caminho = '/tenants/tenant_a/commissions/settings/prof_1';
+    const remover = {
+      receivesCommission: true,
+      defaultRule: { kind: 'PERCENTAGE', value: 2000 },
+      exceptions: 'REMOVE',
+      exceptionsFingerprint: IMPRESSAO,
+      confirmRemoveExceptions: true,
+    };
+    for (const invalido of [
+      { ...remover, confirmRemoveExceptions: undefined },
+      { ...remover, exceptionsFingerprint: undefined },
+      { ...remover, defaultRule: null },
+    ]) {
+      await request(app.getHttpServer()).put(caminho).send(invalido).expect(400);
+    }
+    expect(settingsMock).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).put(caminho).send(remover).expect(200);
+    expect(settingsMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'prof_1', remover);
+    settingsMock.mockRejectedValueOnce(new ConflictException({ code: 'EXCECOES_DESATUALIZADAS', message: 'As exceções mudaram.' }));
+    const r = await request(app.getHttpServer()).put(caminho).send(remover).expect(409);
+    expect(r.body.code).toBe('EXCECOES_DESATUALIZADAS');
   });
 
   it('POST preview recusa corpo inválido com 400', async () => {
