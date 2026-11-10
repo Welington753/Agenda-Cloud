@@ -79,11 +79,8 @@ API fictícia e dados inventados, por curl e no Chromium:
 
 - Search Console, Analytics, domínio e DNS, que dependem do responsável;
 - conferência no ambiente publicado (runbook, seção 3);
-- marca de estabelecimento de teste no banco (decisão pendente, runbook,
-  seção 4);
-- R6, parte das colisões: slug real igual a uma rota da raiz ou a um slug
-  da semente da demonstração continua alcançável só por `/agendar/<slug>`.
-  Pede lista de slugs reservados no backend, num lote próprio;
+- marca de estabelecimento de teste e R6 (slugs reservados): resolvidos
+  no lote seguinte, `docs/plans/estabelecimento-teste-e-slugs-reservados.md`;
 - corpo do 404 sem JavaScript nas rotas dinâmicas: limitação do Next.js 16
   (status, título e `noindex` já vêm no HTML).
 
