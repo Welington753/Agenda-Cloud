@@ -31,6 +31,7 @@ import type {
   ArchiveEstablishmentDto,
   ChangePlanDto,
   ReactivateEstablishmentDto,
+  SetTestFlagDto,
   SuspendEstablishmentDto,
   UpdateEstablishmentDto,
 } from './platform.dto.js';
@@ -51,6 +52,7 @@ export interface TenantRow {
   unit_id: string | null;
   timezone: string;
   created_at: Date;
+  is_test: boolean;
 }
 
 /** `updated_at` do estabelecimento é a versão comparada pelas telas: sempre
@@ -147,6 +149,34 @@ export class EstablishmentAdminService {
         now,
       );
       return { updatedAt: versao };
+    });
+  }
+
+  /** Marca (ou desmarca) o estabelecimento como teste: `noindex` na página
+   * pública, que continua funcionando. Mesma capacidade dos dados
+   * cadastrais; o valor igual ao atual não grava nada. */
+  async setTestFlag(actorId: string, tenantId: string, dto: SetTestFlagDto, now = new Date()) {
+    return this.dataSource.transaction(async (manager) => {
+      const actor = await loadActor(manager, actorId);
+      requireCapability(actor, 'manageEstablishments');
+      const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
+      if (atual.is_test === dto.isTest) return { updatedAt: atual.updated_at, isTest: atual.is_test };
+      const versao = await writeEstablishment(manager, atual.id, now, 'is_test = $3', [dto.isTest]);
+      await recordAudit(
+        manager,
+        {
+          action: 'TENANT_TEST_FLAG_CHANGED',
+          actor,
+          tenantId: atual.id,
+          summary: dto.isTest
+            ? `Estabelecimento ${atual.name} marcado como teste (fora da busca; página pública mantida).`
+            : `Estabelecimento ${atual.name} desmarcado como teste (volta a ser indexável).`,
+          previousData: { isTest: atual.is_test },
+          newData: { isTest: dto.isTest },
+        },
+        now,
+      );
+      return { updatedAt: versao, isTest: dto.isTest };
     });
   }
 
@@ -318,7 +348,7 @@ export async function lockEstablishment(
 ): Promise<TenantRow> {
   const [linha] = await manager.query<TenantRow[]>(
     `SELECT t.id, t.slug::text AS slug, t.status::text AS status, t.restore_status::text AS restore_status,
-            t.category::text AS category, t.tax_document, t.updated_at, t.plan_id, t.timezone, t.created_at,
+            t.category::text AS category, t.tax_document, t.updated_at, t.plan_id, t.timezone, t.created_at, t.is_test,
             COALESCE(u.name, t.slug::text) AS name, u.id AS unit_id
        FROM tenants t
        LEFT JOIN LATERAL (

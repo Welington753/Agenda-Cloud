@@ -50,6 +50,7 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'AppointmentServiceSnapshots1793404800000',
   'ProfessionalCommissions1793491200000',
   'ProfessionalCommissionSettings1793577600000',
+  'TenantTestFlag1793664000000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [

@@ -2,6 +2,8 @@
 // `businessName` no cadastro. Resolução de colisão é determinística (sufixo
 // numérico incremental) e limitada (nunca loop infinito mesmo sob ataque ou
 // bug de verificação).
+import { isReservedSlug } from '../common/reserved-slugs.js';
+
 const DIACRITICS = /[̀-ͯ]/g;
 const INVALID_CHARS = /[^a-z0-9\s-]/g;
 const WHITESPACE_OR_DASH_RUNS = /[\s-]+/g;
@@ -30,7 +32,9 @@ export function slugify(input: string, maxLength = DEFAULT_MAX_SLUG_LENGTH): str
 
 export const MAX_SLUG_COLLISION_ATTEMPTS = 50;
 
-/** `exists` consulta o banco (ou qualquer fonte) para saber se o candidato já
+/** Slug reservado (common/reserved-slugs.ts) conta como ocupado: "Portal"
+ * vira `portal-2`, e o cadastro nunca é recusado pelo nome.
+ * `exists` consulta o banco (ou qualquer fonte) para saber se o candidato já
  * está em uso. Nunca chamado além de `MAX_SLUG_COLLISION_ATTEMPTS` vezes —
  * protege contra loop infinito se `exists` sempre responder `true` (bug,
  * ataque, ou nome extremamente comum). */
@@ -38,13 +42,14 @@ export async function resolveSlug(
   baseSlug: string,
   exists: (candidate: string) => Promise<boolean>,
 ): Promise<string> {
-  if (!(await exists(baseSlug))) {
+  const ocupado = async (candidate: string) => isReservedSlug(candidate) || (await exists(candidate));
+  if (!(await ocupado(baseSlug))) {
     return baseSlug;
   }
 
   for (let suffix = 2; suffix <= MAX_SLUG_COLLISION_ATTEMPTS; suffix++) {
     const candidate = `${baseSlug}-${suffix}`;
-    if (!(await exists(candidate))) {
+    if (!(await ocupado(candidate))) {
       return candidate;
     }
   }

@@ -15,7 +15,11 @@ import { defineConfig, devices } from "@playwright/test";
 //   serviço, como na hospedagem: 3443 → Next.js e 3444 → API (chamadas
 //   diretas). Os dois serviços rodam com `CLIENT_IP_SOURCE=cf-connecting-ip`,
 //   o valor de render.yaml. O salto do proxy até a API é direto (HTTP local):
-//   nele, o IP do cliente vai no cabeçalho autenticado pelo segredo.
+//   nele, o IP do cliente vai no cabeçalho autenticado pelo segredo;
+// - entre o Next.js e a API fica um relé local
+//   (tests/browser/support/api-controlavel.mjs, porta 3002) que repassa tudo
+//   sem mudar nada, e que o teste põe em modo "lenta" ou "fora" para provar a
+//   decisão de indexação da página pública com a API falhando.
 //
 // `API_PROXY_SECRET` vem do ambiente (valor descartável do job de CI); os dois
 // processos recebem o mesmo valor.
@@ -52,10 +56,16 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      command: "node tests/browser/support/api-controlavel.mjs",
+      url: "http://127.0.0.1:3002/",
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
       command: "npm run start -- -p 3000",
       env: {
         PORT: "3000",
-        API_PROXY_TARGET: "http://localhost:3001",
+        API_PROXY_TARGET: "http://127.0.0.1:3002",
         APP_PUBLIC_ORIGIN: ORIGEM_PUBLICA,
         CLIENT_IP_SOURCE: "cf-connecting-ip",
       },

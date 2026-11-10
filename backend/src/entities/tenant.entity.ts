@@ -81,6 +81,12 @@ export class Tenant {
   @Column({ type: 'int', default: 0 })
   professionalCount!: number;
 
+  // Estabelecimento de teste (migration TenantTestFlag): fora da busca
+  // (`noindex`) sem desligar a página pública. Só o portal grava
+  // (platform/establishment-admin.service.ts, `setTestFlag`).
+  @Column({ type: 'boolean', default: false })
+  isTest!: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   createdAt!: Date;
 

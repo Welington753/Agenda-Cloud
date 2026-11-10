@@ -306,6 +306,7 @@ export class PlatformService {
          * de novo em cada operação). */
         allowedActions: {
           edit: caps.manageEstablishments,
+          markTest: caps.manageEstablishments,
           suspend: caps.manageEstablishmentLifecycle && operando,
           archive: caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED'),
           reactivate:

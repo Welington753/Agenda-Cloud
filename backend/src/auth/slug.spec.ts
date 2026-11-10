@@ -42,16 +42,16 @@ describe('slugify', () => {
 
 describe('resolveSlug', () => {
   it('retorna o slug simples quando não há colisão', async () => {
-    const slug = await resolveSlug('dom-navalha', async () => false);
-    expect(slug).toBe('dom-navalha');
+    const slug = await resolveSlug('barbearia-do-ze', async () => false);
+    expect(slug).toBe('barbearia-do-ze');
   });
 
   it('adiciona sufixo determinístico quando o slug simples já existe', async () => {
-    const existentes = new Set(['dom-navalha']);
-    const slug = await resolveSlug('dom-navalha', async (candidate) =>
+    const existentes = new Set(['barbearia-do-ze']);
+    const slug = await resolveSlug('barbearia-do-ze', async (candidate) =>
       existentes.has(candidate),
     );
-    expect(slug).toBe('dom-navalha-2');
+    expect(slug).toBe('barbearia-do-ze-2');
   });
 
   it('incrementa o sufixo até achar um slug livre', async () => {

@@ -11,6 +11,14 @@ export function caminhoDaPaginaPublica(slug: string): string {
   return `/agendar/${encodeURIComponent(slug)}`;
 }
 
+/** A página entra na busca? Só um estabelecimento de teste diz que não
+ * (`indexable: false`); campo ausente (API anterior) é indexável, como antes.
+ * A mesma regra vale para os metadados (layout) e para o cabeçalho
+ * `X-Robots-Tag` (src/proxy.ts). */
+export function paginaIndexavel(pagina: PaginaPublica): boolean {
+  return pagina.indexable !== false;
+}
+
 const LIMITE_DESCRICAO = 160;
 
 function encurtar(texto: string, limite: number): string {

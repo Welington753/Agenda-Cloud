@@ -44,12 +44,14 @@ import {
   establishmentIdSchema,
   establishmentQuerySchema,
   reactivateEstablishmentSchema,
+  setTestFlagSchema,
   suspendEstablishmentSchema,
   updateEstablishmentSchema,
   type ArchiveEstablishmentDto,
   type ChangePlanDto,
   type EstablishmentQuery,
   type ReactivateEstablishmentDto,
+  type SetTestFlagDto,
   type SuspendEstablishmentDto,
   type UpdateEstablishmentDto,
 } from './platform.dto.js';
@@ -122,6 +124,18 @@ export class PlatformController {
     @Body(new ZodValidationPipe(updateEstablishmentSchema)) dto: UpdateEstablishmentDto,
   ) {
     return this.admin.update(request.auth.userId, tenantId, dto);
+  }
+
+  /** Marca de estabelecimento de teste (`noindex` na página pública). Só
+   * conta da plataforma com `manageEstablishments`, relida no serviço. */
+  @Put('establishments/:tenantId/test-flag')
+  @Header('Cache-Control', 'private, no-store')
+  setTestFlag(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(setTestFlagSchema)) dto: SetTestFlagDto,
+  ) {
+    return this.admin.setTestFlag(request.auth.userId, tenantId, dto);
   }
 
   @Post('establishments/:tenantId/suspend')

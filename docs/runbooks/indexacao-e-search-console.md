@@ -125,20 +125,27 @@ Ficar fora do sitemap não impede a indexação: o buscador acha a página
   `/agendar/<slug-da-demonstração>` responde 404. O endereço curto dos seis
   slugs da semente mostra a demonstração com `noindex`, e as telas internas
   dela têm `X-Robots-Tag: noindex`.
-- **Estabelecimentos de teste no banco:** o banco não tem marca de teste
-  (nem coluna, nem plano, nem convenção de nome). Um estabelecimento de
-  teste com a página pública ligada é indexável como qualquer real, se
-  alguém publicar o link dele. Hoje, o jeito de tirá-lo da busca é o dono
-  **desligar a página pública**: ela passa a responder 404. **Decisão
-  pendente:** se a plataforma quiser outra regra (uma marca de teste
-  definida pela administração, ou uma opção do dono para não aparecer em
-  buscadores), é preciso definir quem marca e criar o campo. Nada foi
-  classificado nem bloqueado por suposição.
-- **Colisões do endereço curto (R6, parcial):** um estabelecimento real com
-  slug igual a uma rota da raiz (`login`, `conta`...) ou a um slug da
-  semente da demonstração não é alcançado por `/<slug>`, só por
-  `/agendar/<slug>`, o link que a tela copia. A correção pede uma lista de
-  slugs reservados no backend, num lote próprio.
+- **Estabelecimentos de teste no banco:** o portal marca o estabelecimento
+  como teste (`tenants.is_test`, migration `TenantTestFlag`). A página
+  pública continua funcionando e pode ser compartilhada, mas sai com
+  `noindex, nofollow` no HTML (sem canonical e sem dados estruturados) e no
+  cabeçalho `X-Robots-Tag`. **O padrão `false` não identifica testes
+  antigos:** cada um precisa ser marcado no portal antes de a proteção valer
+  (`docs/runbooks/publicacao-tenant-teste-slugs.md`).
+- **API lenta ou fora:** o servidor do web decide uma vez por requisição
+  (`src/proxy.ts`) e o HTML segue a mesma decisão do cabeçalho. Sem resposta
+  da API em 2,5 s, ou com erro, a resposta é **503** (nenhuma classificação
+  antiga é reaproveitada) com `Retry-After: 30`, sem cache e sem `noindex`: o
+  buscador não indexa um 503 e volta depois, e um estabelecimento real não
+  ganha `noindex` por uma falha passageira. Nunca 404.
+- **Colisões do endereço curto (R6):** cadastros novos não recebem mais um
+  slug igual a uma rota da raiz (`login`, `conta`...) ou a um slug da semente
+  da demonstração. O slug não é digitado: ele é gerado do nome do negócio, e
+  o gerador pula os reservados ("Portal" vira `portal-2`). Nenhuma rota
+  aceita um slug escolhido. Um cadastro antigo com slug
+  desses não é renomeado e continua em `/agendar/<slug>`, o link que a tela
+  copia. `npm run pilot:check-reserved-slugs` (em `backend/`, só leitura)
+  lista os casos.
 
 ## 5. Bloqueio de rastreamento não é `noindex`
 

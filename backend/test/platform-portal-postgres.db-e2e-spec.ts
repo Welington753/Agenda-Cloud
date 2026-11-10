@@ -289,6 +289,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       await agente.post(`/platform/establishments/${t}/access/no-expiry`).send(corpo).expect(403);
       await agente.post(`/platform/establishments/${t}/access/no-expiry/revoke`).send(corpo).expect(403);
       await agente.post(`/platform/establishments/${t}/suspend`).send({ expectedUpdatedAt: f.updatedAt, reason: 'tentativa' }).expect(403);
+      await agente.put(`/platform/establishments/${t}/test-flag`).send({ expectedUpdatedAt: f.updatedAt, isTest: true }).expect(403);
       await agente
         .post(`/platform/establishments/${t}/access/paid`)
         .send({
@@ -355,6 +356,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       ],
       ['POST /platform/establishments/:tenantId/reactivate', `/platform/establishments/${t}/reactivate`, 403, { expectedUpdatedAt: v }],
       ['PUT /platform/establishments/:tenantId/plan', `/platform/establishments/${t}/plan`, 403, { expectedUpdatedAt: v, planId: planoSemRecebimentos }],
+      ['PUT /platform/establishments/:tenantId/test-flag', `/platform/establishments/${t}/test-flag`, 403, { expectedUpdatedAt: v, isTest: true }],
       [
         'POST /platform/establishments/:tenantId/access/paid',
         `/platform/establishments/${t}/access/paid`,

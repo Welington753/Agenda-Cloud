@@ -2,8 +2,9 @@
 // os horários livres e o PEDIDO, que nasce sempre `PENDING`.
 //
 // O QUE O PÚBLICO VÊ: nome do estabelecimento, fuso, serviços ativos no
-// online (nome, descrição curta, duração e preço só quando visível) e
-// profissionais ativos no online (nome e iniciais). Nunca: clientes,
+// online (nome, descrição curta, duração e preço só quando visível),
+// profissionais ativos no online (nome e iniciais) e se a página pode ser
+// indexada (`indexable`, falso só para estabelecimento de teste). Nunca: clientes,
 // contatos, reservas, ocupação com nomes, observações, ids de unidade ou
 // qualquer dado de membro da equipe.
 //
@@ -121,6 +122,9 @@ export interface PublicProfileView {
     priceVisible: boolean;
   }[];
   professionals: { id: string; name: string; initials: string; serviceIds: string[] }[];
+  /** `false` só para estabelecimento de teste (`tenants.is_test`): a página
+   * funciona, mas fica fora da busca (`noindex`). A marca em si não sai. */
+  indexable: boolean;
 }
 
 export interface PublicAvailabilityView {
@@ -220,6 +224,7 @@ export class PublicBookingService {
           serviceIds: links.filter((l) => l.professionalId === p.id).map((l) => l.serviceId),
         }))
         .filter((p) => p.serviceIds.length > 0),
+      indexable: !tenant.isTest,
     };
   }
 
