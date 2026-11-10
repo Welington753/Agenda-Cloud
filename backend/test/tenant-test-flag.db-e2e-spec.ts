@@ -13,6 +13,10 @@
 // - cadastro com nome que gera slug reservado recebe sufixo, e um
 //   estabelecimento antigo com slug reservado continua na página pública e
 //   aparece na conferência só de leitura de colisões;
+// - o cadastro não aceita slug escolhido: `slug` no corpo é 400 e nada é
+//   gravado (não há substituição silenciosa de um slug pedido);
+// - cadastros simultâneos com o mesmo nome reservado recebem slugs
+//   diferentes, nenhum reservado (UNIQUE + nova tentativa);
 // - a conferência do piloto reconhece o estado "depois".
 import { randomUUID } from 'node:crypto';
 import { globSync } from 'node:fs';
@@ -312,6 +316,50 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
       await q('DELETE FROM units WHERE tenant_id = $1', [antigo.tenantId]);
       await q('DELETE FROM tenants WHERE id = $1', [antigo.tenantId]);
     }
+  });
+
+  it('slug escolhido no cadastro é recusado (400) e nada é gravado; sem ele, o mesmo pedido gera o slug', async () => {
+    const businessName = `Escolhido ${marca}`;
+    const corpo = (extra: Record<string, unknown>) => ({
+      requestKey: `chave-${id()}`,
+      businessName,
+      category: 'OTHER',
+      planId: plano,
+      owner: { name: 'Dono convidado', email: `${marca}-esc-${id()}@example.test` },
+      ...extra,
+    });
+    const contar = async () =>
+      Number((await q<{ n: string }>('SELECT count(*) AS n FROM units WHERE name = $1', [businessName]))[0].n);
+
+    for (const slug of ['portal', 'escolhido-livre']) {
+      await master.post('/platform/establishments').send(corpo({ slug })).expect(400);
+    }
+    expect(await contar()).toBe(0);
+
+    const criado = await master.post('/platform/establishments').send(corpo({})).expect(200);
+    const [{ slug }] = await q<{ slug: string }>('SELECT slug::text AS slug FROM tenants WHERE id = $1', [criado.body.tenant.id]);
+    expect(slug).toBe(`escolhido-${marca}`.toLowerCase());
+    expect(await contar()).toBe(1);
+  });
+
+  it('cadastros simultâneos com o mesmo nome reservado: slugs diferentes, nenhum reservado', async () => {
+    const respostas = await Promise.all(
+      [1, 2, 3].map(() =>
+        master.post('/platform/establishments').send({
+          requestKey: `chave-${id()}`,
+          businessName: 'Administração',
+          category: 'OTHER',
+          planId: plano,
+          owner: { name: 'Dono convidado', email: `${marca}-sim-${id()}@example.test` },
+        }),
+      ),
+    );
+    expect(respostas.map((r) => r.status)).toEqual([200, 200, 200]);
+    const ids = respostas.map((r) => r.body.tenant.id as string);
+    const linhas = await q<{ slug: string }>('SELECT slug::text AS slug FROM tenants WHERE id = ANY($1::varchar[])', [ids]);
+    const slugs = linhas.map((l) => l.slug);
+    expect(new Set(slugs).size).toBe(3);
+    for (const slug of slugs) expect(slug).toMatch(/^administracao-\d+$/);
   });
 
   it('a conferência do piloto reconhece o estado "depois" e recusa o "antes"', async () => {
