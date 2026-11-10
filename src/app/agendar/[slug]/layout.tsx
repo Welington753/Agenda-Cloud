@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MarcadorAparelho } from "@/components/aparencia/aparencia";
-import { lerPaginaDaRequisicao as lerPagina } from "@/lib/agendamento-publico/leitura-da-requisicao";
+import { paginaPodeSerIndexada } from "@/lib/agendamento-publico/indexacao-da-pagina";
+import {
+  lerClassificacaoDoProxy,
+  lerPaginaDaRequisicao as lerPagina,
+} from "@/lib/agendamento-publico/leitura-da-requisicao";
 import {
   DESCRICAO_PAGINA_PUBLICA_GENERICA,
   TITULO_PAGINA_PUBLICA_GENERICO,
   caminhoDaPaginaPublica,
   descricaoDaPaginaPublica,
   jsonLdDaPaginaPublica,
-  paginaIndexavel,
   tituloDaPaginaPublica,
 } from "@/lib/agendamento-publico/metadados-publicos";
 import { serializarJsonLd } from "@/lib/site/dados-estruturados";
@@ -26,29 +29,31 @@ import { enderecoAbsoluto, lerConfiguracaoDoSite } from "@/lib/site/origem-do-si
 // no navegador (page.tsx), sem mudança.
 // Regras da leitura: lib/agendamento-publico/pagina-no-servidor.ts.
 //
-// Estabelecimento de teste (`indexable: false` na leitura): a página
-// funciona e pode ser compartilhada (título e Open Graph continuam), mas sai
-// com `noindex, nofollow`, sem canonical e sem dados estruturados. O mesmo
-// `noindex` vai no cabeçalho `X-Robots-Tag` (src/proxy.ts), para valer
-// também para quem lê só os cabeçalhos. Na dúvida (API lenta), nada muda:
-// um estabelecimento real nunca sai da busca porque a API estava acordando.
+// Indexação: a decisão vem de src/proxy.ts (cabeçalho interno), a mesma que
+// pôs ou não o `X-Robots-Tag`; o layout não decide de novo, para o HTML e o
+// cabeçalho nunca divergirem. Estabelecimento de teste: a página funciona e
+// pode ser compartilhada (título e Open Graph, quando a leitura daqui deu
+// certo), mas sai com `noindex, nofollow`, sem canonical e sem dados
+// estruturados. Sem classificação confiável o proxy já respondeu 503 e esta
+// página nem chega a renderizar. Regras: indexacao-da-pagina.ts.
 
 export async function generateMetadata({ params }: LayoutProps<"/agendar/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const leitura = await lerPagina(slug);
   if (leitura.tipo === "inexistente") return METADADOS_NAO_ENCONTRADA;
+  const indexavel = paginaPodeSerIndexada(await lerClassificacaoDoProxy(), leitura);
+  const robots = indexavel ? {} : { robots: { index: false, follow: false } };
   if (leitura.tipo === "desconhecida") {
-    return { title: TITULO_PAGINA_PUBLICA_GENERICO, description: DESCRICAO_PAGINA_PUBLICA_GENERICA };
+    return { title: TITULO_PAGINA_PUBLICA_GENERICO, description: DESCRICAO_PAGINA_PUBLICA_GENERICA, ...robots };
   }
   const site = lerConfiguracaoDoSite(process.env);
   const caminho = caminhoDaPaginaPublica(leitura.slug);
   const titulo = tituloDaPaginaPublica(leitura.pagina.establishment.name);
   const descricao = descricaoDaPaginaPublica(leitura.pagina);
-  const indexavel = paginaIndexavel(leitura.pagina);
   return {
     title: titulo,
     description: descricao,
-    ...(indexavel ? {} : { robots: { index: false, follow: false } }),
+    ...robots,
     alternates: indexavel && site.indexavel && site.origem ? { canonical: caminho } : undefined,
     openGraph: {
       ...OPEN_GRAPH_COMUM,
@@ -67,7 +72,7 @@ export default async function AgendarLayout({ children, params }: LayoutProps<"/
   if (leitura.tipo === "inexistente") notFound();
 
   const url =
-    leitura.tipo === "encontrada" && paginaIndexavel(leitura.pagina)
+    leitura.tipo === "encontrada" && paginaPodeSerIndexada(await lerClassificacaoDoProxy(), leitura)
       ? enderecoAbsoluto(lerConfiguracaoDoSite(process.env), caminhoDaPaginaPublica(leitura.slug))
       : null;
 

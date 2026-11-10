@@ -10,7 +10,11 @@
 //   gravado na origem do frontend, e removido no logout;
 // - escrita com `Origin` de outro site recusada pelo proxy;
 // - estabelecimento de teste: `/agendar/<slug>` responde 200 com
-//   `X-Robots-Tag: noindex, nofollow` e meta robots no HTML; o real, não;
+//   `X-Robots-Tag: noindex, nofollow` e meta robots no HTML; o real, não.
+//   Com a API lenta ou fora (relé tests/browser/support/api-controlavel.mjs),
+//   a classificação lembrada vale para os dois, e um estabelecimento sem
+//   classificação conhecida recebe 503 com `Retry-After`, nunca a página
+//   "indexável" nem 404;
 // - cabeçalhos de IP forjados não escapam do rate limit, e clientes
 //   diferentes não dividem o mesmo limite, tanto pelo proxy quanto numa
 //   chamada direta à API pela borda dela (`CLIENT_IP_SOURCE=cf-connecting-ip`
@@ -86,6 +90,57 @@ function requisicaoCrua(
 function sufixo(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/** Porta de controle do relé entre o Next.js e a API (api-controlavel.mjs). */
+const CONTROLE_RELE = "http://127.0.0.1:3446";
+
+async function modoDaApi(modo: "normal" | "lenta" | "fora"): Promise<void> {
+  const r = await fetch(`${CONTROLE_RELE}/modo/${modo}`, { method: "POST" });
+  expect(r.status).toBe(200);
+}
+
+/** Estabelecimentos fictícios com página pública ligada, um por chave; o
+ * valor diz se é de teste (`is_test`). Slug `<chave>-<marca>`, nome
+ * `Estúdio <chave> <marca>`. */
+async function criarEstabelecimentosPublicos<K extends string>(
+  tipos: Record<K, boolean>,
+): Promise<{ marca: string; slugs: Record<K, string>; tenantIds: Record<K, string> }> {
+  const marca = sufixo().replace(/[^a-z0-9]/g, "");
+  const plano = `pl${marca}`.slice(0, 30);
+  const slugs = {} as Record<K, string>;
+  const tenantIds = {} as Record<K, string>;
+  const db = await conectarBancoDeTeste();
+  try {
+    // Plano fictício com todos os recursos (o agendamento público incluso).
+    await db.query(
+      `WITH novo AS (INSERT INTO plans (id, code, name, short_description, max_professionals, max_units)
+                     VALUES ($1, $1, 'Plano fictício', '', 5, 1) RETURNING id)
+       INSERT INTO plan_features (id, plan_id, feature_id)
+       SELECT 'pf' || substr(md5(novo.id || f.id), 1, 26), novo.id, f.id FROM novo CROSS JOIN features f`,
+      [plano],
+    );
+    for (const [tipo, ehTeste] of Object.entries(tipos) as [K, boolean][]) {
+      const tenantId = `t${tipo}${marca}`.slice(0, 30);
+      slugs[tipo] = `${tipo}-${marca}`;
+      tenantIds[tipo] = tenantId;
+      await db.query(
+        `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since, is_test)
+         VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now(), $4)`,
+        [tenantId, slugs[tipo], plano, ehTeste],
+      );
+      await db.query(
+        `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, $3, '', 'America/Sao_Paulo', true)`,
+        [`u${tenantId}`.slice(0, 30), tenantId, `Estúdio ${tipo} ${marca}`],
+      );
+      await db.query(`INSERT INTO public_booking_settings (tenant_id, enabled, updated_at) VALUES ($1, true, now())`, [tenantId]);
+    }
+  } finally {
+    await db.end();
+  }
+  return { marca, slugs, tenantIds };
+}
+
+const META_NOINDEX = /<meta name="robots" content="noindex, nofollow"/;
 
 /** O cadastro público foi fechado: a conta nasce de um convite gravado pela
  * fixture no banco descartável e é ATIVADA pela página, pelo proxy da mesma
@@ -219,35 +274,7 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
   });
 
   test("estabelecimento de teste fica fora da busca pelo cabeçalho e pelo HTML; o real continua indexável", async () => {
-    const marca = sufixo().replace(/[^a-z0-9]/g, "");
-    const plano = `pl${marca}`.slice(0, 30);
-    const db = await conectarBancoDeTeste();
-    const slugs = { teste: `teste-${marca}`, real: `real-${marca}` };
-    try {
-      // Plano fictício com todos os recursos (o agendamento público incluso).
-      await db.query(
-        `WITH novo AS (INSERT INTO plans (id, code, name, short_description, max_professionals, max_units)
-                       VALUES ($1, $1, 'Plano fictício', '', 5, 1) RETURNING id)
-         INSERT INTO plan_features (id, plan_id, feature_id)
-         SELECT 'pf' || substr(md5(novo.id || f.id), 1, 26), novo.id, f.id FROM novo CROSS JOIN features f`,
-        [plano],
-      );
-      for (const [tipo, slug] of Object.entries(slugs)) {
-        const tenantId = `t${tipo}${marca}`.slice(0, 30);
-        await db.query(
-          `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since, is_test)
-           VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now(), $4)`,
-          [tenantId, slug, plano, tipo === "teste"],
-        );
-        await db.query(
-          `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, $3, '', 'America/Sao_Paulo', true)`,
-          [`u${tenantId}`.slice(0, 30), tenantId, `Estúdio ${tipo} ${marca}`],
-        );
-        await db.query(`INSERT INTO public_booking_settings (tenant_id, enabled, updated_at) VALUES ($1, true, now())`, [tenantId]);
-      }
-    } finally {
-      await db.end();
-    }
+    const { marca, slugs } = await criarEstabelecimentosPublicos({ teste: true, real: false });
 
     const teste = await requisicaoCrua("GET", `/agendar/${slugs.teste}`, { origemLocal: "127.0.0.31" });
     expect(teste.status).toBe(200);
@@ -263,6 +290,84 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     expect(real.headers["x-robots-tag"]).toBeUndefined();
     expect(real.corpo).not.toMatch(/<meta name="robots" content="noindex/);
     expect(real.corpo).toMatch(new RegExp(`rel="canonical" href="[^"]*/agendar/${slugs.real}"`));
+    // Página dinâmica: nenhuma cópia em cache compartilhado.
+    for (const r of [teste, real]) expect(String(r.headers["cache-control"])).toMatch(/no-store/);
+
+    // Cabeçalho interno forjado pelo cliente não escolhe a decisão.
+    const forjado = await requisicaoCrua("GET", `/agendar/${slugs.teste}`, {
+      origemLocal: "127.0.0.31",
+      headers: { "x-agenda-indexacao": "indexavel" },
+    });
+    expect(forjado.headers["x-robots-tag"]).toBe("noindex, nofollow");
+    expect(forjado.corpo).toMatch(META_NOINDEX);
+    const forjadoReal = await requisicaoCrua("GET", `/agendar/${slugs.real}`, {
+      origemLocal: "127.0.0.32",
+      headers: { "x-agenda-indexacao": "teste" },
+    });
+    expect(forjadoReal.headers["x-robots-tag"]).toBeUndefined();
+    expect(forjadoReal.corpo).not.toMatch(/<meta name="robots" content="noindex/);
+  });
+
+  test("API lenta ou fora: classificação lembrada vale, desconhecida vira 503 e a troca da marca não fica presa", async () => {
+    test.setTimeout(120_000);
+    const { slugs, tenantIds } = await criarEstabelecimentosPublicos({ teste: true, real: false, novo: false });
+    const abrir = (slug: string, origemLocal: string) => requisicaoCrua("GET", `/agendar/${slug}`, { origemLocal });
+
+    // API normal: as duas páginas são lidas e classificadas.
+    expect((await abrir(slugs.teste, "127.0.0.33")).headers["x-robots-tag"]).toBe("noindex, nofollow");
+    expect((await abrir(slugs.real, "127.0.0.34")).headers["x-robots-tag"]).toBeUndefined();
+
+    try {
+      for (const modo of ["lenta", "fora"] as const) {
+        await modoDaApi(modo);
+
+        const teste = await abrir(slugs.teste, "127.0.0.33");
+        expect(teste.status, modo).toBe(200);
+        expect(teste.headers["x-robots-tag"], modo).toBe("noindex, nofollow");
+        expect(teste.corpo, modo).toMatch(META_NOINDEX);
+        expect(teste.corpo, modo).not.toMatch(/rel="canonical"/);
+
+        const real = await abrir(slugs.real, "127.0.0.34");
+        expect(real.status, modo).toBe(200);
+        expect(real.headers["x-robots-tag"], modo).toBeUndefined();
+        expect(real.corpo, modo).not.toMatch(/<meta name="robots" content="noindex/);
+
+        const novo = await abrir(slugs.novo, "127.0.0.35");
+        expect(novo.status, modo).toBe(503);
+        expect(novo.headers["retry-after"], modo).toBe("30");
+        expect(novo.headers["cache-control"], modo).toBe("no-store");
+        expect(novo.headers["x-robots-tag"], modo).toBeUndefined();
+        expect(novo.corpo, modo).toContain("Tentar de novo agora");
+      }
+
+      // A marca muda com a API de volta: a leitura nova vence a lembrada, e
+      // a falha seguinte já usa a classificação nova.
+      await modoDaApi("normal");
+      const db = await conectarBancoDeTeste();
+      try {
+        await db.query("UPDATE tenants SET is_test = false WHERE id = $1", [tenantIds.teste]);
+        await db.query("UPDATE tenants SET is_test = true WHERE id = $1", [tenantIds.real]);
+      } finally {
+        await db.end();
+      }
+      expect((await abrir(slugs.teste, "127.0.0.33")).headers["x-robots-tag"]).toBeUndefined();
+      expect((await abrir(slugs.real, "127.0.0.34")).headers["x-robots-tag"]).toBe("noindex, nofollow");
+      await modoDaApi("fora");
+      const desmarcado = await abrir(slugs.teste, "127.0.0.33");
+      expect(desmarcado.headers["x-robots-tag"]).toBeUndefined();
+      expect(desmarcado.corpo).not.toMatch(/<meta name="robots" content="noindex/);
+      const marcado = await abrir(slugs.real, "127.0.0.34");
+      expect(marcado.headers["x-robots-tag"]).toBe("noindex, nofollow");
+      expect(marcado.corpo).toMatch(META_NOINDEX);
+
+      // De volta ao normal, o estabelecimento novo abre (o 503 era temporário).
+      await modoDaApi("normal");
+      const novo = await abrir(slugs.novo, "127.0.0.35");
+      expect(novo.status).toBe(200);
+      expect(novo.headers["x-robots-tag"]).toBeUndefined();
+    } finally {
+      await modoDaApi("normal");
+    }
   });
 
   test("escrita com Origin de outro site é recusada pelo proxy, antes da API", async () => {

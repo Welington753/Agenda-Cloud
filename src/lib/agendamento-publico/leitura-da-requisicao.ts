@@ -7,9 +7,17 @@
 import { cache } from "react";
 import { headers } from "next/headers";
 import { lerConfiguracaoProxy } from "@/lib/api/proxy-config";
+import { CABECALHO_CLASSIFICACAO, classificacaoDoCabecalho } from "./indexacao-da-pagina";
 import { lerPaginaNoServidor } from "./pagina-no-servidor";
 
 export const lerPaginaDaRequisicao = cache(async (slug: string) => {
   const proxy = lerConfiguracaoProxy(process.env);
   return lerPaginaNoServidor(slug, proxy.ok ? proxy.configuracao : null, await headers());
 });
+
+/** Decisão de indexação que src/proxy.ts deixou nesta requisição, ou `null`
+ * (proxy sem configuração, ou estabelecimento inexistente). O proxy apaga o
+ * cabeçalho vindo do cliente antes de escrever o seu. */
+export const lerClassificacaoDoProxy = cache(async () =>
+  classificacaoDoCabecalho((await headers()).get(CABECALHO_CLASSIFICACAO)),
+);
