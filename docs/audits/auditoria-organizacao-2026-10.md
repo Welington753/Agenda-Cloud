@@ -216,6 +216,9 @@ demonstração.**
   falhar nos casos acima. **Pendente:** este risco não foi corrigido no E1.
 - **Consequência:** só o endereço curto falha; `/agendar/<slug>`, que é o
   link que a tela copia, funciona sempre.
+- **Atualização (lote SEO, PR #104):** o endereço curto passou a ser
+  decidido no servidor (308, 404 ou 307, sem depender de JavaScript). As
+  colisões acima continuam.
 - **Correção proposta:** lista única de slugs reservados (rotas da raiz e
   slugs da demonstração) usada pelo `resolveSlug` do backend na criação,
   num lote próprio; ou retirar a demonstração (E2), que elimina a segunda

@@ -196,6 +196,9 @@ test("agendamento público: página ativada, pedido pendente, painel do dono, co
   // ------------------------------------------- endereço curto /<slug>
   // Estabelecimento real: vai para a página real. Slug inexistente: a página
   // real diz que não está disponível (nunca "não existe nesta demonstração").
+  // Nesta suíte (chamada direta, sem proxy) o servidor não lê a API e
+  // encaminha por 307; com o proxy, o inexistente responde 404 em `/<slug>`
+  // (src/lib/agendamento-publico/endereco-curto.ts).
   // Slug da demonstração continua na demonstração, e as rotas fixas da raiz
   // não são capturadas.
   const curto = await visitante(browser, CELULAR);

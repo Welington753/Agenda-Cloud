@@ -130,6 +130,14 @@ function ehRecibo(v: unknown): v is ReciboPedido {
   );
 }
 
+/** Página pública do corpo de `GET /public/:slug`, ou `null` se a forma não
+ * confere. Também usada pela leitura no servidor (metadados e 404 da página,
+ * ver lib/agendamento-publico/pagina-no-servidor.ts). */
+export function paginaDoCorpo(corpo: unknown): PaginaPublica | null {
+  const perfil = (corpo as { profile?: unknown } | null)?.profile;
+  return ehPagina(perfil) ? perfil : null;
+}
+
 export async function obterPaginaPublica(
   slug: string,
   signal?: AbortSignal,
@@ -139,9 +147,9 @@ export async function obterPaginaPublica(
   if (r.kind === "http-error") {
     return { ok: false, falha: falhaHttp(r.status, r.data) ?? { tipo: "indisponivel" } };
   }
-  const corpo = r.data as { profile?: unknown };
-  if (!ehPagina(corpo?.profile)) return { ok: false, falha: { tipo: "indisponivel" } };
-  return { ok: true, dados: corpo.profile };
+  const pagina = paginaDoCorpo(r.data);
+  if (pagina === null) return { ok: false, falha: { tipo: "indisponivel" } };
+  return { ok: true, dados: pagina };
 }
 
 export async function consultarHorariosPublicos(

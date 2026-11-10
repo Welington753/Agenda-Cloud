@@ -120,8 +120,9 @@ As três `WEB_PUSH_*` vão juntas ou nenhuma: sem elas, a API sobe com o push **
 | `API_PROXY_TARGET` | runtime (e conferida no build) | `https://<api>.onrender.com` (origem exata) | digitado no painel (`sync: false`). Só o servidor lê; o navegador nunca vê. |
 | `API_PROXY_SECRET` | runtime | o mesmo valor da api | `render.yaml` (`fromService`, copiado da api). |
 | `CLIENT_IP_SOURCE` | runtime | `cf-connecting-ip` | `render.yaml`. De onde o proxy tira o IP que repassa à API. Ver seção 5. |
-| `RENDER_EXTERNAL_URL` | runtime | `https://<web>.onrender.com` | plataforma. É a origem exigida no `Origin` das escritas. |
-| `APP_PUBLIC_ORIGIN` | runtime | não definir agora | Só com domínio próprio (seção 7). Tem precedência sobre `RENDER_EXTERNAL_URL`. |
+| `RENDER_EXTERNAL_URL` | build e runtime | `https://<web>.onrender.com` | plataforma. É a origem exigida no `Origin` das escritas e a base dos endereços canônicos, do sitemap e do Open Graph (`src/lib/site/origem-do-site.ts`). |
+| `APP_PUBLIC_ORIGIN` | build e runtime | não definir agora | Só com domínio próprio (seção 7). Tem precedência sobre `RENDER_EXTERNAL_URL`. As páginas estáticas leem no build: definir antes do deploy que deve usá-lo. |
+| `GOOGLE_SITE_VERIFICATION` | build | opcional; só o código da meta tag do Search Console | digitado no painel quando a propriedade for criada (`docs/runbooks/indexacao-e-search-console.md`). Não é segredo, mas não vai para o repositório. Exige novo deploy com build. |
 | `RENDER` | build e runtime | `true` | plataforma; liga a guarda de build e torna HTTPS e `API_PROXY_SECRET` obrigatórios no proxy |
 | `PORT` | runtime | definido pelo Render | plataforma |
 

@@ -1,63 +1,45 @@
-"use client";
+// `/<slug>`: endereço curto do estabelecimento, que ainda abriga a página
+// pública da demonstração (legado). Decidido no SERVIDOR, sem depender de
+// JavaScript (regras em src/lib/agendamento-publico/endereco-curto.ts):
+// - slug da semente da demonstração: a demonstração, como antes, com noindex;
+// - estabelecimento real confirmado pela API: 308 para `/agendar/<slug>`;
+// - API confirmou que não existe (ou página desligada): 404 (not-found.tsx);
+// - API lenta, fora ou não configurada: 307 para a página real.
+// As rotas fixas da raiz (`/login`, `/conta`...) nunca chegam aqui: o Next
+// resolve a rota fixa antes da dinâmica.
+import type { Metadata } from "next";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
+import { gerarEstabelecimentosSeed } from "@/lib/seed/estabelecimentos";
+import { destinoDoEnderecoCurto, slugPedido } from "@/lib/agendamento-publico/endereco-curto";
+import { lerPaginaDaRequisicao } from "@/lib/agendamento-publico/leitura-da-requisicao";
+import { METADADOS_NAO_ENCONTRADA } from "@/lib/site/metadados-do-site";
+import { PaginaDaDemonstracao } from "./demonstracao";
 
-// `/<slug>` é o endereço curto do estabelecimento e ainda abriga a página
-// pública da demonstração (localStorage). Slug da demonstração neste
-// navegador: a demonstração, como antes. Qualquer outro vai para a página
-// real (`/agendar/<slug>`), que trata estabelecimento inexistente e
-// indisponível. As rotas fixas da raiz (`/login`, `/conta`...) nunca chegam
-// aqui: o Next resolve a rota fixa antes da dinâmica.
-import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { estabelecimentoRepository, profissionalRepository, servicoRepository } from "@/lib/repositories";
-import { useClientData } from "@/lib/hooks/use-client-data";
-import { obterTerminologia } from "@/lib/verticals/terminologia";
-import { featureHabilitada, podeReceberAgendamentoPublico } from "@/lib/access/access-control";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ModeloClassico } from "@/components/publico/modelo-classico";
-import { ModeloModerno } from "@/components/publico/modelo-moderno";
-import { linkPublico } from "@/lib/agendamento-publico/agendamento-publico";
+/** Slugs fixos da demonstração. Um estabelecimento real com o mesmo slug só
+ * é alcançado por `/agendar/<slug>` (colisão do achado R6). */
+const SLUGS_DA_DEMONSTRACAO: ReadonlySet<string> = new Set(gerarEstabelecimentosSeed().map((e) => e.slug));
 
-export default function PaginaPublicaEstabelecimento() {
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug;
-  const router = useRouter();
+function ehDaDemonstracao(slug: string): boolean {
+  const pedido = slugPedido(slug);
+  return pedido !== null && SLUGS_DA_DEMONSTRACAO.has(pedido);
+}
 
-  const { dados, carregando } = useClientData(() => {
-    const estabelecimento = estabelecimentoRepository.obterPorSlug(slug);
-    if (!estabelecimento) return null;
-    const profissionais = profissionalRepository
-      .listarPorTenant(estabelecimento.tenantId)
-      .filter((p) => p.ativo && p.agendamentoOnlineAtivo);
-    const servicos = servicoRepository
-      .listarPorTenant(estabelecimento.tenantId)
-      .filter((s) => s.ativoNoAgendamentoPublico);
-    return { estabelecimento, profissionais, servicos };
-  }, [slug]);
+export async function generateMetadata({ params }: PageProps<"/[slug]">): Promise<Metadata> {
+  const { slug } = await params;
+  // Estabelecimentos fictícios: nunca na busca.
+  if (ehDaDemonstracao(slug)) return { robots: { index: false, follow: false } };
+  // Mesma leitura da página (uma por requisição). No 404, o título da página
+  // 404; nos redirecionamentos, nada é desenhado.
+  const destino = destinoDoEnderecoCurto(slug, await lerPaginaDaRequisicao(slug));
+  return destino.tipo === "inexistente" ? METADADOS_NAO_ENCONTRADA : {};
+}
 
-  const foraDaDemonstracao = !carregando && !dados;
-  useEffect(() => {
-    if (foraDaDemonstracao) router.replace(linkPublico("", slug));
-  }, [foraDaDemonstracao, router, slug]);
+export default async function EnderecoCurto({ params }: PageProps<"/[slug]">) {
+  const { slug } = await params;
+  if (ehDaDemonstracao(slug)) return <PaginaDaDemonstracao slug={slugPedido(slug) ?? slug} />;
 
-  if (!dados) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-4 px-4 py-10">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-6 w-1/2" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
-
-  const { estabelecimento, profissionais, servicos } = dados;
-  const terminologia = obterTerminologia(estabelecimento.categoria);
-  const agendamentoPublicoHabilitado =
-    featureHabilitada(estabelecimento.plano, estabelecimento.featuresDesativadas, "agendamentoPublico") &&
-    podeReceberAgendamentoPublico(estabelecimento.status);
-
-  const props = { slug, estabelecimento, profissionais, servicos, terminologia, agendamentoPublicoHabilitado };
-
-  // Nenhum código separado por estabelecimento: os dois modelos recebem os
-  // mesmos dados, só a apresentação (`modelo-classico.tsx`/`modelo-moderno.tsx`) muda.
-  return estabelecimento.identidadeVisual.modelo === "moderno" ? <ModeloModerno {...props} /> : <ModeloClassico {...props} />;
+  const destino = destinoDoEnderecoCurto(slug, await lerPaginaDaRequisicao(slug));
+  if (destino.tipo === "inexistente") notFound();
+  if (destino.permanente) permanentRedirect(destino.caminho);
+  redirect(destino.caminho);
 }

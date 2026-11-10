@@ -71,9 +71,10 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 |---|---|
 | `src/app/conta/*` | Área real (dono, gerente, profissional): `agendamentos`, `minha-agenda`, `clientes`, `recebimentos`, `visao-geral`, `configuracoes` (serviços, profissionais, equipe, aparência) |
 | `src/app/plataforma/*` | Portal da plataforma, layout e menu próprios (`components/administracao/shell-plataforma.tsx`); `/administracao/**` e `/conta/administracao/**` encaminham para cá |
-| `src/app/agendar/[slug]` | Agendamento público real. `/agendar/<slug>` é o endereço canônico, o que a tela copia (`linkPublico`). O endereço curto `/<slug>` (demonstração em `src/app/[slug]`) só encaminha para cá quando o slug não é da demonstração; as colisões com rotas e com a demonstração seguem pendentes (R6 da auditoria) |
+| `src/app/agendar/[slug]` | Agendamento público real. `/agendar/<slug>` é o endereço canônico, o que a tela copia (`linkPublico`). O endereço curto `/<slug>` (`src/app/[slug]/page.tsx`, regra em `src/lib/agendamento-publico/endereco-curto.ts`) é decidido no servidor: 308 para cá quando a API confirma, 404 quando ela responde 404, 307 na dúvida; os slugs da semente da demonstração ficam na demonstração. As colisões com rotas da raiz e com a semente seguem pendentes (R6 da auditoria) |
 | `src/app/login`, `convite`, `redefinir-senha`, `cadastro` | Entrada e ativação de conta |
 | `src/app/agenda_api/[...caminho]` | Proxy de mesma origem |
+| `src/app/sitemap.ts`, `robots.ts`, `not-found.tsx`, `imagem-de-compartilhamento.png` | Indexação, 404 e imagem de compartilhamento. Regras em `src/lib/site/` (`origem-do-site.ts`, `indexacao.ts`, `metadados-do-site.ts`, `dados-estruturados.ts`, `cabecalhos.ts`) |
 | `src/lib/api/*` | Um cliente por área. Cada um valida a forma da resposta (`eh<Coisa>`) e classifica a falha pelo status. `mensagemDoBackend` (em `http-client.ts`) lê o `message` |
 | `src/lib/<area>/*` | Regras puras da tela de cada área (`equipe`, `agendamento-publico`, `conta`, `contato`, `administracao`, `push`, `pwa`, `aparencia`) com teste ao lado |
 | `src/lib/auth/real-auth-context.tsx` | Sessão real e `RequireRealSession` |
@@ -102,6 +103,9 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Quando notificar | `notifications/notification-policy.ts` |
 | Áreas visíveis na sessão | `auth/session-areas.ts`; a tela lê de `/auth/me` (`src/lib/conta/navegacao.ts`) |
 | Invariantes de publicação | `render.yaml` + `src/lib/publicacao/render-blueprint.test.ts` |
+| Origem pública do frontend (proxy e endereços canônicos) | `valorDaOrigemPublica` em `src/lib/api/proxy-config.ts`; o site valida em `src/lib/site/origem-do-site.ts` (só HTTPS, nunca de cabeçalho) |
+| O que entra na busca (sitemap, robots, `noindex`) | `src/lib/site/indexacao.ts` e `ROTAS_SEM_INDEXACAO` em `src/lib/site/cabecalhos.ts` |
+| Título, descrição e JSON-LD da página pública | `src/lib/agendamento-publico/metadados-publicos.ts`, com a leitura no servidor em `pagina-no-servidor.ts` (uma por requisição, `leitura-da-requisicao.ts`) |
 
 ## 5. Segurança transversal
 
@@ -113,6 +117,11 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 - **Logs:** `safe-typeorm-logger.ts` e `database-error.filter.ts` omitem
   parâmetros, hashes e tokens no runtime.
 - **IP do cliente:** `config/client-ip.ts` (ver o runbook do Render, seção 5).
+- **Cabeçalhos do web:** CSP sem nonce, `frame-ancestors 'none'`, nosniff,
+  Referrer-Policy, Permissions-Policy e HSTS sem `preload`, todos em
+  `src/lib/site/cabecalhos.ts`, aplicados pelo `next.config.ts`. A CSP lista
+  no `connect-src` só a própria origem e a origem da API do build. Ela
+  permite script inline, então não barra um script injetado por XSS.
 - **Concorrência:** `FOR UPDATE`/`FOR SHARE` nas linhas decisivas,
   constraints como garantia final (`23P01`/`23505` viram 409) e travas do
   estabelecimento nas filas de equipe e convite.

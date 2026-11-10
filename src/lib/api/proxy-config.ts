@@ -48,6 +48,18 @@ function ehOrigemExata(valor: string, protocolos: readonly string[]): boolean {
   }
 }
 
+/** Origem pública deste frontend, como configurada (sem validar). Fonte única
+ * para o proxy (`Origin` exigido nas escritas) e para os endereços canônicos
+ * do site (src/lib/site/origem-do-site.ts).
+ *
+ * `RENDER_EXTERNAL_URL` é definido pelo próprio Render, no build e em runtime
+ * (`https://<servico>.onrender.com`). `APP_PUBLIC_ORIGIN` só é necessário
+ * fora do Render ou com domínio próprio. Nunca vem de cabeçalho da
+ * requisição. */
+export function valorDaOrigemPublica(ambiente: Ambiente): string | undefined {
+  return ambiente.APP_PUBLIC_ORIGIN ?? ambiente.RENDER_EXTERNAL_URL;
+}
+
 /** Na hospedagem (`RENDER=true`) tudo precisa ser HTTPS e o segredo é
  * obrigatório: a API do plano gratuito só é alcançável pela internet
  * pública, então o segredo é o que separa o proxy de qualquer outro
@@ -62,10 +74,7 @@ export function lerConfiguracaoProxy(ambiente: Ambiente): ResultadoConfiguracao 
   const destino = ambiente.API_PROXY_TARGET;
   if (!destino || !ehOrigemExata(destino, protocolos)) campos.push("API_PROXY_TARGET");
 
-  // `RENDER_EXTERNAL_URL` é definido pelo próprio Render em runtime
-  // (`https://<servico>.onrender.com`). `APP_PUBLIC_ORIGIN` só é necessário
-  // fora do Render ou com domínio próprio.
-  const origemPublica = ambiente.APP_PUBLIC_ORIGIN ?? ambiente.RENDER_EXTERNAL_URL;
+  const origemPublica = valorDaOrigemPublica(ambiente);
   if (!origemPublica || !ehOrigemExata(origemPublica, protocolos)) campos.push("APP_PUBLIC_ORIGIN");
 
   const segredo = ambiente.API_PROXY_SECRET;
