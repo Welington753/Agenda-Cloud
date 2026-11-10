@@ -26,12 +26,24 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
 - **Resposta pública:** `GET /public/:slug` ganha só `indexable: boolean`. O
   campo `is_test` não é exposto.
 - **Página pública de teste:** `noindex, nofollow` nos metadados do HTML (sem
-  canonical) e no cabeçalho `X-Robots-Tag`, posto pelo `src/proxy.ts` só em
-  `/agendar/<slug>`. Agendamento, link e Open Graph continuam funcionando.
-  Quando a leitura falha ou o prazo de 2,5 s acaba, nada muda (vale a mesma
-  regra do lote de SEO): um estabelecimento real nunca sai da busca porque a
-  API estava acordando. Um teste pode ficar sem `noindex` numa resposta
-  dessas, e o runbook registra esse limite.
+  canonical) e no cabeçalho `X-Robots-Tag`, só em `/agendar/<slug>`.
+  Agendamento, link e Open Graph continuam funcionando.
+- **Uma decisão por requisição** (revisão do PR, 10/11): o `src/proxy.ts` lê
+  a API e decide. O cabeçalho sai dessa decisão, e o layout a recebe pelo
+  cabeçalho interno `x-agenda-indexacao`. Antes, o layout e o proxy liam a
+  API cada um por si e podiam divergir. O proxy apaga esse cabeçalho de toda
+  requisição que chega, então o cliente não consegue forjá-lo.
+- **API lenta ou fora:** vale a última classificação lida da API para aquele
+  slug, guardada na memória do processo do web por até 1 h (no máximo 500
+  slugs, só os que a API confirmou). Sem ela, o proxy responde 503 com
+  `Retry-After: 30`, `no-store`, recarga automática e link para tentar de
+  novo, sem `noindex` e nunca 404. Dúvida nunca vira "indexável", e um
+  estabelecimento real nunca ganha `noindex` por falha passageira. A leitura
+  nova sempre substitui a lembrada, e um 404 confirmado apaga a lembrança.
+  Isso substitui o "limite conhecido" da primeira versão, em que um teste
+  saía sem `noindex` quando a API passava de 2,5 s.
+- **Sem proxy configurado** (desenvolvimento, suítes em chamada direta): o
+  layout decide sozinho, e só uma página lida e não marcada é indexável.
 - **API anterior sem `indexable`:** o web trata o campo ausente como
   indexável, que é o comportamento de hoje.
 - **Sitemap:** continua só com a página inicial. Nenhuma lista pública de
@@ -42,15 +54,21 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
   seis slugs da semente da demonstração. Pastas dinâmicas (`[slug]`) e grupos
   (`(area)`) não entram. Um teste do web compara a lista com as pastas de
   `src/app` e com a semente.
-- **Cadastro:** o slug não é digitado. Ele vem do nome do negócio
-  (`slugify`), no aceite do convite. Um slug reservado é tratado como
-  ocupado em `resolveSlug`: "Portal" vira `portal-2`, e o cadastro nunca é
-  recusado por causa do nome (decisão do responsável, 10/11). A UNIQUE
-  `uq_tenants_slug` e a nova tentativa em caso de corrida continuam iguais.
-- **Troca de slug:** não existe rota para isso. O contrato fica pronto em
-  `assertSlugChangeAllowed`: 409 com `code: SLUG_RESERVADO` para mudar para
-  um slug reservado, e o mesmo slug reenviado sem mudança passa, mesmo que
-  seja reservado. A edição de dados do portal não aceita slug.
+- **Slug gerado e slug escolhido são casos diferentes** (revisão do PR,
+  10/11). No fluxo real (`InvitesService.createEstablishment`, cadastro pelo
+  portal), o slug não é digitado: ele vem do nome do negócio (`slugify`).
+  Para esse caso gerado, um reservado conta como ocupado em `resolveSlug`, e
+  o gerador escolhe o próximo candidato livre e não reservado ("Portal" vira
+  `portal-2`). Ninguém pediu `portal`, então nada é substituído em silêncio.
+  A UNIQUE `uq_tenants_slug` e a nova tentativa em caso de corrida
+  continuam iguais, e o db-e2e prova cadastros simultâneos com o mesmo nome
+  reservado.
+- **Slug escolhido:** nenhuma rota aceita. O corpo do cadastro é estrito, e
+  `slug` nele dá 400 sem gravar nada (testado). A ficha do portal também
+  recusa `slug`. Por isso o 409 `SLUG_RESERVADO` não está ligado a nenhuma
+  rota: não existe onde ligá-lo, e criar uma rota de troca só para usá-lo
+  ficou fora do escopo. O contrato fica pronto em `assertSlugChangeAllowed`
+  (409 para um reservado, e o mesmo slug reenviado sem mudança passa).
 - **Cadastros antigos:** nada é renomeado. Um slug reservado já gravado
   continua abrindo `/agendar/<slug>`. A conferência só de leitura
   `npm run pilot:check-reserved-slugs` lista as colisões, sem nomes de
@@ -78,6 +96,22 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
   e do web; HTTP do backend; db-e2e completo em banco novo (31 arquivos, 300
   testes); navegador `proxy` (cabeçalho e HTML reais de indexação),
   `administracao`, `agendamento-publico` e `portal-recusas`.
+
+- Revisão do PR (10/11): decisão única de indexação no proxy (memória de
+  1 h, 503 sem classificação), relé `api-controlavel.mjs` na suíte `proxy`
+  para provar API lenta e fora com o Next.js e a API reais, distinção entre
+  slug gerado e escolhido (400 para `slug` no cadastro, corrida com nome
+  reservado) e tabela de compatibilidade refeita (página funcionando não
+  quer dizer proteção ativa).
+
+**Falha recorrente conhecida, fora deste lote:** `portal-instalavel`
+("Portal AC sem sessão: manifesto próprio, sem service worker e navegação
+entre as áreas") falha às vezes com dois `<link rel="manifest">` na página.
+No CI do head `46f1b29`, ele falhou no job `test-frontend-auth` e passou na
+reexecução. Localmente, com `--repeat-each 8`, falhou 4 de 8 com o lote e
+2 de 8 num build sem `src/proxy.ts`. Não há relação comprovada com este
+lote, então ele não foi corrigido nem afrouxado aqui. Fica para um lote
+próprio.
 
 **Não feito, de propósito:** merge do PR do lote, migration no piloto,
 deploy, backup, DNS, classificação dos testes antigos e a publicação de

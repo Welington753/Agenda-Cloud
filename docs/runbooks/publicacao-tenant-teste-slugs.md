@@ -24,14 +24,22 @@ outros roteiros (`publicacao-piloto-render.md`, seção 6.B, passos 1 e 2).
 
 ## 1. Compatibilidade
 
-| Banco | API | Web | Resultado |
-|---|---|---|---|
-| 16 | anterior | anterior | estado atual |
-| 17 | anterior | anterior | funciona. A API anterior não lê `is_test`, e o `INSERT` de um cadastro novo recebe o padrão `false`. Nenhuma página sai da busca |
-| 16 | **nova** | qualquer | **quebra**: a entidade `Tenant` da API nova lê `is_test`, e toda leitura de estabelecimento falha. Por isso a migration vem antes |
-| 17 | nova | anterior | funciona. O web anterior ignora `indexable` e a marca no portal. Ainda não há `noindex` |
-| 17 | anterior | nova | funciona. Sem `indexable` na resposta, o web trata a página como indexável, e o portal esconde o controle da marca |
-| 17 | nova | nova | lote completo |
+"Funciona" na tabela quer dizer que as páginas abrem e o agendamento segue.
+**Não** quer dizer que a proteção contra indexação está ativa: ela só vale na
+última linha, e só depois da classificação da seção 4.
+
+| Banco | API | Web | Páginas | Proteção contra indexação |
+|---|---|---|---|---|
+| 16 | anterior | anterior | funcionam (estado atual) | não existe |
+| 17 | anterior | anterior | funcionam. A API anterior não lê `is_test`, e o `INSERT` de um cadastro novo recebe o padrão `false` | não existe |
+| 16 | **nova** | qualquer | **quebram**: a entidade `Tenant` da API nova lê `is_test`, e toda leitura de estabelecimento falha. Por isso a migration vem antes | — |
+| 17 | nova | anterior | funcionam. O web anterior ignora `indexable` e a marca no portal | **inativa**: nenhum `noindex`, nem para quem já estiver marcado |
+| 17 | anterior | nova | funcionam. Sem `indexable` na resposta, o web classifica toda página como indexável (é o comportamento anterior), e o portal esconde o controle da marca | **inativa**: nenhuma página é reconhecida como teste |
+| 17 | nova | nova | funcionam | **ativa só para os marcados**. Com o padrão `false`, nenhum teste antigo está marcado até a seção 4 |
+
+O web novo também muda o que acontece com a API fora do ar (seção 3.1): um
+estabelecimento sem classificação lembrada recebe 503 temporário em vez da
+página.
 
 **Ordem obrigatória:** backup, conferência antes, migration, conferência
 depois, API, web, os dois no mesmo SHA. O deploy é manual no Render, com
@@ -89,6 +97,38 @@ Se o passo 3 falhar ou a conexão cair, **não** repita, não rode
 3. Confira por `curl -sI https://<web>/agendar/<slug-real>`: a resposta não
    pode trazer `x-robots-tag`, e o HTML traz o `canonical`.
 
+O web precisa do proxy da API configurado (`API_PROXY_TARGET`, como no
+modo mesma origem do piloto). Sem ele nenhuma página pública é lida no
+servidor, e todas saem com `noindex` (dúvida nunca vira indexável). O site
+inteiro já depende dessa variável no piloto; ela só não pode faltar.
+
+### 3.1 Com a API lenta ou fora
+
+O servidor do web decide a indexação **uma vez por requisição**
+(`src/proxy.ts`). O cabeçalho `X-Robots-Tag` e o meta robots do HTML usam a
+mesma decisão, então nunca divergem, mesmo que a leitura do layout dê outro
+resultado.
+
+| Situação na requisição | Resposta |
+|---|---|
+| API respondeu: teste | 200, `noindex, nofollow` no cabeçalho e no HTML |
+| API respondeu: real | 200 normal, com canonical |
+| API sem resposta em 2,5 s, erro ou resposta ilegível, com classificação lida da API há até 1 h **neste processo do web** | 200 com a classificação lembrada (teste continua `noindex`, real continua normal). Título e canonical podem sair genéricos se a leitura do layout também falhar |
+| Mesma falha, sem classificação lembrada | **503**, `Retry-After: 30`, `Cache-Control: no-store`, sem `noindex`. A página tenta de novo sozinha a cada 10 s e tem um link "Tentar de novo agora". Nunca 404 |
+
+**Impacto na disponibilidade:** no plano gratuito, a API e o web hibernam
+depois de 15 minutos sem uso, e a memória do web some quando ele hiberna. Na
+primeira visita depois disso, com a API ainda acordando, o visitante vê a
+página "Estamos abrindo esta agenda" em vez da tela de carregamento de
+antes. Ela recarrega sozinha até a API responder (menos de um minuto). O
+agendamento em si não fica pior: sem a API ele já não funcionava. Um
+buscador que recebe 503 volta depois e não indexa nada daquela resposta.
+
+**Troca da marca:** toda requisição lê a API antes. A leitura nova sempre
+substitui a lembrada, então marcar ou desmarcar no portal vale na primeira
+leitura bem-sucedida. A classificação antiga só reaparece se a API falhar
+antes de qualquer leitura nova, e por no máximo uma hora.
+
 ## 4. Classificar os testes antigos (obrigatório)
 
 > **O padrão `false` não identifica nenhum teste antigo.** Até cada um ser
@@ -109,17 +149,29 @@ Se o passo 3 falhar ou a conexão cair, **não** repita, não rode
    novo. Para acelerar, use a remoção temporária do Search Console
    (`indexacao-e-search-console.md`, seção 2).
 
-**Limite conhecido:** se a API demorar mais de 2,5 s na leitura do servidor
-(plano gratuito acordando), aquela resposta sai sem o `noindex`. Esse é o
-preço da regra que impede um estabelecimento real de sumir da busca nesse
-mesmo caso. O buscador costuma voltar e ler a página de novo.
+Com a API lenta ou fora, um marcado continua com `noindex` enquanto a
+classificação lembrada valer. Sem ela, a resposta é 503, nunca a página
+indexável (seção 3.1).
 
 ## 5. Colisões de slug
 
 A partir deste lote, um cadastro novo nunca recebe um slug reservado: rota
 fixa da raiz (`login`, `conta`, `portal`...), entrada antiga (`plataforma`,
-`administracao`) ou slug da semente da demonstração. "Portal" vira
-`portal-2`. A lista fica em `backend/src/common/reserved-slugs.ts`.
+`administracao`) ou slug da semente da demonstração. A lista fica em
+`backend/src/common/reserved-slugs.ts`.
+
+- **Slug gerado:** hoje o único jeito de nascer um slug é o cadastro pelo
+  portal, que gera o slug do nome do negócio. O gerador trata o reservado
+  como ocupado e escolhe o próximo livre: "Portal" vira `portal-2` (ou
+  `portal-3`, se `portal-2` já existir). A UNIQUE do banco continua sendo a
+  garantia final. Em cadastros simultâneos com o mesmo nome, quem perde a
+  corrida tenta de novo com outro candidato.
+- **Slug escolhido:** nenhuma rota aceita. Um `slug` no corpo do cadastro é
+  recusado com 400 e nada é gravado, então um slug pedido nunca é trocado
+  em silêncio. Se um dia existir uma rota que receba slug escolhido, ela
+  responde 409 com `code: SLUG_RESERVADO` para um reservado
+  (`assertSlugChangeAllowed`, já testado), e o mesmo slug reenviado sem
+  mudança continua aceito.
 
 Cadastros antigos **não** são renomeados. Para listá-los, só leitura:
 

@@ -131,13 +131,19 @@ Ficar fora do sitemap não impede a indexação: o buscador acha a página
   `noindex, nofollow` no HTML (sem canonical e sem dados estruturados) e no
   cabeçalho `X-Robots-Tag`. **O padrão `false` não identifica testes
   antigos:** cada um precisa ser marcado no portal antes de a proteção valer
-  (`docs/runbooks/publicacao-tenant-teste-slugs.md`). Se a API demorar
-  mais de 2,5 s na leitura do servidor, a página sai sem esse `noindex`
-  naquela resposta, a mesma regra que impede um estabelecimento real de sair
-  da busca porque a API estava acordando.
+  (`docs/runbooks/publicacao-tenant-teste-slugs.md`).
+- **API lenta ou fora:** o servidor do web decide uma vez por requisição
+  (`src/proxy.ts`) e o HTML segue a mesma decisão do cabeçalho. Sem resposta
+  da API em 2,5 s, vale a última classificação lida da API para aquele
+  estabelecimento nesse processo do web, por até uma hora. Sem nenhuma, a
+  resposta é **503** com `Retry-After: 30`, sem cache e sem `noindex`: o
+  buscador não indexa um 503 e volta depois, e um estabelecimento real não
+  ganha `noindex` por uma falha passageira. Nunca 404.
 - **Colisões do endereço curto (R6):** cadastros novos não recebem mais um
   slug igual a uma rota da raiz (`login`, `conta`...) ou a um slug da semente
-  da demonstração: "Portal" vira `portal-2`. Um cadastro antigo com slug
+  da demonstração. O slug não é digitado: ele é gerado do nome do negócio, e
+  o gerador pula os reservados ("Portal" vira `portal-2`). Nenhuma rota
+  aceita um slug escolhido. Um cadastro antigo com slug
   desses não é renomeado e continua em `/agendar/<slug>`, o link que a tela
   copia. `npm run pilot:check-reserved-slugs` (em `backend/`, só leitura)
   lista os casos.

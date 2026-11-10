@@ -106,8 +106,8 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Origem pública do frontend (proxy e endereços canônicos) | `valorDaOrigemPublica` em `src/lib/api/proxy-config.ts`; o site valida em `src/lib/site/origem-do-site.ts` (só HTTPS, nunca de cabeçalho) |
 | O que entra na busca (sitemap, robots, `noindex`) | `src/lib/site/indexacao.ts` e `ROTAS_SEM_INDEXACAO` em `src/lib/site/cabecalhos.ts` |
 | Título, descrição e JSON-LD da página pública | `src/lib/agendamento-publico/metadados-publicos.ts`, com a leitura no servidor em `pagina-no-servidor.ts` (uma por requisição, `leitura-da-requisicao.ts`) |
-| Estabelecimento de teste fora da busca | marca em `tenants.is_test`, gravada só por `setTestFlag` (`platform/establishment-admin.service.ts`, `manageEstablishments`); `indexable` em `GET /public/:slug`; `paginaIndexavel` (`metadados-publicos.ts`) decide o meta robots do layout e o `X-Robots-Tag` de `src/proxy.ts` (`indexacao-da-pagina.ts`) |
-| Slugs que nenhum cadastro novo recebe | `backend/src/common/reserved-slugs.ts`, aplicado em `resolveSlug` (`auth/slug.ts`); `src/lib/agendamento-publico/slugs-reservados.test.ts` confere contra `src/app` e a semente; `scripts/lib/slugs-reservados-check.ts` copia a lista (conferida por teste) |
+| Estabelecimento de teste fora da busca | marca em `tenants.is_test`, gravada só por `setTestFlag` (`platform/establishment-admin.service.ts`, `manageEstablishments`); `indexable` em `GET /public/:slug`; uma decisão por requisição em `src/proxy.ts` (`proxy-da-pagina-publica.ts`, regras em `indexacao-da-pagina.ts`: API, memória de até 1 h, senão 503) vale para o `X-Robots-Tag` e, pelo cabeçalho interno `x-agenda-indexacao`, para o meta robots do layout |
+| Slugs que nenhum cadastro novo recebe | `backend/src/common/reserved-slugs.ts`, aplicado em `resolveSlug` (`auth/slug.ts`, slug gerado do nome); `assertSlugChangeAllowed` (409 `SLUG_RESERVADO`) para uma rota futura que receba slug escolhido; `src/lib/agendamento-publico/slugs-reservados.test.ts` confere contra `src/app` e a semente; `scripts/lib/slugs-reservados-check.ts` copia a lista (conferida por teste) |
 
 ## 5. Segurança transversal
 
