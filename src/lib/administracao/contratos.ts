@@ -28,6 +28,9 @@ export interface EstabelecimentoAdministrado {
   timezone: string;
   status: SituacaoEstabelecimento;
   createdAt: string;
+  /** Estabelecimento de teste: página pública fora da busca. Ausente numa
+   * API anterior. */
+  isTest?: boolean;
   plan: {
     id: string;
     code: string;
@@ -110,6 +113,8 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     /** Anular um registro de validade feito por engano. Ausente numa API
      * anterior. */
     correctPeriod?: boolean;
+    /** Marcar como teste. Ausente numa API anterior. */
+    markTest?: boolean;
     /** Portal da plataforma; ausentes numa API anterior. */
     grantNoExpiry?: boolean;
     revokeNoExpiry?: boolean;
@@ -167,7 +172,8 @@ export function ehEstabelecimento(
     ) ||
     !texto(value.status) ||
     !Object.hasOwn(SITUACOES, value.status) ||
-    !data(value.createdAt)
+    !data(value.createdAt) ||
+    !(value.isTest === undefined || typeof value.isTest === "boolean")
   )
     return false;
   const plan = value.plan;

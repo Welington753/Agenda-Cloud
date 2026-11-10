@@ -9,6 +9,8 @@
 // - cookie de produção (`HttpOnly`, `Secure`, `SameSite=Lax`, sem `Domain`)
 //   gravado na origem do frontend, e removido no logout;
 // - escrita com `Origin` de outro site recusada pelo proxy;
+// - estabelecimento de teste: `/agendar/<slug>` responde 200 com
+//   `X-Robots-Tag: noindex, nofollow` e meta robots no HTML; o real, não;
 // - cabeçalhos de IP forjados não escapam do rate limit, e clientes
 //   diferentes não dividem o mesmo limite, tanto pelo proxy quanto numa
 //   chamada direta à API pela borda dela (`CLIENT_IP_SOURCE=cf-connecting-ip`
@@ -29,6 +31,7 @@ interface RespostaCrua {
   status: number;
   corpo: string;
   setCookie: string[];
+  headers: Record<string, string | string[] | undefined>;
 }
 
 /** Porta da borda local na frente da API (chamadas diretas). */
@@ -69,6 +72,7 @@ function requisicaoCrua(
             status: res.statusCode ?? 0,
             corpo: Buffer.concat(partes).toString("utf8"),
             setCookie: res.headers["set-cookie"] ?? [],
+            headers: res.headers,
           }),
         );
       },
@@ -212,6 +216,53 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fconta$/);
 
     expect(chamadasDiretasAApi, "o navegador nunca chama a porta da API").toEqual([]);
+  });
+
+  test("estabelecimento de teste fica fora da busca pelo cabeçalho e pelo HTML; o real continua indexável", async () => {
+    const marca = sufixo().replace(/[^a-z0-9]/g, "");
+    const plano = `pl${marca}`.slice(0, 30);
+    const db = await conectarBancoDeTeste();
+    const slugs = { teste: `teste-${marca}`, real: `real-${marca}` };
+    try {
+      // Plano fictício com todos os recursos (o agendamento público incluso).
+      await db.query(
+        `WITH novo AS (INSERT INTO plans (id, code, name, short_description, max_professionals, max_units)
+                       VALUES ($1, $1, 'Plano fictício', '', 5, 1) RETURNING id)
+         INSERT INTO plan_features (id, plan_id, feature_id)
+         SELECT 'pf' || substr(md5(novo.id || f.id), 1, 26), novo.id, f.id FROM novo CROSS JOIN features f`,
+        [plano],
+      );
+      for (const [tipo, slug] of Object.entries(slugs)) {
+        const tenantId = `t${tipo}${marca}`.slice(0, 30);
+        await db.query(
+          `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, access_legacy_since, is_test)
+           VALUES ($1, $2, 'OTHER', 'America/Sao_Paulo', $3, 'ACTIVE', now(), $4)`,
+          [tenantId, slug, plano, tipo === "teste"],
+        );
+        await db.query(
+          `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary) VALUES ($1, $2, $3, '', 'America/Sao_Paulo', true)`,
+          [`u${tenantId}`.slice(0, 30), tenantId, `Estúdio ${tipo} ${marca}`],
+        );
+        await db.query(`INSERT INTO public_booking_settings (tenant_id, enabled, updated_at) VALUES ($1, true, now())`, [tenantId]);
+      }
+    } finally {
+      await db.end();
+    }
+
+    const teste = await requisicaoCrua("GET", `/agendar/${slugs.teste}`, { origemLocal: "127.0.0.31" });
+    expect(teste.status).toBe(200);
+    expect(teste.headers["x-robots-tag"]).toBe("noindex, nofollow");
+    expect(teste.corpo).toMatch(/<meta name="robots" content="noindex, nofollow"/);
+    expect(teste.corpo).not.toMatch(/rel="canonical"/);
+    expect(teste.corpo).not.toContain("application/ld+json");
+    // Compartilhamento continua: título do estabelecimento no HTML.
+    expect(teste.corpo).toContain(`Estúdio teste ${marca} · Agendamento online`);
+
+    const real = await requisicaoCrua("GET", `/agendar/${slugs.real}`, { origemLocal: "127.0.0.32" });
+    expect(real.status).toBe(200);
+    expect(real.headers["x-robots-tag"]).toBeUndefined();
+    expect(real.corpo).not.toMatch(/<meta name="robots" content="noindex/);
+    expect(real.corpo).toMatch(new RegExp(`rel="canonical" href="[^"]*/agendar/${slugs.real}"`));
   });
 
   test("escrita com Origin de outro site é recusada pelo proxy, antes da API", async () => {

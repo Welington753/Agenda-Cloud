@@ -22,6 +22,9 @@ export interface PaginaPublica {
     priceVisible: boolean;
   }[];
   professionals: { id: string; name: string; initials: string; serviceIds: string[] }[];
+  /** `false` só para estabelecimento de teste: a página funciona, mas fica
+   * fora da busca. Ausente numa API anterior (indexável, como antes). */
+  indexable?: boolean;
 }
 
 export interface HorariosPublicos {
@@ -97,7 +100,8 @@ function ehPagina(v: unknown): v is PaginaPublica {
     typeof e?.name === "string" &&
     typeof e?.timezone === "string" &&
     Array.isArray(p.services) &&
-    Array.isArray(p.professionals)
+    Array.isArray(p.professionals) &&
+    (p.indexable === undefined || typeof p.indexable === "boolean")
   );
 }
 

@@ -21,6 +21,7 @@ import { PlanoDoEstabelecimento } from "@/components/administracao/plano-estabel
 import { ValidadeDoAcesso } from "@/components/administracao/validade-acesso";
 import { AcessoSemVencimento } from "@/components/administracao/sem-vencimento";
 import { PrecoContratado } from "@/components/administracao/preco-contratado";
+import { MarcaDeTeste } from "@/components/administracao/marca-de-teste";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -119,6 +120,7 @@ export default function DetalhePage() {
       <PrecoContratado key={`preco-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <DadosCadastrais key={`dados-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      <MarcaDeTeste key={`teste-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <Cartao>
         <CartaoCorpo>
           <h2 className="mb-3 font-semibold">Unidades</h2>

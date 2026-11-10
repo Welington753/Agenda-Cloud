@@ -8,6 +8,7 @@ import {
   caminhoDaPaginaPublica,
   descricaoDaPaginaPublica,
   jsonLdDaPaginaPublica,
+  paginaIndexavel,
   tituloDaPaginaPublica,
 } from "@/lib/agendamento-publico/metadados-publicos";
 import { serializarJsonLd } from "@/lib/site/dados-estruturados";
@@ -24,6 +25,13 @@ import { enderecoAbsoluto, lerConfiguracaoDoSite } from "@/lib/site/origem-do-si
 // confirma que ele não existe ou que a página está desligada. A tela continua
 // no navegador (page.tsx), sem mudança.
 // Regras da leitura: lib/agendamento-publico/pagina-no-servidor.ts.
+//
+// Estabelecimento de teste (`indexable: false` na leitura): a página
+// funciona e pode ser compartilhada (título e Open Graph continuam), mas sai
+// com `noindex, nofollow`, sem canonical e sem dados estruturados. O mesmo
+// `noindex` vai no cabeçalho `X-Robots-Tag` (src/proxy.ts), para valer
+// também para quem lê só os cabeçalhos. Na dúvida (API lenta), nada muda:
+// um estabelecimento real nunca sai da busca porque a API estava acordando.
 
 export async function generateMetadata({ params }: LayoutProps<"/agendar/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -36,10 +44,12 @@ export async function generateMetadata({ params }: LayoutProps<"/agendar/[slug]"
   const caminho = caminhoDaPaginaPublica(leitura.slug);
   const titulo = tituloDaPaginaPublica(leitura.pagina.establishment.name);
   const descricao = descricaoDaPaginaPublica(leitura.pagina);
+  const indexavel = paginaIndexavel(leitura.pagina);
   return {
     title: titulo,
     description: descricao,
-    alternates: site.indexavel && site.origem ? { canonical: caminho } : undefined,
+    ...(indexavel ? {} : { robots: { index: false, follow: false } }),
+    alternates: indexavel && site.indexavel && site.origem ? { canonical: caminho } : undefined,
     openGraph: {
       ...OPEN_GRAPH_COMUM,
       url: site.origem ? caminho : undefined,
@@ -57,7 +67,7 @@ export default async function AgendarLayout({ children, params }: LayoutProps<"/
   if (leitura.tipo === "inexistente") notFound();
 
   const url =
-    leitura.tipo === "encontrada"
+    leitura.tipo === "encontrada" && paginaIndexavel(leitura.pagina)
       ? enderecoAbsoluto(lerConfiguracaoDoSite(process.env), caminhoDaPaginaPublica(leitura.slug))
       : null;
 
