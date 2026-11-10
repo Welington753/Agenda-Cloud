@@ -33,15 +33,20 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
   cabeçalho interno `x-agenda-indexacao`. Antes, o layout e o proxy liam a
   API cada um por si e podiam divergir. O proxy apaga esse cabeçalho de toda
   requisição que chega, então o cliente não consegue forjá-lo.
-- **API lenta ou fora:** vale a última classificação lida da API para aquele
-  slug, guardada na memória do processo do web por até 1 h (no máximo 500
-  slugs, só os que a API confirmou). Sem ela, o proxy responde 503 com
-  `Retry-After: 30`, `no-store`, recarga automática e link para tentar de
-  novo, sem `noindex` e nunca 404. Dúvida nunca vira "indexável", e um
-  estabelecimento real nunca ganha `noindex` por falha passageira. A leitura
-  nova sempre substitui a lembrada, e um 404 confirmado apaga a lembrança.
-  Isso substitui o "limite conhecido" da primeira versão, em que um teste
-  saía sem `noindex` quando a API passava de 2,5 s.
+- **API lenta ou fora:** o proxy responde 503 com `Retry-After: 30`,
+  `no-store`, recarga automática e link para tentar de novo, sem `noindex`
+  e nunca 404. Dúvida nunca vira "indexável", e um estabelecimento real
+  nunca ganha `noindex` por falha passageira. Isso substitui o "limite
+  conhecido" da primeira versão, em que um teste saía sem `noindex` quando a
+  API passava de 2,5 s.
+- **Nenhuma classificação antiga** (ajuste final da revisão, 10/11): uma
+  versão intermediária reaproveitava por até 1 h a última classificação lida
+  no processo do web. Ela foi removida: se a marca mudasse e a API falhasse
+  logo depois, o web entregaria a classificação de antes da troca, e cada
+  processo do web poderia lembrar uma diferente. O custo é de
+  disponibilidade: toda abertura depende da API, e uma consulta que falhe
+  interrompe a página com 503 até a API voltar. Sem cache nem invalidação
+  distribuída neste lote.
 - **Sem proxy configurado** (desenvolvimento, suítes em chamada direta): o
   layout decide sozinho, e só uma página lida e não marcada é indexável.
 - **API anterior sem `indexable`:** o web trata o campo ausente como
@@ -97,8 +102,9 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
   testes); navegador `proxy` (cabeçalho e HTML reais de indexação),
   `administracao`, `agendamento-publico` e `portal-recusas`.
 
-- Revisão do PR (10/11): decisão única de indexação no proxy (memória de
-  1 h, 503 sem classificação), relé `api-controlavel.mjs` na suíte `proxy`
+- Revisão do PR (10/11): decisão única de indexação no proxy (503 sem
+  classificação confirmada na requisição; a memória de 1 h de uma versão
+  intermediária foi removida), relé `api-controlavel.mjs` na suíte `proxy`
   para provar API lenta e fora com o Next.js e a API reais, distinção entre
   slug gerado e escolhido (400 para `slug` no cadastro, corrida com nome
   reservado) e tabela de compatibilidade refeita (página funcionando não

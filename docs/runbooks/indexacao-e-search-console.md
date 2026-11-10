@@ -134,9 +134,8 @@ Ficar fora do sitemap não impede a indexação: o buscador acha a página
   (`docs/runbooks/publicacao-tenant-teste-slugs.md`).
 - **API lenta ou fora:** o servidor do web decide uma vez por requisição
   (`src/proxy.ts`) e o HTML segue a mesma decisão do cabeçalho. Sem resposta
-  da API em 2,5 s, vale a última classificação lida da API para aquele
-  estabelecimento nesse processo do web, por até uma hora. Sem nenhuma, a
-  resposta é **503** com `Retry-After: 30`, sem cache e sem `noindex`: o
+  da API em 2,5 s, ou com erro, a resposta é **503** (nenhuma classificação
+  antiga é reaproveitada) com `Retry-After: 30`, sem cache e sem `noindex`: o
   buscador não indexa um 503 e volta depois, e um estabelecimento real não
   ganha `noindex` por uma falha passageira. Nunca 404.
 - **Colisões do endereço curto (R6):** cadastros novos não recebem mais um

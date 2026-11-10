@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { paginaDoCorpo, type PaginaPublica } from "@/lib/api/public-booking-api";
 import { paginaIndexavel } from "./metadados-publicos";
 import {
-  MemoriaDeClassificacao,
-  VALIDADE_DA_CLASSIFICACAO_MS,
   VALOR_SEM_INDEXACAO,
   classificacaoDoCabecalho,
   decidirIndexacao,
@@ -53,75 +51,17 @@ describe("estabelecimento de teste fora da busca", () => {
 });
 
 describe("decisão única por requisição", () => {
-  it("leitura da API classifica e fica lembrada; falha seguinte usa a lembrança", () => {
-    const memoria = new MemoriaDeClassificacao();
-    expect(decidirIndexacao(encontrada(false), "studio-exemplo", memoria, 0)).toEqual({
-      tipo: "classificada",
-      classificacao: "teste",
-      origem: "api",
-    });
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 1_000)).toEqual({
-      tipo: "classificada",
-      classificacao: "teste",
-      origem: "memoria",
-    });
+  it("só a leitura da própria requisição classifica", () => {
+    expect(decidirIndexacao(encontrada(false))).toEqual({ tipo: "classificada", classificacao: "teste" });
+    expect(decidirIndexacao(encontrada(true))).toEqual({ tipo: "classificada", classificacao: "indexavel" });
+    expect(decidirIndexacao(encontrada())).toEqual({ tipo: "classificada", classificacao: "indexavel" });
+    expect(decidirIndexacao(INEXISTENTE)).toEqual({ tipo: "inexistente" });
   });
 
-  it("sem lembrança, dúvida é indisponível: nem indexável nem noindex", () => {
-    const memoria = new MemoriaDeClassificacao();
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 0)).toEqual({ tipo: "indisponivel" });
-  });
-
-  it("troca da marca vale na primeira leitura boa; a antiga não volta", () => {
-    const memoria = new MemoriaDeClassificacao();
-    decidirIndexacao(encontrada(false), "studio-exemplo", memoria, 0);
-    expect(decidirIndexacao(encontrada(true), "studio-exemplo", memoria, 10)).toMatchObject({ classificacao: "indexavel", origem: "api" });
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 20)).toMatchObject({ classificacao: "indexavel", origem: "memoria" });
-    decidirIndexacao(encontrada(false), "studio-exemplo", memoria, 30);
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 40)).toMatchObject({ classificacao: "teste", origem: "memoria" });
-  });
-
-  it("a lembrança expira: depois da validade, a falha volta a ser indisponível", () => {
-    const memoria = new MemoriaDeClassificacao();
-    decidirIndexacao(encontrada(false), "studio-exemplo", memoria, 0);
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, VALIDADE_DA_CLASSIFICACAO_MS)).toMatchObject({
-      origem: "memoria",
-    });
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, VALIDADE_DA_CLASSIFICACAO_MS + 1)).toEqual({
-      tipo: "indisponivel",
-    });
-    // Relógio voltando também não reaproveita.
-    decidirIndexacao(encontrada(false), "studio-exemplo", memoria, 5_000);
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 4_000)).toEqual({ tipo: "indisponivel" });
-  });
-
-  it("404 confirmado apaga a lembrança daquele slug", () => {
-    const memoria = new MemoriaDeClassificacao();
-    decidirIndexacao(encontrada(true), "studio-exemplo", memoria, 0);
-    expect(decidirIndexacao(INEXISTENTE, "studio-exemplo", memoria, 1)).toEqual({ tipo: "inexistente" });
-    expect(decidirIndexacao(DESCONHECIDA, "studio-exemplo", memoria, 2)).toEqual({ tipo: "indisponivel" });
-  });
-
-  it("isolamento: a lembrança de um slug nunca serve a outro; maiúsculas e %XX caem no mesmo slug", () => {
-    const memoria = new MemoriaDeClassificacao();
-    decidirIndexacao(encontrada(false, "teste-a"), "teste-a", memoria, 0);
-    decidirIndexacao(encontrada(true, "real-b"), "real-b", memoria, 0);
-    expect(decidirIndexacao(DESCONHECIDA, "real-b", memoria, 1)).toMatchObject({ classificacao: "indexavel" });
-    expect(decidirIndexacao(DESCONHECIDA, "teste-a", memoria, 1)).toMatchObject({ classificacao: "teste" });
-    expect(decidirIndexacao(DESCONHECIDA, "Teste-A", memoria, 1)).toMatchObject({ classificacao: "teste" });
-    expect(decidirIndexacao(DESCONHECIDA, "teste-%61", memoria, 1)).toMatchObject({ classificacao: "teste" });
-    expect(decidirIndexacao(DESCONHECIDA, "teste-c", memoria, 1)).toEqual({ tipo: "indisponivel" });
-  });
-
-  it("memória tem teto: o slug mais antigo sai primeiro", () => {
-    const memoria = new MemoriaDeClassificacao(VALIDADE_DA_CLASSIFICACAO_MS, 2);
-    memoria.gravar("a", "teste", 0);
-    memoria.gravar("b", "teste", 0);
-    memoria.gravar("c", "indexavel", 0);
-    expect(memoria.tamanho).toBe(2);
-    expect(memoria.ler("a", 1)).toBeNull();
-    expect(memoria.ler("b", 1)).toBe("teste");
-    expect(memoria.ler("c", 1)).toBe("indexavel");
+  it("dúvida é indisponível (503): nem indexável nem noindex, mesmo depois de leituras boas", () => {
+    decidirIndexacao(encontrada(true));
+    decidirIndexacao(encontrada(false));
+    expect(decidirIndexacao(DESCONHECIDA)).toEqual({ tipo: "indisponivel" });
   });
 });
 

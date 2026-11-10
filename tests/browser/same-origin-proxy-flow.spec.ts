@@ -12,9 +12,9 @@
 // - estabelecimento de teste: `/agendar/<slug>` responde 200 com
 //   `X-Robots-Tag: noindex, nofollow` e meta robots no HTML; o real, não.
 //   Com a API lenta ou fora (relé tests/browser/support/api-controlavel.mjs),
-//   a classificação lembrada vale para os dois, e um estabelecimento sem
-//   classificação conhecida recebe 503 com `Retry-After`, nunca a página
-//   "indexável" nem 404;
+//   os dois recebem 503 com `Retry-After`, mesmo já lidos antes: nenhuma
+//   classificação antiga é reaproveitada, nunca a página "indexável" nem 404.
+//   A marca trocada antes da falha vale assim que a API volta;
 // - cabeçalhos de IP forjados não escapam do rate limit, e clientes
 //   diferentes não dividem o mesmo limite, tanto pelo proxy quanto numa
 //   chamada direta à API pela borda dela (`CLIENT_IP_SOURCE=cf-connecting-ip`
@@ -308,63 +308,60 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     expect(forjadoReal.corpo).not.toMatch(/<meta name="robots" content="noindex/);
   });
 
-  test("API lenta ou fora: classificação lembrada vale, desconhecida vira 503 e a troca da marca não fica presa", async () => {
+  test("API lenta ou fora: 503 sem reaproveitar classificação antiga; marca trocada vale quando a API volta", async () => {
     test.setTimeout(120_000);
-    const { slugs, tenantIds } = await criarEstabelecimentosPublicos({ teste: true, real: false, novo: false });
+    const { slugs, tenantIds } = await criarEstabelecimentosPublicos({ teste: true, real: false });
     const abrir = (slug: string, origemLocal: string) => requisicaoCrua("GET", `/agendar/${slug}`, { origemLocal });
+    const esperar503 = (r: RespostaCrua, rotulo: string) => {
+      expect(r.status, rotulo).toBe(503);
+      expect(r.headers["retry-after"], rotulo).toBe("30");
+      expect(r.headers["cache-control"], rotulo).toBe("no-store");
+      expect(r.headers["x-robots-tag"], rotulo).toBeUndefined();
+      expect(r.corpo, rotulo).toContain("Tentar de novo agora");
+      expect(r.corpo, rotulo).not.toMatch(/noindex/);
+    };
+    const trocarMarcas = async (teste: boolean, real: boolean) => {
+      const db = await conectarBancoDeTeste();
+      try {
+        await db.query("UPDATE tenants SET is_test = $2 WHERE id = $1", [tenantIds.teste, teste]);
+        await db.query("UPDATE tenants SET is_test = $2 WHERE id = $1", [tenantIds.real, real]);
+      } finally {
+        await db.end();
+      }
+    };
 
     // API normal: as duas páginas são lidas e classificadas.
     expect((await abrir(slugs.teste, "127.0.0.33")).headers["x-robots-tag"]).toBe("noindex, nofollow");
     expect((await abrir(slugs.real, "127.0.0.34")).headers["x-robots-tag"]).toBeUndefined();
 
     try {
+      // Já lidos, com a API lenta ou fora: 503 para os dois.
       for (const modo of ["lenta", "fora"] as const) {
         await modoDaApi(modo);
-
-        const teste = await abrir(slugs.teste, "127.0.0.33");
-        expect(teste.status, modo).toBe(200);
-        expect(teste.headers["x-robots-tag"], modo).toBe("noindex, nofollow");
-        expect(teste.corpo, modo).toMatch(META_NOINDEX);
-        expect(teste.corpo, modo).not.toMatch(/rel="canonical"/);
-
-        const real = await abrir(slugs.real, "127.0.0.34");
-        expect(real.status, modo).toBe(200);
-        expect(real.headers["x-robots-tag"], modo).toBeUndefined();
-        expect(real.corpo, modo).not.toMatch(/<meta name="robots" content="noindex/);
-
-        const novo = await abrir(slugs.novo, "127.0.0.35");
-        expect(novo.status, modo).toBe(503);
-        expect(novo.headers["retry-after"], modo).toBe("30");
-        expect(novo.headers["cache-control"], modo).toBe("no-store");
-        expect(novo.headers["x-robots-tag"], modo).toBeUndefined();
-        expect(novo.corpo, modo).toContain("Tentar de novo agora");
+        esperar503(await abrir(slugs.teste, "127.0.0.33"), `teste, ${modo}`);
+        esperar503(await abrir(slugs.real, "127.0.0.34"), `real, ${modo}`);
       }
 
-      // A marca muda com a API de volta: a leitura nova vence a lembrada, e
-      // a falha seguinte já usa a classificação nova.
+      // A marca muda (real vira teste, teste é desmarcado) e a API falha
+      // em seguida: 503, nunca a classificação de antes da troca.
       await modoDaApi("normal");
-      const db = await conectarBancoDeTeste();
-      try {
-        await db.query("UPDATE tenants SET is_test = false WHERE id = $1", [tenantIds.teste]);
-        await db.query("UPDATE tenants SET is_test = true WHERE id = $1", [tenantIds.real]);
-      } finally {
-        await db.end();
-      }
-      expect((await abrir(slugs.teste, "127.0.0.33")).headers["x-robots-tag"]).toBeUndefined();
-      expect((await abrir(slugs.real, "127.0.0.34")).headers["x-robots-tag"]).toBe("noindex, nofollow");
+      await trocarMarcas(false, true);
       await modoDaApi("fora");
-      const desmarcado = await abrir(slugs.teste, "127.0.0.33");
-      expect(desmarcado.headers["x-robots-tag"]).toBeUndefined();
-      expect(desmarcado.corpo).not.toMatch(/<meta name="robots" content="noindex/);
+      esperar503(await abrir(slugs.real, "127.0.0.34"), "real marcado como teste, API fora");
+      esperar503(await abrir(slugs.teste, "127.0.0.33"), "teste desmarcado, API fora");
+
+      // A API volta: vale a classificação atual.
+      await modoDaApi("normal");
       const marcado = await abrir(slugs.real, "127.0.0.34");
+      expect(marcado.status).toBe(200);
       expect(marcado.headers["x-robots-tag"]).toBe("noindex, nofollow");
       expect(marcado.corpo).toMatch(META_NOINDEX);
-
-      // De volta ao normal, o estabelecimento novo abre (o 503 era temporário).
-      await modoDaApi("normal");
-      const novo = await abrir(slugs.novo, "127.0.0.35");
-      expect(novo.status).toBe(200);
-      expect(novo.headers["x-robots-tag"]).toBeUndefined();
+      expect(marcado.corpo).not.toMatch(/rel="canonical"/);
+      const desmarcado = await abrir(slugs.teste, "127.0.0.33");
+      expect(desmarcado.status).toBe(200);
+      expect(desmarcado.headers["x-robots-tag"]).toBeUndefined();
+      expect(desmarcado.corpo).not.toMatch(/<meta name="robots" content="noindex/);
+      expect(desmarcado.corpo).toMatch(/rel="canonical"/);
     } finally {
       await modoDaApi("normal");
     }

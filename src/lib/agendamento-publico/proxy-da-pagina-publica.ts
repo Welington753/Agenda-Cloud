@@ -5,10 +5,11 @@
 // 2. Em GET/HEAD com o proxy da API configurado, lê a página na API (mesma
 //    leitura do layout: destino fixo, prazo de 2,5 s, sem cache, sem cookie
 //    do visitante) e decide pela regra de indexacao-da-pagina.ts:
-//    - classificada (pela API ou pela memória): segue para a página com a
+//    - classificada pela API nesta requisição: segue para a página com a
 //      decisão no cabeçalho interno, e `X-Robots-Tag` se for teste;
 //    - inexistente: segue sem decisão (o layout responde 404 com `noindex`);
-//    - indisponível: responde 503 aqui mesmo, sem renderizar a página.
+//    - indisponível (API lenta, fora ou ilegível): responde 503 aqui mesmo,
+//      sem renderizar a página e sem reaproveitar classificação antiga.
 // 3. Sem configuração do proxy (desenvolvimento, suítes em chamada direta),
 //    nada é lido; o layout decide sozinho e trata a dúvida como não indexável.
 import { NextResponse, type NextRequest } from "next/server";
@@ -16,23 +17,19 @@ import { lerConfiguracaoProxy } from "@/lib/api/proxy-config";
 import {
   CABECALHO_CLASSIFICACAO,
   CABECALHO_ROBOTS,
-  MEMORIA_DO_PROCESSO,
   decidirIndexacao,
   respostaIndisponivel,
   robotsDaClassificacao,
   slugDoCaminhoAgendar,
-  type MemoriaDeClassificacao,
 } from "./indexacao-da-pagina";
 import { lerPaginaNoServidor } from "./pagina-no-servidor";
 
 export interface DependenciasDoProxy {
-  memoria: MemoriaDeClassificacao;
-  agora: () => number;
   ambiente: Record<string, string | undefined>;
   prazoMs?: number;
 }
 
-const PADRAO: DependenciasDoProxy = { memoria: MEMORIA_DO_PROCESSO, agora: Date.now, ambiente: process.env };
+const PADRAO: DependenciasDoProxy = { ambiente: process.env };
 
 export async function respostaDoProxyAgendar(
   request: NextRequest,
@@ -55,7 +52,7 @@ export async function respostaDoProxyAgendar(
     undefined,
     dependencias.prazoMs,
   );
-  const decisao = decidirIndexacao(leitura, slug, dependencias.memoria, dependencias.agora());
+  const decisao = decidirIndexacao(leitura);
 
   if (decisao.tipo === "indisponivel") {
     const indisponivel = respostaIndisponivel(request.nextUrl.pathname);

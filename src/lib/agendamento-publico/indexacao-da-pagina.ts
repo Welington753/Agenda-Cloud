@@ -7,22 +7,19 @@
 //
 // Regras da decisão (`decidirIndexacao`):
 // - API respondeu a página: a classificação vem dela (`indexable: false` é
-//   teste; `true` ou ausente, de uma API anterior ao campo, é indexável) e
-//   fica na memória do processo;
+//   teste; `true` ou ausente, de uma API anterior ao campo, é indexável);
 // - API confirmou que não existe (404): nada a classificar, a página 404 já
-//   leva `noindex`; a memória daquele slug é apagada;
-// - API lenta, fora ou ilegível: vale a última classificação lida da API
-//   para AQUELE slug, se tiver no máximo `VALIDADE_DA_CLASSIFICACAO_MS`.
-//   Sem ela, a resposta é 503 com `Retry-After` (`respostaIndisponivel`):
-//   uma dúvida nunca vira "indexável" sozinha, e um estabelecimento real
-//   também não ganha `noindex` por uma falha passageira. Nunca 404.
+//   leva `noindex`;
+// - API lenta, fora ou ilegível: 503 com `Retry-After`
+//   (`respostaIndisponivel`). Nunca 404.
 //
-// A memória só serve na falha: toda requisição lê a API primeiro, e a leitura
-// nova sempre substitui a lembrada. Uma troca da marca no portal vale na
-// primeira leitura bem-sucedida depois dela; a classificação antiga só pode
-// reaparecer enquanto a API estiver falhando, e por no máximo uma hora.
+// Nenhuma classificação antiga é reaproveitada. Só a leitura da própria
+// requisição vale: uma lembrada poderia estar desatualizada (marca trocada no
+// portal logo antes de a API falhar) e diferir entre processos do web. Uma
+// dúvida nunca vira "indexável", e um estabelecimento real também não ganha
+// `noindex` por uma falha passageira.
 import { paginaIndexavel } from "./metadados-publicos";
-import { slugPublicoNormalizado, type PaginaNoServidor } from "./pagina-no-servidor";
+import type { PaginaNoServidor } from "./pagina-no-servidor";
 
 export const CABECALHO_ROBOTS = "X-Robots-Tag";
 export const VALOR_SEM_INDEXACAO = "noindex, nofollow";
@@ -34,66 +31,12 @@ export const CABECALHO_CLASSIFICACAO = "x-agenda-indexacao";
 
 export type Classificacao = "indexavel" | "teste";
 
-/** Até quando uma classificação lida da API ainda vale numa falha da API. */
-export const VALIDADE_DA_CLASSIFICACAO_MS = 60 * 60 * 1000;
-
-/** Teto de slugs lembrados por processo: só entram páginas que a API
- * confirmou (slugs inventados dão 404 e não ocupam espaço). */
-export const LIMITE_DA_MEMORIA = 500;
-
-/** `Retry-After` do 503, em segundos (a API do plano gratuito acorda em
- * menos de um minuto). */
+/** `Retry-After` do 503, em segundos. Só uma sugestão de espera: a página
+ * volta quando a API voltar a responder, o que pode levar mais. */
 export const ESPERA_PARA_NOVA_TENTATIVA_S = 30;
 
-interface Lembranca {
-  classificacao: Classificacao;
-  lidaEm: number;
-}
-
-/** Última classificação lida da API, por slug normalizado, com validade.
- * Uma instância por processo do web (`MEMORIA_DO_PROCESSO`); nunca vai para
- * disco, cookie ou resposta. */
-export class MemoriaDeClassificacao {
-  private readonly itens = new Map<string, Lembranca>();
-
-  constructor(
-    private readonly validadeMs: number = VALIDADE_DA_CLASSIFICACAO_MS,
-    private readonly limite: number = LIMITE_DA_MEMORIA,
-  ) {}
-
-  gravar(slug: string, classificacao: Classificacao, agora: number): void {
-    this.itens.delete(slug);
-    if (this.itens.size >= this.limite) {
-      const maisAntiga = this.itens.keys().next().value;
-      if (maisAntiga !== undefined) this.itens.delete(maisAntiga);
-    }
-    this.itens.set(slug, { classificacao, lidaEm: agora });
-  }
-
-  ler(slug: string, agora: number): Classificacao | null {
-    const item = this.itens.get(slug);
-    if (!item) return null;
-    const idade = agora - item.lidaEm;
-    if (idade < 0 || idade > this.validadeMs) {
-      this.itens.delete(slug);
-      return null;
-    }
-    return item.classificacao;
-  }
-
-  esquecer(slug: string): void {
-    this.itens.delete(slug);
-  }
-
-  get tamanho(): number {
-    return this.itens.size;
-  }
-}
-
-export const MEMORIA_DO_PROCESSO = new MemoriaDeClassificacao();
-
 export type DecisaoDeIndexacao =
-  | { tipo: "classificada"; classificacao: Classificacao; origem: "api" | "memoria" }
+  | { tipo: "classificada"; classificacao: Classificacao }
   | { tipo: "inexistente" }
   | { tipo: "indisponivel" };
 
@@ -101,24 +44,10 @@ export function classificacaoDaPagina(leitura: Extract<PaginaNoServidor, { tipo:
   return paginaIndexavel(leitura.pagina) ? "indexavel" : "teste";
 }
 
-export function decidirIndexacao(
-  leitura: PaginaNoServidor,
-  slugPedido: string,
-  memoria: MemoriaDeClassificacao,
-  agora: number,
-): DecisaoDeIndexacao {
-  const chave = slugPublicoNormalizado(slugPedido);
-  if (leitura.tipo === "encontrada") {
-    const classificacao = classificacaoDaPagina(leitura);
-    if (chave !== null) memoria.gravar(chave, classificacao, agora);
-    return { tipo: "classificada", classificacao, origem: "api" };
-  }
-  if (leitura.tipo === "inexistente") {
-    if (chave !== null) memoria.esquecer(chave);
-    return { tipo: "inexistente" };
-  }
-  const lembrada = chave === null ? null : memoria.ler(chave, agora);
-  return lembrada === null ? { tipo: "indisponivel" } : { tipo: "classificada", classificacao: lembrada, origem: "memoria" };
+export function decidirIndexacao(leitura: PaginaNoServidor): DecisaoDeIndexacao {
+  if (leitura.tipo === "encontrada") return { tipo: "classificada", classificacao: classificacaoDaPagina(leitura) };
+  if (leitura.tipo === "inexistente") return { tipo: "inexistente" };
+  return { tipo: "indisponivel" };
 }
 
 export function robotsDaClassificacao(classificacao: Classificacao): string | null {

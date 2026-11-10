@@ -37,9 +37,8 @@ outros roteiros (`publicacao-piloto-render.md`, seção 6.B, passos 1 e 2).
 | 17 | anterior | nova | funcionam. Sem `indexable` na resposta, o web classifica toda página como indexável (é o comportamento anterior), e o portal esconde o controle da marca | **inativa**: nenhuma página é reconhecida como teste |
 | 17 | nova | nova | funcionam | **ativa só para os marcados**. Com o padrão `false`, nenhum teste antigo está marcado até a seção 4 |
 
-O web novo também muda o que acontece com a API fora do ar (seção 3.1): um
-estabelecimento sem classificação lembrada recebe 503 temporário em vez da
-página.
+O web novo também muda o que acontece com a API lenta ou fora do ar
+(seção 3.1): a página pública responde 503 temporário em vez de abrir.
 
 **Ordem obrigatória:** backup, conferência antes, migration, conferência
 depois, API, web, os dois no mesmo SHA. O deploy é manual no Render, com
@@ -113,21 +112,28 @@ resultado.
 |---|---|
 | API respondeu: teste | 200, `noindex, nofollow` no cabeçalho e no HTML |
 | API respondeu: real | 200 normal, com canonical |
-| API sem resposta em 2,5 s, erro ou resposta ilegível, com classificação lida da API há até 1 h **neste processo do web** | 200 com a classificação lembrada (teste continua `noindex`, real continua normal). Título e canonical podem sair genéricos se a leitura do layout também falhar |
-| Mesma falha, sem classificação lembrada | **503**, `Retry-After: 30`, `Cache-Control: no-store`, sem `noindex`. A página tenta de novo sozinha a cada 10 s e tem um link "Tentar de novo agora". Nunca 404 |
+| API sem resposta em 2,5 s, erro ou resposta ilegível | **503**, `Retry-After: 30`, `Cache-Control: no-store`, sem `noindex`. A página tenta de novo sozinha a cada 10 s e tem um link "Tentar de novo agora". Nunca 404 |
 
-**Impacto na disponibilidade:** no plano gratuito, a API e o web hibernam
-depois de 15 minutos sem uso, e a memória do web some quando ele hiberna. Na
-primeira visita depois disso, com a API ainda acordando, o visitante vê a
-página "Estamos abrindo esta agenda" em vez da tela de carregamento de
-antes. Ela recarrega sozinha até a API responder (menos de um minuto). O
-agendamento em si não fica pior: sem a API ele já não funcionava. Um
-buscador que recebe 503 volta depois e não indexa nada daquela resposta.
+Nenhuma classificação antiga é reaproveitada, nem para um estabelecimento
+aberto há pouco. Uma lembrada poderia estar desatualizada (a marca trocada
+no portal logo antes de a API falhar) e seria diferente em cada processo do
+web. Só vale o que a API confirmou na própria requisição.
 
-**Troca da marca:** toda requisição lê a API antes. A leitura nova sempre
-substitui a lembrada, então marcar ou desmarcar no portal vale na primeira
-leitura bem-sucedida. A classificação antiga só reaparece se a API falhar
-antes de qualquer leitura nova, e por no máximo uma hora.
+**Impacto na disponibilidade:** a página pública passa a depender da API em
+toda abertura. Qualquer consulta que falhe ou passe de 2,5 s interrompe a
+abertura daquela vez, mesmo para um estabelecimento que abriu um minuto
+antes: o visitante vê "Estamos abrindo esta agenda" em vez da página. Ela
+recarrega sozinha a cada 10 s, e o tempo até voltar depende só de quando a
+API voltar a responder. No plano gratuito, a API hiberna depois de 15
+minutos sem uso, e a primeira visita depois disso pode cair nessa página
+enquanto ela acorda. O agendamento em si não fica pior: sem a API ele já não
+funcionava. Um buscador que recebe 503 volta depois e não indexa nada
+daquela resposta.
+
+**Troca da marca:** como nada é lembrado, marcar ou desmarcar no portal vale
+na primeira consulta bem-sucedida depois da troca, em qualquer processo do
+web. Enquanto a API falhar, a resposta é 503, nunca a classificação de antes
+da troca.
 
 ## 4. Classificar os testes antigos (obrigatório)
 
@@ -149,9 +155,8 @@ antes de qualquer leitura nova, e por no máximo uma hora.
    novo. Para acelerar, use a remoção temporária do Search Console
    (`indexacao-e-search-console.md`, seção 2).
 
-Com a API lenta ou fora, um marcado continua com `noindex` enquanto a
-classificação lembrada valer. Sem ela, a resposta é 503, nunca a página
-indexável (seção 3.1).
+Com a API lenta ou fora, a resposta é 503, nunca a página indexável
+(seção 3.1).
 
 ## 5. Colisões de slug
 

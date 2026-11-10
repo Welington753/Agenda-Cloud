@@ -1,11 +1,12 @@
 // O proxy de `/agendar/<slug>` contra uma API de mentira em HTTP de verdade
-// (porta local): normal, lenta (passa do prazo) e fora (conexão recusada).
+// (porta local): normal, lenta (passa do prazo), 502 e fora (conexão
+// recusada). Na falha, nenhuma classificação antiga é reaproveitada: 503.
 // A suíte de navegador `proxy` repete o essencial com o Next.js e a API reais.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { CABECALHO_CLASSIFICACAO, MemoriaDeClassificacao, VALOR_SEM_INDEXACAO } from "./indexacao-da-pagina";
+import { CABECALHO_CLASSIFICACAO, VALOR_SEM_INDEXACAO } from "./indexacao-da-pagina";
 import { respostaDoProxyAgendar, type DependenciasDoProxy } from "./proxy-da-pagina-publica";
 
 type Modo = "normal" | "lenta" | "fora-500";
@@ -43,8 +44,6 @@ const servidor = http.createServer((req, res) => {
 
 let porta = 0;
 let portaFechada = 0;
-let agora = 0;
-let memoria: MemoriaDeClassificacao;
 
 beforeAll(async () => {
   await new Promise<void>((ok) => servidor.listen(0, "127.0.0.1", ok));
@@ -60,14 +59,10 @@ beforeEach(() => {
   modo = "normal";
   marcados.clear();
   leituras.length = 0;
-  agora = 1_000_000;
-  memoria = new MemoriaDeClassificacao();
 });
 
 function dependencias(destinoPorta = porta): DependenciasDoProxy {
   return {
-    memoria,
-    agora: () => agora,
     prazoMs: 300,
     ambiente: { API_PROXY_TARGET: `http://127.0.0.1:${destinoPorta}`, APP_PUBLIC_ORIGIN: "https://agenda.example.test" },
   };
@@ -110,67 +105,75 @@ describe("API normal", () => {
   });
 });
 
+function esperar503(r: Response) {
+  expect(r.status).toBe(503);
+  expect(r.headers.get("retry-after")).toBe("30");
+  expect(r.headers.get("cache-control")).toBe("no-store");
+  expect(r.headers.get("x-robots-tag")).toBeNull();
+  expect(classificacaoRepassada(r)).toBeNull();
+}
+
 describe.each([
   ["lenta", "lenta" as const, () => porta],
   ["respondendo 502 da hospedagem", "fora-500" as const, () => porta],
   ["fora (conexão recusada)", "normal" as const, () => portaFechada],
 ])("API %s", (_nome, modoDaFalha, destino) => {
-  it("teste conhecido continua noindex; real conhecido continua normal; isolados", async () => {
+  it("teste e real já lidos antes: 503 para os dois, sem reaproveitar a classificação antiga", async () => {
     marcados.add("teste-a");
-    await chamar("/agendar/teste-a");
-    await chamar("/agendar/real-b");
+    expect(classificacaoRepassada(await chamar("/agendar/teste-a"))).toBe("teste");
+    expect(classificacaoRepassada(await chamar("/agendar/real-b"))).toBe("indexavel");
     modo = modoDaFalha;
-    agora += 60_000;
-
-    const teste = await chamar("/agendar/teste-a", destino());
-    expect(teste.status).toBe(200);
-    expect(teste.headers.get("x-robots-tag")).toBe(VALOR_SEM_INDEXACAO);
-    expect(classificacaoRepassada(teste)).toBe("teste");
-
-    const real = await chamar("/agendar/real-b", destino());
-    expect(real.status).toBe(200);
-    expect(real.headers.get("x-robots-tag")).toBeNull();
-    expect(classificacaoRepassada(real)).toBe("indexavel");
+    esperar503(await chamar("/agendar/teste-a", destino()));
+    esperar503(await chamar("/agendar/real-b", destino()));
   });
 
-  it("sem classificação conhecida: 503 com Retry-After, sem cache e sem noindex; nunca 404", async () => {
+  it("sem leitura anterior: 503 com Retry-After, sem cache, link de nova tentativa e sem noindex; nunca 404", async () => {
     modo = modoDaFalha;
     const r = await chamar("/agendar/novo-c", destino());
-    expect(r.status).toBe(503);
-    expect(r.headers.get("retry-after")).toBe("30");
-    expect(r.headers.get("cache-control")).toBe("no-store");
-    expect(r.headers.get("x-robots-tag")).toBeNull();
+    esperar503(r);
     expect(await r.text()).toContain("Tentar de novo agora");
 
     const head = await chamar("/agendar/novo-c", destino(), { method: "HEAD" });
     expect(head.status).toBe(503);
     expect(await head.text()).toBe("");
   });
-
-  it("classificação lembrada vence depois de uma hora: volta a 503", async () => {
-    marcados.add("teste-a");
-    await chamar("/agendar/teste-a");
-    modo = modoDaFalha;
-    agora += 60 * 60 * 1000 + 1;
-    expect((await chamar("/agendar/teste-a", destino())).status).toBe(503);
-  });
 });
 
-describe("troca da marca", () => {
-  it("desmarcar e remarcar vale na leitura seguinte e na falha depois dela", async () => {
+describe("troca da marca seguida de falha da API", () => {
+  it("real lido, depois marcado como teste, e a API falha: 503, não o indexável antigo", async () => {
+    expect(classificacaoRepassada(await chamar("/agendar/loja-d"))).toBe("indexavel");
     marcados.add("loja-d");
-    expect((await chamar("/agendar/loja-d")).headers.get("x-robots-tag")).toBe(VALOR_SEM_INDEXACAO);
+    modo = "fora-500";
+    esperar503(await chamar("/agendar/loja-d"));
+  });
+
+  it("teste lido, depois desmarcado, e a API falha: 503, não o noindex antigo", async () => {
+    marcados.add("loja-e");
+    expect(classificacaoRepassada(await chamar("/agendar/loja-e"))).toBe("teste");
+    marcados.delete("loja-e");
+    modo = "fora-500";
+    esperar503(await chamar("/agendar/loja-e"));
+  });
+
+  it("a API volta: vale a classificação atual, nos dois sentidos", async () => {
+    expect(classificacaoRepassada(await chamar("/agendar/loja-d"))).toBe("indexavel");
+    marcados.add("loja-d");
+    modo = "fora-500";
+    esperar503(await chamar("/agendar/loja-d"));
+    modo = "normal";
+    const marcada = await chamar("/agendar/loja-d");
+    expect(marcada.status).toBe(200);
+    expect(marcada.headers.get("x-robots-tag")).toBe(VALOR_SEM_INDEXACAO);
+    expect(classificacaoRepassada(marcada)).toBe("teste");
 
     marcados.delete("loja-d");
-    expect((await chamar("/agendar/loja-d")).headers.get("x-robots-tag")).toBeNull();
-    modo = "fora-500";
-    expect((await chamar("/agendar/loja-d")).headers.get("x-robots-tag")).toBeNull();
-
+    modo = "lenta";
+    esperar503(await chamar("/agendar/loja-d"));
     modo = "normal";
-    marcados.add("loja-d");
-    expect((await chamar("/agendar/loja-d")).headers.get("x-robots-tag")).toBe(VALOR_SEM_INDEXACAO);
-    modo = "fora-500";
-    expect((await chamar("/agendar/loja-d")).headers.get("x-robots-tag")).toBe(VALOR_SEM_INDEXACAO);
+    const desmarcada = await chamar("/agendar/loja-d");
+    expect(desmarcada.status).toBe(200);
+    expect(desmarcada.headers.get("x-robots-tag")).toBeNull();
+    expect(classificacaoRepassada(desmarcada)).toBe("indexavel");
   });
 });
 
