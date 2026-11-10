@@ -35,6 +35,7 @@
     "build:guarded-migration-scripts": "tsc -p tsconfig.scripts.json",
     "migrate:production:guarded": "npm run build:migrations-runtime && npm run build:guarded-migration-scripts && node dist-scripts/run-apply-lote6b2-production.js",
     "pilot:check-database": "npm run build:guarded-migration-scripts && node dist-scripts/run-check-pilot-database.js",
+    "pilot:check-reserved-slugs": "npm run build:guarded-migration-scripts && node dist-scripts/run-check-reserved-slugs.js",
     "push:generate-vapid-keys": "node scripts/generate-vapid-keys.mjs"
   },
   "dependencies": {

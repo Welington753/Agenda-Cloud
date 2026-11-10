@@ -46,6 +46,10 @@ if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
 const CONSULTAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../docs/runbooks/consultas');
 const PLANOS_DO_CATALOGO = ['plan_essencial', 'plan_equipe', 'plan_pro'];
 const FONTE_COMPILADA = new URL('../dist-migrations/database/migrations-data-source.js', import.meta.url);
+/** Migrations criadas depois deste kit. O kit as recusa de propósito (ele só
+ * serve no commit dele); só os testes as conhecem, por nome, e uma nova só
+ * entra aqui de propósito. */
+const MIGRATIONS_POSTERIORES_AO_KIT = ['TenantTestFlag1793664000000'] as const;
 
 type Resposta = { command: string; rows: Record<string, unknown>[] };
 const soLeitura = (respostas: Resposta[]) => {
@@ -137,8 +141,10 @@ describe.skipIf(!url)('conferência de ProfessionalCommissionSettings contra Pos
     });
     try {
       const lido = await comLeitor(lerEstadoRegraGeral);
-      expect(lido.migrationNames).toEqual([...MIGRATIONS_ATE_REGRA_GERAL]);
-      const estado = soCatalogo(lido);
+      // O banco de testes já tem as migrations criadas depois desta; o recorte
+      // confere as dezesseis, na ordem.
+      expect(lido.migrationNames).toEqual([...MIGRATIONS_ATE_REGRA_GERAL, ...MIGRATIONS_POSTERIORES_AO_KIT]);
+      const estado = soCatalogo({ ...lido, migrationNames: lido.migrationNames.slice(0, MIGRATIONS_ATE_REGRA_GERAL.length) });
       expect(falhasDepoisDaRegraGeral(estado)).toEqual([]);
       expect(objetosRegraGeralPresentes(estado)).toBe(TOTAL_OBJETOS_REGRA_GERAL);
       expect(falhasAntesDaRegraGeral(estado)).toEqual(
@@ -225,13 +231,18 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissionSettings
     };
   };
 
-  async function aplicar(esperadasAntes: readonly string[]) {
+  let posteriores: string[] = [];
+  async function aplicar(esperadasAntes: readonly string[], comoOKit = false) {
     const linhas: string[] = [];
     let iniciou = false;
     try {
       const aplicadas = await aplicarSomenteAPendente(destino(), {
         esperadasAntes: [...esperadasAntes],
         pendente: MIGRATION,
+        // Migrations criadas depois desta: o kit as recusaria de propósito
+        // (`comoOKit`, a mesma chamada de aplicar-regra-geral-comissoes-
+        // piloto.mjs); aqui ficam de fora para provar a aplicação desta.
+        ...(posteriores.length && !comoOKit ? { posteriores } : {}),
         aplicacao: 'agenda-cloud-migration-teste',
         log: (l) => linhas.push(l),
         aoIniciar: () => {
@@ -254,8 +265,10 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissionSettings
     const ds = new DataSource({ ...buildMigrationsDataSourceOptions(urlDoBanco()), logging: false });
     await ds.initialize();
     try {
-      // O kit serve só num build com exatamente as dezesseis.
-      expect(ds.migrations.map((m) => m.name ?? m.constructor.name)).toEqual([...MIGRATIONS_ATE_REGRA_GERAL]);
+      const compiladas = ds.migrations.map((m) => m.name ?? m.constructor.name);
+      expect(compiladas.slice(0, MIGRATIONS_ATE_REGRA_GERAL.length)).toEqual([...MIGRATIONS_ATE_REGRA_GERAL]);
+      posteriores = compiladas.slice(MIGRATIONS_ATE_REGRA_GERAL.length);
+      expect(posteriores).toEqual([...MIGRATIONS_POSTERIORES_AO_KIT]);
       ds.migrations.splice(MIGRATIONS_ATE_COMISSOES.length);
       await ds.runMigrations({ transaction: 'all' });
     } finally {
@@ -274,6 +287,10 @@ describe.skipIf(!url)('aplicarSomenteAPendente de ProfessionalCommissionSettings
     // Histórico errado: para antes de qualquer comando.
     const errado = await aplicar(MIGRATIONS_ATE_REGRA_GERAL);
     expect(errado).toMatchObject({ codigo: 'ERR_HISTORICO_DE_MIGRATIONS_INESPERADO', iniciou: false });
+    // O kit como está, num runtime com migrations posteriores compiladas:
+    // recusa antes de qualquer comando. Ele só serve no commit dele.
+    const comPosteriores = await aplicar(MIGRATIONS_ATE_COMISSOES, true);
+    expect(comPosteriores).toMatchObject({ codigo: 'ERR_MIGRATIONS_COMPILADAS_INESPERADAS', iniciou: false });
     expect(await historico()).toEqual([...MIGRATIONS_ATE_COMISSOES]);
 
     const r = await aplicar(MIGRATIONS_ATE_COMISSOES);

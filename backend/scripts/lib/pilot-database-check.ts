@@ -69,6 +69,14 @@ import {
   objetosRegraGeralPresentes,
   TOTAL_OBJETOS_REGRA_GERAL,
 } from './regra-geral-comissoes-schema.js';
+import {
+  descreverMarcados,
+  falhasAntesDoTenantTeste,
+  falhasDepoisDoTenantTeste,
+  lerEstadoTenantTeste,
+  objetosTenantTestePresentes,
+  TOTAL_OBJETOS_TENANT_TESTE,
+} from './tenant-teste-schema.js';
 import type { PgClientLike } from './pg-client.js';
 import { parseNonNegativeInteger } from './pg-value-parsers.js';
 import { GuardedMigrationError, toSanitizedFailure, type SanitizedErrorCode } from './sanitize.js';
@@ -95,7 +103,9 @@ export type PilotExpectation =
   | 'before-professional-commissions'
   | 'after-professional-commissions'
   | 'before-commission-settings'
-  | 'after-commission-settings';
+  | 'after-commission-settings'
+  | 'before-tenant-test-flag'
+  | 'after-tenant-test-flag';
 
 const EXPECTATIVAS: readonly PilotExpectation[] = [
   'empty',
@@ -117,6 +127,8 @@ const EXPECTATIVAS: readonly PilotExpectation[] = [
   'after-professional-commissions',
   'before-commission-settings',
   'after-commission-settings',
+  'before-tenant-test-flag',
+  'after-tenant-test-flag',
 ];
 
 interface EnvLike {
@@ -177,6 +189,13 @@ function readExpectation(env: EnvLike): PilotExpectation {
  * `GuardedMigrationError` na primeira divergência. */
 export function assertPilotTarget(env: EnvLike): { directUrl: string; expectation: PilotExpectation } {
   const expectation = readExpectation(env);
+  return { directUrl: assertPilotConnection(env), expectation };
+}
+
+/** A parte de `assertPilotTarget` que não depende de `PILOT_EXPECT`: URL
+ * direta do piloto, distinta de production, com TLS verificado. Usada também
+ * pela conferência de colisões de slug (slugs-reservados-check.ts). */
+export function assertPilotConnection(env: EnvLike): string {
   const directUrl = readRequired(env, 'PILOT_DIRECT_URL');
   const pilotEndpointId = readRequired(env, 'PILOT_ENDPOINT_ID');
   const productionEndpointId = readRequired(env, 'PRODUCTION_ENDPOINT_ID');
@@ -194,7 +213,7 @@ export function assertPilotTarget(env: EnvLike): { directUrl: string; expectatio
       'A URL de conexão desliga ou afrouxa a verificação TLS (sslmode/ssl/uselibpqcompat).',
     );
   }
-  return { directUrl, expectation };
+  return directUrl;
 }
 
 interface EmptyTargetReport {
@@ -344,6 +363,19 @@ export async function checkPilotDatabase(deps: PilotDatabaseCheckDeps): Promise<
         expectation === 'before-commission-settings' ? falhasAntesDaRegraGeral(estado) : falhasDepoisDaRegraGeral(estado);
       log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
       log(`SCHEMA_OBJECTS_OK: ${objetosRegraGeralPresentes(estado)}/${TOTAL_OBJETOS_REGRA_GERAL}`);
+      log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
+      return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
+    }
+
+    // Antes (16, o baseline válido) e depois (17) de TenantTestFlag. O
+    // "depois" é permanente; a contagem de marcados é só informação.
+    if (expectation === 'before-tenant-test-flag' || expectation === 'after-tenant-test-flag') {
+      const estado = await lerEstadoTenantTeste(client);
+      const falhas =
+        expectation === 'before-tenant-test-flag' ? falhasAntesDoTenantTeste(estado) : falhasDepoisDoTenantTeste(estado);
+      log(`MIGRATIONS_APPLIED: ${estado.migrationNames.length}`);
+      log(`SCHEMA_OBJECTS_OK: ${objetosTenantTestePresentes(estado)}/${TOTAL_OBJETOS_TENANT_TESTE}`);
+      for (const linha of descreverMarcados(estado)) log(linha);
       log(`BASELINE_FAILURES: ${falhas.length === 0 ? 'none' : falhas.join(',')}`);
       return falhas.length === 0 ? { success: true } : { success: false, code: 'ERR_POST_MIGRATION_BASELINE_MISMATCH' };
     }
