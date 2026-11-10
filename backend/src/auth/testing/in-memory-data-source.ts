@@ -182,6 +182,7 @@ export class InMemoryStore {
       planId: 'plan_x',
       status: 'TRIAL',
       professionalCount: 0,
+      isTest: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       ...overrides,

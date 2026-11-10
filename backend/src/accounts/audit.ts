@@ -42,7 +42,9 @@ export type AdminAuditAction =
   | 'ACCESS_NO_EXPIRY_GRANTED'
   | 'ACCESS_NO_EXPIRY_REVOKED'
   // Comissões (migration ProfessionalCommissions).
-  | 'COMMISSION_RULE_CHANGED';
+  | 'COMMISSION_RULE_CHANGED'
+  // Marca de teste (migration TenantTestFlag).
+  | 'TENANT_TEST_FLAG_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

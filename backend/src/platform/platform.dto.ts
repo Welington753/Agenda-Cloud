@@ -61,6 +61,12 @@ export const updateEstablishmentSchema = z
   .refine((dto) => dto.name !== undefined || dto.category !== undefined || dto.taxDocument !== undefined);
 export type UpdateEstablishmentDto = z.infer<typeof updateEstablishmentSchema>;
 
+/** Marca de estabelecimento de teste: fora da busca, página pública ligada. */
+export const setTestFlagSchema = z
+  .object({ expectedUpdatedAt: expectedUpdatedAtSchema, isTest: z.boolean() })
+  .strict();
+export type SetTestFlagDto = z.infer<typeof setTestFlagSchema>;
+
 export const suspendEstablishmentSchema = z
   .object({ expectedUpdatedAt: expectedUpdatedAtSchema, reason: reasonSchema })
   .strict();

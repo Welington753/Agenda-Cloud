@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
 import { PlatformService } from '../src/platform/platform.service.js';
+import { EstablishmentAdminService } from '../src/platform/establishment-admin.service.js';
 import { UnauthorizedException } from '@nestjs/common';
 
 describe('administração da plataforma — HTTP', () => {
@@ -131,5 +132,81 @@ describe('administração da plataforma — HTTP', () => {
       .patch('/platform/access')
       .send({ status: 'ACTIVE' })
       .expect(404);
+  });
+});
+
+describe('marca de estabelecimento de teste — HTTP', () => {
+  let app: INestApplication;
+  const guard = { canActivate: vi.fn() };
+  const admin = { setTestFlag: vi.fn() };
+  const VERSAO = '2026-11-10T12:00:00.000Z';
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    guard.canActivate.mockImplementation((context) => {
+      context.switchToHttp().getRequest().auth = { userId: 'proven_user', sessionId: 'session' };
+      return true;
+    });
+    admin.setTestFlag.mockResolvedValue({ updatedAt: VERSAO, isTest: true });
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DataSource)
+      .useValue({ isInitialized: false })
+      .overrideProvider(EstablishmentAdminService)
+      .useValue(admin)
+      .overrideGuard(SessionGuard)
+      .useValue(guard)
+      .compile();
+    app = module.createNestApplication();
+    app.use(cookieParser());
+    await app.init();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('PUT com versão e booleano chega ao serviço com a identidade do guard, sem cache', async () => {
+    await request(app.getHttpServer())
+      .put('/platform/establishments/tenant_a/test-flag')
+      .send({ expectedUpdatedAt: VERSAO, isTest: true })
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(admin.setTestFlag).toHaveBeenCalledWith('proven_user', 'tenant_a', { expectedUpdatedAt: VERSAO, isTest: true });
+  });
+
+  it('corpo forjado ou incompleto nunca chega ao serviço', async () => {
+    for (const corpo of [
+      { isTest: true },
+      { expectedUpdatedAt: VERSAO },
+      { expectedUpdatedAt: VERSAO, isTest: 'true' },
+      { expectedUpdatedAt: VERSAO, isTest: 1 },
+      { expectedUpdatedAt: VERSAO, isTest: true, slug: 'portal' },
+      { expectedUpdatedAt: VERSAO, isTest: true, tenantId: 'tenant_b' },
+      { expectedUpdatedAt: VERSAO, isTest: true, userId: 'master' },
+    ]) {
+      await request(app.getHttpServer()).put('/platform/establishments/tenant_a/test-flag').send(corpo).expect(400);
+    }
+    expect(admin.setTestFlag).not.toHaveBeenCalled();
+  });
+
+  it('a edição de dados cadastrais não aceita a marca', async () => {
+    await request(app.getHttpServer())
+      .patch('/platform/establishments/tenant_a')
+      .send({ expectedUpdatedAt: VERSAO, name: 'Outro nome', isTest: true })
+      .expect(400);
+  });
+
+  it('sem sessão: 401; sem a capacidade (dono, equipe): o 403 do serviço passa adiante', async () => {
+    guard.canActivate.mockImplementationOnce(() => {
+      throw new UnauthorizedException();
+    });
+    await request(app.getHttpServer())
+      .put('/platform/establishments/tenant_a/test-flag')
+      .send({ expectedUpdatedAt: VERSAO, isTest: true })
+      .expect(401);
+    expect(admin.setTestFlag).not.toHaveBeenCalled();
+    admin.setTestFlag.mockRejectedValue(new ForbiddenException());
+    await request(app.getHttpServer())
+      .put('/platform/establishments/tenant_a/test-flag')
+      .send({ expectedUpdatedAt: VERSAO, isTest: true })
+      .expect(403);
   });
 });

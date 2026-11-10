@@ -10,7 +10,7 @@ export const ESTABLISHMENT_FROM = `FROM tenants t
   ) main_unit ON true`;
 
 export const ESTABLISHMENT_COLUMNS = `t.id, COALESCE(main_unit.name, t.slug::text) AS name,
-  t.slug, t.category, t.timezone, t.status, t.created_at AS "createdAt",
+  t.slug, t.category, t.timezone, t.status, t.created_at AS "createdAt", t.is_test AS "isTest",
   json_build_object('id', p.id, 'code', p.code, 'name', p.name,
     'catalogPriceCents', p.price_cents, 'maxProfessionals', p.max_professionals,
     'maxUnits', p.max_units) AS plan,
