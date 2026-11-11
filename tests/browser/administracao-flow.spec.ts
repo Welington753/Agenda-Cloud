@@ -233,9 +233,10 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(marcaDeTeste.getByRole("button", { name: "Desmarcar: é cliente" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 }).locator("..").getByTestId("selo-interno-teste")).toBeVisible();
     expect(await isTest()).toBe(true);
-    // Lista relida: some de "Clientes", aparece em "Internos/teste" com o selo.
+    // Lista relida: some de "Clientes" (22 da marca menos ele), aparece em
+    // "Internos/teste" com o selo.
     await page.goto(`${LISTA}?q=${marca}`);
-    await expect(main.getByRole("status")).toHaveText("0 estabelecimento(s) encontrado(s)");
+    await expect(main.getByRole("status")).toHaveText("21 estabelecimento(s) encontrado(s)");
     await page.goto(`${LISTA}?alcance=INTERNAL&q=${marca}`);
     await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
     await expect(page.getByTestId("selo-interno-teste")).toHaveCount(1);
@@ -245,7 +246,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(marcaDeTeste).toContainText("Cliente (padrão)");
     expect(await isTest()).toBe(false);
     await page.goto(`${LISTA}?q=${marca}`);
-    await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
+    await expect(main.getByRole("status")).toHaveText("22 estabelecimento(s) encontrado(s)");
     await expect(page.getByTestId("selo-interno-teste")).toHaveCount(0);
 
     // Planos e preços: preço pendente nunca aparece como gratuito.
