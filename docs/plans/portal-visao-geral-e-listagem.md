@@ -74,7 +74,7 @@ Totais de **todos os estabelecimentos cadastrados**. Ainda não há
 classificação de uso interno: a tela diz que os números podem incluir contas
 de teste e da equipe e não afirma que todos são clientes comerciais.
 
-> **Atualizado** em : a lista e a
+> **Atualizado** em `docs/plans/portal-clientes-e-internos.md`: a lista e a
 > Visão geral passaram a ter alcance (clientes por padrão, internos/teste,
 > todos) pela marca `tenants.is_test`. A tabela abaixo vale dentro do
 > alcance escolhido.
