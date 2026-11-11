@@ -11,7 +11,7 @@ import {
   platformCapabilities,
   requirePlatformAccess,
 } from './platform-access.js';
-import type { EstablishmentQuery } from './platform.dto.js';
+import type { EstablishmentQuery, ReportQuery } from './platform.dto.js';
 import { staffSeatUsage } from '../team/seats.js';
 import { planExcess } from './establishment-admin.service.js';
 import { listAccessPeriods } from './access-validity.service.js';
@@ -24,7 +24,9 @@ import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
   establishmentFilter,
+  subscriptionPaymentWhere,
 } from './platform.queries.js';
+import { resolveReportPeriod, timestampInRangeSql } from './portal-reports.js';
 import { loadDirectory } from './portal-directory.js';
 import {
   attentionReason,
@@ -44,6 +46,30 @@ import {
 /** Itens da lista "Precisa de atenção" devolvidos de uma vez; o total vem à
  * parte, com o filtro da listagem para ver todos. */
 export const ATTENTION_LIMIT = 20;
+
+/**
+ * Pagamentos de assinatura recebidos de `from` a `to` (datas inclusas), no
+ * alcance: quantidade e soma dos registros NÃO anulados agora, e quantos do
+ * mesmo intervalo estão anulados (fora da soma). Mesma regra do extrato
+ * (`subscriptionPaymentWhere`). Soma o valor gravado em cada registro, nunca
+ * recalculado pelo catálogo ou contrato.
+ */
+async function paymentTotals(
+  manager: EntityManager,
+  filter: { from: string; to: string; scope: EstablishmentScope },
+): Promise<{ count: number; totalCents: number; canceledCount: number }> {
+  const where = subscriptionPaymentWhere(filter);
+  const [linha] = await manager.query<{ count: number; total_cents: string | number; canceled: number }[]>(
+    `SELECT count(*) FILTER (WHERE ap.canceled_at IS NULL)::int AS count,
+            COALESCE(sum(ap.contracted_price_cents) FILTER (WHERE ap.canceled_at IS NULL), 0)::bigint AS total_cents,
+            count(*) FILTER (WHERE ap.canceled_at IS NOT NULL)::int AS canceled
+       FROM tenant_access_periods ap
+       JOIN tenants t ON t.id = ap.tenant_id
+     ${where.sql}`,
+    where.values,
+  );
+  return { count: linha.count, totalCents: Number(linha.total_cents), canceledCount: linha.canceled };
+}
 
 export interface EstablishmentRow {
   id: string;
@@ -155,6 +181,13 @@ export class PlatformService {
         /** Alcance aplicado a `items`, `total` e `summary`. A tela só afirma
          * "somente clientes" quando este campo vem. */
         scope,
+        /** Período de cadastro aplicado a `items` e `total` (não ao
+         * `summary`); `null` sem restrição. A tela só afirma o filtro quando
+         * este campo confirma o pedido. */
+        created:
+          query.createdFrom && query.createdTo
+            ? { from: query.createdFrom, to: query.createdTo, timeZone: PLATFORM_TIME_ZONE }
+            : null,
         page: query.page,
         pageSize: query.pageSize,
         summary,
@@ -197,18 +230,7 @@ export class PlatformService {
       }
 
       const mes = monthRange(now, PLATFORM_TIME_ZONE);
-      const alcancePagamentos = scopeSql(scope, 't');
-      const [pagamentos] = await manager.query<{ count: number; total_cents: string | number; canceled: number }[]>(
-        `SELECT count(*) FILTER (WHERE canceled_at IS NULL)::int AS count,
-                COALESCE(sum(contracted_price_cents) FILTER (WHERE canceled_at IS NULL), 0)::bigint AS total_cents,
-                count(*) FILTER (WHERE canceled_at IS NOT NULL)::int AS canceled
-           FROM tenant_access_periods ap
-           JOIN tenants t ON t.id = ap.tenant_id
-          WHERE ap.kind = 'PAID' AND ap.confirmation_source = 'MANUAL' AND ap.currency = 'BRL'
-            AND ap.payment_received_on BETWEEN $1::date AND $2::date
-            ${alcancePagamentos ? `AND ${alcancePagamentos}` : ''}`,
-        [mes.from, mes.to],
-      );
+      const pagamentos = await paymentTotals(manager, { from: mes.from, to: mes.to, scope });
 
       return {
         generatedAt: now.toISOString(),
@@ -222,9 +244,9 @@ export class PlatformService {
           to: mes.to,
           currency: 'BRL' as const,
           count: pagamentos.count,
-          totalCents: Number(pagamentos.total_cents),
+          totalCents: pagamentos.totalCents,
           /** Registros anulados no mesmo intervalo, fora da soma. */
-          canceledCount: pagamentos.canceled,
+          canceledCount: pagamentos.canceledCount,
         },
         attention: {
           total: atencao.length,
@@ -241,6 +263,65 @@ export class PlatformService {
             expiredAt: a.view.expiredAt,
           })),
         },
+      };
+    });
+  }
+
+  /**
+   * Relatório por período da administração do SaaS (docs/plans/
+   * portal-relatorios-por-periodo.md), no alcance pela marca `is_test` ATUAL
+   * (reclassificar muda também períodos passados):
+   * - pagamentos de assinatura recebidos (registrados à mão e não anulados
+   *   agora), pela data de recebimento, com os anulados à parte e o
+   *   detalhamento por plano e ciclo gravados no pagamento;
+   * - cadastros registrados no período (`tenants.created_at` em São Paulo).
+   * Sem datas: mês atual em São Paulo pelo relógio do servidor; a resposta
+   * traz o período aplicado.
+   */
+  report(userId: string, query: ReportQuery, now = new Date()) {
+    return this.read(userId, async (manager) => {
+      const scope = query.scope ?? DEFAULT_ESTABLISHMENT_SCOPE;
+      const period = resolveReportPeriod(query, now);
+      const filtro = { from: period.from, to: period.to, scope };
+      const pagamentos = await paymentTotals(manager, filtro);
+
+      const recebidos = subscriptionPaymentWhere({ ...filtro, status: 'RECEIVED' });
+      const grupos = await manager.query<
+        { plan_id: string; plan_name: string; cycle: string; count: number; total_cents: string | number }[]
+      >(
+        `SELECT ap.plan_id, p.name AS plan_name, ap.billing_cycle::text AS cycle, count(*)::int AS count,
+                COALESCE(sum(ap.contracted_price_cents), 0)::bigint AS total_cents
+           FROM tenant_access_periods ap
+           JOIN tenants t ON t.id = ap.tenant_id
+           JOIN plans p ON p.id = ap.plan_id
+         ${recebidos.sql}
+          GROUP BY ap.plan_id, p.name, ap.billing_cycle
+          ORDER BY p.name, ap.plan_id, ap.billing_cycle`,
+        recebidos.values,
+      );
+
+      const alcance = scopeSql(scope, 't');
+      const [cadastros] = await manager.query<{ count: number }[]>(
+        `SELECT count(*)::int AS count FROM tenants t
+          WHERE ${timestampInRangeSql('t.created_at', '$1', '$2')} ${alcance ? `AND ${alcance}` : ''}`,
+        [period.from, period.to],
+      );
+
+      return {
+        generatedAt: now.toISOString(),
+        scope,
+        timeZone: PLATFORM_TIME_ZONE,
+        period,
+        currency: 'BRL' as const,
+        payments: pagamentos,
+        byPlanCycle: grupos.map((g) => ({
+          planId: g.plan_id,
+          planName: g.plan_name,
+          cycle: g.cycle,
+          count: g.count,
+          totalCents: Number(g.total_cents),
+        })),
+        registrations: { count: cadastros.count },
       };
     });
   }

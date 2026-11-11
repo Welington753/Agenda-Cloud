@@ -12,7 +12,7 @@ import { UnauthorizedException } from '@nestjs/common';
 describe('administração da plataforma — HTTP', () => {
   let app: INestApplication;
   const guard = { canActivate: vi.fn() };
-  const service = { access: vi.fn(), list: vi.fn(), detail: vi.fn() };
+  const service = { access: vi.fn(), list: vi.fn(), detail: vi.fn(), report: vi.fn() };
   beforeEach(async () => {
     vi.resetAllMocks();
     guard.canActivate.mockImplementation((context) => {
@@ -25,6 +25,7 @@ describe('administração da plataforma — HTTP', () => {
     service.access.mockResolvedValue({ canViewEstablishments: true });
     service.list.mockResolvedValue({ items: [], total: 0 });
     service.detail.mockResolvedValue({ id: 'tenant_a' });
+    service.report.mockResolvedValue({ scope: 'CLIENTS' });
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DataSource)
       .useValue({ isInitialized: false })
@@ -96,6 +97,52 @@ describe('administração da plataforma — HTTP', () => {
         .expect(400);
     }
     expect(service.list).not.toHaveBeenCalled();
+  });
+  it('relatório por período: sem datas o serviço decide o mês; período e alcance chegam como pedidos', async () => {
+    await request(app.getHttpServer())
+      .get('/platform/reports')
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(service.report).toHaveBeenLastCalledWith('proven_user', { scope: 'CLIENTS' });
+    await request(app.getHttpServer()).get('/platform/reports?from=2026-10-01&to=2026-10-31&scope=INTERNAL').expect(200);
+    expect(service.report).toHaveBeenLastCalledWith('proven_user', { from: '2026-10-01', to: '2026-10-31', scope: 'INTERNAL' });
+    await request(app.getHttpServer()).get('/platform/establishments?createdFrom=2026-10-01&createdTo=2026-10-31').expect(200);
+    expect(service.list).toHaveBeenLastCalledWith('proven_user', {
+      createdFrom: '2026-10-01',
+      createdTo: '2026-10-31',
+      page: 1,
+      pageSize: 20,
+      scope: 'CLIENTS',
+    });
+  });
+  it('relatório e lista recusam período inválido antes de ler dados', async () => {
+    for (const query of [
+      'from=2026-10-01',
+      'from=2026-10-02&to=2026-10-01',
+      'from=2026-02-29&to=2026-03-01',
+      'from=2026-01-01&to=2027-01-02',
+      'from=2026-10-01&to=2026-10-31&from=2026-11-01',
+      'month=2026-10',
+      'scope=TESTE',
+      'userId=master',
+    ]) {
+      await request(app.getHttpServer()).get(`/platform/reports?${query}`).expect(400);
+    }
+    for (const query of ['createdFrom=2026-10-01', 'createdFrom=2026-10-31&createdTo=2026-10-01', 'createdFrom=ontem&createdTo=hoje']) {
+      await request(app.getHttpServer()).get(`/platform/establishments?${query}`).expect(400);
+    }
+    expect(service.report).not.toHaveBeenCalled();
+    expect(service.list).not.toHaveBeenCalled();
+  });
+  it('relatório: sem sessão 401; 403 do serviço passa adiante, nunca vira zero', async () => {
+    service.report.mockRejectedValue(new ForbiddenException());
+    await request(app.getHttpServer()).get('/platform/reports').expect(403);
+    guard.canActivate.mockImplementation(() => {
+      throw new UnauthorizedException();
+    });
+    service.report.mockClear();
+    await request(app.getHttpServer()).get('/platform/reports').expect(401);
+    expect(service.report).not.toHaveBeenCalled();
   });
   it('403 do serviço não vira uma lista vazia nem vaza outro estabelecimento', async () => {
     service.list.mockRejectedValue(new ForbiddenException());

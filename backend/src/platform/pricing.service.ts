@@ -25,6 +25,7 @@ import { BILLING_CYCLES, cyclePricing, type CyclePricing } from '../commercial/p
 import { lifecycleActor, lockEstablishment, writeEstablishment } from './establishment-admin.service.js';
 import { conflito, reais } from './access-validity.service.js';
 import type { CatalogPriceDto, ContractPriceDto, SubscriptionPaymentsQuery } from './platform.dto.js';
+import { subscriptionPaymentWhere } from './platform.queries.js';
 
 export const CICLO = { MONTHLY: 'mensal', QUARTERLY: 'trimestral' } as const;
 
@@ -342,20 +343,20 @@ export class PricingService {
     }
   }
 
-  /** Pagamentos das assinaturas (períodos pagos de todos os
-   * estabelecimentos), do mais recente ao mais antigo, com os anulados
-   * marcados. Nunca inclui recebimentos dos atendimentos. */
+  /** Pagamentos das assinaturas (períodos pagos), do mais recente ao mais
+   * antigo, com os anulados marcados. Filtros opcionais de data de
+   * recebimento, alcance e situação, pela MESMA regra da Visão geral e do
+   * relatório (`subscriptionPaymentWhere`); contagem e página usam o mesmo
+   * WHERE. Nunca inclui recebimentos dos atendimentos. */
   subscriptionPayments(actorId: string, query: SubscriptionPaymentsQuery) {
     return this.read(actorId, async (manager) => {
-      const filtros: string[] = [`ap.kind = 'PAID'`];
-      const valores: unknown[] = [];
-      if (query.tenantId) {
-        valores.push(query.tenantId);
-        filtros.push(`ap.tenant_id = $${valores.length}`);
-      }
-      const where = `WHERE ${filtros.join(' AND ')}`;
+      const scope = query.scope ?? 'ALL';
+      const periodo = query.from && query.to ? { from: query.from, to: query.to } : null;
+      const filtro = subscriptionPaymentWhere({ tenantId: query.tenantId, ...periodo, scope, status: query.status });
+      const where = filtro.sql;
+      const valores = filtro.values;
       const [contagem] = await manager.query<{ total: number }[]>(
-        `SELECT count(*)::int AS total FROM tenant_access_periods ap ${where}`,
+        `SELECT count(*)::int AS total FROM tenant_access_periods ap JOIN tenants t ON t.id = ap.tenant_id ${where}`,
         valores,
       );
       const itens = await manager.query<
@@ -415,6 +416,12 @@ export class PricingService {
         total: contagem.total,
         page: query.page,
         pageSize: query.pageSize,
+        /** Filtros aplicados a `items` e `total`. `null`: sem restrição. A
+         * tela só afirma um filtro quando ele vem aqui. */
+        from: periodo?.from ?? null,
+        to: periodo?.to ?? null,
+        scope,
+        status: query.status ?? null,
       };
     });
   }
