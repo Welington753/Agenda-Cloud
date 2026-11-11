@@ -21,6 +21,12 @@ describe("rotas do portal da plataforma", () => {
     expect(rotaEstabelecimentosFiltrados({})).toBe("/portal/estabelecimentos");
     expect(rotaEstabelecimentosFiltrados({ filtro: "EXPIRING_SOON" })).toBe("/portal/estabelecimentos?filtro=EXPIRING_SOON");
     expect(rotaEstabelecimentosFiltrados({ situacao: "SUSPENDED" })).toBe("/portal/estabelecimentos?situacao=SUSPENDED");
+    // Alcance: o padrão (clientes) não aparece; os outros seguem para a lista.
+    expect(rotaEstabelecimentosFiltrados({ alcance: "CLIENTS" })).toBe("/portal/estabelecimentos");
+    expect(rotaEstabelecimentosFiltrados({ alcance: "INTERNAL", filtro: "EXPIRING_SOON" })).toBe(
+      "/portal/estabelecimentos?alcance=INTERNAL&filtro=EXPIRING_SOON",
+    );
+    expect(rotaEstabelecimentosFiltrados({ alcance: "ALL" })).toBe("/portal/estabelecimentos?alcance=ALL");
   });
 
   it("reconhece só as páginas do portal", () => {

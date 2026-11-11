@@ -43,6 +43,7 @@ import {
   type RecordPaidPeriodDto,
   establishmentIdSchema,
   establishmentQuerySchema,
+  overviewQuerySchema,
   reactivateEstablishmentSchema,
   setTestFlagSchema,
   suspendEstablishmentSchema,
@@ -50,6 +51,7 @@ import {
   type ArchiveEstablishmentDto,
   type ChangePlanDto,
   type EstablishmentQuery,
+  type OverviewQuery,
   type ReactivateEstablishmentDto,
   type SetTestFlagDto,
   type SuspendEstablishmentDto,
@@ -91,8 +93,11 @@ export class PlatformController {
    * assinatura do mês (só MASTER_OWNER ativo, relido no servidor). */
   @Get('overview')
   @Header('Cache-Control', 'private, no-store')
-  overview(@Req() request: AuthenticatedRequest) {
-    return this.platform.overview(request.auth.userId);
+  overview(
+    @Req() request: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(overviewQuerySchema)) query: OverviewQuery,
+  ) {
+    return this.platform.overview(request.auth.userId, query.scope);
   }
 
   @Get('establishments')

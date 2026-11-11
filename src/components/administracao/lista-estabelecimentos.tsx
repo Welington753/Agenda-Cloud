@@ -13,6 +13,7 @@ import {
 } from "@/lib/administracao/diretorio";
 import { CICLOS } from "@/lib/administracao/validade";
 import { rotaFichaEstabelecimento } from "@/lib/administracao/rotas";
+import { SeloInternoTeste } from "./alcance-do-portal";
 
 const COR_DO_ACESSO: Record<AcessoEfetivo, CorBadge> = {
   ALLOWED: "sucesso",
@@ -83,6 +84,11 @@ export function ListaEstabelecimentos({ items }: { items: ItemDoDiretorio[] }) {
                   <span className="min-w-0 break-words">{item.name}</span>
                   <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
                 </Link>
+                {item.isTest && (
+                  <div className="mb-1">
+                    <SeloInternoTeste />
+                  </div>
+                )}
                 <p className="break-all text-xs text-ink-soft">{item.slug}</p>
                 <p className="mt-1 text-xs text-ink-soft">Cadastro em {dataCadastro(item.createdAt)}</p>
               </div>

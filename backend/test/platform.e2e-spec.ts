@@ -53,7 +53,12 @@ describe('administração da plataforma — HTTP', () => {
       q: 'Estudio',
       page: 2,
       pageSize: 5,
+      scope: 'CLIENTS',
     });
+    await request(app.getHttpServer())
+      .get('/platform/establishments?scope=INTERNAL')
+      .expect(200);
+    expect(service.list).toHaveBeenLastCalledWith('proven_user', { page: 1, pageSize: 20, scope: 'INTERNAL' });
     await request(app.getHttpServer())
       .get('/platform/establishments/tenant_a')
       .expect(200);
@@ -83,6 +88,8 @@ describe('administração da plataforma — HTTP', () => {
       'userId=master',
       'platformRole=MASTER_OWNER',
       'page=1&page=2',
+      'scope=TESTE',
+      'scope=CLIENTS&scope=ALL',
     ]) {
       await request(app.getHttpServer())
         .get(`/platform/establishments?${query}`)

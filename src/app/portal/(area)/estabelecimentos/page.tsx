@@ -2,16 +2,29 @@
 
 // Lista dos estabelecimentos no portal da plataforma, com plano, condição
 // contratada, situação do cadastro, modalidade e validade do acesso, sem
-// abrir cada ficha. Os filtros moram na URL (`q`, `situacao`, `plano`,
-// `filtro`, `pagina`): os links da Visão geral abrem a lista já filtrada e
+// abrir cada ficha. Os filtros moram na URL (`alcance`, `q`, `situacao`,
+// `plano`, `filtro`, `pagina`): os links da Visão geral abrem a lista já filtrada e
 // voltar no navegador desfaz a busca. Tudo é calculado no servidor sobre o
-// conjunto completo; a página só mostra a fatia pedida.
+// conjunto completo; a página só mostra a fatia pedida. O alcance (clientes,
+// internos/teste, todos) só é afirmado quando o servidor o devolve.
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { SITUACOES } from "@/lib/administracao/contratos";
-import { ehListaDoDiretorio, FILTROS_DO_DIRETORIO } from "@/lib/administracao/contratos-diretorio";
-import { ehFiltroDoDiretorio, ehSituacaoDoFiltro, FILTROS } from "@/lib/administracao/diretorio";
+import {
+  ehListaDoDiretorio,
+  ESCOPO_PADRAO,
+  FILTROS_DO_DIRETORIO,
+  type EscopoDoDiretorio,
+} from "@/lib/administracao/contratos-diretorio";
+import {
+  alcanceConfirmado,
+  ehEscopoDoDiretorio,
+  ehFiltroDoDiretorio,
+  ehSituacaoDoFiltro,
+  FILTROS,
+} from "@/lib/administracao/diretorio";
+import { SeletorDeAlcance, TextoDeAlcance } from "@/components/administracao/alcance-do-portal";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { ListaEstabelecimentos } from "@/components/administracao/lista-estabelecimentos";
@@ -25,6 +38,7 @@ const POR_PAGINA = 20;
 const ID_PLANO = /^[a-zA-Z0-9_-]{1,30}$/;
 
 interface Filtro {
+  escopo: EscopoDoDiretorio;
   q: string;
   situacao: string;
   plano: string;
@@ -40,7 +54,9 @@ function lerFiltro(params: URLSearchParams): Filtro {
   const plano = params.get("plano") ?? "";
   const filtro = params.get("filtro");
   const pagina = Number(params.get("pagina"));
+  const escopo = params.get("alcance");
   return {
+    escopo: ehEscopoDoDiretorio(escopo) ? escopo : ESCOPO_PADRAO,
     q: q.length >= 2 ? q : "",
     situacao: ehSituacaoDoFiltro(situacao) ? situacao : "",
     plano: ID_PLANO.test(plano) ? plano : "",
@@ -51,6 +67,7 @@ function lerFiltro(params: URLSearchParams): Filtro {
 
 function enderecoDo(filtro: Filtro, pathname: string): string {
   const params = new URLSearchParams();
+  if (filtro.escopo !== ESCOPO_PADRAO) params.set("alcance", filtro.escopo);
   if (filtro.q) params.set("q", filtro.q);
   if (filtro.situacao) params.set("situacao", filtro.situacao);
   if (filtro.plano) params.set("plano", filtro.plano);
@@ -85,6 +102,9 @@ function Estabelecimentos() {
   if (filtro.situacao) params.set("status", filtro.situacao);
   if (filtro.plano) params.set("planId", filtro.plano);
   if (filtro.filtro) params.set("filter", filtro.filtro);
+  // O padrão (clientes) não vai na consulta: o servidor já o aplica e
+  // devolve `scope`; sem ele, a tela não afirma o recorte.
+  if (filtro.escopo !== ESCOPO_PADRAO) params.set("scope", filtro.escopo);
   const { estado, recarregar } = useLeituraPlataforma(`/platform/establishments?${params}`, ehListaDoDiretorio);
 
   const ir = (novo: Filtro) => router.replace(enderecoDo(novo, pathname), { scroll: false });
@@ -101,7 +121,7 @@ function Estabelecimentos() {
   }
   function limpar() {
     setErroBusca("");
-    ir({ q: "", situacao: "", plano: "", filtro: "", pagina: 1 });
+    ir({ escopo: ESCOPO_PADRAO, q: "", situacao: "", plano: "", filtro: "", pagina: 1 });
   }
   const campo = (nome: keyof Filtro) => (valor: string) => setRascunho((r) => ({ ...r, [nome]: valor }));
 
@@ -126,6 +146,10 @@ function Estabelecimentos() {
           </Botao>
         </div>
       </header>
+      <SeletorDeAlcance
+        valor={filtro.escopo}
+        aoEscolher={(escopo) => ir({ ...filtro, escopo, pagina: 1 })}
+      />
       <form
         onSubmit={pesquisar}
         className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1.4fr_auto]"
@@ -200,13 +224,14 @@ function Estabelecimentos() {
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p role="status" className="text-sm text-ink-soft">
+            <p role="status" className="text-sm text-ink-soft" data-testid="total-da-lista">
               {estado.dados.total} estabelecimento(s) encontrado(s)
             </p>
             <Botao variante="fantasma" onClick={limpar} className="min-h-11">
               Limpar filtros
             </Botao>
           </div>
+          <TextoDeAlcance confirmado={alcanceConfirmado(filtro.escopo, estado.dados.scope)} />
           <ListaEstabelecimentos items={estado.dados.items} />
           <nav aria-label="Paginação" className="flex flex-wrap items-center justify-between gap-2">
             <Botao

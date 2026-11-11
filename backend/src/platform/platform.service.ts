@@ -29,11 +29,15 @@ import { loadDirectory } from './portal-directory.js';
 import {
   attentionReason,
   compareAttention,
+  DEFAULT_ESTABLISHMENT_SCOPE,
   directoryCounts,
   matchesFilter,
+  matchesScope,
   monthRange,
   PLATFORM_TIME_ZONE,
+  scopeSql,
   type AttentionReason,
+  type EstablishmentScope,
   type TenantAccessView,
 } from './portal-overview.js';
 
@@ -102,11 +106,15 @@ export class PlatformService {
     return this.read(userId, async (manager) => {
       // Situação do acesso e condição contratada de todos, em lote: o filtro
       // usa a regra central e vira uma lista de ids na consulta paginada.
+      const scope = query.scope ?? DEFAULT_ESTABLISHMENT_SCOPE;
       const diretorio = await loadDirectory(manager, now);
       const ids = query.filter
-        ? [...diretorio.values()].filter((e) => matchesFilter(query.filter!, e.access, e.commercial)).map((e) => e.id)
+        ? [...diretorio.values()]
+            .filter((e) => matchesScope(scope, e.isTest) && matchesFilter(query.filter!, e.access, e.commercial))
+            .map((e) => e.id)
         : undefined;
-      const filter = establishmentFilter(query, ids);
+      const filter = establishmentFilter({ ...query, scope }, ids);
+      const alcance = scopeSql(scope, 'tenants');
       const [count] = await manager.query<{ total: number }[]>(
         `SELECT count(*)::int AS total ${ESTABLISHMENT_FROM} ${filter.sql}`,
         filter.values,
@@ -116,7 +124,8 @@ export class PlatformService {
          ORDER BY t.created_at DESC, t.id DESC LIMIT $${filter.values.length + 1} OFFSET $${filter.values.length + 2}`,
         [...filter.values, query.pageSize, (query.page - 1) * query.pageSize],
       );
-      // Contagens globais do banco, nunca somas da página atual.
+      // Contagens do banco no mesmo alcance da lista (sem busca nem filtros),
+      // nunca somas da página atual.
       const [summary] = await manager.query<
         { total: number; active: number; trial: number; restricted: number }[]
       >(
@@ -124,7 +133,7 @@ export class PlatformService {
          count(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
          count(*) FILTER (WHERE status = 'TRIAL')::int AS trial,
          count(*) FILTER (WHERE status::text IN ('SUSPENDED', 'PAST_DUE', 'CANCELED', 'ARCHIVED'))::int AS restricted
-         FROM tenants`,
+         FROM tenants ${alcance ? `WHERE ${alcance}` : ''}`,
       );
       const plans = await manager.query<{ id: string; name: string }[]>(
         'SELECT id, name FROM plans ORDER BY name, id',
@@ -143,6 +152,9 @@ export class PlatformService {
           };
         }),
         total: count.total,
+        /** Alcance aplicado a `items`, `total` e `summary`. A tela só afirma
+         * "somente clientes" quando este campo vem. */
+        scope,
         page: query.page,
         pageSize: query.pageSize,
         summary,
@@ -152,9 +164,10 @@ export class PlatformService {
   }
 
   /**
-   * Visão geral do portal: totais de TODOS os estabelecimentos cadastrados
-   * (não só clientes comerciais: ainda não há classificação de uso interno),
-   * com a regra central de acesso, e os pagamentos de assinatura do mês.
+   * Visão geral do portal: totais dos estabelecimentos no alcance pedido
+   * (padrão: só clientes, `is_test = false`; ver `matchesScope`), com a regra
+   * central de acesso, a lista "Precisa de atenção" e os pagamentos de
+   * assinatura do mês, todos no mesmo alcance.
    *
    * Pagamentos do mês: períodos pagos confirmados manualmente e não anulados,
    * pela data de recebimento registrada, do dia 1 ao último dia do mês
@@ -162,13 +175,13 @@ export class PlatformService {
    * nunca recalculado pelo catálogo ou contrato. Não é receita recorrente,
    * previsão nem inadimplência.
    */
-  overview(userId: string, now = new Date()) {
+  overview(userId: string, scope: EstablishmentScope = DEFAULT_ESTABLISHMENT_SCOPE, now = new Date()) {
     return this.read(userId, async (manager) => {
-      const diretorio = await loadDirectory(manager, now);
-      const counts = directoryCounts(diretorio.values());
+      const noAlcance = [...(await loadDirectory(manager, now)).values()].filter((e) => matchesScope(scope, e.isTest));
+      const counts = directoryCounts(noAlcance);
 
       const atencao: { id: string; timezone: string; reason: AttentionReason; view: TenantAccessView }[] = [];
-      for (const e of diretorio.values()) {
+      for (const e of noAlcance) {
         const reason = attentionReason(e.access);
         if (reason) atencao.push({ id: e.id, timezone: e.timezone, reason, view: e.access });
       }
@@ -184,18 +197,23 @@ export class PlatformService {
       }
 
       const mes = monthRange(now, PLATFORM_TIME_ZONE);
+      const alcancePagamentos = scopeSql(scope, 't');
       const [pagamentos] = await manager.query<{ count: number; total_cents: string | number; canceled: number }[]>(
         `SELECT count(*) FILTER (WHERE canceled_at IS NULL)::int AS count,
                 COALESCE(sum(contracted_price_cents) FILTER (WHERE canceled_at IS NULL), 0)::bigint AS total_cents,
                 count(*) FILTER (WHERE canceled_at IS NOT NULL)::int AS canceled
-           FROM tenant_access_periods
-          WHERE kind = 'PAID' AND confirmation_source = 'MANUAL' AND currency = 'BRL'
-            AND payment_received_on BETWEEN $1::date AND $2::date`,
+           FROM tenant_access_periods ap
+           JOIN tenants t ON t.id = ap.tenant_id
+          WHERE ap.kind = 'PAID' AND ap.confirmation_source = 'MANUAL' AND ap.currency = 'BRL'
+            AND ap.payment_received_on BETWEEN $1::date AND $2::date
+            ${alcancePagamentos ? `AND ${alcancePagamentos}` : ''}`,
         [mes.from, mes.to],
       );
 
       return {
         generatedAt: now.toISOString(),
+        /** Alcance de `establishments`, `attention` e `payments`. */
+        scope,
         establishments: counts,
         payments: {
           timeZone: PLATFORM_TIME_ZONE,

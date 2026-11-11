@@ -1,4 +1,5 @@
 import type { EstablishmentQuery } from './platform.dto.js';
+import { DEFAULT_ESTABLISHMENT_SCOPE, scopeSql } from './portal-overview.js';
 
 // Nome igual ao contexto real de sessão: unidade principal, com slug como
 // fallback. O lateral tem no máximo uma linha, logo não duplica tenants.
@@ -48,6 +49,10 @@ export function establishmentFilter(
     values.push(query.planId);
     clauses.push(`t.plan_id = $${values.length}`);
   }
+  // Alcance (clientes, internos/teste, todos): o mesmo WHERE serve à
+  // contagem e à página, logo total e paginação seguem o alcance.
+  const alcance = scopeSql(query.scope ?? DEFAULT_ESTABLISHMENT_SCOPE, 't');
+  if (alcance) clauses.push(alcance);
   if (ids) {
     values.push(ids);
     clauses.push(`t.id = ANY($${values.length}::varchar[])`);

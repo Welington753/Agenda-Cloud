@@ -6,7 +6,7 @@ import { PlatformRole } from '../entities/enums/platform-role.enum.js';
 import { PlatformPermission } from '../entities/enums/platform-permission.enum.js';
 import { UserStatus } from '../entities/enums/user-status.enum.js';
 import { canViewEstablishments } from './platform-access.js';
-import { establishmentQuerySchema } from './platform.dto.js';
+import { establishmentQuerySchema, overviewQuerySchema } from './platform.dto.js';
 import { establishmentFilter } from './platform.queries.js';
 import { PlatformService } from './platform.service.js';
 
@@ -74,11 +74,32 @@ describe('administração real da plataforma', () => {
         page: '2',
         pageSize: '5',
       }),
-    ).toEqual({ q: 'Clínica', page: 2, pageSize: 5 });
+    ).toEqual({ q: 'Clínica', page: 2, pageSize: 5, scope: 'CLIENTS' });
     expect(establishmentQuerySchema.parse({})).toEqual({
       page: 1,
       pageSize: 20,
+      scope: 'CLIENTS',
     });
+  });
+  it.each([{ scope: 'TEST' }, { scope: 'clients' }, { scope: ['CLIENTS', 'ALL'] }, { isTest: 'true' }])(
+    'recusa alcance inválido %j',
+    (query) => {
+      expect(establishmentQuerySchema.safeParse(query).success).toBe(false);
+      expect(overviewQuerySchema.safeParse(query).success).toBe(false);
+    },
+  );
+  it('alcance: clientes por padrão, internos/teste e todos explícitos, na lista e na visão geral', () => {
+    expect(overviewQuerySchema.parse({})).toEqual({ scope: 'CLIENTS' });
+    expect(overviewQuerySchema.parse({ scope: 'INTERNAL' })).toEqual({ scope: 'INTERNAL' });
+    expect(overviewQuerySchema.safeParse({ page: '1' }).success).toBe(false);
+    expect(establishmentFilter(establishmentQuerySchema.parse({})).sql).toBe('WHERE t.is_test = false');
+    expect(establishmentFilter({ page: 1, pageSize: 20 }).sql).toBe('WHERE t.is_test = false');
+    expect(establishmentFilter(establishmentQuerySchema.parse({ scope: 'INTERNAL' })).sql).toBe(
+      'WHERE t.is_test = true',
+    );
+    expect(establishmentFilter(establishmentQuerySchema.parse({ scope: 'ALL' })).sql).toBe('');
+    // Alcance e lista de ids do filtro de acesso valem juntos.
+    expect(establishmentFilter(establishmentQuerySchema.parse({ scope: 'ALL' }), ['a']).sql).toContain('ANY($1');
   });
   it('SQL parametrizado: aspas e curingas do usuário nunca viram instrução SQL', () => {
     const query = establishmentQuerySchema.parse({

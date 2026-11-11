@@ -3,7 +3,7 @@
 // servidor; aqui só a apresentação, sem inventar data, ciclo ou valor.
 import { SITUACOES, type SituacaoEstabelecimento } from "./contratos";
 import type { EstadoComercial, TipoDePeriodo } from "./contratos-validade";
-import type { AcessoEfetivo, CondicaoComercial, FiltroDoDiretorio } from "./contratos-diretorio";
+import type { AcessoEfetivo, CondicaoComercial, EscopoDoDiretorio, FiltroDoDiretorio } from "./contratos-diretorio";
 import { CICLOS, diaBr, reais } from "./validade";
 
 /** Situação do estabelecimento (cadastro), separada da validade: TRIAL e
@@ -118,6 +118,47 @@ export const FILTROS: Record<FiltroDoDiretorio, { rotulo: string; descricao: str
 
 export function ehFiltroDoDiretorio(valor: string | null): valor is FiltroDoDiretorio {
   return !!valor && Object.hasOwn(FILTROS, valor);
+}
+
+/** Alcance da lista e dos indicadores, pela marca "Interno/teste". */
+export const ESCOPOS: Record<EscopoDoDiretorio, { rotulo: string; descricao: string }> = {
+  CLIENTS: {
+    rotulo: "Clientes",
+    descricao:
+      "Somente clientes: estabelecimentos que usam o Agenda Cloud, sem os marcados como interno/teste. Um cadastro antigo conta aqui até alguém marcá-lo: estar nesta lista não comprova que ele foi conferido como cliente.",
+  },
+  INTERNAL: {
+    rotulo: "Internos/teste",
+    descricao: "Somente os marcados como interno/teste: contas da equipe e de teste, fora dos números de clientes.",
+  },
+  ALL: {
+    rotulo: "Todos",
+    descricao: "Todos os cadastrados: clientes e internos/teste juntos.",
+  },
+};
+
+export function ehEscopoDoDiretorio(valor: string | null): valor is EscopoDoDiretorio {
+  return !!valor && Object.hasOwn(ESCOPOS, valor);
+}
+
+/**
+ * Alcance que a tela pode afirmar: só o que o servidor devolveu e que bate
+ * com o pedido. Resposta sem `scope` (API anterior) ou diferente do pedido:
+ * `null`, e a tela não diz que os números são só de clientes. Nunca se
+ * recorta a página recebida no navegador.
+ */
+export function alcanceConfirmado(
+  pedido: EscopoDoDiretorio,
+  recebido: EscopoDoDiretorio | undefined,
+): EscopoDoDiretorio | null {
+  return recebido === pedido ? recebido : null;
+}
+
+export const ALCANCE_NAO_CONFIRMADO =
+  "Alcance não confirmado pelo servidor: os números podem incluir estabelecimentos internos e de teste e não indicam que todos são clientes.";
+
+export function textoAlcance(confirmado: EscopoDoDiretorio | null): string {
+  return confirmado ? ESCOPOS[confirmado].descricao : ALCANCE_NAO_CONFIRMADO;
 }
 
 export function ehSituacaoDoFiltro(valor: string | null): valor is SituacaoEstabelecimento {

@@ -140,10 +140,15 @@ describe.skipIf(!url)('administração contra PostgreSQL descartável', () => {
     expect(
       new Set([...first.items, ...second.items].map((item) => item.id)).size,
     ).toBe(2);
+    // Resumo no alcance pedido: clientes por padrão (sem internos/teste,
+    // que outros arquivos do banco compartilhado podem ter marcado); todos
+    // com `scope: 'ALL'`.
     const [count] = await db.query(
-      'SELECT count(*)::int AS total FROM tenants',
+      'SELECT count(*)::int AS total, count(*) FILTER (WHERE is_test = false)::int AS clientes FROM tenants',
     );
-    expect(first.summary.total).toBe(count.total);
+    expect(first.summary.total).toBe(count.clientes);
+    const todos = await service.list(master, { q: marker, page: 1, pageSize: 1, scope: 'ALL' });
+    expect(todos.summary.total).toBe(count.total);
   });
   it('busca literal, por responsável, situação e plano', async () => {
     expect(

@@ -132,6 +132,9 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     const renovado = await loja("Renovado", "ACTIVE", false);
     await periodo(renovado, "PAID", -27, 3, 5000);
     await periodo(renovado, "PAID", 3, 33, 7000);
+    // Interno/teste: fora da lista padrão e dos números de clientes.
+    const interna = await loja("Interna", "ACTIVE", true);
+    await db.query("UPDATE tenants SET is_test = true WHERE id = $1", [interna]);
 
     // Entrada do portal: destino padrão é a Visão geral.
     await page.goto("/portal");
@@ -142,7 +145,8 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await expect(navPortal(page).getByRole("link", { name: "Visão geral" })).toHaveAttribute("aria-current", "page");
 
     // Os números da tela são os da API, sobre o conjunto completo.
-    const api = (await (await page.request.get(`${API_DE_TESTE}/platform/overview`)).json()) as Visao;
+    const api = (await (await page.request.get(`${API_DE_TESTE}/platform/overview`)).json()) as Visao & { scope?: string };
+    expect(api.scope).toBe("CLIENTS");
     for (const [testId, chave] of [
       ["indicador-total", "total"],
       ["indicador-liberados", "allowed"],
@@ -158,7 +162,23 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     expect(sem(await page.getByTestId("pagamentos-do-mes-total").innerText())).toBe(sem(reais(api.payments.totalCents)));
     await expect(page.getByTestId("pagamentos-do-mes")).toContainText("não anulados");
     await expect(page.getByTestId("pagamentos-do-mes")).toContainText("data de recebimento registrada");
-    await expect(page.getByText(/não indicam que todos são clientes comerciais/)).toBeVisible();
+    // Alcance confirmado pela API: só clientes; o extrato de pagamentos é completo.
+    await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
+    await expect(page.getByTestId("alcance-dos-numeros")).toContainText("Somente clientes");
+    await expect(page.getByTestId("indicador-total")).toContainText("Clientes");
+    await expect(page.getByTestId("pagamentos-alcance")).toContainText("extrato completo");
+    await expect(page.getByRole("button", { name: "Clientes", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // Internos/teste: números da API no mesmo alcance, links levam o alcance.
+    await page.getByRole("button", { name: "Internos/teste", exact: true }).click();
+    await expect(page).toHaveURL(`${VISAO_GERAL}?alcance=INTERNAL`);
+    await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "INTERNAL");
+    const apiInternos = (await (await page.request.get(`${API_DE_TESTE}/platform/overview?scope=INTERNAL`)).json()) as Visao;
+    expect(apiInternos.establishments.total).toBeGreaterThanOrEqual(1);
+    await expect(page.getByTestId("indicador-total-valor")).toHaveText(String(apiInternos.establishments.total));
+    await expect(page.getByTestId("indicador-total")).toHaveAttribute("href", `${LISTA}?alcance=INTERNAL`);
+    await page.getByRole("button", { name: "Clientes", exact: true }).click();
+    await expect(page).toHaveURL(VISAO_GERAL);
+    await expect(page.getByTestId("indicador-total-valor")).toHaveText(String(api.establishments.total));
     // "Precisa de atenção": cada item leva à ficha.
     const atencao = page.getByTestId("lista-atencao");
     if (api.attention.items.length) {
@@ -220,6 +240,36 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await page.goto(`${LISTA}?situacao=SUSPENDED&q=${marca}`);
     await expect(page.getByRole("main").getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
     await expect(page.getByLabel("Situação do estabelecimento")).toHaveValue("SUSPENDED");
+
+    // Alcance na lista: clientes por padrão (a interna fora), internos/teste
+    // com o selo, todos com as duas; total e paginação acompanham.
+    await page.goto(`${LISTA}?q=${marca}`);
+    await expect(page.getByRole("main").getByRole("status")).toHaveText("6 estabelecimento(s) encontrado(s)");
+    await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
+    await expect(item(page, `${marca} Loja Interna`)).toHaveCount(0);
+    await page.getByTestId("seletor-de-alcance").getByRole("button", { name: "Internos/teste" }).click();
+    await expect(page).toHaveURL(`${LISTA}?alcance=INTERNAL&q=${marca}`);
+    await expect(page.getByRole("main").getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
+    await expect(item(page, `${marca} Loja Interna`).getByTestId("selo-interno-teste")).toHaveText("Interno/teste");
+    await page.getByTestId("seletor-de-alcance").getByRole("button", { name: "Todos" }).click();
+    await expect(page.getByRole("main").getByRole("status")).toHaveText("7 estabelecimento(s) encontrado(s)");
+    await expect(page.getByTestId("selo-interno-teste")).toHaveCount(1);
+    await page.getByRole("button", { name: "Limpar filtros" }).click();
+    await expect(page).toHaveURL(LISTA);
+
+    // API anterior ao alcance (sem `scope`): a tela não afirma "só clientes".
+    const rotaAntiga = `${API_DE_TESTE}/platform/overview`;
+    await page.route(rotaAntiga, async (r) => {
+      const resposta = await r.fetch();
+      const corpo = (await resposta.json()) as Record<string, unknown>;
+      delete corpo.scope;
+      await r.fulfill({ response: resposta, json: corpo });
+    });
+    await page.goto(VISAO_GERAL);
+    await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "nao-confirmado");
+    await expect(page.getByTestId("alcance-dos-numeros")).toContainText("não indicam que todos são clientes");
+    await expect(page.getByTestId("indicador-total")).toContainText("Estabelecimentos cadastrados");
+    await page.unroute(rotaAntiga);
 
     // Carregando e erro são estados distintos; erro nunca mostra zero.
     const rota = `${API_DE_TESTE}/platform/overview`;

@@ -218,19 +218,36 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     expect(escritas).toBe(0);
     page.off("request", contarEscrita);
 
-    // Marca de teste na ficha: nasce "real", marca e desmarca, gravado no
-    // banco. Nada de senha (como os dados cadastrais).
+    // Marca interno/teste na ficha: nasce cliente (padrão), marca e
+    // desmarca, gravado no banco; a lista sai e volta para "Clientes". Nada
+    // de senha (como os dados cadastrais).
     const marcaDeTeste = page.getByTestId("marca-de-teste");
     const isTest = async () =>
       (await db.query<{ is_test: boolean }>("SELECT is_test FROM tenants WHERE id = $1", [account.tenant.id])).rows[0].is_test;
     await page.goto(`${LISTA}/${account.tenant.id}`);
-    await expect(marcaDeTeste).toContainText("Real: pode aparecer na busca");
-    await marcaDeTeste.getByRole("button", { name: "Marcar como teste" }).click();
-    await expect(marcaDeTeste).toContainText("Teste: fora da busca");
+    await expect(marcaDeTeste).toContainText("Cliente (padrão)");
+    await expect(marcaDeTeste).toContainText("acessível pelo link");
+    await expect(marcaDeTeste).toContainText("não comprova que ele foi conferido");
+    await expect(page.getByTestId("selo-interno-teste")).toHaveCount(0);
+    await marcaDeTeste.getByRole("button", { name: "Marcar como interno/teste" }).click();
+    await expect(marcaDeTeste.getByRole("button", { name: "Desmarcar: é cliente" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 }).locator("..").getByTestId("selo-interno-teste")).toBeVisible();
     expect(await isTest()).toBe(true);
-    await marcaDeTeste.getByRole("button", { name: "Retirar marca de teste" }).click();
-    await expect(marcaDeTeste).toContainText("Real: pode aparecer na busca");
+    // Lista relida: some de "Clientes" (22 da marca menos ele), aparece em
+    // "Internos/teste" com o selo.
+    await page.goto(`${LISTA}?q=${marca}`);
+    await expect(main.getByRole("status")).toHaveText("21 estabelecimento(s) encontrado(s)");
+    await page.goto(`${LISTA}?alcance=INTERNAL&q=${marca}`);
+    await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
+    await expect(page.getByTestId("selo-interno-teste")).toHaveCount(1);
+    await page.goto(`${LISTA}/${account.tenant.id}`);
+    await marcaDeTeste.getByRole("button", { name: "Desmarcar: é cliente" }).click();
+    await expect(marcaDeTeste.getByRole("button", { name: "Marcar como interno/teste" })).toBeVisible();
+    await expect(marcaDeTeste).toContainText("Cliente (padrão)");
     expect(await isTest()).toBe(false);
+    await page.goto(`${LISTA}?q=${marca}`);
+    await expect(main.getByRole("status")).toHaveText("22 estabelecimento(s) encontrado(s)");
+    await expect(page.getByTestId("selo-interno-teste")).toHaveCount(0);
 
     // Planos e preços: preço pendente nunca aparece como gratuito.
     await navPortal(page).getByRole("link", { name: "Planos e preços" }).click();
