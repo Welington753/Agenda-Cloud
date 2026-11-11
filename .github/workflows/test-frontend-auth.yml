@@ -28,6 +28,7 @@ on:
       - "backend/tsconfig*.json"
       - "backend/vitest.config.db-e2e.ts"
       - ".github/workflows/test-frontend-auth.yml"
+      - ".github/scripts/playwright-na-imagem.sh"
   workflow_dispatch: {}
 
 concurrency:
@@ -42,6 +43,12 @@ jobs:
     name: auth real e serviços reais (navegador + API) contra PostgreSQL descartável
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Official Playwright image, same version as package-lock.json
+      # (playwright-core 1.63.0, chromium revision 1243) and same Ubuntu as
+      # the runner (26.04). Pinned by tag AND digest: never `latest`, and a
+      # Playwright upgrade must change this line in the same commit.
+      PLAYWRIGHT_IMAGE: "mcr.microsoft.com/playwright:v1.63.0-resolute@sha256:b022639ae9197f864040f92eef7b57c6d4b47db2190f77c909d8a5d902dd4b7e"
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -174,8 +181,18 @@ jobs:
           NEXT_PUBLIC_API_URL: "http://localhost:3001"
         run: npm run build
 
-      - name: Install Playwright browser (chromium only)
-        run: npx playwright install --with-deps chromium
+      # The browser suites run inside the official Playwright image (see
+      # .github/scripts/playwright-na-imagem.sh), which already ships
+      # Chromium and its system libraries and fonts. This replaces
+      # `npx playwright install --with-deps chromium`, whose apt step depends
+      # on the Ubuntu mirrors and failed when they did not resolve from the
+      # hosted runners. The check fails unless the image matches the
+      # lockfile (Playwright version, chromium revision) and its Node
+      # satisfies `engines`.
+      - name: Pull official Playwright image and check it matches the lockfile
+        run: |
+          docker pull --quiet "$PLAYWRIGHT_IMAGE"
+          bash .github/scripts/playwright-na-imagem.sh --check
 
       # Playwright sobe backend real (dist/main.js) e frontend real (next
       # start) via `webServer` (ver playwright.config.ts) — nunca substitui a
@@ -202,7 +219,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/auth
-        run: npm run test:browser:auth
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:auth
 
       # Invocação SEPARADA do Playwright (Lote 6D.1), no MESMO Postgres
       # descartável — nada de infraestrutura duplicada. Separada por um motivo
@@ -223,7 +240,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/services
-        run: npm run test:browser:services
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:services
 
       # Invocação SEPARADA do Playwright (Lote 6D.2), mesmo motivo da suíte de
       # serviços: orçamento de POST /auth/register por IP, backend novo com
@@ -241,7 +258,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/professionals
-        run: npm run test:browser:professionals
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:professionals
 
       # Invocação SEPARADA do Playwright (Lote 6D.3), mesmo motivo das
       # anteriores: orçamento de POST /auth/register por IP.
@@ -258,7 +275,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/working-hours
-        run: npm run test:browser:working-hours
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:working-hours
 
       # Invocação SEPARADA do Playwright (Lote 6D.4), mesmo motivo das
       # anteriores: orçamento de POST /auth/register por IP.
@@ -275,7 +292,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/availability
-        run: npm run test:browser:availability
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:availability
 
       # Invocação SEPARADA do Playwright (Lote 6D.5), mesmo motivo das
       # anteriores: orçamento de POST /auth/register por IP.
@@ -292,7 +309,7 @@ jobs:
           # Subdiretório próprio: a invocação seguinte limpa o
           # próprio outputDir, nunca o trace desta (ver playwright.config.ts).
           PLAYWRIGHT_OUTPUT_DIR: test-results/appointments
-        run: npm run test:browser:appointments
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:appointments
 
       - name: Run real platform administration (authorization, pagination, detail, mobile)
         id: browser_administracao
@@ -306,7 +323,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/administracao
-        run: npm run test:browser:administracao
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:administracao
 
       # Suítes do portal, cada uma na própria invocação (API nova, contadores
       # de login novos; limite de produção de 5 por 15 min por IP, em memória
@@ -324,7 +341,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-entrada
-        run: npm run test:browser:portal-entrada
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-entrada
 
       - name: Run platform portal temporary password (change inside the portal, 3 login attempts)
         id: browser_portal_senha_temporaria
@@ -338,7 +355,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-senha-temporaria
-        run: npm run test:browser:portal-senha-temporaria
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-senha-temporaria
 
       - name: Run platform portal refusals (Max owner, manager, professional, suspended owner; 2 logins)
         id: browser_portal_recusas
@@ -352,7 +369,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-recusas
-        run: npm run test:browser:portal-recusas
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-recusas
 
       - name: Run platform portal overview and commercial listing (filters, mobile menu, expired session; 3 logins)
         id: browser_portal_visao_geral
@@ -366,7 +383,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-visao-geral
-        run: npm run test:browser:portal-visao-geral
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-visao-geral
 
       # Portal instalável ("Portal AC"): manifest, apple-touch-icon e título
       # próprios no HTML do portal; operação, login e agendamento público
@@ -386,7 +403,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-instalavel
-        run: npm run test:browser:portal-instalavel
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-instalavel
 
       # Invocação SEPARADA (aceite de convite: limite de 10 por 15 min por IP,
       # em memória no backend): empresa criada pela tela, e-mail na caixa
@@ -405,7 +422,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/contas
-        run: npm run test:browser:contas
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:contas
 
       # Invocação SEPARADA (1 aceite de convite e 1 login, limite por IP):
       # Equipe e acessos — acesso criado pela tela com login e senha (sem
@@ -425,7 +442,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/equipe
-        run: npm run test:browser:equipe
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:equipe
 
       # Invocação SEPARADA (1 aceite de convite e 4 logins, limite por IP):
       # acesso de funcionário com nome de usuário e a senha definida pelo
@@ -446,7 +463,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/acesso-usuario
-        run: npm run test:browser:acesso-usuario
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:acesso-usuario
 
       # Invocação SEPARADA (1 login, limite por IP): gerente criado pelo dono
       # com login em formato de e-mail e sem profissional; só as áreas
@@ -467,7 +484,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/gerente
-        run: npm run test:browser:gerente
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:gerente
 
       # Invocação SEPARADA (1 aceite de convite e 2 logins): calendário
       # individual do funcionário — dois profissionais com reservas no mesmo
@@ -486,7 +503,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/calendario-funcionario
-        run: npm run test:browser:calendario-funcionario
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:calendario-funcionario
 
       # Invocação SEPARADA (1 aceite de convite): recebimentos manuais — o
       # Início mostra só o que foi registrado, quitação com clique duplo
@@ -505,7 +522,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/recebimentos
-        run: npm run test:browser:recebimentos
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:recebimentos
 
       # Invocação SEPARADA (1 aceite de convite): comissões — regras por
       # profissional e serviço pela tela, reserva com dois serviços concluída
@@ -524,7 +541,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/comissoes
-        run: npm run test:browser:comissoes
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:comissoes
 
       # Invocação SEPARADA (1 aceite de convite): aplicação de comissão em
       # massa — prévia em preservar, 409 por mudança paralela com a prévia
@@ -542,7 +559,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/comissoes-em-massa
-        run: npm run test:browser:comissoes-em-massa
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:comissoes-em-massa
 
       # Invocação SEPARADA (4 cadastros e 3 logins, limites reais por IP): tela
       # de Clientes — busca e seus estados, cadastro sem envio repetido,
@@ -560,7 +577,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/clients
-        run: npm run test:browser:clients
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:clients
 
       # Invocação SEPARADA (1 cadastro, 1 login): atalhos de WhatsApp na
       # agenda e em Clientes — link wa.me, texto codificado no fuso do
@@ -577,7 +594,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/whatsapp
-        run: npm run test:browser:whatsapp
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:whatsapp
 
       # Invocação SEPARADA (1 cadastro, 1 login, 8 pedidos públicos — limite de
       # 10 por hora por IP): agendamento público real por slug, ativação pelo
@@ -596,7 +613,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/agendamento-publico
-        run: npm run test:browser:agendamento-publico
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:agendamento-publico
 
       # Invocação SEPARADA (2 cadastros, 1 login, 8 pedidos públicos — limite de
       # 10 por hora por IP): avisos de NOVAS solicitações dentro da área /conta —
@@ -616,7 +633,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/avisos-solicitacoes
-        run: npm run test:browser:avisos-solicitacoes
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:avisos-solicitacoes
 
       # Invocação SEPARADA (1 cadastro, 1 login, 2 pedidos públicos): abertura
       # com a hospedagem gratuita acordando. Só o "servidor dormindo" é
@@ -634,7 +651,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/recuperacao
-        run: npm run test:browser:recuperacao
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:recuperacao
 
       # Invocação SEPARADA (2 cadastros, 2 logins, 2 pedidos públicos): Web
       # Push — PWA (manifesto, ícones, /sw.js sem cache), permissão só no
@@ -658,7 +675,7 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/push
         run: |
           eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
-          npm run test:browser:push
+          bash .github/scripts/playwright-na-imagem.sh npm run test:browser:push
 
       # Invocação SEPARADA (1 cadastro, 1 login, nenhum pedido público):
       # serviço criado depois da ativação só vai ao público com profissional
@@ -676,7 +693,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/servicos-publicos
-        run: npm run test:browser:servicos-publicos
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:servicos-publicos
 
       # Invocação SEPARADA (2 cadastros, 1 login, 3 pedidos públicos):
       # aparência claro/escuro/seguir aparelho (primeira visita, escolha
@@ -699,7 +716,7 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/aparencia
         run: |
           eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
-          npm run test:browser:aparencia
+          bash .github/scripts/playwright-na-imagem.sh npm run test:browser:aparencia
 
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
@@ -718,7 +735,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-view
-        run: npm run test:browser:agenda-view
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:agenda-view
 
       # Invocação SEPARADA (1 cadastro e 1 login), também pela
       # playwright.relogio-de-teste.config.ts: a agenda "Por profissional" —
@@ -736,7 +753,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/agenda-profissional
-        run: npm run test:browser:agenda-profissional
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:agenda-profissional
 
       # Invocação SEPARADA (2 cadastros e 3 logins, limites reais de 5 por IP):
       # Visão geral (indicadores e listas da agenda real de hoje, estados de
@@ -758,7 +775,7 @@ jobs:
           NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/visao-geral
-        run: npm run test:browser:visao-geral
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:visao-geral
 
       # Modo do PILOTO (mesma origem): o frontend é recompilado com
       # `NEXT_PUBLIC_API_URL=/agenda_api`, e o navegador passa a falar só com
@@ -784,7 +801,7 @@ jobs:
           API_PROXY_SECRET: "segredo-descartavel-do-ci-somente-para-teste-0123456789"
           CI: "true"
           PLAYWRIGHT_OUTPUT_DIR: test-results/proxy
-        run: npm run test:browser:proxy
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:proxy
 
       # Evidência visual do destaque do horário escolhido (criação e
       # remarcação, computador e celular): as imagens que o próprio teste
