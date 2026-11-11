@@ -21,11 +21,22 @@ export const ROTA_ESTABELECIMENTOS_ADMINISTRADOS = `${ROTA_ADMINISTRACAO}/estabe
 /** Lista de estabelecimentos já filtrada (links da Visão geral). Os nomes dos
  * parâmetros são os que a listagem lê ao abrir. `alcance` vai só quando não
  * é o padrão (clientes). */
-export function rotaEstabelecimentosFiltrados(filtro: { filtro?: string; situacao?: string; alcance?: string }): string {
+export function rotaEstabelecimentosFiltrados(filtro: {
+  filtro?: string;
+  situacao?: string;
+  alcance?: string;
+  /** Data de cadastro (as duas inclusas, horário de Brasília). */
+  cadastroDe?: string;
+  cadastroAte?: string;
+}): string {
   const params = new URLSearchParams();
   if (filtro.alcance && filtro.alcance !== "CLIENTS") params.set("alcance", filtro.alcance);
   if (filtro.filtro) params.set("filtro", filtro.filtro);
   if (filtro.situacao) params.set("situacao", filtro.situacao);
+  if (filtro.cadastroDe && filtro.cadastroAte) {
+    params.set("cadastroDe", filtro.cadastroDe);
+    params.set("cadastroAte", filtro.cadastroAte);
+  }
   const busca = params.toString();
   return busca ? `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}?${busca}` : ROTA_ESTABELECIMENTOS_ADMINISTRADOS;
 }
@@ -42,6 +53,38 @@ export const ROTA_PAPEIS = `${ROTA_ADMINISTRACAO}/papeis`;
 export const ROTA_HISTORICO = `${ROTA_ADMINISTRACAO}/historico`;
 export const ROTA_PLANOS_E_PRECOS = `${ROTA_ADMINISTRACAO}/planos`;
 export const ROTA_PAGAMENTOS_ASSINATURAS = `${ROTA_ADMINISTRACAO}/pagamentos`;
+export const ROTA_RELATORIOS = `${ROTA_ADMINISTRACAO}/relatorios`;
+
+/** Situação do registro no extrato, na URL: não anulados ou anulados. */
+export type SituacaoNoExtrato = "recebidos" | "anulados";
+
+/** Extrato já filtrado (links do relatório e da Visão geral). Sem datas: todo
+ * o histórico. `alcance` vai só quando não é o padrão (clientes). */
+export function rotaPagamentosFiltrados(filtro: {
+  de?: string;
+  ate?: string;
+  alcance?: string;
+  situacao?: SituacaoNoExtrato;
+}): string {
+  const params = new URLSearchParams();
+  if (filtro.de && filtro.ate) {
+    params.set("de", filtro.de);
+    params.set("ate", filtro.ate);
+  }
+  if (filtro.alcance && filtro.alcance !== "CLIENTS") params.set("alcance", filtro.alcance);
+  if (filtro.situacao) params.set("situacao", filtro.situacao);
+  const busca = params.toString();
+  return busca ? `${ROTA_PAGAMENTOS_ASSINATURAS}?${busca}` : ROTA_PAGAMENTOS_ASSINATURAS;
+}
+
+/** Relatório por período: `mes` (mês inteiro) ou `de`/`ate`; sem eles, o mês
+ * atual decidido pelo servidor. */
+export function rotaRelatorio(filtro: { periodo?: Record<string, string>; alcance?: string }): string {
+  const params = new URLSearchParams(filtro.periodo ?? {});
+  if (filtro.alcance && filtro.alcance !== "CLIENTS") params.set("alcance", filtro.alcance);
+  const busca = params.toString();
+  return busca ? `${ROTA_RELATORIOS}?${busca}` : ROTA_RELATORIOS;
+}
 export const ROTA_NOVO_ESTABELECIMENTO = `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}/novo`;
 
 export function rotaFichaUsuario(id: string): string {
@@ -56,6 +99,7 @@ export const SECOES_ADMINISTRACAO: readonly { href: string; rotulo: string }[] =
   { href: ROTA_CONVITES, rotulo: "Convites" },
   { href: ROTA_PLANOS_E_PRECOS, rotulo: "Planos e preços" },
   { href: ROTA_PAGAMENTOS_ASSINATURAS, rotulo: "Pagamentos das assinaturas" },
+  { href: ROTA_RELATORIOS, rotulo: "Relatórios" },
   { href: ROTA_PAPEIS, rotulo: "Proprietários da plataforma" },
   { href: ROTA_HISTORICO, rotulo: "Histórico administrativo" },
 ];
