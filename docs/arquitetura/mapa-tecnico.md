@@ -151,6 +151,15 @@ processo). O outro
 (`test-migration-lote6b2.yml`) roda `migration:show/run` quando
 `backend/src/database/**` ou as migrations mudam.
 
+No CI, as suítes de navegador rodam dentro da imagem oficial do Playwright
+(`PLAYWRIGHT_IMAGE` no workflow, fixada por versão e digest), pelo script
+`.github/scripts/playwright-na-imagem.sh`: rede do host, mesmo caminho do
+checkout, usuário do runner, só as variáveis listadas no script. A versão da
+imagem acompanha a do `package-lock.json`; atualizar o Playwright exige trocar
+a imagem no mesmo commit (a etapa de conferência reprova a diferença).
+Localmente nada muda: `npx playwright install chromium` e
+`npm run test:browser:<suite>`.
+
 **Como escolher o que rodar localmente:**
 
 - Política (`*-access.ts`, `common/`): os specs do módulo e de quem importa a
