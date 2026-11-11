@@ -282,7 +282,9 @@ enum e não tem uso; despesas, `DESPESAS_VISUALIZAR` e `DESPESAS_GERENCIAR`
 
 **Separado da plataforma:** a mensalidade do Agenda Cloud (B1–B4 do plano
 anterior) fica em tabelas e módulo próprios (`platform/`), nunca em
-`appointment_payments` nem nos relatórios do estabelecimento.
+`appointment_payments` nem nos relatórios do estabelecimento. O relatório
+por período do portal da plataforma (`docs/plans/portal-relatorios-por-periodo.md`)
+é da administração do SaaS e não é o C0.
 
 **Critérios de aceitação de C0:**
 
