@@ -1,26 +1,42 @@
 "use client";
 
-// Visão geral do portal da plataforma: totais de TODOS os estabelecimentos
-// cadastrados, pagamentos das assinaturas do mês e a lista "Precisa de
-// atenção". Tudo vem de `GET /platform/overview`, calculado no servidor com a
+// Visão geral do portal da plataforma: totais dos estabelecimentos no alcance
+// escolhido (clientes por padrão; internos/teste; todos), pagamentos das
+// assinaturas do mês e a lista "Precisa de atenção", todos no mesmo alcance. Tudo vem de `GET /platform/overview`, calculado no servidor com a
 // mesma regra de acesso da operação (backend/src/platform/portal-overview.ts).
 //
 // Carregando, erro e "nada a mostrar" são estados distintos: uma falha nunca
 // aparece como zero. Não há MRR, previsão nem inadimplência: acesso vencido
-// não comprova dívida, e ainda não existe classificação de uso interno.
+// não comprova dívida. O alcance só é afirmado quando a API o devolve
+// (`scope`); uma API anterior, sem o campo, mostra o aviso de não confirmado.
+import { Suspense } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Ban, Building2, CalendarClock, CircleCheck, FileQuestion, PauseCircle, type LucideIcon } from "lucide-react";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
-import { ehVisaoGeral, type MotivoDeAtencao, type VisaoGeral } from "@/lib/administracao/contratos-diretorio";
+import {
+  ehVisaoGeral,
+  ESCOPO_PADRAO,
+  type EscopoDoDiretorio,
+  type MotivoDeAtencao,
+  type VisaoGeral,
+} from "@/lib/administracao/contratos-diretorio";
+import { SeletorDeAlcance, TextoDeAlcance } from "@/components/administracao/alcance-do-portal";
 import type { EstadoComercial } from "@/lib/administracao/contratos-validade";
 import { dataCadastro } from "@/lib/administracao/contratos";
-import { FILTROS, textoMes, textoModalidade, textoValidade } from "@/lib/administracao/diretorio";
+import {
+  alcanceConfirmado,
+  ehEscopoDoDiretorio,
+  FILTROS,
+  textoMes,
+  textoModalidade,
+  textoValidade,
+} from "@/lib/administracao/diretorio";
 import { diaBr, reais } from "@/lib/administracao/validade";
 import {
-  ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
   ROTA_PAGAMENTOS_ASSINATURAS,
   rotaEstabelecimentosFiltrados,
   rotaFichaEstabelecimento,
@@ -91,6 +107,10 @@ function Pagamentos({ pagamentos }: { pagamentos: VisaoGeral["payments"] }) {
             ? "Nenhum pagamento confirmado no período."
             : `${pagamentos.count} pagamento(s) confirmado(s) manualmente.`}
         </p>
+        <p className="text-xs text-ink-soft" data-testid="pagamentos-alcance">
+          Só pagamentos dos estabelecimentos no alcance escolhido acima. Ver pagamentos abre o extrato completo, de todos os
+          estabelecimentos (inclusive internos/teste), e o total de lá pode ser diferente deste.
+        </p>
         <p className="text-xs text-ink-soft">
           Critério: pagamentos das assinaturas do Agenda Cloud confirmados manualmente no portal, não anulados, com data de
           recebimento registrada entre {diaBr(pagamentos.from)} e {diaBr(pagamentos.to)} (horário de Brasília,{" "}
@@ -109,7 +129,7 @@ function Pagamentos({ pagamentos }: { pagamentos: VisaoGeral["payments"] }) {
   );
 }
 
-function Atencao({ visao }: { visao: VisaoGeral }) {
+function Atencao({ visao, alcance }: { visao: VisaoGeral; alcance: EscopoDoDiretorio }) {
   const { attention, establishments } = visao;
   return (
     <section aria-labelledby="titulo-atencao" className="space-y-3">
@@ -154,7 +174,7 @@ function Atencao({ visao }: { visao: VisaoGeral }) {
         ).map(([filtro, total]) => (
           <li key={filtro}>
             <Link
-              href={rotaEstabelecimentosFiltrados({ filtro })}
+              href={rotaEstabelecimentosFiltrados({ filtro, alcance })}
               className="inline-flex min-h-11 items-center rounded-full border border-border bg-card px-4 font-medium hover:bg-paper-muted"
             >
               {FILTROS[filtro].rotulo}: {total}
@@ -163,7 +183,7 @@ function Atencao({ visao }: { visao: VisaoGeral }) {
         ))}
         <li>
           <Link
-            href={rotaEstabelecimentosFiltrados({ situacao: "SUSPENDED" })}
+            href={rotaEstabelecimentosFiltrados({ situacao: "SUSPENDED", alcance })}
             className="inline-flex min-h-11 items-center rounded-full border border-border bg-card px-4 font-medium hover:bg-paper-muted"
           >
             Suspensos: {establishments.suspended}
@@ -178,16 +198,33 @@ function Atencao({ visao }: { visao: VisaoGeral }) {
 }
 
 export default function VisaoGeralPage() {
-  const { estado, recarregar } = useLeituraPlataforma("/platform/overview", ehVisaoGeral);
+  return (
+    <Suspense fallback={<p className="py-12 text-center text-ink-soft">Carregando o portal…</p>}>
+      <VisaoGeralDoPortal />
+    </Suspense>
+  );
+}
+
+function VisaoGeralDoPortal() {
+  const router = useRouter();
+  const pathname = usePathname() ?? "";
+  const pedido = useSearchParams().get("alcance");
+  const alcance: EscopoDoDiretorio = ehEscopoDoDiretorio(pedido) ? pedido : ESCOPO_PADRAO;
+  // O padrão não vai na consulta: o servidor aplica clientes e devolve `scope`.
+  const { estado, recarregar } = useLeituraPlataforma(
+    alcance === ESCOPO_PADRAO ? "/platform/overview" : `/platform/overview?scope=${alcance}`,
+    ehVisaoGeral,
+  );
   const visao = estado.status === "pronto" ? estado.dados : null;
+  const escolher = (novo: EscopoDoDiretorio) =>
+    router.replace(novo === ESCOPO_PADRAO ? pathname : `${pathname}?alcance=${novo}`, { scroll: false });
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Visão geral</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Totais de todos os estabelecimentos cadastrados na plataforma. Ainda não há classificação de uso interno: os
-            números podem incluir contas de teste e da própria equipe, e não indicam que todos são clientes comerciais.
+            Totais dos estabelecimentos, pagamentos do mês e pendências, todos no alcance escolhido.
           </p>
           {visao && (
             <p className="mt-1 text-xs text-ink-soft">
@@ -200,7 +237,16 @@ export default function VisaoGeralPage() {
         </Botao>
       </header>
 
-      {estado.status !== "pronto" ? <EstadoLeitura estado={estado} recarregar={recarregar} /> : <Conteudo visao={estado.dados} />}
+      <div className="space-y-2">
+        <SeletorDeAlcance valor={alcance} aoEscolher={escolher} />
+        {visao && <TextoDeAlcance confirmado={alcanceConfirmado(alcance, visao.scope)} />}
+      </div>
+
+      {estado.status !== "pronto" ? (
+        <EstadoLeitura estado={estado} recarregar={recarregar} />
+      ) : (
+        <Conteudo visao={estado.dados} alcance={alcance} />
+      )}
     </div>
   );
 }
@@ -208,14 +254,19 @@ export default function VisaoGeralPage() {
 const horaBr = (instante: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(instante));
 
-function Conteudo({ visao }: { visao: VisaoGeral }) {
+function Conteudo({ visao, alcance }: { visao: VisaoGeral; alcance: EscopoDoDiretorio }) {
   const e = visao.establishments;
+  const rota = (filtro: { filtro?: string; situacao?: string }) => rotaEstabelecimentosFiltrados({ ...filtro, alcance });
+  // API anterior (sem `scope`): "cadastrados", sem afirmar que são clientes.
+  const confirmado = alcanceConfirmado(alcance, visao.scope);
+  const rotuloTotal =
+    confirmado === "CLIENTS" ? "Clientes" : confirmado === "INTERNAL" ? "Internos/teste" : "Estabelecimentos cadastrados";
   return (
     <>
       <section aria-label="Estabelecimentos" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Indicador href={ROTA_ESTABELECIMENTOS_ADMINISTRADOS} icone={Building2} rotulo="Estabelecimentos cadastrados" valor={e.total} testId="indicador-total" />
+        <Indicador href={rota({})} icone={Building2} rotulo={rotuloTotal} valor={e.total} testId="indicador-total" />
         <Indicador
-          href={rotaEstabelecimentosFiltrados({ filtro: "ACCESS_ALLOWED" })}
+          href={rota({ filtro: "ACCESS_ALLOWED" })}
           icone={CircleCheck}
           rotulo="Com acesso liberado"
           valor={e.allowed}
@@ -223,7 +274,7 @@ function Conteudo({ visao }: { visao: VisaoGeral }) {
           testId="indicador-liberados"
         />
         <Indicador
-          href={rotaEstabelecimentosFiltrados({ filtro: "ACCESS_BLOCKED" })}
+          href={rota({ filtro: "ACCESS_BLOCKED" })}
           icone={Ban}
           rotulo="Com acesso bloqueado"
           valor={e.blocked}
@@ -231,7 +282,7 @@ function Conteudo({ visao }: { visao: VisaoGeral }) {
           testId="indicador-bloqueados"
         />
         <Indicador
-          href={rotaEstabelecimentosFiltrados({ filtro: "EXPIRING_SOON" })}
+          href={rota({ filtro: "EXPIRING_SOON" })}
           icone={CalendarClock}
           rotulo="Testes e validades que terminam em até 7 dias"
           valor={e.expiringSoon}
@@ -239,14 +290,14 @@ function Conteudo({ visao }: { visao: VisaoGeral }) {
           testId="indicador-vencendo"
         />
         <Indicador
-          href={rotaEstabelecimentosFiltrados({ situacao: "SUSPENDED" })}
+          href={rota({ situacao: "SUSPENDED" })}
           icone={PauseCircle}
           rotulo="Suspensos"
           valor={e.suspended}
           testId="indicador-suspensos"
         />
         <Indicador
-          href={rotaEstabelecimentosFiltrados({ filtro: "CONTRACT_PENDING" })}
+          href={rota({ filtro: "CONTRACT_PENDING" })}
           icone={FileQuestion}
           rotulo="Condição contratada pendente"
           valor={e.contractPending}
@@ -273,7 +324,7 @@ function Conteudo({ visao }: { visao: VisaoGeral }) {
       </section>
 
       <Pagamentos pagamentos={visao.payments} />
-      <Atencao visao={visao} />
+      <Atencao visao={visao} alcance={alcance} />
     </>
   );
 }

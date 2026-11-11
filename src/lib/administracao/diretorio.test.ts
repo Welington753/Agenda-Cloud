@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ehListaDoDiretorio, ehVisaoGeral, type CondicaoComercial } from "./contratos-diretorio";
 import {
+  ALCANCE_NAO_CONFIRMADO,
+  alcanceConfirmado,
+  ehEscopoDoDiretorio,
+  ESCOPOS,
+  textoAlcance,
   ehFiltroDoDiretorio,
   linhaCatalogo,
   linhasContratadas,
@@ -181,5 +186,36 @@ describe("conferência das respostas", () => {
     const semLiberados = Object.fromEntries(Object.entries(visao.establishments).filter(([k]) => k !== "allowed"));
     expect(ehVisaoGeral({ ...visao, establishments: semLiberados })).toBe(false);
     expect(ehVisaoGeral({ ...visao, payments: { ...visao.payments, totalCents: null } })).toBe(false);
+    // Alcance: aceito quando conhecido; ausente (API anterior) passa, mas sem confirmação.
+    expect(ehVisaoGeral({ ...visao, scope: "CLIENTS" })).toBe(true);
+    expect(ehVisaoGeral({ ...visao, scope: "TESTE" })).toBe(false);
+    expect(ehListaDoDiretorio({ ...lista, scope: "INTERNAL" })).toBe(true);
+    expect(ehListaDoDiretorio({ ...lista, scope: null })).toBe(false);
+  });
+});
+
+describe("alcance: clientes, internos/teste e todos", () => {
+  it("só afirma o alcance que o servidor devolveu e que bate com o pedido", () => {
+    expect(alcanceConfirmado("CLIENTS", "CLIENTS")).toBe("CLIENTS");
+    expect(alcanceConfirmado("INTERNAL", "INTERNAL")).toBe("INTERNAL");
+    // API anterior (sem scope): nunca vira "só clientes".
+    expect(alcanceConfirmado("CLIENTS", undefined)).toBeNull();
+    // Resposta diferente do pedido: não confirmado.
+    expect(alcanceConfirmado("INTERNAL", "CLIENTS")).toBeNull();
+    expect(textoAlcance(null)).toBe(ALCANCE_NAO_CONFIRMADO);
+    expect(textoAlcance(null)).toContain("não indicam que todos são clientes");
+  });
+
+  it("textos explicam o alcance e que a marca padrão não é conferência", () => {
+    expect(ESCOPOS.CLIENTS.rotulo).toBe("Clientes");
+    expect(ESCOPOS.INTERNAL.rotulo).toBe("Internos/teste");
+    expect(ESCOPOS.ALL.rotulo).toBe("Todos");
+    expect(textoAlcance("CLIENTS")).toContain("não comprova que ele foi conferido");
+    expect(textoAlcance("ALL")).toContain("clientes e internos/teste juntos");
+  });
+
+  it("a URL só aceita os três valores", () => {
+    for (const v of ["CLIENTS", "INTERNAL", "ALL"]) expect(ehEscopoDoDiretorio(v)).toBe(true);
+    for (const v of [null, "", "clients", "TEST", "toString", "__proto__"]) expect(ehEscopoDoDiretorio(v)).toBe(false);
   });
 });

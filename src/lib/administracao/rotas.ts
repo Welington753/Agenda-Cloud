@@ -19,9 +19,11 @@ export const ROTA_VISAO_GERAL = `${ROTA_ADMINISTRACAO}/visao-geral`;
 export const ROTA_ESTABELECIMENTOS_ADMINISTRADOS = `${ROTA_ADMINISTRACAO}/estabelecimentos`;
 
 /** Lista de estabelecimentos já filtrada (links da Visão geral). Os nomes dos
- * parâmetros são os que a listagem lê ao abrir. */
-export function rotaEstabelecimentosFiltrados(filtro: { filtro?: string; situacao?: string }): string {
+ * parâmetros são os que a listagem lê ao abrir. `alcance` vai só quando não
+ * é o padrão (clientes). */
+export function rotaEstabelecimentosFiltrados(filtro: { filtro?: string; situacao?: string; alcance?: string }): string {
   const params = new URLSearchParams();
+  if (filtro.alcance && filtro.alcance !== "CLIENTS") params.set("alcance", filtro.alcance);
   if (filtro.filtro) params.set("filtro", filtro.filtro);
   if (filtro.situacao) params.set("situacao", filtro.situacao);
   const busca = params.toString();

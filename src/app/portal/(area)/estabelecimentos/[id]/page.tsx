@@ -22,6 +22,7 @@ import { ValidadeDoAcesso } from "@/components/administracao/validade-acesso";
 import { AcessoSemVencimento } from "@/components/administracao/sem-vencimento";
 import { PrecoContratado } from "@/components/administracao/preco-contratado";
 import { MarcaDeTeste } from "@/components/administracao/marca-de-teste";
+import { SeloInternoTeste } from "@/components/administracao/alcance-do-portal";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -52,6 +53,7 @@ export default function DetalhePage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="break-words text-2xl font-bold">{item.name}</h1>
+          {item.isTest && <SeloInternoTeste />}
           <p className="mt-1 break-all text-sm text-ink-soft">{item.slug}</p>
         </div>
         <Botao variante="secundaria" onClick={recarregar} className="min-h-11">

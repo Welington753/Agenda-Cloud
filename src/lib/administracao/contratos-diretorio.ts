@@ -49,8 +49,17 @@ export interface ItemDoDiretorio extends EstabelecimentoAdministrado {
   commercial: CondicaoComercial;
 }
 
+/** Alcance pela marca `tenants.is_test`: clientes (padrão do servidor),
+ * internos/teste ou todos. */
+export const ESCOPOS_DO_DIRETORIO = ["CLIENTS", "INTERNAL", "ALL"] as const;
+export type EscopoDoDiretorio = (typeof ESCOPOS_DO_DIRETORIO)[number];
+export const ESCOPO_PADRAO: EscopoDoDiretorio = "CLIENTS";
+
 export interface ListaDoDiretorio extends Omit<ListaEstabelecimentos, "items"> {
   items: ItemDoDiretorio[];
+  /** Alcance que o servidor aplicou. Ausente numa API anterior ao alcance:
+   * a lista então NÃO está confirmada como só de clientes. */
+  scope?: EscopoDoDiretorio;
 }
 
 export const FILTROS_DO_DIRETORIO = [
@@ -66,6 +75,9 @@ export type MotivoDeAtencao = "VALIDITY_BLOCKED" | "EXPIRING_SOON";
 
 export interface VisaoGeral {
   generatedAt: string;
+  /** Alcance de todos os números. Ausente numa API anterior: os números são
+   * de todos os cadastrados, sem confirmação de recorte. */
+  scope?: EscopoDoDiretorio;
   establishments: {
     total: number;
     allowed: number;
@@ -148,9 +160,12 @@ function ehCondicao(v: unknown): v is CondicaoComercial {
   );
 }
 
+const escopoOuAusente = (v: unknown) => v === undefined || ESCOPOS_DO_DIRETORIO.includes(v as EscopoDoDiretorio);
+
 export function ehListaDoDiretorio(v: unknown): v is ListaDoDiretorio {
   return (
     ehListaEstabelecimentos(v) &&
+    escopoOuAusente((v as unknown as Record<string, unknown>).scope) &&
     v.items.every((i) => {
       const item = i as unknown as Record<string, unknown>;
       return (
@@ -163,7 +178,7 @@ export function ehListaDoDiretorio(v: unknown): v is ListaDoDiretorio {
 }
 
 export function ehVisaoGeral(v: unknown): v is VisaoGeral {
-  if (!objeto(v) || !data(v.generatedAt)) return false;
+  if (!objeto(v) || !data(v.generatedAt) || !escopoOuAusente(v.scope)) return false;
   const e = v.establishments,
     p = v.payments,
     a = v.attention;
