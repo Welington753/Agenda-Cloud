@@ -28,10 +28,13 @@ const ROTAS_DA_API = [
   "/platform/users",
   "/platform/audit",
   "/platform/subscription-payments",
+  "/platform/subscription-payments?scope=CLIENTS&status=RECEIVED",
+  "/platform/reports",
+  "/platform/reports?scope=ALL",
 ];
 
 async function recusadoNoPortal(page: Page) {
-  for (const caminho of ["/portal", "/portal/visao-geral", "/portal/papeis", "/plataforma/usuarios", "/conta/administracao"]) {
+  for (const caminho of ["/portal", "/portal/visao-geral", "/portal/papeis", "/portal/relatorios", "/plataforma/usuarios", "/conta/administracao"]) {
     await page.goto(caminho);
     await expect(page.getByRole("main").getByRole("alert")).toHaveText(SEM_ACESSO_AO_PORTAL);
     await expect(navPortal(page)).toHaveCount(0);

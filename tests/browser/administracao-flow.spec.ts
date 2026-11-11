@@ -152,6 +152,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
       "Convites",
       "Planos e preços",
       "Pagamentos das assinaturas",
+      "Relatórios",
       "Proprietários da plataforma",
       "Histórico administrativo",
     ]);
