@@ -11,7 +11,10 @@
 // - condição contratada mensal e trimestral ao mesmo tempo, separada do
 //   catálogo; pendente nunca vira zero;
 // - recusa a quem não é MASTER_OWNER, ao proprietário suspenso e ao que tem
-//   troca de senha obrigatória.
+//   troca de senha obrigatória;
+// - alcance (clientes por padrão, internos/teste, todos) pela marca is_test:
+//   totais, paginação, resumo e pagamentos do mês coerentes, e o
+//   estabelecimento muda de grupo ao marcar/desmarcar, com auditoria.
 //
 // O banco é compartilhado com os outros arquivos (em série): os totais são
 // conferidos pela DIFERENÇA antes/depois de criar os dados deste arquivo.
@@ -418,6 +421,134 @@ describe.skipIf(!url)('visão geral e listagem do portal pela API contra Postgre
     expect(await ids('&status=SUSPENDED')).toEqual(new Set(g.suspenso));
     expect(await ids('&status=SUSPENDED&filter=EXPIRING_SOON')).toEqual(new Set(g.suspenso));
     await master.get('/platform/establishments?filter=QUALQUER').expect(400);
+  });
+
+  it('alcance: clientes por padrão, internos/teste e todos coerentes em totais, paginação, pagamentos e após marcar/desmarcar', async () => {
+    const prefixo = `${marca}-esc`;
+    const pagina = async (alcance: string, page: number) =>
+      (await master.get(`/platform/establishments?q=${prefixo}&pageSize=2&page=${page}${alcance}`).expect(200)).body as {
+        items: { id: string; isTest: boolean }[];
+        total: number;
+        scope: string;
+        summary: { total: number };
+      };
+    const idsDe = async (alcance: string) => {
+      const vistos: string[] = [];
+      let total = 0;
+      for (let page = 1; ; page += 1) {
+        const r = await pagina(alcance, page);
+        total = r.total;
+        vistos.push(...r.items.map((i) => i.id));
+        if (page * 2 >= r.total) break;
+      }
+      expect(new Set(vistos).size).toBe(vistos.length);
+      expect(vistos).toHaveLength(total);
+      return new Set(vistos);
+    };
+    const visaoDe = async (alcance = '') =>
+      (await master.get(`/platform/overview${alcance}`).expect(200)).body as Visao & { scope: string };
+
+    const antes = { clientes: await visaoDe(), internos: await visaoDe('?scope=INTERNAL'), todos: await visaoDe('?scope=ALL') };
+    expect(antes.clientes.scope).toBe('CLIENTS');
+    expect(antes.internos.scope).toBe('INTERNAL');
+    expect(antes.internos.establishments.total + antes.clientes.establishments.total).toBe(antes.todos.establishments.total);
+
+    const clientes: string[] = [];
+    const internos: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const t = await estabelecimento(`esc-cliente${i}`);
+      await periodo(t, 'PAID', -5, 25, { cents: 1000, recebidoEm: hoje() });
+      clientes.push(t);
+    }
+    for (let i = 0; i < 2; i += 1) {
+      const t = await estabelecimento(`esc-interno${i}`);
+      await periodo(t, 'PAID', -5, 25, { cents: 300, recebidoEm: hoje() });
+      await q('UPDATE tenants SET is_test = true WHERE id = $1', [t]);
+      internos.push(t);
+    }
+
+    // Padrão = clientes; o alcance aplicado volta na resposta.
+    const padrao = await pagina('', 1);
+    expect(padrao.scope).toBe('CLIENTS');
+    expect(padrao.total).toBe(3);
+    expect(padrao.items.every((i) => i.isTest === false)).toBe(true);
+    expect(await idsDe('')).toEqual(new Set(clientes));
+    expect(await idsDe('&scope=CLIENTS')).toEqual(new Set(clientes));
+    expect(await idsDe('&scope=INTERNAL')).toEqual(new Set(internos));
+    expect(await idsDe('&scope=ALL')).toEqual(new Set([...clientes, ...internos]));
+    // Página 2 dos clientes tem só o terceiro; a 3 vem vazia, com o mesmo total.
+    expect((await pagina('', 2)).items).toHaveLength(1);
+    expect(await pagina('', 3)).toMatchObject({ items: [], total: 3 });
+    // Resumo da lista no mesmo alcance (sem busca): clientes + internos = todos.
+    const resumo = async (alcance: string) => (await pagina(alcance, 1)).summary.total;
+    expect((await resumo('')) + (await resumo('&scope=INTERNAL'))).toBe(await resumo('&scope=ALL'));
+    // Filtro de acesso combinado com o alcance.
+    expect(await idsDe('&scope=INTERNAL&filter=ACCESS_ALLOWED')).toEqual(new Set(internos));
+    expect(await idsDe('&filter=CONTRACT_PENDING')).toEqual(new Set(clientes));
+    await master.get('/platform/establishments?scope=TESTE').expect(400);
+    await master.get('/platform/overview?scope=TESTE').expect(400);
+    await master.get('/platform/overview?page=1').expect(400);
+
+    // Indicadores: cada alcance só com os seus; pagamentos do mês também.
+    const depois = { clientes: await visaoDe(), internos: await visaoDe('?scope=INTERNAL'), todos: await visaoDe('?scope=ALL') };
+    const delta = (k: 'clientes' | 'internos' | 'todos') => ({
+      total: depois[k].establishments.total - antes[k].establishments.total,
+      allowed: depois[k].establishments.allowed - antes[k].establishments.allowed,
+      pagos: depois[k].payments.count - antes[k].payments.count,
+      cents: depois[k].payments.totalCents - antes[k].payments.totalCents,
+    });
+    expect(delta('clientes')).toEqual({ total: 3, allowed: 3, pagos: 3, cents: 3000 });
+    expect(delta('internos')).toEqual({ total: 2, allowed: 2, pagos: 2, cents: 600 });
+    expect(delta('todos')).toEqual({ total: 5, allowed: 5, pagos: 5, cents: 3600 });
+
+    // Marcar um cliente pela rota existente: sai de "Clientes", entra em
+    // "Internos/teste", "Todos" não muda; desmarcar volta.
+    const ficha = async (t: string) =>
+      (await master.get(`/platform/establishments/${t}`).expect(200)).body as { updatedAt: string; isTest: boolean };
+    const alvo = clientes[0];
+    await master
+      .put(`/platform/establishments/${alvo}/test-flag`)
+      .send({ expectedUpdatedAt: (await ficha(alvo)).updatedAt, isTest: true })
+      .expect(200);
+    expect((await ficha(alvo)).isTest).toBe(true);
+    expect(await idsDe('')).toEqual(new Set(clientes.slice(1)));
+    expect(await idsDe('&scope=INTERNAL')).toEqual(new Set([...internos, alvo]));
+    expect((await idsDe('&scope=ALL')).size).toBe(5);
+    const marcado = await visaoDe();
+    expect(marcado.establishments.total - antes.clientes.establishments.total).toBe(2);
+    expect(marcado.payments.totalCents - antes.clientes.payments.totalCents).toBe(2000);
+    const auditoria = await q<{ summary: string; previous_data: unknown; new_data: unknown }>(
+      `SELECT summary, previous_data, new_data FROM audit_logs WHERE tenant_id = $1 AND action = 'TENANT_TEST_FLAG_CHANGED' ORDER BY occurred_at, id`,
+      [alvo],
+    );
+    expect(auditoria).toHaveLength(1);
+    expect(auditoria[0]).toMatchObject({ previous_data: { isTest: false }, new_data: { isTest: true } });
+    expect(auditoria[0].summary).toContain('interno/teste');
+
+    await master
+      .put(`/platform/establishments/${alvo}/test-flag`)
+      .send({ expectedUpdatedAt: (await ficha(alvo)).updatedAt, isTest: false })
+      .expect(200);
+    expect(await idsDe('')).toEqual(new Set(clientes));
+    expect(await idsDe('&scope=INTERNAL')).toEqual(new Set(internos));
+  });
+
+  it('dono do estabelecimento não lê o portal em nenhum alcance nem muda a classificação', async () => {
+    const tenantId = await estabelecimento('esc-proprio');
+    const dono = await conta('esc-dono');
+    await q(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [id(), dono.userId, tenantId]);
+    const agente = await entrar(dono.email);
+    const versao = ((await master.get(`/platform/establishments/${tenantId}`).expect(200)).body as { updatedAt: string }).updatedAt;
+    await agente.get('/platform/establishments?scope=INTERNAL').expect(403);
+    await agente.get('/platform/overview?scope=ALL').expect(403);
+    await agente.put(`/platform/establishments/${tenantId}/test-flag`).send({ expectedUpdatedAt: versao, isTest: true }).expect(403);
+    // O corpo não aceita alcance nem campo extra: a classificação só vem da marca.
+    await master
+      .put(`/platform/establishments/${tenantId}/test-flag`)
+      .send({ expectedUpdatedAt: versao, isTest: true, scope: 'INTERNAL' })
+      .expect(400);
+    const [linha] = await q<{ is_test: boolean }>('SELECT is_test FROM tenants WHERE id = $1', [tenantId]);
+    expect(linha.is_test).toBe(false);
   });
 
   it('recusa quem não é MASTER_OWNER, o proprietário suspenso e o que precisa trocar a senha', async () => {

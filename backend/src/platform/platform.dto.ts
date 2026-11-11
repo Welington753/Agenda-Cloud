@@ -5,7 +5,15 @@ import { requestKeySchema } from '../accounts/accounts.dto.js';
 import { MAX_COURTESY_DAYS, MAX_TRIAL_EXTENSION_DAYS } from '../commercial/access-periods.js';
 import { ACCESS_PAYMENT_METHODS } from '../migrations/1793232000000-CommercialAccess.js';
 import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
-import { ESTABLISHMENT_FILTERS } from './portal-overview.js';
+import {
+  DEFAULT_ESTABLISHMENT_SCOPE,
+  ESTABLISHMENT_FILTERS,
+  ESTABLISHMENT_SCOPES,
+  type EstablishmentScope,
+} from './portal-overview.js';
+
+/** Alcance: clientes (padrão), internos/teste ou todos (portal-overview.ts). */
+const scopeSchema = z.enum(ESTABLISHMENT_SCOPES).default(DEFAULT_ESTABLISHMENT_SCOPE);
 
 export const establishmentIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,30}$/);
 
@@ -20,6 +28,7 @@ export const establishmentQuerySchema = z
     planId: establishmentIdSchema.optional(),
     /** Filtro de acesso ou de condição contratada (portal-overview.ts). */
     filter: z.enum(ESTABLISHMENT_FILTERS).optional(),
+    scope: scopeSchema,
     page: z
       .string()
       .regex(/^[1-9]\d{0,5}$/)
@@ -33,7 +42,14 @@ export const establishmentQuerySchema = z
       .default(20),
   })
   .strict();
-export type EstablishmentQuery = z.infer<typeof establishmentQuerySchema>;
+/** `scope` ausente (chamada direta ao serviço) vale o padrão, como na rota. */
+export type EstablishmentQuery = Omit<z.infer<typeof establishmentQuerySchema>, 'scope'> & {
+  scope?: EstablishmentScope;
+};
+
+/** Visão geral: só o alcance dos indicadores. */
+export const overviewQuerySchema = z.object({ scope: scopeSchema }).strict();
+export type OverviewQuery = z.infer<typeof overviewQuerySchema>;
 
 /** `updated_at` que a tela leu: se outra tela mudou o estabelecimento, 409. */
 const expectedUpdatedAtSchema = z.iso.datetime({ offset: true });

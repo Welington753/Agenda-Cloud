@@ -155,6 +155,30 @@ export function matchesFilter(filter: EstablishmentFilter, view: TenantAccessVie
   }
 }
 
+/**
+ * Alcance da listagem e dos indicadores, pela marca `tenants.is_test`:
+ * - `CLIENTS` (padrão): estabelecimentos que usam o SaaS (`is_test = false`);
+ * - `INTERNAL`: internos e de teste (`is_test = true`), no mesmo grupo;
+ * - `ALL`: todos.
+ * `is_test = false` é o padrão técnico da coluna: um cadastro antigo nunca
+ * conferido também cai em `CLIENTS` até alguém marcá-lo. Nada é classificado
+ * automaticamente.
+ */
+export const ESTABLISHMENT_SCOPES = ['CLIENTS', 'INTERNAL', 'ALL'] as const;
+export type EstablishmentScope = (typeof ESTABLISHMENT_SCOPES)[number];
+export const DEFAULT_ESTABLISHMENT_SCOPE: EstablishmentScope = 'CLIENTS';
+
+export function matchesScope(scope: EstablishmentScope, isTest: boolean): boolean {
+  return scope === 'ALL' || (scope === 'INTERNAL') === isTest;
+}
+
+/** Condição SQL do alcance sobre `<alias>.is_test`; `null` em `ALL`. Mesma
+ * regra de `matchesScope` (sem parâmetro: só literais fixos). */
+export function scopeSql(scope: EstablishmentScope, alias: string): string | null {
+  if (scope === 'ALL') return null;
+  return `${alias}.is_test = ${scope === 'INTERNAL' ? 'true' : 'false'}`;
+}
+
 /** Mês corrente no fuso da plataforma: do dia 1 ao último dia, inclusive
  * (datas de calendário, como `payment_received_on`). */
 export function monthRange(now: Date, timeZone = PLATFORM_TIME_ZONE): { month: string; from: string; to: string } {

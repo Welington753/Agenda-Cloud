@@ -169,8 +169,8 @@ export class EstablishmentAdminService {
           actor,
           tenantId: atual.id,
           summary: dto.isTest
-            ? `Estabelecimento ${atual.name} marcado como teste (fora da busca; página pública mantida).`
-            : `Estabelecimento ${atual.name} desmarcado como teste (volta a ser indexável).`,
+            ? `Estabelecimento ${atual.name} marcado como interno/teste (fora dos indicadores de clientes e da busca; página pública mantida pelo link).`
+            : `Estabelecimento ${atual.name} desmarcado como interno/teste (volta aos clientes e pode ser indexado).`,
           previousData: { isTest: atual.is_test },
           newData: { isTest: dto.isTest },
         },

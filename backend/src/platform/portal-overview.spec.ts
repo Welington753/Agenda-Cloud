@@ -9,6 +9,9 @@ import {
   expiringSoon,
   matchesFilter,
   monthRange,
+  matchesScope,
+  scopeSql,
+  DEFAULT_ESTABLISHMENT_SCOPE,
   tenantAccessView,
   type TenantAccessInput,
 } from './portal-overview.js';
@@ -240,5 +243,33 @@ describe('monthRange: mês corrente em America/Sao_Paulo', () => {
     // 01/04 01:00 UTC ainda é 31/03 22:00 em São Paulo.
     expect(monthRange(new Date('2027-04-01T01:00:00Z')).month).toBe('2027-03');
     expect(monthRange(new Date('2027-04-01T03:00:00Z')).month).toBe('2027-04');
+  });
+});
+
+describe('alcance: clientes, internos/teste e todos pela marca is_test', () => {
+  it('clientes excluem internos/teste; internos/teste só eles; todos sem recorte', () => {
+    expect(matchesScope('CLIENTS', false)).toBe(true);
+    expect(matchesScope('CLIENTS', true)).toBe(false);
+    expect(matchesScope('INTERNAL', true)).toBe(true);
+    expect(matchesScope('INTERNAL', false)).toBe(false);
+    expect(matchesScope('ALL', true)).toBe(true);
+    expect(matchesScope('ALL', false)).toBe(true);
+    expect(DEFAULT_ESTABLISHMENT_SCOPE).toBe('CLIENTS');
+  });
+
+  it('a condição SQL segue a mesma regra, só com literais fixos', () => {
+    expect(scopeSql('CLIENTS', 't')).toBe('t.is_test = false');
+    expect(scopeSql('INTERNAL', 't')).toBe('t.is_test = true');
+    expect(scopeSql('ALL', 't')).toBeNull();
+  });
+
+  it('totais de cada alcance somam o total de todos (nenhum estabelecimento fica de fora)', () => {
+    const view = tenantAccessView(entrada({ status: 'ACTIVE' }), AGORA);
+    const todos = [false, false, true, false, true].map((isTest) => ({ status: 'ACTIVE', isTest, access: view, commercial: semContrato }));
+    const contar = (scope: 'CLIENTS' | 'INTERNAL' | 'ALL') => directoryCounts(todos.filter((e) => matchesScope(scope, e.isTest)));
+    expect(contar('CLIENTS').total).toBe(3);
+    expect(contar('INTERNAL').total).toBe(2);
+    expect(contar('ALL').total).toBe(contar('CLIENTS').total + contar('INTERNAL').total);
+    expect(contar('ALL').contractPending).toBe(5);
   });
 });

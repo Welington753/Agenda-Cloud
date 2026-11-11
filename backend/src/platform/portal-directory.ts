@@ -16,6 +16,8 @@ export interface DirectoryEntry {
   id: string;
   status: string;
   timezone: string;
+  /** Interno/teste (`tenants.is_test`). */
+  isTest: boolean;
   access: TenantAccessView;
   commercial: CommercialSummary;
 }
@@ -33,8 +35,8 @@ const CONTRACT_SQL = `SELECT DISTINCT ON (cp.tenant_id, cp.billing_cycle) cp.ten
   ORDER BY cp.tenant_id, cp.billing_cycle, cp.recorded_at DESC, cp.id DESC`;
 
 export async function loadDirectory(manager: EntityManager, now: Date): Promise<Map<string, DirectoryEntry>> {
-  const tenants = await manager.query<{ id: string; status: string; timezone: string; plan_id: string }[]>(
-    'SELECT id, status::text AS status, timezone, plan_id FROM tenants',
+  const tenants = await manager.query<{ id: string; status: string; timezone: string; plan_id: string; is_test: boolean }[]>(
+    'SELECT id, status::text AS status, timezone, plan_id, is_test FROM tenants',
   );
   const acesso = await loadAllAccessInputs(manager);
 
@@ -67,6 +69,7 @@ export async function loadDirectory(manager: EntityManager, now: Date): Promise<
       id: t.id,
       status: t.status,
       timezone: t.timezone,
+      isTest: t.is_test,
       access: tenantAccessView({ status: t.status, timezone: t.timezone, ...entrada }, now),
       commercial: commercialSummary(
         catalogo.get(t.plan_id) ?? new Map(),
