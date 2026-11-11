@@ -81,6 +81,10 @@ conferência de colisões): `docs/runbooks/publicacao-tenant-teste-slugs.md`.
 
 ## Estado e retomada
 
+> **Continuação:** o portal passou a separar clientes de internos/teste pela
+> mesma marca (`docs/plans/portal-clientes-e-internos.md`). `is_test = false`
+> continua sendo só o padrão técnico, não a conferência de um cadastro antigo.
+
 **Checkpoint de 10/11/2026, branch `feat/tenant-teste-slugs-reservados`.**
 
 **Feito:**
