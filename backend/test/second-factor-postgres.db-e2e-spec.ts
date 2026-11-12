@@ -19,7 +19,12 @@
 // - conta master com vínculo de estabelecimento: `/auth/me` sem código;
 // - chaves ausentes: verificação pelo app indisponível, nunca liberada;
 // - script de emergência: recusa havendo outro proprietário com fator;
-// - auditoria e e-mails sem segredo, código, URI ou token.
+// - redefinição de senha de master com fator: fator e códigos intactos,
+//   sessões revogadas, senha nova sem o código não abre o portal;
+// - segredo TOTP, URI e códigos de recuperação nunca na auditoria nem em
+//   e-mail; token de uso único nunca na auditoria nem na resposta a quem
+//   emite, e só no e-mail que o entrega ao titular (liberação ou
+//   redefinição), nunca num aviso de segurança.
 //
 // O banco é compartilhado com os outros arquivos (em série): contas com
 // marca própria; nenhuma conta GERENTE é criada.
@@ -567,7 +572,84 @@ describe.skipIf(!url)('segundo fator das contas de plataforma pela API contra Po
     }
   });
 
-  it('auditoria e e-mails nunca levam segredo, URI, código de recuperação nem token', async () => {
+  it('redefinição de senha de master com fator (fase optional): o fator e os códigos ficam; sessões caem; senha nova não abre o portal sem o código', async () => {
+    expect(config.enforcement).toBe('optional');
+    const emissora = await conta('reset-emissora');
+    const sEmissora = await entrar(emissora.email);
+    await cadastrar(sEmissora);
+
+    const alvo = await conta('reset-alvo');
+    const sCadastro = await entrar(alvo.email);
+    const { segredo, codigos } = await cadastrar(sCadastro);
+    // Um código de recuperação já consumido antes da redefinição.
+    const sRecuperada = await entrar(alvo.email);
+    await sRecuperada.post('/auth/second-factor/recovery').send({ code: codigos[0] }).expect(200);
+    const sSoSenha = await entrar(alvo.email);
+
+    const fatorAntes = await q(
+      `SELECT method, secret_ciphertext, secret_nonce, secret_tag, key_version, confirmed_at, last_used_counter
+         FROM user_second_factors WHERE user_id = $1`,
+      [alvo.userId],
+    );
+    const codigosAntes = await q<{ used_at: Date | null }>(
+      `SELECT id, code_hash, used_at FROM second_factor_recovery_codes WHERE user_id = $1 ORDER BY id`,
+      [alvo.userId],
+    );
+    expect(fatorAntes).toHaveLength(1);
+    expect(codigosAntes).toHaveLength(10);
+    expect(codigosAntes.filter((c) => c.used_at !== null)).toHaveLength(1);
+
+    // Fluxo real: outro proprietário pede a redefinição; o link chega só ao e-mail do titular.
+    await sEmissora
+      .post(`/platform/users/${alvo.userId}/password-reset`)
+      .send({ requestKey: `chave-reset-${id()}` })
+      .expect(200);
+    const email = mensagens.filter((m) => m.to[0].email === alvo.email && /redefinir-senha#t=/.test(m.textContent)).at(-1)!;
+    const token = /redefinir-senha#t=([0-9a-f]{64})/.exec(email.textContent)![1];
+    tokensVistos.push(token);
+
+    ip += 1;
+    const NOVA_SENHA = 'senha-nova-depois-do-reset-2fa-9';
+    await request(app.getHttpServer())
+      .post('/password-resets/complete')
+      .set('x-agenda-proxy-secret', SEGREDO_DO_PROXY)
+      .set('x-agenda-client-ip', `10.73.${Math.floor(ip / 250)}.${ip % 250}`)
+      .send({ token, password: NOVA_SENHA })
+      .expect(204);
+
+    // O fator continua igual e os códigos mantêm o estado (inclusive o consumido).
+    expect(
+      await q(
+        `SELECT method, secret_ciphertext, secret_nonce, secret_tag, key_version, confirmed_at, last_used_counter
+           FROM user_second_factors WHERE user_id = $1`,
+        [alvo.userId],
+      ),
+    ).toEqual(fatorAntes);
+    expect(
+      await q(`SELECT id, code_hash, used_at FROM second_factor_recovery_codes WHERE user_id = $1 ORDER BY id`, [alvo.userId]),
+    ).toEqual(codigosAntes);
+
+    // Todas as sessões anteriores foram revogadas, verificadas ou não.
+    for (const anterior of [sCadastro, sRecuperada, sSoSenha]) await anterior.get('/auth/me').expect(401);
+
+    // A senha antiga não entra; a nova entra, mas o portal pede o código.
+    ip += 1;
+    const sNova = request.agent(app.getHttpServer());
+    sNova.set('x-agenda-proxy-secret', SEGREDO_DO_PROXY).set('x-agenda-client-ip', `10.73.${Math.floor(ip / 250)}.${ip % 250}`);
+    await sNova.post('/auth/login').send({ login: alvo.email, password: SENHA }).expect(401);
+    await sNova.post('/auth/login').send({ login: alvo.email, password: NOVA_SENHA }).expect(200);
+    expect((await sNova.get('/platform/overview').expect(403)).body.code).toBe('SEGUNDO_FATOR_NECESSARIO');
+    const acesso = (await sNova.get('/platform/access').expect(200)).body;
+    expect(acesso).toMatchObject({ canViewEstablishments: false, secondFactor: { state: 'VERIFICATION_REQUIRED' } });
+    expect(Object.values(acesso.capabilities)).not.toContain(true);
+
+    // O código consumido antes continua inválido; o aplicativo de antes vale.
+    await sNova.post('/auth/second-factor/recovery').send({ code: codigos[0] }).expect(400);
+    await sNova.post('/auth/second-factor/verify').send({ code: codigoDe(segredo, 30_000) }).expect(200);
+    await sNova.get('/platform/overview').expect(200);
+  });
+
+  it('segredo, URI e códigos nunca na auditoria nem em e-mail; token só no e-mail que o entrega', async () => {
     const auditoria = JSON.stringify(
       await q(`SELECT summary, previous_data, new_data FROM audit_logs a JOIN users u ON u.id = a.target_user_id WHERE u.email::text LIKE $1`, [
         `${marca}-%`,
@@ -581,6 +663,17 @@ describe.skipIf(!url)('segundo fator das contas de plataforma pela API contra Po
       expect(emails).not.toContain(valor);
     }
     for (const token of tokensVistos) expect(auditoria).not.toContain(token);
+    // Token de uso único (liberação ou redefinição) só no e-mail que o entrega,
+    // a um único destinatário; nunca num aviso de segurança ou outro e-mail.
+    expect(tokensVistos.length).toBeGreaterThan(0);
+    for (const token of tokensVistos) {
+      const comToken = mensagens.filter((m) => JSON.stringify(m).includes(token));
+      expect(comToken.length).toBeLessThanOrEqual(1);
+      for (const m of comToken) {
+        expect(m.to).toHaveLength(1);
+        expect(m.subject).toMatch(/^(Cadastre a verificação em duas etapas|Crie uma nova senha) no /);
+      }
+    }
   });
 });
 

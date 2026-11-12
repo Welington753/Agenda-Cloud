@@ -128,8 +128,12 @@ Regras que as condições pediram:
   - Ações auditadas: `SECOND_FACTOR_ENABLED`, `_REPLACED`, `_LOCKED`,
     `_GRANT_ISSUED`, `_GRANT_USED`, `RECOVERY_CODE_USED` e
     `RECOVERY_CODES_REGENERATED`.
-  - Nenhum segredo, código, URI, QR ou token vai para log, auditoria ou
-    e-mail; um teste confere.
+  - Segredo TOTP, URI, QR e códigos (do aplicativo ou de recuperação) nunca
+    vão para log, auditoria ou e-mail.
+  - O token de uso único da liberação só sai no e-mail de liberação, ao
+    titular. Nunca vai para aviso de segurança, log, auditoria ou resposta a
+    quem emitiu. O db-e2e confere auditoria, e-mails e resposta; o log é
+    conferido por leitura do código (só registra o tipo do aviso).
 - **Convite como prova do e-mail (conferido):** o link do convite vai só no
   e-mail da conta. Ele nunca volta para quem convidou e não é simulado sem
   provedor (`NOT_CONFIGURED`). Por isso o aceite de um convite de plataforma
