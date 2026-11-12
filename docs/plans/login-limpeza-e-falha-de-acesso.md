@@ -21,14 +21,16 @@ A demonstração continua na página inicial ("Ver demonstração", `/onboarding
 
 O ambiente investigado foi o **publicado**: na máquina não havia web nem API locais rodando. A investigação usou só leitura: logs e lista de deploys pelo Render CLI, mais requisições sem credenciais.
 
-### Estado dos serviços em 2026-11-12, por volta das 19:40 UTC
+### Estado dos serviços em 2026-11-12, às 20:00 UTC
 
 | Serviço | Deploy live | Commit |
 |---|---|---|
 | API | `dep-dbqcnsdbedkc73d6aieg`, manual, live desde 2026-11-11 20:13 UTC | `23fda23` |
-| Web | `dep-dbr16gui0phs73d119ug`, manual, live desde 2026-11-12 19:30 UTC | `187c507` |
+| Web | `dep-dbr1jajm8hqs73c9ut70`, manual, live desde 2026-11-12 19:57 UTC | `187c507` |
 
-Dois deploys manuais da API falharam hoje e não substituíram a versão live: `b5e5586` às 19:16 UTC e `187c507` às 19:28 UTC. Nos dois, o log diz `Configuração de ambiente inválida ou incompleta. Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS.`
+Auto-Deploy está desligado nos dois serviços (`autoDeploy: no`, gatilho `off`).
+
+Três deploys manuais da API falharam hoje e não substituíram a versão live: `b5e5586` às 19:16 UTC, `187c507` às 19:28 UTC e `187c507` de novo às 19:56 UTC. Nos três, o log diz `Configuração de ambiente inválida ou incompleta. Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS.` O web foi publicado em `187c507` duas vezes (19:30 e 19:57 UTC); a segunda é a live.
 
 ### Causa
 
@@ -61,9 +63,9 @@ Regressões:
 
 Cada passo só deve ser feito com pedido explícito, pelo runbook correspondente.
 
-1. **Para o login voltar com a API `23fda23`:** aplicar a migração 17 no piloto, seguindo `docs/runbooks/publicacao-tenant-teste-slugs.md` (backup e `pilot:check-database` antes e depois). Outra saída é voltar a API para um commit que não leia `is_test`. A escolha é do responsável.
-2. **Fila de publicação, que continua valendo:** as comissões em `5d74556` vêm primeiro. A API e o web devem ficar no mesmo SHA; hoje estão divergentes (`23fda23` e `187c507`).
-3. **Deploy da API `b5e5586` ou posterior:** além das migrações 17 e 18, exige `PLATFORM_2FA_ENFORCEMENT` e `PLATFORM_TOTP_KEYS` no Render (`docs/runbooks/publicacao-2fa-administrativo.md`). Sem essas variáveis, a API não sobe. Foi o que fez os deploys de hoje falharem.
+1. **Para o login voltar:** há duas saídas. A primeira é voltar a API e o web para um commit que não leia `is_test`. A segunda é aplicar a migração 17 no piloto, seguindo `docs/runbooks/publicacao-tenant-teste-slugs.md` (backup e `pilot:check-database` antes e depois). A recuperação operacional é tratada fora deste PR.
+2. **Comissões:** o código das comissões em massa (`5d74556`) está na API live `23fda23`, mas a publicação funcional nunca foi validada, porque o login falha desde que essa API entrou. A fila de publicação registrada antes (comissões, depois migração 17, depois 2FA) partia de API e web em `8e8577d` e precisa ser reconciliada com o estado real. A API e o web estão em SHAs diferentes (`23fda23` e `187c507`).
+3. **Deploy da API `b5e5586` ou posterior:** exige as migrações 17 e 18 e todos os requisitos de `docs/runbooks/publicacao-2fa-administrativo.md`, inclusive as três variáveis `PLATFORM_TOTP_KEYS`, `PLATFORM_TOTP_KEY_CURRENT` e `PLATFORM_2FA_ENFORCEMENT`. O erro de inicialização cita só duas, mas o runbook exige as três. Sem elas, a API não sobe; foi o que fez os deploys de hoje falharem.
 
 ## Estado e retomada
 
@@ -74,5 +76,5 @@ Cada passo só deve ser feito com pedido explícito, pelo runbook correspondente
   - login real no computador (1280 px) e no celular (390 px), sem rolagem horizontal;
   - Vitest: 1071/1071; lint, lint:types e tsc limpos.
 - **Não feito:** nenhuma das ações no ambiente publicado.
-- **Próximo passo:** CI do PR verde no head final; depois disso, a decisão sobre a migração 17 no piloto.
+- **Próximo passo:** CI do PR verde no head final. A recuperação do login publicado (rollback ou migração 17) segue em separado e depende de autorização.
 - **Só neste computador:** os prints da validação e o banco `loginfix` no cluster descartável.
