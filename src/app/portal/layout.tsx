@@ -9,7 +9,10 @@
 // - `appleWebApp`: o objeto inteiro (o Next substitui a chave, não mescla),
 //   para o iPhone sugerir "Portal AC" ao adicionar à Tela de Início.
 // - O `apple-touch-icon` vem de ./apple-icon.tsx, o mais próximo da folha.
+// - Renderizado na requisição (`connection()`), com os metadados no HTML
+//   inicial (`htmlLimitedBots` em next.config.ts): veja o comentário lá.
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { NOME_APP_PORTAL, ROTA_MANIFEST_PORTAL } from "@/lib/pwa/manifest-portal";
 
@@ -19,6 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: NOME_APP_PORTAL, statusBarStyle: "default" },
 };
 
-export default function PortalLayout({ children }: { children: ReactNode }) {
+export default async function PortalLayout({ children }: { children: ReactNode }) {
+  await connection();
   return children;
 }

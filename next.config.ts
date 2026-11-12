@@ -16,6 +16,26 @@ if (erroDeApiUrl) {
 }
 
 const nextConfig: NextConfig = {
+  // Metadados no HTML inicial, sem streaming, em toda página renderizada na
+  // requisição (o Next decide pelo User-Agent; `/.*/` vale para todos).
+  //
+  // Em streaming, o Next põe os metadados numa fronteira de Suspense própria
+  // (`<div hidden>`), e o React hidrata essas fronteiras com a prioridade
+  // mais baixa, depois de qualquer navegação. Se a guarda de sessão faz o
+  // `router.replace` para a entrada antes disso (aparelho lento, sem login),
+  // a fronteira sai sem ser hidratada e as tags que o servidor pôs no <head>
+  // ficam órfãs: a página seguinte põe as suas e o documento fica com dois
+  // `<link rel="manifest">`, dois títulos e dois ícones (defeito do React,
+  // react/react#38155, ainda aberto). Sem streaming, os metadados hidratam
+  // junto com a página, antes de qualquer efeito, e o React os troca na
+  // navegação.
+  //
+  // Só vale para página renderizada na requisição: a estática sai do build
+  // sempre com streaming. Por isso o portal (src/app/portal/layout.tsx)
+  // renderiza na requisição. Não atrasa `/agendar/[slug]` nem `/[slug]`:
+  // os metadados deles usam a mesma leitura que o layout e a página já
+  // esperam antes de responder.
+  htmlLimitedBots: /.*/,
   // Segurança em todas as respostas, `noindex` nas áreas privadas e o
   // service worker sem cache (ver src/lib/site/cabecalhos.ts). Calculado no
   // build: `API_BASE_URL` e `API_PROXY_TARGET` entram na CSP (connect-src), e
