@@ -148,10 +148,42 @@ export interface AcessoPlataforma {
     manageEstablishmentLifecycle?: boolean;
   };
   platformRole?: string | null;
+  /** Segundo fator DESTA sessão. `null`: conta sem papel de plataforma.
+   * Ausente: API anterior ao segundo fator (a tela não afirma proteção). */
+  secondFactor?: EstadoDoSegundoFatorNoAcesso | null;
 }
+
+export const ESTADOS_DO_SEGUNDO_FATOR = [
+  "ENROLLMENT_OPTIONAL",
+  "ENROLLMENT_REQUIRED",
+  "VERIFICATION_REQUIRED",
+  "VERIFIED",
+] as const;
+export type EstadoDoSegundoFator = (typeof ESTADOS_DO_SEGUNDO_FATOR)[number];
+
+export interface EstadoDoSegundoFatorNoAcesso {
+  state: EstadoDoSegundoFator;
+  /** Esta sessão pode cadastrar sem outro código (convite ou liberação). */
+  enrollmentPermitted: boolean;
+  recoveryPending: boolean;
+  verifiedUntil: string | null;
+}
+
+function ehSegundoFatorNoAcesso(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  return (
+    objeto(v) &&
+    ESTADOS_DO_SEGUNDO_FATOR.includes(v.state as EstadoDoSegundoFator) &&
+    typeof v.enrollmentPermitted === "boolean" &&
+    typeof v.recoveryPending === "boolean" &&
+    (v.verifiedUntil === null || (typeof v.verifiedUntil === "string" && Number.isFinite(Date.parse(v.verifiedUntil))))
+  );
+}
+
 export function ehAcesso(value: unknown): value is AcessoPlataforma {
   if (!objeto(value) || typeof value.canViewEstablishments !== "boolean")
     return false;
+  if (!ehSegundoFatorNoAcesso(value.secondFactor)) return false;
   const caps = value.capabilities;
   if (caps === undefined) return true;
   return (

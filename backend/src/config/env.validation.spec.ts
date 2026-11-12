@@ -10,6 +10,14 @@ const CONFIG_VALIDA = {
   FRONTEND_URL: 'http://localhost:3000',
 };
 
+/** Chave fictícia (32 bytes fixos), só de teste. */
+const CHAVE_FICTICIA = Buffer.alloc(32, 7).toString('base64');
+const SEGUNDO_FATOR = {
+  PLATFORM_2FA_ENFORCEMENT: 'optional',
+  PLATFORM_TOTP_KEYS: `1:${CHAVE_FICTICIA}`,
+  PLATFORM_TOTP_KEY_CURRENT: '1',
+};
+
 describe('validateEnv', () => {
   it('aceita configuração completa e válida', () => {
     const config = validateEnv(CONFIG_VALIDA);
@@ -88,7 +96,12 @@ describe('validateEnv — TLS do PostgreSQL', () => {
 });
 
 describe('validateEnv — hospedagem', () => {
-  const PRODUCAO = { ...CONFIG_VALIDA, NODE_ENV: 'production', FRONTEND_URL: 'https://app.exemplo.test' };
+  const PRODUCAO = {
+    ...CONFIG_VALIDA,
+    NODE_ENV: 'production',
+    FRONTEND_URL: 'https://app.exemplo.test',
+    ...SEGUNDO_FATOR,
+  };
 
   it('HOST é opcional e, quando presente, só IP literal', () => {
     expect(validateEnv(CONFIG_VALIDA).HOST).toBeUndefined();
@@ -197,7 +210,53 @@ describe('validateEnv — e-mail transacional', () => {
     const local = { ...BREVO, EMAIL_API_BASE_URL: 'http://127.0.0.1:3025' };
     expect(validateEnv({ ...CONFIG_VALIDA, ...local }).EMAIL_API_BASE_URL).toBe(local.EMAIL_API_BASE_URL);
     expect(() =>
-      validateEnv({ ...CONFIG_VALIDA, ...local, NODE_ENV: 'production', FRONTEND_URL: 'https://app.exemplo.test' }),
+      validateEnv({ ...CONFIG_VALIDA, ...SEGUNDO_FATOR, ...local, NODE_ENV: 'production', FRONTEND_URL: 'https://app.exemplo.test' }),
     ).toThrow(/EMAIL_API_BASE_URL/);
+  });
+});
+
+describe('validateEnv — segundo fator das contas de plataforma', () => {
+  const PRODUCAO = { ...CONFIG_VALIDA, NODE_ENV: 'production', FRONTEND_URL: 'https://app.exemplo.test' };
+
+  it('em production, fase e chaves são obrigatórias, sem padrão', () => {
+    expect(() => validateEnv(PRODUCAO)).toThrow(/PLATFORM_2FA_ENFORCEMENT/);
+    expect(() => validateEnv(PRODUCAO)).toThrow(/PLATFORM_TOTP_KEYS/);
+    expect(validateEnv({ ...PRODUCAO, ...SEGUNDO_FATOR }).PLATFORM_2FA_ENFORCEMENT).toBe('optional');
+    expect(validateEnv({ ...PRODUCAO, ...SEGUNDO_FATOR, PLATFORM_2FA_ENFORCEMENT: 'required' }).PLATFORM_2FA_ENFORCEMENT).toBe('required');
+  });
+
+  it('não existe fase que desligue o segundo fator', () => {
+    for (const fase of ['off', 'disabled', 'none', '']) {
+      expect(() => validateEnv({ ...CONFIG_VALIDA, PLATFORM_2FA_ENFORCEMENT: fase })).toThrow(/PLATFORM_2FA_ENFORCEMENT/);
+    }
+  });
+
+  it('fora de production as chaves são opcionais, mas inválidas derrubam a inicialização sem ecoar o valor', () => {
+    expect(() => validateEnv(CONFIG_VALIDA)).not.toThrow();
+    const curta = Buffer.alloc(16, 1).toString('base64');
+    for (const problema of [
+      { PLATFORM_TOTP_KEYS: `1:${curta}`, PLATFORM_TOTP_KEY_CURRENT: '1' },
+      { PLATFORM_TOTP_KEYS: `1:${CHAVE_FICTICIA}`, PLATFORM_TOTP_KEY_CURRENT: '2' },
+      { PLATFORM_TOTP_KEYS: `1:${CHAVE_FICTICIA}` },
+      { PLATFORM_TOTP_KEYS: `1:${CHAVE_FICTICIA},1:${CHAVE_FICTICIA}`, PLATFORM_TOTP_KEY_CURRENT: '1' },
+      { PLATFORM_TOTP_KEYS: 'chave-sem-versao', PLATFORM_TOTP_KEY_CURRENT: '1' },
+    ]) {
+      let mensagem = '';
+      try {
+        validateEnv({ ...CONFIG_VALIDA, ...problema });
+      } catch (erro) {
+        mensagem = (erro as Error).message;
+      }
+      expect(mensagem).toMatch(/PLATFORM_TOTP_KEYS/);
+      expect(mensagem).not.toContain(CHAVE_FICTICIA);
+      expect(mensagem).not.toContain(curta);
+    }
+  });
+
+  it('aceita rotação: várias versões e a atual entre elas', () => {
+    const outra = Buffer.alloc(32, 9).toString('base64');
+    expect(() =>
+      validateEnv({ ...CONFIG_VALIDA, PLATFORM_TOTP_KEYS: `1:${CHAVE_FICTICIA},2:${outra}`, PLATFORM_TOTP_KEY_CURRENT: '2' }),
+    ).not.toThrow();
   });
 });

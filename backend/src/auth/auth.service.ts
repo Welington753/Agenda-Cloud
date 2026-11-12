@@ -2,7 +2,7 @@
 // O cadastro livre foi fechado; contas novas nascem por convite da
 // administração (src/accounts/invites.service.ts), que reaproveita a mesma
 // política de senha e o mesmo formato de sessão.
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 // Import de valor (não `import type`) — o Nest usa `design:paramtypes` do
 // construtor para resolver o token de injeção; um `import type` apagaria essa
 // referência em runtime e a DI falharia com "dependency ... is undefined".
@@ -28,6 +28,9 @@ import { isMembershipActive } from '../common/tenant-authorization.js';
 import { TRIAL_DURATION_DAYS, computeTrialWindow } from './trial-policy.js';
 import { tenantAccessSituation } from '../commercial/commercial-gate.js';
 import { sessionAreas } from './session-areas.js';
+import { SecondFactorConfig } from '../second-factor/second-factor-config.js';
+import { loadSessionSecondFactor } from '../second-factor/second-factor-facts.js';
+import { recusaDoSegundoFator } from '../second-factor/second-factor.guard.js';
 
 export interface LoginContext {
   now: Date;
@@ -43,7 +46,11 @@ export interface LoginResult extends SessionContextResult {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    // Ausente só em teste que monta o serviço à mão: vale a fase mais rígida.
+    @Optional() private readonly secondFactor?: SecondFactorConfig,
+  ) {}
 
   /** POST /auth/login (Lote 6B.4, revisado no 6B.6). Numa única transação:
    * acha o usuário, verifica a senha (SEMPRE via Argon2id, com hash fictício
@@ -221,6 +228,17 @@ export class AuthService {
    * encerradas e o histórico (sem senha nenhuma). */
   async changePassword(userId: string, sessionId: string, dto: ChangePasswordDto, now: Date): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
+      // Conta de plataforma: trocar a senha mexe na segurança da identidade
+      // master, então vale a mesma exigência do portal, qualquer que seja a
+      // tela (/conta ou /portal). Conta comum: nada muda.
+      const segundoFator = await loadSessionSecondFactor(
+        manager,
+        userId,
+        sessionId,
+        this.secondFactor?.enforcement ?? 'required',
+        now,
+      );
+      if (segundoFator && !segundoFator.status.portalAllowed) throw recusaDoSegundoFator(segundoFator.status);
       const [conta] = await manager.query<{ name: string; password_hash: string | null; algorithm: string | null }[]>(
         `SELECT u.name, c.password_hash, c.algorithm FROM users u
            LEFT JOIN credentials c ON c.user_id = u.id

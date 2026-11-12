@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SessionGuard } from '../auth/session.guard.js';
+import { PlatformSecondFactorGuard, SemSegundoFator } from '../second-factor/second-factor.guard.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
@@ -57,7 +58,7 @@ type AuthenticatedRequest = Request & { [AUTH_CONTEXT_REQUEST_KEY]: IdentityCont
 const id = new ZodValidationPipe(idSchema);
 
 @Controller('platform')
-@UseGuards(SessionGuard)
+@UseGuards(SessionGuard, PlatformSecondFactorGuard)
 export class AccountsAdminController {
   constructor(
     private readonly directory: AccountsDirectoryService,
@@ -247,6 +248,7 @@ export class AccountsAdminController {
   }
 
   @Post('reauth')
+  @SemSegundoFator()
   @HttpCode(204)
   async reauth(@Req() req: AuthenticatedRequest, @Body(new ZodValidationPipe(reauthSchema)) dto: { password: string }) {
     // NÃO é rota exclusiva do portal: o dono do estabelecimento também

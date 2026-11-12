@@ -138,6 +138,9 @@ describe('administração real da plataforma', () => {
         manageEstablishmentLifecycle: true,
       },
       platformRole: PlatformRole.MASTER_OWNER,
+      // Sem sessão (chamada direta ao serviço): nada de segundo fator a relatar.
+      // Pela rota, a sessão sempre vai (test/second-factor-postgres.db-e2e-spec.ts).
+      secondFactor: null,
     });
     findOne.mockResolvedValue({
       status: UserStatus.ACTIVE,

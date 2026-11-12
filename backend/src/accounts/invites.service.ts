@@ -30,6 +30,7 @@ import { DEFAULT_SESSION_MAX_AGE_MS } from '../config/session-cookie.config.js';
 import { generateId } from '../entities/common/generate-id.js';
 import { CREDENTIAL_ALGORITHM, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../auth/password-hasher.js';
 import { generateSessionToken } from '../auth/session-token.js';
+import { ENROLLMENT_PERMISSION_MS } from '../second-factor/second-factor-state.js';
 import { resolveSlug, slugify } from '../auth/slug.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import type { EmailSendResult } from '../email/email-sender.js';
@@ -592,8 +593,13 @@ export class InvitesService {
         }
         destination = alvo.professional_id ? '/conta/minha-agenda' : '/conta/visao-geral';
       } else {
+        // Master novo: precisa cadastrar o segundo fator antes de usar o
+        // portal, em qualquer fase (a não ser que a conta já tenha um fator).
+        // O link do convite só chega pelo e-mail da conta (nunca é mostrado à
+        // administração), então esta sessão pode cadastrar por 30 minutos.
         await manager.query(
           `UPDATE users SET platform_role = $2::platform_role, platform_permissions = $3::platform_permission[],
+                  second_factor_enrollment_required = NOT EXISTS (SELECT 1 FROM user_second_factors f WHERE f.user_id = users.id),
                   ${avancarVersao('$4')} WHERE id = $1`,
           [user.id, alvo.platform_role, alvo.platform_permissions, context.now],
         );
@@ -625,8 +631,9 @@ export class InvitesService {
 
       const { token: sessionToken, tokenHash } = generateSessionToken();
       await manager.query(
-        `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, user_agent, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at, user_agent, ip_address,
+                               second_factor_enrollment_allowed_until)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           generateId(),
           user.id,
@@ -635,6 +642,7 @@ export class InvitesService {
           new Date(context.now.getTime() + DEFAULT_SESSION_MAX_AGE_MS),
           context.userAgent ?? null,
           context.ipAddress ?? null,
+          alvo.type === 'PLATFORM' ? new Date(context.now.getTime() + ENROLLMENT_PERMISSION_MS) : null,
         ],
       );
       return { sessionToken, userId: user.id, destination };

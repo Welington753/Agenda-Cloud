@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
+import { PlatformSecondFactorGuard } from '../src/second-factor/second-factor.guard.js';
 import { PlatformService } from '../src/platform/platform.service.js';
 import { EstablishmentAdminService } from '../src/platform/establishment-admin.service.js';
 import { UnauthorizedException } from '@nestjs/common';
@@ -33,6 +34,10 @@ describe('administração da plataforma — HTTP', () => {
       .useValue(service)
       .overrideGuard(SessionGuard)
       .useValue(guard)
+      // O guard do segundo fator lê o banco; aqui só o controller é testado.
+      // A aplicação dele em toda rota /platform: test/second-factor.e2e-spec.ts.
+      .overrideGuard(PlatformSecondFactorGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = module.createNestApplication();
     app.use(cookieParser());
@@ -208,6 +213,10 @@ describe('marca de estabelecimento de teste — HTTP', () => {
       .useValue(admin)
       .overrideGuard(SessionGuard)
       .useValue(guard)
+      // O guard do segundo fator lê o banco; aqui só o controller é testado.
+      // A aplicação dele em toda rota /platform: test/second-factor.e2e-spec.ts.
+      .overrideGuard(PlatformSecondFactorGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = module.createNestApplication();
     app.use(cookieParser());

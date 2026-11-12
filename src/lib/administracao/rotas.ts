@@ -54,6 +54,10 @@ export const ROTA_HISTORICO = `${ROTA_ADMINISTRACAO}/historico`;
 export const ROTA_PLANOS_E_PRECOS = `${ROTA_ADMINISTRACAO}/planos`;
 export const ROTA_PAGAMENTOS_ASSINATURAS = `${ROTA_ADMINISTRACAO}/pagamentos`;
 export const ROTA_RELATORIOS = `${ROTA_ADMINISTRACAO}/relatorios`;
+/** Segurança da própria conta: verificação em duas etapas. */
+export const ROTA_SEGURANCA = `${ROTA_ADMINISTRACAO}/seguranca`;
+/** Liberação recebida por e-mail (o token vem no fragmento `#t=`). */
+export const ROTA_LIBERACAO_SEGUNDO_FATOR = `${ROTA_ADMINISTRACAO}/liberacao-2fa`;
 
 /** Situação do registro no extrato, na URL: não anulados ou anulados. */
 export type SituacaoNoExtrato = "recebidos" | "anulados";
@@ -102,6 +106,7 @@ export const SECOES_ADMINISTRACAO: readonly { href: string; rotulo: string }[] =
   { href: ROTA_RELATORIOS, rotulo: "Relatórios" },
   { href: ROTA_PAPEIS, rotulo: "Proprietários da plataforma" },
   { href: ROTA_HISTORICO, rotulo: "Histórico administrativo" },
+  { href: ROTA_SEGURANCA, rotulo: "Segurança da conta" },
 ];
 
 export function secaoAtiva(pathname: string | null, href: string): boolean {

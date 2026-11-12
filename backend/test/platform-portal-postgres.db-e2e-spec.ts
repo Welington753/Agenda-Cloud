@@ -446,6 +446,12 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         { expectedUpdatedAt: vc, role: 'MASTER_OWNER', permissions: [] },
       ],
       ['POST /platform/users/:userId/password-reset', `/platform/users/${alvoConta}/password-reset`, 403, { requestKey: chave() }],
+      [
+        'POST /platform/users/:userId/second-factor/grants',
+        `/platform/users/${alvoConta}/second-factor/grants`,
+        403,
+        { reason: motivo, requestKey: chave() },
+      ],
       ['DELETE /platform/memberships/:membershipId', `/platform/memberships/${vinculo}`, 403],
       [
         'PUT /platform/memberships/:membershipId/denied-permissions',
@@ -543,6 +549,8 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         canViewEstablishments: false,
         capabilities: { viewDirectory: false, manageEstablishments: false, managePlatformAccess: false, manageEstablishmentLifecycle: false },
         platformRole: null,
+        // Papel delegado não usa o portal: nada de segundo fator a mostrar.
+        secondFactor: null,
       });
       for (const [rota, caminho, status, corpo] of chamadas) {
         const chamada = agente[rota.split(' ')[0].toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete'](caminho);

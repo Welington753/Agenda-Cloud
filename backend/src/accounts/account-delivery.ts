@@ -12,7 +12,7 @@ import { DataSource } from 'typeorm';
 import { EmailSender, type EmailMessage, type EmailSendResult } from '../email/email-sender.js';
 import { lerConfiguracaoDeEmail } from '../email/email-config.js';
 
-export type DeliveryTable = 'invites' | 'password_resets';
+export type DeliveryTable = 'invites' | 'password_resets' | 'second_factor_grants';
 
 @Injectable()
 export class AccountDelivery {

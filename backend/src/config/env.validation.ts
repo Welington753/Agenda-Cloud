@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { CLIENT_IP_SOURCES, DEFAULT_CLIENT_IP_SOURCE, MIN_PROXY_SECRET_LENGTH } from './client-ip.js';
 import { problemaNasChavesVapid } from '../push/web-push-crypto.js';
+import { parseTotpKeyring, SECOND_FACTOR_ENFORCEMENTS } from '../second-factor/second-factor-keys.js';
 
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\/.+/;
 
@@ -98,6 +99,13 @@ const envSchema = z.object({
   EMAIL_FROM_NAME: z.string().trim().min(1).max(80).optional(),
   // Só para testes (caixa de e-mail local). Proibido em production.
   EMAIL_API_BASE_URL: z.url().optional(),
+  // Segundo fator das contas de plataforma (second-factor/second-factor-
+  // config.ts). Em production as três são obrigatórias, SEM padrão: um deploy
+  // sem elas não sobe, em vez de cair numa fase que ninguém escolheu. As
+  // chaves ficam só no ambiente da API; nunca no banco, no web ou em log.
+  PLATFORM_2FA_ENFORCEMENT: z.enum(SECOND_FACTOR_ENFORCEMENTS).optional(),
+  PLATFORM_TOTP_KEYS: z.string().min(1).optional(),
+  PLATFORM_TOTP_KEY_CURRENT: z.string().min(1).optional(),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === 'production' && !isHttpsOrigin(env.FRONTEND_URL)) {
     ctx.addIssue({ code: 'custom', path: ['FRONTEND_URL'], message: 'origem HTTPS exata' });
@@ -105,6 +113,16 @@ const envSchema = z.object({
   if (env.EMAIL_PROVIDER !== 'none') {
     if (!env.EMAIL_API_KEY) ctx.addIssue({ code: 'custom', path: ['EMAIL_API_KEY'], message: 'obrigatória' });
     if (!env.EMAIL_FROM) ctx.addIssue({ code: 'custom', path: ['EMAIL_FROM'], message: 'obrigatório' });
+  }
+  const chaves = parseTotpKeyring(env.PLATFORM_TOTP_KEYS, env.PLATFORM_TOTP_KEY_CURRENT);
+  if (chaves === 'INVALID') {
+    ctx.addIssue({ code: 'custom', path: ['PLATFORM_TOTP_KEYS'], message: 'inválida' });
+  }
+  if (env.NODE_ENV === 'production') {
+    if (!env.PLATFORM_2FA_ENFORCEMENT) {
+      ctx.addIssue({ code: 'custom', path: ['PLATFORM_2FA_ENFORCEMENT'], message: 'obrigatória' });
+    }
+    if (chaves === null) ctx.addIssue({ code: 'custom', path: ['PLATFORM_TOTP_KEYS'], message: 'obrigatória' });
   }
   if (env.EMAIL_API_BASE_URL && env.NODE_ENV === 'production') {
     ctx.addIssue({ code: 'custom', path: ['EMAIL_API_BASE_URL'], message: 'só fora de production' });

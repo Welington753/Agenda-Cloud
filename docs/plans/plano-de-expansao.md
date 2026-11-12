@@ -32,6 +32,7 @@ Regras que valem para todo lote abaixo:
 |---|---|---|---|
 | **O1 — Backup automático** | É o A1 de `mensagens-e-proximos-lotes.md`: dump agendado fora dos PCs, criptografado, com retenção, manifesto (contagens e hash) e restauração ensaiada em banco descartável a cada ciclo | Hoje o backup é manual (`backend/scripts/operacao-piloto.mjs`) e fica no PC de quem operou. Proposta com duas alternativas em `backup-e-monitoramento.md` | Decisões 7.1 e 7.2 |
 | **O2 — Monitoramento** | É o A2: registro de erros sem token, senha, e-mail ou telefone; alerta de deploy com falha, de health check e de pico de 5xx. Sem ping para manter acordado | Só existe o health check do Render. Proposta em `backup-e-monitoramento.md` | Decisão 7.2 |
+| **O4 — 2FA das contas administrativas** | TOTP obrigatório para o portal da plataforma (`docs/plans/2fa-contas-administrativas.md`), migration 18 | Implementado na branch `feat/2fa-contas-administrativas`; não publicado. Publicação pelo runbook `publicacao-2fa-administrativo.md` | Comissões e pacote da migration 17 publicados antes; e-mail conferido |
 | **O3 — Retenção** | Apagar sessões vencidas e entregas, alertas e tarefas antigas, com prazos escritos (R3). Roda no mesmo agendador externo de O1 | Nenhuma exclusão existe | O1 (agendador), decisão 7.8 |
 
 O agendador de O1 também é o que falta para o executor de notificações

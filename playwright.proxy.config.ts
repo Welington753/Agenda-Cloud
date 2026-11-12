@@ -49,6 +49,11 @@ export default defineConfig({
         PORT: "3001",
         NODE_ENV: "production",
         FRONTEND_URL: ORIGEM_PUBLICA,
+        // Obrigatórias em production. Chave FICTÍCIA (32 bytes fixos), só de
+        // teste; nenhuma conta desta suíte tem papel de plataforma.
+        PLATFORM_2FA_ENFORCEMENT: "optional",
+        PLATFORM_TOTP_KEYS: `1:${Buffer.alloc(32, 7).toString("base64")}`,
+        PLATFORM_TOTP_KEY_CURRENT: "1",
         CLIENT_IP_SOURCE: "cf-connecting-ip",
       },
       url: "http://localhost:3001/",

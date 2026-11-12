@@ -51,6 +51,7 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'ProfessionalCommissions1793491200000',
   'ProfessionalCommissionSettings1793577600000',
   'TenantTestFlag1793664000000',
+  'AdminSecondFactor1793750400000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -184,7 +185,10 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // + tenant_access_periods + plan_prices + tenant_contract_prices
       // + tenant_no_expiry_grants (PlatformPortal).
       // 44 até ProfessionalCommissions + professional_commission_settings.
-      expect(Number(tables.rows[0]?.n)).toBe(45);
+      // 45 até TenantTestFlag (não cria tabela) + user_second_factors,
+      // second_factor_enrollments, second_factor_recovery_codes,
+      // second_factor_grants e second_factor_attempts (AdminSecondFactor).
+      expect(Number(tables.rows[0]?.n)).toBe(50);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');

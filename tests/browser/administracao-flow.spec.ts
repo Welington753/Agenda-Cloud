@@ -155,6 +155,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
       "Relatórios",
       "Proprietários da plataforma",
       "Histórico administrativo",
+      "Segurança da conta",
     ]);
     await expect(page.getByRole("heading", { name: "Estabelecimentos", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: /operação/i })).toHaveCount(0);
