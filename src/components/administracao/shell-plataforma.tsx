@@ -27,7 +27,7 @@ import clsx from "clsx";
 import { Menu, ShieldCheck, X } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { identificacaoDaConta } from "@/lib/api/auth-api";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import { useSair } from "@/components/conta/use-sair";
 import { acessoConfirmado, useAcessoPlataforma } from "@/lib/administracao/use-acesso-plataforma";
 import { ROTA_ADMINISTRACAO } from "@/lib/administracao/rotas";
@@ -64,7 +64,7 @@ export function ShellPlataforma({ children }: { children: ReactNode }) {
       <aside className="sticky top-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 bg-chrome px-4 py-3 text-chrome-ink md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col md:items-stretch md:gap-0 md:p-0">
         <div className="col-start-1 row-start-1 min-w-0 md:px-5 md:py-6">
           <Link href={ROTA_ADMINISTRACAO} className={`inline-flex rounded-[var(--radius-control)] ${FOCO}`}>
-            <MarcaAgendaCloud />
+            <MarcaTimVix />
           </Link>
           <p
             data-testid="portal-plataforma"

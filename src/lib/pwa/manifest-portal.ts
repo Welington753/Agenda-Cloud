@@ -1,4 +1,4 @@
-// Manifesto do aplicativo instalável do PORTAL da plataforma ("Portal AC"),
+// Manifesto do aplicativo instalável do PORTAL da plataforma ("Portal TimVix"),
 // separado do aplicativo da operação (src/app/manifest.ts, que não muda).
 // Servido em /portal/manifest.webmanifest (src/app/portal/manifest.webmanifest)
 // e ligado só às páginas do portal pelo layout src/app/portal/layout.tsx.
@@ -16,7 +16,7 @@
 import type { MetadataRoute } from "next";
 import { ROTA_ADMINISTRACAO, ROTA_VISAO_GERAL } from "@/lib/administracao/rotas";
 
-export const NOME_APP_PORTAL = "Portal AC";
+export const NOME_APP_PORTAL = "Portal TimVix";
 export const ROTA_MANIFEST_PORTAL = `${ROTA_ADMINISTRACAO}/manifest.webmanifest`;
 
 export function manifestDoPortal(): MetadataRoute.Manifest {
@@ -24,7 +24,7 @@ export function manifestDoPortal(): MetadataRoute.Manifest {
     id: ROTA_VISAO_GERAL,
     name: NOME_APP_PORTAL,
     short_name: NOME_APP_PORTAL,
-    description: "Portal da plataforma Agenda Cloud: estabelecimentos, acessos, planos e pagamentos.",
+    description: "Portal da plataforma TimVix: estabelecimentos, acessos, planos e pagamentos.",
     start_url: ROTA_VISAO_GERAL,
     scope: ROTA_ADMINISTRACAO,
     display: "standalone",

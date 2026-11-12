@@ -134,7 +134,7 @@ export const changePlanSchema = z
 export type ChangePlanDto = z.infer<typeof changePlanSchema>;
 
 // ------------------------------------------------- validade do acesso
-// Assinatura do Agenda Cloud, registrada à mão pela administração. Nada
+// Assinatura do TimVix, registrada à mão pela administração. Nada
 // aqui é recebimento de atendimento (`payments/`).
 
 /** Chave do formulário: repetir a mesma requisição nunca grava duas vezes. */

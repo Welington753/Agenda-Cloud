@@ -24,7 +24,7 @@ export function AvisoDeVencimento({ acesso }: { acesso: ValidadeDoAcessoReal | u
       <CalendarClock aria-hidden className="mt-0.5 size-4 shrink-0 text-[color:var(--color-warning)]" />
       <p>
         <strong>O acesso vence {PRAZO[aviso.faixa]}.</strong> {O_QUE_VALE[aviso.tipo]} vale até {ultimoDia} (último dia).
-        Para continuar sem pausa, fale com a administração do Agenda Cloud pelo mesmo canal do seu cadastro. Nada é
+        Para continuar sem pausa, fale com a administração do TimVix pelo mesmo canal do seu cadastro. Nada é
         apagado no vencimento.
       </p>
     </div>

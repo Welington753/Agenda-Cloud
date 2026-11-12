@@ -1,5 +1,5 @@
 // Validade do acesso de um estabelecimento à plataforma (assinatura do
-// Agenda Cloud). Funções puras: sem Nest, sem banco e sem relógio do
+// TimVix). Funções puras: sem Nest, sem banco e sem relógio do
 // processo. Nada aqui tem relação com os recebimentos dos atendimentos
 // (`payments/`), que são o dinheiro que o cliente paga ao estabelecimento.
 //

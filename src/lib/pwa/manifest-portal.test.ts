@@ -17,12 +17,12 @@ describe("manifest do aplicativo da operação", () => {
     expect(m.start_url).toBe("/conta/visao-geral");
     expect(m.scope).toBe("/");
     expect(m.display).toBe("standalone");
-    expect(m.name).toBe("Agenda Cloud");
+    expect(m.name).toBe("TimVix");
     expect(m.icons?.map((i) => i.src)).toEqual(["/icone-192.png", "/icone-512.png", "/icone-maskable-512.png"]);
   });
 });
 
-describe("manifest do aplicativo do portal (Portal AC)", () => {
+describe("manifest do aplicativo do portal (Portal TimVix)", () => {
   const m = manifestDoPortal();
 
   it("tem identidade própria e abre na Visão geral do portal em tela cheia", () => {
@@ -30,8 +30,8 @@ describe("manifest do aplicativo do portal (Portal AC)", () => {
     expect(m.id).not.toBe(manifestDaOperacao().id);
     expect(m.start_url).toBe("/portal/visao-geral");
     expect(m.display).toBe("standalone");
-    expect(m.name).toBe("Portal AC");
-    expect(m.short_name).toBe("Portal AC");
+    expect(m.name).toBe("Portal TimVix");
+    expect(m.short_name).toBe("Portal TimVix");
     expect(ROTA_MANIFEST_PORTAL).toBe("/portal/manifest.webmanifest");
   });
 

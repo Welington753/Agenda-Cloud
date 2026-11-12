@@ -1,4 +1,4 @@
-// Ícone do aplicativo instalado do PORTAL da plataforma ("Portal AC"): o
+// Ícone do aplicativo instalado do PORTAL da plataforma ("Portal TimVix"): o
 // mesmo calendário do aplicativo da operação (icone.tsx), mas sobre fundo
 // escuro e com um pequeno escudo na cor de destaque, para os dois ícones não
 // se confundirem na tela de início. Desenhado com formas, sem arquivo binário

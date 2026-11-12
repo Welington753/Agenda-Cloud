@@ -11,7 +11,7 @@ describe("metadados da raiz", () => {
     expect(m.metadataBase?.toString()).toBe("https://agenda-exemplo-web.onrender.com/");
     expect(m.alternates).toBeUndefined();
     expect(m.robots).toBeUndefined();
-    expect(m.openGraph).toMatchObject({ siteName: "Agenda Cloud", locale: "pt_BR", type: "website" });
+    expect(m.openGraph).toMatchObject({ siteName: "TimVix", locale: "pt_BR", type: "website" });
   });
 
   it("imagem de compartilhamento relativa à origem confiável", () => {

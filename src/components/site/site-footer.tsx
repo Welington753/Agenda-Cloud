@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import {
   EMAIL_CONTATO,
   HREF_COMO_OBTER_ACESSO,
@@ -15,7 +15,7 @@ export function SiteFooter() {
   return (
     <footer className={`${FAIXA_ESCURA} border-t border-chrome-border px-4 py-8 sm:px-8`}>
       <div className="mx-auto flex max-w-5xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-        <MarcaAgendaCloud className="text-chrome-ink" tamanho={20} />
+        <MarcaTimVix className="text-chrome-ink" tamanho={20} />
         <nav aria-label="Rodapé">
           <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
             <li>

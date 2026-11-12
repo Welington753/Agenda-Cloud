@@ -1,4 +1,4 @@
-// Preço da assinatura do Agenda Cloud: catálogo por plano e ciclo, e o valor
+// Preço da assinatura do TimVix: catálogo por plano e ciclo, e o valor
 // contratado com cada cliente. Funções puras, sem banco (ver
 // docs/plans/portal-da-plataforma.md, seção 4).
 //

@@ -148,7 +148,7 @@ export function RelatorioDoPeriodo({
         <CartaoCorpo className="space-y-2 text-xs text-ink-soft" data-testid="significado-dos-numeros">
           <h3 className="text-sm font-semibold text-ink">O que estes números significam</h3>
           <p>
-            Pagamentos recebidos: pagamentos das assinaturas do Agenda Cloud registrados manualmente no portal e não anulados
+            Pagamentos recebidos: pagamentos das assinaturas do TimVix registrados manualmente no portal e não anulados
             agora, pela data de recebimento informada. Soma os valores gravados em cada pagamento, sem recalcular pelo catálogo ou
             pelo contrato. Um pagamento trimestral conta inteiro no mês em que foi recebido. Não é faturamento dos
             estabelecimentos, receita recorrente, previsão nem cobrança a vencer.
@@ -159,7 +159,7 @@ export function RelatorioDoPeriodo({
           </p>
           <p>
             Cadastros: estabelecimentos cuja data de criação cai no período, inclusive os que depois foram suspensos ou
-            arquivados (nenhum fluxo do Agenda Cloud apaga um cadastro). Datas antigas podem refletir importação ou migração de
+            arquivados (nenhum fluxo do TimVix apaga um cadastro). Datas antigas podem refletir importação ou migração de
             dados, e não a data real de entrada.
           </p>
         </CartaoCorpo>

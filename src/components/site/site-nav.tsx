@@ -8,7 +8,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import {
   HREF_COMO_OBTER_ACESSO,
   HREF_DEMONSTRACAO,
@@ -27,7 +27,7 @@ export function SiteNav() {
     <header className={`sticky top-0 z-40 border-b border-chrome-border ${FAIXA_ESCURA}`}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
         <Link href="/" className="text-chrome-ink" aria-label="Página inicial">
-          <MarcaAgendaCloud />
+          <MarcaTimVix />
         </Link>
 
         <nav aria-label="Navegação principal" className="hidden items-center gap-6 lg:flex">

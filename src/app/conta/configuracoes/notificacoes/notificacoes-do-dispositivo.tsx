@@ -62,7 +62,7 @@ export function NotificacoesDoDispositivo({ tenantId }: { tenantId: string }) {
         {estado.tipo === "bloqueado" && (
           <p className="text-sm text-ink" data-testid="push-estado">
             <strong>Bloqueado.</strong> As notificações deste site estão bloqueadas nas configurações do
-            navegador ou do aparelho. Para receber, libere as notificações do Agenda Cloud por lá e volte a
+            navegador ou do aparelho. Para receber, libere as notificações do TimVix por lá e volte a
             esta tela.
           </p>
         )}
@@ -77,13 +77,13 @@ export function NotificacoesDoDispositivo({ tenantId }: { tenantId: string }) {
         {estado.tipo === "instalar_no_iphone" && (
           <div className="space-y-2 text-sm text-ink" data-testid="push-estado">
             <p>
-              <strong>No iPhone ou iPad</strong>, as notificações só funcionam com o Agenda Cloud adicionado à
+              <strong>No iPhone ou iPad</strong>, as notificações só funcionam com o TimVix adicionado à
               Tela de Início, no iOS 16.4 ou mais recente:
             </p>
             <ol className="list-decimal space-y-1 pl-5">
               <li>Abra este endereço no Safari.</li>
               <li>Toque em Compartilhar e escolha “Adicionar à Tela de Início”.</li>
-              <li>Abra o Agenda Cloud pelo ícone novo, entre na conta e volte a esta tela.</li>
+              <li>Abra o TimVix pelo ícone novo, entre na conta e volte a esta tela.</li>
             </ol>
             <p className="text-ink-soft">Se o botão de ativar não aparecer depois disso, o aparelho não oferece este recurso.</p>
           </div>

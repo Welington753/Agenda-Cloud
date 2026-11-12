@@ -55,7 +55,7 @@ export function isReservedSlug(slug: string): boolean {
 }
 
 export const SLUG_RESERVADO = 'SLUG_RESERVADO';
-export const SLUG_RESERVADO_MESSAGE = 'Este endereço é reservado pelo Agenda Cloud. Escolha outro.';
+export const SLUG_RESERVADO_MESSAGE = 'Este endereço é reservado pelo TimVix. Escolha outro.';
 
 /** Contrato para uma futura troca de slug (hoje nenhuma rota troca): mudar
  * PARA um slug reservado é 409 `SLUG_RESERVADO`; reenviar o slug atual sem

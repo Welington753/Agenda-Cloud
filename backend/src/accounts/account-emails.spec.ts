@@ -89,7 +89,7 @@ describe('e-mail de convite', () => {
     expect(m.subject).toBe('Convite para acessar Estúdio Ana & Bia');
     expect(m.to).toEqual({ email: 'maria@example.test', name: 'Maria da Silva' });
     expect(m.text).toContain('Olá, Maria!');
-    expect(m.text).toContain('Você recebeu um convite para acessar Estúdio Ana & Bia pelo Agenda Cloud.');
+    expect(m.text).toContain('Você recebeu um convite para acessar Estúdio Ana & Bia pelo TimVix.');
     expect(m.text).toContain('Para começar, crie sua senha pelo link abaixo.');
     expect(m.text).toContain(`Ativar meu acesso:\n${LINK}`);
     expect(visivel(m.html)).toContain('Para começar, crie sua senha pelo botão abaixo.');
@@ -110,8 +110,8 @@ describe('e-mail de convite', () => {
 
   it('administração da plataforma: nunca cita estabelecimento', () => {
     const nova = emailDeConvite(convite({ tenantName: null }), LINK);
-    expect(nova.subject).toBe('Convite para a administração do Agenda Cloud');
-    expect(nova.text).toContain('participar da administração da plataforma Agenda Cloud');
+    expect(nova.subject).toBe('Convite para a administração do TimVix');
+    expect(nova.text).toContain('participar da administração da plataforma TimVix');
     expect(nova.text).toContain('Ativar meu acesso:');
     expect(nova.text).not.toMatch(/Estúdio|estabelecimento/);
     const existente = emailDeConvite(convite({ tenantName: null, accountExists: true }), LINK);
@@ -123,7 +123,7 @@ describe('e-mail de convite', () => {
     expect(m.subject).toBe('Novo link: convite para acessar Estúdio Ana & Bia');
     expect(m.text).toContain('Este é um novo link para o mesmo convite. Os links enviados antes não funcionam mais.');
     expect(emailDeConvite(convite({ resent: true, tenantName: null }), LINK).subject).toBe(
-      'Novo link: convite para a administração do Agenda Cloud',
+      'Novo link: convite para a administração do TimVix',
     );
     expect(emailDeConvite(convite(), LINK).text).not.toContain('novo link');
   });
@@ -167,7 +167,7 @@ describe('e-mail de convite', () => {
     expect(m.html).toMatch(/^<!doctype html>\n<html lang="pt-BR">/);
     expect(m.html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
     expect(m.html).toContain('max-width:560px');
-    expect(m.html).toContain('Mensagem automática do Agenda Cloud, enviada para maria@example.test.');
+    expect(m.html).toContain('Mensagem automática do TimVix, enviada para maria@example.test.');
   });
 });
 
@@ -176,9 +176,9 @@ describe('e-mail de redefinição de senha', () => {
   const m = emailDeRedefinicao({ name: 'João Pereira', email: 'joao@example.test', validityMs: ACCOUNT_LINK_TTL_MS }, LINK_RESET);
 
   it('diz que a administração enviou o link, nunca que a pessoa pediu', () => {
-    expect(m.subject).toBe('Crie uma nova senha no Agenda Cloud');
+    expect(m.subject).toBe('Crie uma nova senha no TimVix');
     expect(m.text).toContain('Olá, João!');
-    expect(m.text).toContain('A administração do Agenda Cloud enviou este link para você criar uma nova senha');
+    expect(m.text).toContain('A administração do TimVix enviou este link para você criar uma nova senha');
     expect(m.text).not.toMatch(/você (pediu|solicitou)|seu pedido|sua solicitação/i);
     expect(m.text).toContain(`Criar nova senha:\n${LINK_RESET}`);
   });

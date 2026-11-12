@@ -135,7 +135,7 @@ export function HistoricoDeValidade({ item, aoMudar }: { item: DetalheEstabeleci
               <strong>Depois de anular:</strong> {validadeDepoisDaCorrecao(previa.after, item.timezone)}
             </p>
             <p className="text-xs">
-              Isto corrige só o registro. O Agenda Cloud não devolve nem movimenta dinheiro: um estorno, se houver, é
+              Isto corrige só o registro. O TimVix não devolve nem movimenta dinheiro: um estorno, se houver, é
               feito fora do sistema.
             </p>
             <label className="block text-sm font-medium">

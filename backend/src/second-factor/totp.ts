@@ -12,7 +12,7 @@
 // 9.6.0, e a regra fica explícita aqui, testada contra o banco.
 import * as OTPAuth from 'otpauth';
 
-export const TOTP_ISSUER = 'Agenda Cloud';
+export const TOTP_ISSUER = 'TimVix';
 export const TOTP_PERIOD_SECONDS = 30;
 const PARAMETROS = { algorithm: 'SHA1', digits: 6, period: TOTP_PERIOD_SECONDS } as const;
 /** Um período antes e um depois do atual (relógio do celular adiantado ou

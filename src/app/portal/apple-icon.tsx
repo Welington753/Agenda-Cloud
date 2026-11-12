@@ -1,5 +1,5 @@
 // Ícone da tela de início do iPhone/iPad (`apple-touch-icon`) do aplicativo
-// "Portal AC". Por ser o arquivo mais próximo da folha, vale para `/portal` e
+// "Portal TimVix". Por ser o arquivo mais próximo da folha, vale para `/portal` e
 // `/portal/**` no lugar do src/app/apple-icon.tsx (que segue o da operação).
 import { respostaDoIconePortal } from "@/lib/pwa/icone-portal";
 

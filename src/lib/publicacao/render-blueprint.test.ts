@@ -95,7 +95,7 @@ describe("render.yaml (piloto)", () => {
     expect(semComentarios.match(/generateValue/g)).toHaveLength(1);
   });
 
-  it("nomes próprios do Agenda Cloud, sem recurso compartilhado com outro sistema da conta", () => {
+  it("nomes próprios do TimVix, sem recurso compartilhado com outro sistema da conta", () => {
     const nomes = [...semComentarios.matchAll(/^ {4}name: (.+)$/gm)].map((m) => m[1]);
     expect(nomes).toEqual([API, WEB]);
     expect(semComentarios).not.toMatch(/envVarGroups|fromGroup|^databases:|fromDatabase/m);

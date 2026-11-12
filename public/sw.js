@@ -1,4 +1,4 @@
-// Service worker do Agenda Cloud — SÓ notificações Web Push.
+// Service worker do TimVix — SÓ notificações Web Push.
 //
 // - NÃO há manipulador de `fetch` e nada usa Cache Storage: nenhuma página
 //   privada, sessão ou resposta da API é guardada por aqui. Sem conexão, o
@@ -84,7 +84,7 @@ self.addEventListener("notificationclick", (evento) => {
       for (const janela of janelas) {
         const endereco = new URL(janela.url);
         if (endereco.origin !== self.location.origin) continue;
-        // Janela do portal da plataforma (o aplicativo "Portal AC", com
+        // Janela do portal da plataforma (o aplicativo "Portal TimVix", com
         // manifest próprio): nunca é escolhida nem navegada para a operação.
         if (ehJanelaDoPortal(endereco.pathname)) continue;
         try {

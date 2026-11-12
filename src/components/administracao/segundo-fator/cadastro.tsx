@@ -127,7 +127,7 @@ export function CadastroDoSegundoFator({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cadastro.qrSvg)}`}
-          alt="QR code para cadastrar o Agenda Cloud no aplicativo autenticador"
+          alt="QR code para cadastrar o TimVix no aplicativo autenticador"
           className="mx-auto w-full max-w-60 rounded-lg border border-border bg-white p-2"
           data-testid="qr-code"
         />

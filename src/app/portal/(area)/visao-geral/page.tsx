@@ -126,7 +126,7 @@ function Pagamentos({ pagamentos, alcance }: { pagamentos: VisaoGeral["payments"
           recebidos neste mês, não anulados, no mesmo alcance.
         </p>
         <p className="text-xs text-ink-soft">
-          Critério: pagamentos das assinaturas do Agenda Cloud confirmados manualmente no portal, não anulados, com data de
+          Critério: pagamentos das assinaturas do TimVix confirmados manualmente no portal, não anulados, com data de
           recebimento registrada entre {diaBr(pagamentos.from)} e {diaBr(pagamentos.to)} (horário de Brasília,{" "}
           {pagamentos.timeZone}). Soma os valores registrados em cada pagamento, sem recalcular pelo catálogo ou pelo
           contrato atual. Não inclui recebimentos dos atendimentos dos estabelecimentos e não é receita recorrente nem

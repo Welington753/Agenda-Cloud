@@ -97,8 +97,8 @@ describe('TOTP pela biblioteca', () => {
 
   it('URI e chave manual para os aplicativos', () => {
     const uri = otpauthUri(segredo, 'pessoa@example.test');
-    expect(uri).toMatch(/^otpauth:\/\/totp\/Agenda%20Cloud:pessoa%40example\.test\?/);
-    expect(uri).toContain('issuer=Agenda%20Cloud');
+    expect(uri).toMatch(/^otpauth:\/\/totp\/TimVix:pessoa%40example\.test\?/);
+    expect(uri).toContain('issuer=TimVix');
     expect(uri).toContain('digits=6');
     expect(uri).toContain('period=30');
     expect(manualKey(segredo)).toMatch(/^[A-Z2-7]{4}( [A-Z2-7]{1,4})+$/);

@@ -26,10 +26,10 @@ const ROTULO_VALIDADE = { TRIAL: "Teste gratuito", PAID: "Acesso pago", COURTESY
  * "Validade ainda não definida", nunca apresentado como pago ou teste. */
 function validade(acesso: ValidadeDoAcessoReal | undefined): string | null {
   if (acesso?.state === "NO_EXPIRY") {
-    return "Acesso sem vencimento, concedido pela administração do Agenda Cloud.";
+    return "Acesso sem vencimento, concedido pela administração do TimVix.";
   }
   if (acesso?.state === "UNTRACKED") {
-    return "Validade ainda não definida: o estabelecimento continua como antes até a regularização com a administração do Agenda Cloud.";
+    return "Validade ainda não definida: o estabelecimento continua como antes até a regularização com a administração do TimVix.";
   }
   if (!acesso?.validUntil || (acesso.state !== "TRIAL" && acesso.state !== "PAID" && acesso.state !== "COURTESY")) return null;
   const ultimo = new Date(Date.parse(acesso.validUntil) - 1);

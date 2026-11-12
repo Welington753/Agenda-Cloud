@@ -39,7 +39,7 @@ export function codigoDeRecuperacaoCompleto(codigo: string): boolean {
 /** Arquivo de texto dos códigos de recuperação (gerado no navegador). */
 export function textoDosCodigos(codigos: string[], email: string | null, agora: Date): string {
   return [
-    "Agenda Cloud — códigos de recuperação da verificação em duas etapas",
+    "TimVix — códigos de recuperação da verificação em duas etapas",
     ...(email ? [`Conta: ${email}`] : []),
     `Gerados em: ${agora.toISOString().slice(0, 10)}`,
     "",
