@@ -6,7 +6,7 @@
 // - situação administrativa: só TRIAL e ACTIVE operam
 //   (`isTenantUsableForSession`); suspenso, arquivado, cancelado e
 //   inadimplente antigo não operam, com qualquer validade;
-// - validade (assinatura do Agenda Cloud): `accessSituation`, com teste,
+// - validade (assinatura do TimVix): `accessSituation`, com teste,
 //   período pago, cortesia, "sem vencimento", legado e renovações já
 //   registradas.
 // Nada aqui conta estabelecimentos por status ou datas sem passar por essas

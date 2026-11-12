@@ -7,7 +7,7 @@
 // para as constraints de sobreposição. Nada é apagado.
 //
 // O que NÃO faz: não devolve nem movimenta dinheiro. Um estorno, se houver,
-// acontece fora do Agenda Cloud; aqui só se corrige o registro.
+// acontece fora do TimVix; aqui só se corrige o registro.
 //
 // Regras (as mesmas das outras ações de validade):
 // - só `MASTER_OWNER`, com senha confirmada há pouco NESTA sessão, motivo

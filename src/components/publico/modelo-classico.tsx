@@ -184,7 +184,7 @@ export function ModeloClassico({
 
         {rodape && <p className="mt-10 text-center text-sm text-ink-soft">{rodape}</p>}
         {exibirMarcaPlataforma(estabelecimento) && (
-          <p className="mt-3 text-center text-xs text-ink-soft">Página criada com Agenda Cloud</p>
+          <p className="mt-3 text-center text-xs text-ink-soft">Página criada com TimVix</p>
         )}
       </main>
 

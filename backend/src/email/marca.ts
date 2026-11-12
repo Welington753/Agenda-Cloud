@@ -1,4 +1,4 @@
-// Marca usada nos e-mails. "Agenda Cloud" ainda é um nome provisório: trocar
+// Marca usada nos e-mails (TimVix). Trocar o nome
 // aqui muda o assunto, o texto, o rodapé e o remetente padrão de uma vez. O
 // frontend tem o seu equivalente em `src/lib/config.ts` (`NOME_PRODUTO`).
 //
@@ -6,7 +6,7 @@
 // o tom escuro do destaque (`--color-accent-hover`): texto branco sobre ele
 // passa de 4,5:1, o que o tom principal não garante.
 export const MARCA = {
-  nome: 'Agenda Cloud',
+  nome: 'TimVix',
   cores: {
     destaque: '#9a5417',
     sobreDestaque: '#ffffff',

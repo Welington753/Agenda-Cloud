@@ -19,7 +19,7 @@ import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-
 import { useToast } from "@/components/ui/toast";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { FormularioLogin } from "@/components/auth/formulario-login";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import type { PapelEstabelecimento, PapelPlataforma } from "@/lib/types";
 
 interface ContaDemonstracao {
@@ -81,7 +81,7 @@ function LoginPageConteudo() {
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-chrome p-10 text-chrome-ink lg:flex">
         <div>
-          <MarcaAgendaCloud />
+          <MarcaTimVix />
         </div>
         <div className="max-w-sm space-y-4">
           <div className="flex size-12 items-center justify-center rounded-[var(--radius-card)] bg-chrome-selected">
@@ -100,7 +100,7 @@ function LoginPageConteudo() {
       <div className="flex flex-col justify-center px-4 py-10 sm:px-10">
         <div className="mx-auto w-full max-w-sm space-y-6">
           <div className="lg:hidden">
-            <MarcaAgendaCloud className="text-sm text-ink" tamanho={20} />
+            <MarcaTimVix className="text-sm text-ink" tamanho={20} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-ink">Entrar</h1>

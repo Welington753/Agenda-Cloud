@@ -95,10 +95,10 @@ function Relatorios() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent">Administração do Agenda Cloud</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-accent">Administração do TimVix</p>
           <h1 className="mt-1 text-2xl font-bold">Relatórios por período</h1>
           <p className="mt-2 max-w-2xl text-sm text-ink-soft">
-            Pagamentos das assinaturas do Agenda Cloud recebidos e cadastros registrados no período. Não inclui o dinheiro dos
+            Pagamentos das assinaturas do TimVix recebidos e cadastros registrados no período. Não inclui o dinheiro dos
             atendimentos dos estabelecimentos. A situação de agora (acesso, validade, suspensões) fica na{" "}
             <Link href={ROTA_VISAO_GERAL} className="text-accent hover:underline">
               Visão geral

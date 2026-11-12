@@ -402,7 +402,7 @@ export class PlatformService {
       }
       const status = establishment.status;
       const operando = status === 'TRIAL' || status === 'ACTIVE';
-      // Validade do acesso (assinatura do Agenda Cloud), separada da
+      // Validade do acesso (assinatura do TimVix), separada da
       // situação administrativa acima.
       const periodos = await loadAccessPeriods(manager, tenantId);
       const legado = await loadAccessFlags(manager, tenantId);

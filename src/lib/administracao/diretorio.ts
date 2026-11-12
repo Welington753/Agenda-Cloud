@@ -14,7 +14,7 @@ export function textoSituacao(status: SituacaoEstabelecimento, operacional: "ACT
 
 const TIPO: Record<TipoDePeriodo, string> = { TRIAL: "teste gratuito", PAID: "período pago", COURTESY: "cortesia" };
 
-/** Modalidade do acesso (assinatura do Agenda Cloud). */
+/** Modalidade do acesso (assinatura do TimVix). */
 export function textoModalidade(state: EstadoComercial, expiredKind: TipoDePeriodo | null = null): string {
   switch (state) {
     case "TRIAL":
@@ -125,7 +125,7 @@ export const ESCOPOS: Record<EscopoDoDiretorio, { rotulo: string; descricao: str
   CLIENTS: {
     rotulo: "Clientes",
     descricao:
-      "Somente clientes: estabelecimentos que usam o Agenda Cloud, sem os marcados como interno/teste. Um cadastro antigo conta aqui até alguém marcá-lo: estar nesta lista não comprova que ele foi conferido como cliente.",
+      "Somente clientes: estabelecimentos que usam o TimVix, sem os marcados como interno/teste. Um cadastro antigo conta aqui até alguém marcá-lo: estar nesta lista não comprova que ele foi conferido como cliente.",
   },
   INTERNAL: {
     rotulo: "Internos/teste",

@@ -24,7 +24,7 @@ export const FEATURE_NOT_CONTRACTED_CODE = 'RECURSO_NAO_CONTRATADO';
 
 export const ACCESS_EXPIRED_MESSAGE =
   'O acesso deste estabelecimento venceu. Os dados e as reservas estão preservados; ' +
-  'o responsável pode regularizar com a administração do Agenda Cloud.';
+  'o responsável pode regularizar com a administração do TimVix.';
 export const FEATURE_NOT_CONTRACTED_MESSAGE = 'Este recurso não faz parte do plano do estabelecimento.';
 
 /** Prefixo estável da leitura dos períodos válidos (os dublês de teste

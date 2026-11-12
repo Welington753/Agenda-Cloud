@@ -1,5 +1,7 @@
-// Nome do produto centralizado para facilitar a troca de marca depois do protótipo.
-export const NOME_PRODUTO = "Agenda Cloud";
+// Nome do produto exibido (TimVix). Identificadores técnicos antigos, como as
+// chaves "agenda-cloud:*" do navegador e os nomes dos serviços no Render,
+// continuam como estão de propósito (docs/plans/pagina-inicial-repaginada.md).
+export const NOME_PRODUTO = "TimVix";
 export const SLOGAN_PRODUTO = "Agenda e gestão simples para pequenos negócios que trabalham com horário marcado.";
 
 /** Endereço único do backend real (NestJS) — nenhum outro arquivo deve montar

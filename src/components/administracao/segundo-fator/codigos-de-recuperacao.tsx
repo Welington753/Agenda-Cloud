@@ -33,7 +33,7 @@ export function CodigosDeRecuperacao({
     const url = URL.createObjectURL(new Blob([texto], { type: "text/plain;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "agenda-cloud-codigos-de-recuperacao.txt";
+    a.download = "timvix-codigos-de-recuperacao.txt";
     a.click();
     URL.revokeObjectURL(url);
   }

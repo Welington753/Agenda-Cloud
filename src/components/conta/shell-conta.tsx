@@ -44,7 +44,7 @@ import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { itensDaNavegacao, itemAtivo } from "@/lib/conta/navegacao";
 import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
 import { ItemConfiguracoes } from "@/components/conta/item-configuracoes";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import {
   contagemVisivel,
   useSolicitacoesPendentes,
@@ -139,7 +139,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             href={contexto && ehDono ? ROTA_INICIO : "/conta"}
             className="inline-flex rounded-[var(--radius-control)] focus-visible:outline-2 focus-visible:outline-chrome-focus"
           >
-            <MarcaAgendaCloud />
+            <MarcaTimVix />
           </Link>
           {contexto && (
             <p

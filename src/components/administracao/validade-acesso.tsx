@@ -1,6 +1,6 @@
 "use client";
 
-// Validade do acesso do estabelecimento (assinatura do Agenda Cloud), separada
+// Validade do acesso do estabelecimento (assinatura do TimVix), separada
 // da situação administrativa (suspender, arquivar, reativar) e do plano.
 // Nada aqui é recebimento de atendimento.
 //

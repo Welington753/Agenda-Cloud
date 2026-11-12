@@ -1,6 +1,6 @@
 "use client";
 
-// Pagamentos das assinaturas do Agenda Cloud (portal da plataforma): os
+// Pagamentos das assinaturas do TimVix (portal da plataforma): os
 // períodos pagos registrados à mão em cada estabelecimento, do mais recente
 // ao mais antigo, com os anulados por correção marcados. Só consulta: o
 // registro e a correção ficam na ficha de cada estabelecimento.
@@ -140,7 +140,7 @@ function PagamentosDasAssinaturas() {
         <div>
           <h1 className="text-2xl font-bold">Pagamentos das assinaturas</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Pagamentos da assinatura do Agenda Cloud, confirmados manualmente pela administração. Os recebimentos dos
+            Pagamentos da assinatura do TimVix, confirmados manualmente pela administração. Os recebimentos dos
             atendimentos de cada estabelecimento são outra coisa e não aparecem aqui.
           </p>
         </div>
@@ -301,7 +301,7 @@ function Extrato({ filtro, lista, ir }: { filtro: Filtro; lista: ListaDePagament
         </div>
       )}
       <p className="text-xs text-ink-soft">
-        Anular um registro corrige o registro; não comprova devolução de dinheiro, que acontece fora do Agenda Cloud. Os valores
+        Anular um registro corrige o registro; não comprova devolução de dinheiro, que acontece fora do TimVix. Os valores
         são os gravados em cada pagamento, nunca recalculados pelo catálogo. O alcance usa a classificação interno/teste atual.
       </p>
     </>

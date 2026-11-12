@@ -11,7 +11,7 @@ const MENSAGEM = {
 const BASE: Omit<EmailConfig, 'provider'> = {
   apiKey: 'chave',
   fromEmail: 'nao-responda@example.test',
-  fromName: 'Agenda Cloud',
+  fromName: 'TimVix',
 };
 const resposta = (status: number) => new Response(status === 204 ? null : '{}', { status });
 
@@ -29,7 +29,7 @@ describe('EmailSender', () => {
     expect(url).toBe('https://api.brevo.com/v3/smtp/email');
     expect(init.headers['api-key']).toBe('chave');
     expect(JSON.parse(init.body)).toMatchObject({
-      sender: { email: 'nao-responda@example.test', name: 'Agenda Cloud' },
+      sender: { email: 'nao-responda@example.test', name: 'TimVix' },
       to: [{ email: 'pessoa@example.test', name: 'Pessoa' }],
       textContent: MENSAGEM.text,
     });
@@ -42,7 +42,7 @@ describe('EmailSender', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:9/emails');
     expect(init.headers.authorization).toBe('Bearer chave');
-    expect(JSON.parse(init.body)).toMatchObject({ from: 'Agenda Cloud <nao-responda@example.test>', to: ['pessoa@example.test'] });
+    expect(JSON.parse(init.body)).toMatchObject({ from: 'TimVix <nao-responda@example.test>', to: ['pessoa@example.test'] });
   });
 
   it('recusa e falta de resposta viram FAILED com código, sem ecoar o conteúdo', async () => {

@@ -752,8 +752,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const token = /#t=([0-9a-f]{64})/.exec(ultimaMensagemPara(email('reset-pessoa')).text)![1];
     // Pedida pela administração: o texto nunca diz que a pessoa pediu.
     const mensagemReset = ultimaMensagemPara(email('reset-pessoa'));
-    expect(mensagemReset.subject).toBe('Crie uma nova senha no Agenda Cloud');
-    expect(mensagemReset.text).toContain('A administração do Agenda Cloud enviou este link');
+    expect(mensagemReset.subject).toBe('Crie uma nova senha no TimVix');
+    expect(mensagemReset.text).toContain('A administração do TimVix enviou este link');
     expect(mensagemReset.text).toContain(`Criar nova senha:\n${linkDoTexto(mensagemReset)}`);
     expect(linkDoTexto(mensagemReset)).toMatch(/^http:\/\/localhost:3000\/redefinir-senha#t=[0-9a-f]{64}$/);
     expect((await resets.preview(token)).status).toBe('VALID');
@@ -790,8 +790,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     });
     const token = tokenDe(ultimaMensagemPara(email('plat-nova')));
     const mensagemPlataforma = ultimaMensagemPara(email('plat-nova'));
-    expect(mensagemPlataforma.subject).toBe('Convite para a administração do Agenda Cloud');
-    expect(mensagemPlataforma.text).toContain('participar da administração da plataforma Agenda Cloud');
+    expect(mensagemPlataforma.subject).toBe('Convite para a administração do TimVix');
+    expect(mensagemPlataforma.text).toContain('participar da administração da plataforma TimVix');
     expect(mensagemPlataforma.text).toContain('Ativar meu acesso:');
     const aceito = await invites.accept(token, 'senha-da-nova-admin', { now: now() });
     expect(aceito.destination).toBe('/plataforma');

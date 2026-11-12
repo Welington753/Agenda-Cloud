@@ -1,5 +1,5 @@
-// Dois aplicativos instaláveis na mesma origem: "Agenda Cloud" (operação,
-// src/app/manifest.ts, sem mudança) e "Portal AC" (portal da plataforma,
+// Dois aplicativos instaláveis na mesma origem: "TimVix" (operação,
+// src/app/manifest.ts, sem mudança) e "Portal TimVix" (portal da plataforma,
 // src/lib/pwa/manifest-portal.ts). Contra o backend real e o PostgreSQL
 // DESCARTÁVEL, só com dados fictícios. A promoção a MASTER_OWNER é fixture de
 // teste: não existe rota para isso.
@@ -51,17 +51,17 @@ function esperarPortal(c: Cabeca) {
   expect(c.manifests).toEqual([MANIFEST_PORTAL]);
   expect(c.apple).toHaveLength(1);
   expect(c.apple[0]).toMatch(/^\/portal\/apple-icon(\?|$)/);
-  expect(c.titulo).toBe("Portal AC");
+  expect(c.titulo).toBe("Portal TimVix");
 }
 
 function esperarOperacao(c: Cabeca) {
   expect(c.manifests).toEqual([MANIFEST_OPERACAO]);
   expect(c.apple).toHaveLength(1);
   expect(c.apple[0]).toMatch(/^\/apple-icon(\?|$)/);
-  expect(c.titulo).toBe("Agenda Cloud");
+  expect(c.titulo).toBe("TimVix");
 }
 
-test("HTML e manifests: o portal anuncia o Portal AC; operação, login e agendamento público seguem com o Agenda Cloud", async ({ request }) => {
+test("HTML e manifests: o portal anuncia o Portal TimVix; operação, login e agendamento público seguem com o TimVix", async ({ request }) => {
   for (const caminho of ["/portal", "/portal?next=%2Fportal%2Fusuarios", VISAO_GERAL_DO_PORTAL, "/portal/estabelecimentos"]) {
     esperarPortal(await cabecaDoHtml(request, caminho));
   }
@@ -76,7 +76,7 @@ test("HTML e manifests: o portal anuncia o Portal AC; operação, login e agenda
     start_url: "/conta/visao-geral",
     scope: "/",
     display: "standalone",
-    name: "Agenda Cloud",
+    name: "TimVix",
   });
 
   const portal = await request.get(MANIFEST_PORTAL);
@@ -87,8 +87,8 @@ test("HTML e manifests: o portal anuncia o Portal AC; operação, login e agenda
     start_url: "/portal/visao-geral",
     scope: "/portal",
     display: "standalone",
-    name: "Portal AC",
-    short_name: "Portal AC",
+    name: "Portal TimVix",
+    short_name: "Portal TimVix",
   });
   const apple = (await cabecaDoHtml(request, VISAO_GERAL_DO_PORTAL)).apple[0];
   for (const src of [...m.icons.map((i) => i.src), apple]) {
@@ -101,7 +101,7 @@ test("HTML e manifests: o portal anuncia o Portal AC; operação, login e agenda
   expect(Buffer.compare(await iconePortal.body(), await iconeOperacao.body())).not.toBe(0);
 });
 
-test("Portal AC sem sessão: login no portal, volta à Visão geral, destinos externos ignorados e navegação entre as áreas", async ({ page }) => {
+test("Portal TimVix sem sessão: login no portal, volta à Visão geral, destinos externos ignorados e navegação entre as áreas", async ({ page }) => {
   test.setTimeout(120_000);
   const db = await conectarBancoDeTeste();
   try {
@@ -127,7 +127,7 @@ test("Portal AC sem sessão: login no portal, volta à Visão geral, destinos ex
     await expect(navPortal(page)).toBeVisible();
     esperarPortal(await cabecaDaPagina(page));
 
-    // Navegação dentro do portal (sem recarregar) mantém o Portal AC.
+    // Navegação dentro do portal (sem recarregar) mantém o Portal TimVix.
     await navPortal(page).getByRole("link", { name: "Estabelecimentos" }).click();
     await expect(page).toHaveURL("/portal/estabelecimentos");
     esperarPortal(await cabecaDaPagina(page));
@@ -150,7 +150,7 @@ test("Portal AC sem sessão: login no portal, volta à Visão geral, destinos ex
   }
 });
 
-test("Portal AC com a sessão de quem não é proprietário da plataforma: recusa, e a operação segue normal", async ({ page }) => {
+test("Portal TimVix com a sessão de quem não é proprietário da plataforma: recusa, e a operação segue normal", async ({ page }) => {
   test.setTimeout(120_000);
   const marca = `portal-instalavel-dono-${id()}`;
   const email = `${marca}@example.test`;

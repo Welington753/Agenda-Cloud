@@ -203,7 +203,7 @@ export class PlatformController {
     return this.admin.changePlan(request.auth.userId, request.auth.sessionId, tenantId, dto);
   }
 
-  // Validade do acesso (assinatura do Agenda Cloud). Registro manual pela
+  // Validade do acesso (assinatura do TimVix). Registro manual pela
   // administração; nenhuma confirmação automática de banco ou operadora.
 
   @Post('establishments/:tenantId/access/paid')
@@ -306,7 +306,7 @@ export class PlatformController {
     return this.pricing.setCatalogPrice(request.auth.userId, request.auth.sessionId, planId, cycle, dto);
   }
 
-  /** Pagamentos das assinaturas do Agenda Cloud (nunca recebimentos dos
+  /** Pagamentos das assinaturas do TimVix (nunca recebimentos dos
    * atendimentos dos estabelecimentos). */
   @Get('subscription-payments')
   @Header('Cache-Control', 'private, no-store')

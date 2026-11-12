@@ -36,9 +36,20 @@ test.describe("entrada e navegação do piloto", () => {
   test("página inicial: Como obter acesso, Entrar e a demonstração identificada", async ({ page }) => {
     const conteudo = page.getByRole("main");
 
+    // "Como obter acesso" leva à seção de contato da própria página, com o
+    // e-mail público; não há cadastro aberto.
     await page.goto("/");
     await conteudo.getByRole("link", { name: "Como obter acesso" }).first().click();
-    await expect(page).toHaveURL(/\/cadastro$/);
+    await expect(page).toHaveURL(/\/#contato$/);
+    const contato = page.locator("#contato");
+    await expect(contato.getByRole("heading", { name: "Como obter acesso" })).toBeInViewport();
+    await expect(contato.getByRole("link", { name: "Enviar e-mail" })).toHaveAttribute(
+      "href",
+      /^mailto:timvix\.agenda@gmail\.com\?subject=/,
+    );
+
+    // A prévia da agenda é identificada como demonstração.
+    await expect(page.getByTestId("selo-da-previa")).toHaveText("Demonstração · dados fictícios");
 
     await page.goto("/");
     await conteudo.getByRole("link", { name: "Entrar" }).first().click();

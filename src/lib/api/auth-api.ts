@@ -22,7 +22,7 @@ export interface TenantContextReal {
   planName: string;
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
   tenantStatus: StatusTenantReal;
-  /** Validade do acesso (assinatura do Agenda Cloud). `blocked`: vencido; o
+  /** Validade do acesso (assinatura do TimVix). `blocked`: vencido; o
    * estabelecimento continua na lista, sem áreas, e a tela mostra o motivo e
    * o caminho de regularização. Ausente numa API anterior: não vence. */
   access?: ValidadeDoAcessoReal;

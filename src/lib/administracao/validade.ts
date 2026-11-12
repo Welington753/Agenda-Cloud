@@ -1,4 +1,4 @@
-// Textos e conversões da validade do acesso (assinatura do Agenda Cloud) na
+// Textos e conversões da validade do acesso (assinatura do TimVix) na
 // administração. Funções puras.
 import { dataCadastro, type SemVencimento } from "./contratos";
 

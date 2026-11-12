@@ -46,7 +46,7 @@ export function AcessoVencido({ contexto }: { contexto: TenantContextReal }) {
           <div className="space-y-1">
             <h2 className="font-semibold">Como regularizar</h2>
             <p className="text-sm">
-              Fale com a administração do Agenda Cloud pelo mesmo canal do seu cadastro para combinar o pagamento. Assim
+              Fale com a administração do TimVix pelo mesmo canal do seu cadastro para combinar o pagamento. Assim
               que ele for registrado, o acesso volta na hora, com tudo como estava.
             </p>
           </div>

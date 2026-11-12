@@ -86,7 +86,7 @@ export function respostaIndisponivel(caminho: string): { status: 503; headers: R
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="10">
-<title>Agenda abrindo · Agenda Cloud</title>
+<title>Agenda abrindo · TimVix</title>
 </head>
 <body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px;line-height:1.5">
 <h1 style="font-size:1.25rem">Estamos abrindo esta agenda</h1>

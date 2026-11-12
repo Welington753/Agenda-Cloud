@@ -1,25 +1,47 @@
-import { ShieldCheck } from "lucide-react";
-import { LinkBotao } from "@/components/ui/button";
-import { HREF_COMO_OBTER_ACESSO, HREF_DEMONSTRACAO } from "@/lib/site/conteudo-comercial";
+// Seção de contato (#contato), na faixa escura: o destino de todos os "Como
+// obter acesso" da página. Explica o convite e traz o e-mail público.
+import Link from "next/link";
+import {
+  CONTATO,
+  EMAIL_CONTATO,
+  HREF_DEMONSTRACAO,
+  HREF_EMAIL_CONTATO,
+  HREF_ENTRAR,
+} from "@/lib/site/conteudo-comercial";
+import { BOTAO_CLARO, BOTAO_CONTORNO_ESCURO, FAIXA_ESCURA, LINK_ESCURO } from "./estilos";
 
 export function CtaFinal() {
   return (
-    <section className="mx-auto max-w-5xl px-4 py-14 sm:px-8">
-      <div className="rounded-[var(--radius-card)] bg-ink px-6 py-12 text-center text-white sm:px-12">
-        <h2 className="text-2xl font-bold sm:text-3xl">Organize sua agenda hoje mesmo</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-white/70">
-          Crie sua conta e comece a usar a agenda real, ou veja antes uma demonstração com dados fictícios.
+    <section
+      id="contato"
+      aria-labelledby="titulo-contato"
+      className={`${FAIXA_ESCURA} scroll-mt-16 px-4 py-16 sm:px-8 sm:py-24`}
+    >
+      <div className="mx-auto max-w-3xl">
+        <h2 id="titulo-contato" className="text-3xl font-bold tracking-tight sm:text-4xl">
+          {CONTATO.titulo}
+        </h2>
+        <p className="mt-4 text-base text-chrome-ink-soft sm:text-lg">{CONTATO.texto}</p>
+        <p className="mt-3 text-base text-chrome-ink-soft sm:text-lg">{CONTATO.pedido}</p>
+        <p className="mt-6 text-xl font-semibold break-words sm:text-2xl">
+          <a href={HREF_EMAIL_CONTATO} className={LINK_ESCURO}>
+            {EMAIL_CONTATO}
+          </a>
         </p>
-        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="lg">
-            Como obter acesso
-          </LinkBotao>
-          <LinkBotao href={HREF_DEMONSTRACAO} tamanho="lg" variante="secundaria" className="border-white/40 text-white hover:bg-white/10">
-            Ver demonstração
-          </LinkBotao>
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <a href={HREF_EMAIL_CONTATO} className={BOTAO_CLARO}>
+            Enviar e-mail
+          </a>
+          <Link href={HREF_ENTRAR} className={BOTAO_CONTORNO_ESCURO}>
+            Já tenho conta: entrar
+          </Link>
         </div>
-        <p className="mx-auto mt-4 flex max-w-md items-center justify-center gap-2 text-xs text-white/50">
-          <ShieldCheck size={14} /> Dados de demonstração ficam só no seu navegador.
+        <p className="mt-6 text-sm text-chrome-ink-soft">
+          Recebeu um convite? Abra o link do e-mail; ele vale por 24 horas. Para conhecer antes,{" "}
+          <Link href={HREF_DEMONSTRACAO} className={LINK_ESCURO}>
+            veja a demonstração
+          </Link>{" "}
+          com dados fictícios.
         </p>
       </div>
     </section>

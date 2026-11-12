@@ -20,7 +20,7 @@ import { sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
 import { destinoNoPortal } from "@/lib/administracao/rotas";
 import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcadorAparencia } from "@/components/aparencia/aparencia";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 import { ConectandoAoServidor } from "@/components/conexao/aviso-conexao";
 
 export default function EntradaDoPortal() {
@@ -49,7 +49,7 @@ function EntradaDoPortalConteudo() {
     <div className="min-h-screen bg-paper">
       <header className="bg-chrome text-chrome-ink">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
-          <MarcaAgendaCloud />
+          <MarcaTimVix />
           <p className="flex min-w-0 items-center gap-1 text-sm font-semibold">
             <ShieldCheck size={16} aria-hidden="true" className="shrink-0" />
             <span className="truncate">Portal da plataforma</span>

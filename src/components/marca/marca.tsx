@@ -1,10 +1,10 @@
-// Marca do Agenda Cloud: o símbolo (duas barras inclinadas e um ponto, "//.")
+// Marca do TimVix: o símbolo (duas barras inclinadas e um ponto, "//.")
 // e o nome. Em SVG inline, na cor do texto ao redor (`currentColor`): nada de
 // imagem, e o símbolo acompanha o tema.
 import clsx from "clsx";
 import { NOME_PRODUTO } from "@/lib/config";
 
-export function SimboloAgendaCloud({ tamanho = 20, className }: { tamanho?: number; className?: string }) {
+export function SimboloTimVix({ tamanho = 20, className }: { tamanho?: number; className?: string }) {
   return (
     <svg
       width={tamanho}
@@ -27,10 +27,10 @@ export function SimboloAgendaCloud({ tamanho = 20, className }: { tamanho?: numb
 }
 
 /** Símbolo + nome, na cor herdada. */
-export function MarcaAgendaCloud({ className, tamanho = 22 }: { className?: string; tamanho?: number }) {
+export function MarcaTimVix({ className, tamanho = 22 }: { className?: string; tamanho?: number }) {
   return (
     <span className={clsx("inline-flex items-center gap-2 font-bold tracking-tight", className)}>
-      <SimboloAgendaCloud tamanho={tamanho} />
+      <SimboloTimVix tamanho={tamanho} />
       <span>{NOME_PRODUTO}</span>
     </span>
   );

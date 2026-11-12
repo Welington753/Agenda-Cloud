@@ -1,54 +1,32 @@
-import {
-  Dumbbell,
-  Flower2,
-  GraduationCap,
-  Hand,
-  PawPrint,
-  Scissors,
-  Sparkles,
-  Stethoscope,
-  type LucideIcon,
-} from "lucide-react";
-import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { SEGMENTOS } from "@/lib/site/conteudo-comercial";
-
-const ICONE_POR_SEGMENTO: Record<string, LucideIcon> = {
-  "salao-barbearia": Scissors,
-  estetica: Sparkles,
-  clinica: Stethoscope,
-  terapeuta: Flower2,
-  massagem: Hand,
-  "pilates-yoga": Dumbbell,
-  tatuagem: Sparkles,
-  petshop: PawPrint,
-  "professor-consultor": GraduationCap,
-  outro: Sparkles,
-};
+// Para quem: um parágrafo e os segmentos em texto corrido, sem cartões.
+import { PARA_QUEM, SEGMENTOS } from "@/lib/site/conteudo-comercial";
 
 export function Segmentos() {
   return (
-    <section id="para-quem" className="border-y border-border bg-paper-muted/60 px-4 py-14 sm:px-8">
-      <div className="mx-auto max-w-5xl">
-        <h2 className="text-center text-2xl font-bold text-ink sm:text-3xl">Para quem trabalha com horário marcado</h2>
-        <p className="mx-auto mt-2 max-w-xl text-center text-sm text-ink-soft">
-          O Agenda Cloud se adapta ao vocabulário do seu negócio — os termos da tela mudam conforme o segmento.
-        </p>
-        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {SEGMENTOS.map((s) => {
-            const Icone = ICONE_POR_SEGMENTO[s.id] ?? Sparkles;
-            return (
-              <Cartao key={s.id}>
-                <CartaoCorpo className="text-center">
-                  <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-full bg-accent-soft text-[color:var(--color-accent-hover)]">
-                    <Icone size={18} />
-                  </div>
-                  <p className="font-semibold text-ink">{s.rotulo}</p>
-                  <p className="mt-1 text-xs text-ink-soft">{s.exemplo}</p>
-                </CartaoCorpo>
-              </Cartao>
-            );
-          })}
+    <section
+      id="para-quem"
+      aria-labelledby="titulo-para-quem"
+      className="scroll-mt-16 border-t border-border px-4 py-16 sm:px-8 sm:py-24"
+    >
+      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-16">
+        <div>
+          <h2 id="titulo-para-quem" className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+            {PARA_QUEM.titulo}
+          </h2>
+          <p className="mt-4 text-base text-ink-soft">{PARA_QUEM.texto}</p>
         </div>
+        <ul className="flex flex-wrap content-start gap-x-2 gap-y-3 text-lg font-semibold text-ink lg:pt-1">
+          {SEGMENTOS.map((s, i) => (
+            <li key={s.id} className="flex items-center gap-2">
+              {s.rotulo}
+              {i < SEGMENTOS.length - 1 && (
+                <span aria-hidden="true" className="text-accent">
+                  ·
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

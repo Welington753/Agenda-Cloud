@@ -16,7 +16,7 @@ import { usarLiberacao } from "@/lib/api/segundo-fator-api";
 import { mensagemDaFalha } from "@/lib/administracao/segundo-fator";
 import { entradaDoPortal, ROTA_LIBERACAO_SEGUNDO_FATOR, ROTA_SEGURANCA } from "@/lib/administracao/rotas";
 import { MarcadorAparencia } from "@/components/aparencia/aparencia";
-import { MarcaAgendaCloud } from "@/components/marca/marca";
+import { MarcaTimVix } from "@/components/marca/marca";
 
 const CHAVE = "agenda:liberacao-2fa";
 
@@ -74,7 +74,7 @@ export default function LiberacaoDoSegundoFator() {
       <MarcadorAparencia />
       <header className="bg-chrome text-chrome-ink">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
-          <MarcaAgendaCloud />
+          <MarcaTimVix />
           <p className="flex min-w-0 items-center gap-1 text-sm font-semibold">
             <ShieldCheck size={16} aria-hidden="true" className="shrink-0" />
             <span className="truncate">Portal da plataforma</span>

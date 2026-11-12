@@ -27,7 +27,7 @@ describe("JSON-LD da página inicial", () => {
     expect(jsonLdDaPlataforma("https://agenda.exemplo.test")).toMatchObject({
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: "Agenda Cloud",
+      name: "TimVix",
       url: "https://agenda.exemplo.test/",
       logo: "https://agenda.exemplo.test/icone-512.png",
     });

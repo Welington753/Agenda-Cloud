@@ -1,4 +1,4 @@
-// Contratos da validade do acesso (assinatura do Agenda Cloud) na ficha do
+// Contratos da validade do acesso (assinatura do TimVix) na ficha do
 // estabelecimento, com a conferência do que a API devolve. Separados de
 // contratos.ts, que reexporta tudo daqui.
 

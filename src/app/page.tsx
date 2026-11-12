@@ -1,10 +1,8 @@
 import { SiteNav } from "@/components/site/site-nav";
 import { Hero } from "@/components/site/hero";
-import { Problemas } from "@/components/site/problemas";
 import { Funcionalidades } from "@/components/site/funcionalidades";
 import { Segmentos } from "@/components/site/segmentos";
-import { FluxoDemonstracao } from "@/components/site/fluxo-demonstracao";
-import { ComoComecar } from "@/components/site/como-comecar";
+import { ComoFunciona } from "@/components/site/como-funciona";
 import { Planos } from "@/components/site/planos";
 import { Faq } from "@/components/site/faq";
 import { CtaFinal } from "@/components/site/cta-final";
@@ -47,11 +45,9 @@ export default function LandingPage() {
       <SiteNav />
       <main className="flex-1">
         <Hero />
-        <Problemas />
+        <ComoFunciona />
         <Funcionalidades />
         <Segmentos />
-        <FluxoDemonstracao />
-        <ComoComecar />
         <Planos />
         <Faq />
         <CtaFinal />

@@ -385,9 +385,9 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-visao-geral
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-visao-geral
 
-      # Portal instalável ("Portal AC"): manifest, apple-touch-icon e título
+      # Portal instalável ("Portal TimVix"): manifest, apple-touch-icon e título
       # próprios no HTML do portal; operação, login e agendamento público
-      # seguem com o "Agenda Cloud"; login MASTER_OWNER sem sessão e volta à
+      # seguem com o "TimVix"; login MASTER_OWNER sem sessão e volta à
       # Visão geral, destinos externos ignorados, recusa de quem não é
       # proprietário da plataforma. Invocação própria (2 aceites de convite,
       # 2 logins). Não prova instalação no iPhone (roteiro no aparelho).

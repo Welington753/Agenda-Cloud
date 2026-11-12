@@ -89,7 +89,7 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     };
   };
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
-  /** Validade do acesso (assinatura do Agenda Cloud), separada da situação
+  /** Validade do acesso (assinatura do TimVix), separada da situação
    * administrativa (`status`). `UNTRACKED`: validade ainda não definida. */
   access: SituacaoComercial;
   /** Histórico, do mais recente ao mais antigo. */
