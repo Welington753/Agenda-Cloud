@@ -88,14 +88,22 @@ A home continua estática (`○`). Não entram fonte, imagem nem script externos
 - **Instalações antigas:** quem já instalou o PWA mantém o nome antigo até reinstalar ou até o sistema atualizar o manifest.
 - **Ordem da fila:** comissões `5d74556` primeiro, separadas.
 
+## Observação fora do escopo
+
+Na primeira captura, a visualização "Por profissional" em duas colunas deixou o cartão real (`CartaoAtendimento`, com grade de quatro colunas a partir de `lg`) estreito demais. A área `/conta` pode ter o mesmo aperto entre `lg` e telas largas. Isso não foi conferido nem corrigido aqui; fica para um lote próprio.
+
 ## Estado e retomada
 
 - **Feito:**
-  - levantamento e plano aprovados;
+  - plano aprovado com ajustes;
   - branch `feat/pagina-inicial-timvix` criada a partir de `b5e5586`;
-  - página reescrita, com testes de conteúdo e de navegador ajustados;
+  - página reescrita (commit `8b537da`) e nome TimVix (commit `6a2d790`);
   - capturas em 1280px e 390px conferidas, sem rolagem horizontal;
   - build com `/` estática.
-- **Próximo passo:** commit da troca de nome, validações (lint, tipos, Vitest, build e suítes de navegador contra PostgreSQL descartável), PR com `[skip render]` e acompanhamento do CI. Sem merge até nova aprovação.
-- **Só neste computador:** o stash do `CLAUDE.md` e a worktree `C:\wt\pmd`.
-- **Restrições:** sem merge, deploy, Render, DNS, backup ou banco real.
+- **Validação local:**
+  - verdes: lint e tipos (web e backend), Vitest web (112 arquivos e 1073 testes), backend unitários (2012) e e2e (167);
+  - db-e2e de contas e 2FA (31), contra PostgreSQL descartável com TLS;
+  - suítes de navegador: auth 7, services 7, aparência 2, portal instalável 4 e segundo fator 1.
+- **Próximo passo:** PR para `integration/nestjs-typeorm-frontend` com `[skip render]` e CI completo verde no head final. Sem merge até nova aprovação.
+- **Só neste computador:** o stash do `CLAUDE.md`, a worktree `C:wtpmd` e o banco descartável local `home`.
+- **Restrições:** sem merge, deploy, Render, DNS, backup ou banco real. As comissões `5d74556` seguem separadas e primeiro na fila.
