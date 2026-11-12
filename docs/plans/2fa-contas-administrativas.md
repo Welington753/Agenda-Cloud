@@ -239,5 +239,18 @@ Sobre o script:
   - a chave gerada e guardada em dois lugares;
   - a emergência ensaiada em banco descartável, se houver um único
     proprietário.
-- **Próximo passo:** acompanhar o CI do PR; merge só com pedido explícito.
-  Publicar depois de comissões e do pacote da migration 17, pelo runbook.
+- **CI do PR #109 (head `a0f1f12`):**
+  - `test-migration-lote6b2` verde (a contagem de tabelas do teste de
+    migration foi atualizada para 50 neste head).
+  - `test-frontend-auth` vermelho em 4 tentativas, sempre no passo
+    `portal-instalavel` (duas tags `<link rel="manifest">` depois do login).
+    Os passos anteriores passaram. A suíte de navegador do segundo fator vem
+    depois e por isso **ainda não rodou no CI**; localmente ela passa.
+  - O defeito é anterior a este lote. Com a CPU emulada 4x e 8x mais lenta,
+    o web da base `08b38ff` e o deste head mostram as mesmas duas tags, e
+    elas continuam lá 3 s depois. Sem emulação, o teste passou 4/4 aqui.
+  - A correção do `portal-instalavel` ficou fora deste lote por instrução.
+    Falta decidir como destravar o CI.
+- **Próximo passo:** decidir como destravar o CI. Merge só com CI verde e
+  pedido explícito. Publicar depois de comissões e do pacote da migration
+  17, pelo runbook.
