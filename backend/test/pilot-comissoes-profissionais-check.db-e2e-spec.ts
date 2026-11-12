@@ -45,7 +45,7 @@ const CONSULTAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..
 const PLANOS_DO_CATALOGO = ['plan_essencial', 'plan_equipe', 'plan_pro'];
 /** Migrations criadas depois deste kit. O kit as recusa de propósito; só os
  * testes as conhecem, por nome, e uma nova só entra aqui de propósito. */
-const MIGRATIONS_POSTERIORES_AO_KIT = ['ProfessionalCommissionSettings1793577600000', 'TenantTestFlag1793664000000'] as const;
+const MIGRATIONS_POSTERIORES_AO_KIT = ['ProfessionalCommissionSettings1793577600000', 'TenantTestFlag1793664000000', 'AdminSecondFactor1793750400000'] as const;
 const FONTE_COMPILADA =new URL('../dist-migrations/database/migrations-data-source.js', import.meta.url);
 
 type Resposta = { command: string; rows: Record<string, unknown>[] };

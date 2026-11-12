@@ -44,7 +44,15 @@ export type AdminAuditAction =
   // Comissões (migration ProfessionalCommissions).
   | 'COMMISSION_RULE_CHANGED'
   // Marca de teste (migration TenantTestFlag).
-  | 'TENANT_TEST_FLAG_CHANGED';
+  | 'TENANT_TEST_FLAG_CHANGED'
+  // Segundo fator (migration AdminSecondFactor).
+  | 'SECOND_FACTOR_ENABLED'
+  | 'SECOND_FACTOR_REPLACED'
+  | 'SECOND_FACTOR_LOCKED'
+  | 'SECOND_FACTOR_GRANT_ISSUED'
+  | 'SECOND_FACTOR_GRANT_USED'
+  | 'RECOVERY_CODE_USED'
+  | 'RECOVERY_CODES_REGENERATED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

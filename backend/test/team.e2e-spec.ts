@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
+import { PlatformSecondFactorGuard } from '../src/second-factor/second-factor.guard.js';
 import { TeamService } from '../src/team/team.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
 import { InvitesService } from '../src/accounts/invites.service.js';
@@ -51,6 +52,9 @@ describe('equipe e agenda do funcionário — HTTP', () => {
       .useValue(staffAccounts)
       .overrideGuard(SessionGuard)
       .useValue(guard)
+      // Guard do segundo fator: coberto em test/second-factor.e2e-spec.ts.
+      .overrideGuard(PlatformSecondFactorGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = module.createNestApplication();
     app.use(cookieParser());

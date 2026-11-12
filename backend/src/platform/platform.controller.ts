@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SessionGuard } from '../auth/session.guard.js';
+import { PlatformSecondFactorGuard, SemSegundoFator } from '../second-factor/second-factor.guard.js';
 import {
   AUTH_CONTEXT_REQUEST_KEY,
   type IdentityContext,
@@ -74,7 +75,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @Controller('platform')
-@UseGuards(SessionGuard)
+@UseGuards(SessionGuard, PlatformSecondFactorGuard)
 export class PlatformController {
   constructor(
     private readonly platform: PlatformService,
@@ -85,10 +86,13 @@ export class PlatformController {
     private readonly pricing: PricingService,
   ) {}
 
+  /** Sem o guard do segundo fator: diz à tela o estado dele, e as
+   * capacidades só vêm verdadeiras quando o portal está liberado. */
   @Get('access')
+  @SemSegundoFator()
   @Header('Cache-Control', 'private, no-store')
   access(@Req() request: AuthenticatedRequest) {
-    return this.platform.access(request.auth.userId);
+    return this.platform.access(request.auth.userId, request.auth.sessionId);
   }
 
   /** Totais do portal com a regra central de acesso e os pagamentos de

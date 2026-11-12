@@ -16,6 +16,7 @@ import { TeamModule } from './team/team.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { CommissionsModule } from './commissions/commissions.module.js';
+import { SecondFactorModule } from './second-factor/second-factor.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DatabaseErrorFilter } from './common/database-error.filter.js';
@@ -38,6 +39,7 @@ import { DatabaseErrorFilter } from './common/database-error.filter.js';
     DashboardModule,
     PaymentsModule,
     CommissionsModule,
+    SecondFactorModule,
   ],
   controllers: [AppController],
   // Erro de banco sem tratamento: 500 genérico e log sem os valores da query.

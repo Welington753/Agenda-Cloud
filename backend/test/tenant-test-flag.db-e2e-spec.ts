@@ -366,8 +366,12 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
     const estado = await comCliente(lerEstadoTenantTeste);
     // Outras suítes criam planos de teste com todos os recursos no banco
     // compartilhado; o baseline das comissões conta só o catálogo.
+    // Migrations criadas depois deste kit: o kit as recusa de propósito (só
+    // serve no commit dele); o teste as conhece por nome e as tira daqui.
+    const POSTERIORES_AO_KIT = ['AdminSecondFactor1793750400000'];
     const soCatalogo = {
       ...estado,
+      migrationNames: estado.migrationNames.slice(0, MIGRATIONS_ATE_TENANT_TESTE.length),
       regraGeral: {
         ...estado.regraGeral,
         comissoes: {
@@ -378,7 +382,7 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
         },
       },
     };
-    expect(estado.migrationNames).toEqual([...MIGRATIONS_ATE_TENANT_TESTE]);
+    expect(estado.migrationNames).toEqual([...MIGRATIONS_ATE_TENANT_TESTE, ...POSTERIORES_AO_KIT]);
     expect(falhasDepoisDoTenantTeste(soCatalogo)).toEqual([]);
     expect(falhasAntesDoTenantTeste(soCatalogo)).toEqual(['migration_history', 'is_test_column_already_exists']);
     expect(estado.marcadosComoTeste).toBeGreaterThanOrEqual(0);

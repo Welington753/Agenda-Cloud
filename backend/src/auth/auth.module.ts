@@ -16,6 +16,8 @@ import { AuthService } from './auth.service.js';
 import { createLoginRateLimiter } from './login-rate-limit.js';
 import { REAUTH_LIMIT, createAccountRateLimiter } from '../accounts/account-rate-limit.js';
 import { SessionGuard } from './session.guard.js';
+import { SecondFactorConfig } from '../second-factor/second-factor-config.js';
+import { PlatformSecondFactorGuard } from '../second-factor/second-factor.guard.js';
 
 // `ConfigModule` (sem opções) garante `ConfigService` resolvível mesmo quando
 // `AuthModule` é testado isolado (fora do `AppModule`) — na aplicação real,
@@ -25,11 +27,13 @@ import { SessionGuard } from './session.guard.js';
 @Module({
   imports: [ConfigModule],
   controllers: [AuthController],
-  providers: [AuthService, SessionGuard],
+  providers: [AuthService, SessionGuard, SecondFactorConfig, PlatformSecondFactorGuard],
   // Exportado para o ServicesModule (Lote 6D.1) reutilizar EXATAMENTE este
   // provider — nunca declarar um segundo SessionGuard em outro módulo, o que
   // criaria duas instâncias da mesma regra de autenticação.
-  exports: [SessionGuard],
+  // O guard do segundo fator e a configuração dele seguem a mesma regra: uma
+  // instância só, usada por todo controller de plataforma.
+  exports: [SessionGuard, SecondFactorConfig, PlatformSecondFactorGuard],
 })
 export class AuthModule implements NestModule {
   constructor(private readonly configService: ConfigService) {}

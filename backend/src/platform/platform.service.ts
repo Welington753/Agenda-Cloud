@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { User } from '../entities/user.entity.js';
+import { SecondFactorConfig } from '../second-factor/second-factor-config.js';
+import { loadSessionSecondFactor } from '../second-factor/second-factor-facts.js';
 import {
   computeTrialWindow,
   TRIAL_DURATION_DAYS,
@@ -98,19 +100,40 @@ export interface EstablishmentRow {
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @Optional() private readonly secondFactor?: SecondFactorConfig,
+  ) {}
 
-  async access(userId: string) {
+  /** Acesso ao portal DESTA sessão. `capabilities` diz à tela o que mostrar;
+   * o servidor confere de novo em cada operação. Enquanto o segundo fator
+   * não libera o portal (second-factor-state.ts), nenhuma capacidade vem
+   * verdadeira e `secondFactor` diz o que falta. Sem a configuração injetada
+   * (teste direto do serviço), vale a fase mais rígida. */
+  async access(userId: string, sessionId?: string) {
     const user = await this.dataSource.manager.findOne(User, {
       where: { id: userId },
     });
-    // `capabilities` diz à tela o que mostrar; o servidor confere de novo em
-    // cada operação. O papel só aparece para quem tem acesso.
-    const capabilities = platformCapabilities(user);
+    const sessao = sessionId
+      ? await loadSessionSecondFactor(this.dataSource.manager, userId, sessionId, this.secondFactor?.enforcement ?? 'required', new Date())
+      : null;
+    const liberado = sessionId ? !!sessao?.status.portalAllowed : true;
+    const capabilities = liberado ? platformCapabilities(user) : platformCapabilities(null);
     return {
-      canViewEstablishments: canViewEstablishments(user),
+      canViewEstablishments: liberado && canViewEstablishments(user),
       capabilities,
       platformRole: capabilities.viewDirectory ? (user?.platformRole ?? null) : null,
+      /** Só para quem é proprietário da plataforma (quem usa o portal); `null`
+       * para os demais, que o portal recusa de qualquer forma. */
+      secondFactor:
+        sessao && sessao.facts.hasPlatformRole && canViewEstablishments(user)
+          ? {
+              state: sessao.status.state,
+              enrollmentPermitted: sessao.status.enrollmentPermitted,
+              recoveryPending: sessao.status.recoveryPending,
+              verifiedUntil: sessao.status.verifiedUntil?.toISOString() ?? null,
+            }
+          : null,
     };
   }
 

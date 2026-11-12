@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
+import { PlatformSecondFactorGuard } from '../src/second-factor/second-factor.guard.js';
 import { AccountsAdminService } from '../src/accounts/accounts-admin.service.js';
 import { AccountsDirectoryService } from '../src/accounts/accounts-directory.service.js';
 import { InvitesService } from '../src/accounts/invites.service.js';
@@ -74,6 +75,10 @@ describe('gestão de contas — HTTP', () => {
       .useValue(resets)
       .overrideGuard(SessionGuard)
       .useValue(guard)
+      // O guard do segundo fator lê o banco; aqui só o controller é testado.
+      // A aplicação dele em toda rota /platform: test/second-factor.e2e-spec.ts.
+      .overrideGuard(PlatformSecondFactorGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = module.createNestApplication();
     app.use(cookieParser());

@@ -33,7 +33,11 @@ function primeiroNome(nome: string): string {
 /** Link do e-mail. Recusa (com erro) token fora do formato e endereço de
  * frontend que não seja uma origem http(s) simples: nunca sai um link quebrado
  * ou apontando para outro lugar. */
-function montarLink(frontendUrl: string, caminho: '/convite' | '/redefinir-senha', token: string): string {
+function montarLink(
+  frontendUrl: string,
+  caminho: '/convite' | '/redefinir-senha' | '/portal/liberacao-2fa',
+  token: string,
+): string {
   if (!isValidAccountTokenFormat(token)) throw new Error('Token do link em formato inválido.');
   const url = new URL(frontendUrl);
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
@@ -207,5 +211,90 @@ export function emailDeRedefinicao(pessoa: RedefinicaoParaEmail, link: string): 
     acao: { rotulo: 'Criar nova senha', link },
     validade: `O link vale por ${descreverValidade(pessoa.validityMs)} e pode ser usado uma única vez. Se ele expirar, peça um novo à administração.`,
     aviso: `Não esperava esta mensagem? Ignore este e-mail: sua senha atual continua valendo. Se achar que há algo errado com a sua conta, fale com a administração do ${MARCA.nome}.`,
+  });
+}
+
+/** Liberação do segundo fator: o token vai no fragmento, como nos convites. */
+export function linkDeLiberacaoDoSegundoFator(frontendUrl: string, token: string): string {
+  return montarLink(frontendUrl, '/portal/liberacao-2fa', token);
+}
+
+/** Página de segurança da conta no portal (aviso sem token). */
+export function linkDaSegurancaDoPortal(frontendUrl: string): string {
+  const url = new URL(frontendUrl);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('FRONTEND_URL não serve para montar o link do e-mail.');
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/portal/seguranca`;
+  return url.toString();
+}
+
+export interface PessoaDoEmail {
+  name: string;
+  email: string;
+}
+
+/** Liberação para cadastrar um novo segundo fator (recuperação ou primeiro
+ * cadastro de quem foi promovido). Só permite cadastrar: o acesso continua
+ * exigindo a senha. */
+export function emailDeLiberacaoDoSegundoFator(pessoa: PessoaDoEmail, link: string, validityMs: number): EmailMessage {
+  return mensagem({
+    to: { email: pessoa.email, name: pessoa.name },
+    assunto: `Cadastre a verificação em duas etapas no ${MARCA.nome}`,
+    previa: 'A administração liberou o cadastro de um novo aplicativo autenticador.',
+    titulo: 'Cadastrar a verificação em duas etapas',
+    corpo: (meio) => [
+      `A administração do ${MARCA.nome} liberou o cadastro de um aplicativo autenticador na sua conta. Para isso, entre no portal com a sua senha e use o ${meio} abaixo.`,
+      'Se você já usava um aplicativo autenticador, ele continua valendo até o novo ser confirmado. As sessões abertas na sua conta foram encerradas.',
+    ],
+    acao: { rotulo: 'Cadastrar o autenticador', link },
+    validade: `O link vale por ${descreverValidade(validityMs)} e pode ser usado uma única vez, só na sua conta.`,
+    aviso: `Não esperava esta mensagem? Não use o link e fale com a administração do ${MARCA.nome}. Sem a sua senha, este link não dá acesso a nada.`,
+  });
+}
+
+export type AvisoDeSeguranca =
+  | 'SECOND_FACTOR_ENABLED'
+  | 'SECOND_FACTOR_REPLACED'
+  | 'RECOVERY_CODES_REGENERATED'
+  | 'RECOVERY_CODE_USED'
+  | 'SECOND_FACTOR_LOCKED';
+
+const AVISOS: Record<AvisoDeSeguranca, { assunto: string; texto: string }> = {
+  SECOND_FACTOR_ENABLED: {
+    assunto: 'Verificação em duas etapas ativada',
+    texto: 'A verificação em duas etapas foi ativada na sua conta, com um aplicativo autenticador e novos códigos de recuperação. As outras sessões foram encerradas.',
+  },
+  SECOND_FACTOR_REPLACED: {
+    assunto: 'Aplicativo autenticador trocado',
+    texto: 'O aplicativo autenticador da sua conta foi trocado. O anterior e os códigos de recuperação antigos não valem mais, e as outras sessões foram encerradas.',
+  },
+  RECOVERY_CODES_REGENERATED: {
+    assunto: 'Novos códigos de recuperação gerados',
+    texto: 'Novos códigos de recuperação foram gerados na sua conta. Os anteriores não valem mais, e as outras sessões foram encerradas.',
+  },
+  RECOVERY_CODE_USED: {
+    assunto: 'Código de recuperação usado',
+    texto: 'Um código de recuperação foi usado para entrar no portal com a sua conta. Ele não vale mais.',
+  },
+  SECOND_FACTOR_LOCKED: {
+    assunto: 'Tentativas de verificação bloqueadas',
+    texto: 'Houve várias tentativas erradas de código na sua conta. As tentativas de verificação em duas etapas ficaram bloqueadas por 15 minutos.',
+  },
+};
+
+/** Aviso ao titular de uma mudança de segurança. Nunca leva código,
+ * segredo, link de liberação nem detalhe técnico. */
+export function emailDeAvisoDeSeguranca(pessoa: PessoaDoEmail, aviso: AvisoDeSeguranca, linkDaSeguranca: string): EmailMessage {
+  const a = AVISOS[aviso];
+  return mensagem({
+    to: { email: pessoa.email, name: pessoa.name },
+    assunto: `${a.assunto} no ${MARCA.nome}`,
+    previa: a.assunto,
+    titulo: a.assunto,
+    corpo: () => [a.texto],
+    acao: { rotulo: 'Ver a segurança da conta', link: linkDaSeguranca },
+    validade: 'Este aviso é automático e não pede nenhuma ação se foi você.',
+    aviso: `Não foi você? Fale imediatamente com a administração do ${MARCA.nome}.`,
   });
 }

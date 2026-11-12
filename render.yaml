@@ -106,6 +106,18 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         sync: false
+      # Segundo fator das contas de plataforma (docs/plans/2fa-contas-
+      # administrativas.md). Obrigatórias em production, sem padrão: sem elas
+      # a API não sobe. PLATFORM_2FA_ENFORCEMENT: `optional` na publicação,
+      # `required` só depois da conferência do runbook. PLATFORM_TOTP_KEYS:
+      # `versão:base64(32 bytes)`, gerada offline e guardada em dois lugares
+      # fora do banco ANTES de colar aqui. Nunca em commit, chat ou log.
+      - key: PLATFORM_2FA_ENFORCEMENT
+        sync: false
+      - key: PLATFORM_TOTP_KEYS
+        sync: false
+      - key: PLATFORM_TOTP_KEY_CURRENT
+        sync: false
 
   # Frontend Next.js (raiz do repositório).
   - type: web

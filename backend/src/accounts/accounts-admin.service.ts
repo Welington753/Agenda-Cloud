@@ -199,11 +199,23 @@ export class AccountsAdminService {
       if (anterior.role === PlatformRole.MASTER_OWNER && role !== PlatformRole.MASTER_OWNER && target.status === 'ACTIVE') {
         await this.requireAnotherOwner(manager, target.id);
       }
+      // Promoção (conta que não tinha papel de plataforma): master novo. As
+      // sessões dela são encerradas e ela só usa o portal depois de cadastrar
+      // o segundo fator, com uma liberação enviada ao e-mail verificado
+      // (a senha sozinha não basta para cadastrar). Uma conta que já tem fator
+      // continua com ele.
+      const promovida = !anterior.role && !!role;
       await manager.query(
         `UPDATE users SET platform_role = $2::platform_role, platform_permissions = $3::platform_permission[],
+                second_factor_enrollment_required = CASE WHEN $5::boolean
+                  THEN NOT EXISTS (SELECT 1 FROM user_second_factors f WHERE f.user_id = users.id)
+                  ELSE second_factor_enrollment_required END,
                 ${avancarVersao('$4')} WHERE id = $1`,
-        [target.id, role, role ? permissions : null, now],
+        [target.id, role, role ? permissions : null, now, promovida],
       );
+      if (promovida) {
+        await manager.query(`UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL`, [target.id, now]);
+      }
       await recordAudit(
         manager,
         {

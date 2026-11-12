@@ -49,7 +49,7 @@ const FONTE_COMPILADA = new URL('../dist-migrations/database/migrations-data-sou
 /** Migrations criadas depois deste kit. O kit as recusa de propósito (ele só
  * serve no commit dele); só os testes as conhecem, por nome, e uma nova só
  * entra aqui de propósito. */
-const MIGRATIONS_POSTERIORES_AO_KIT = ['TenantTestFlag1793664000000'] as const;
+const MIGRATIONS_POSTERIORES_AO_KIT = ['TenantTestFlag1793664000000', 'AdminSecondFactor1793750400000'] as const;
 
 type Resposta = { command: string; rows: Record<string, unknown>[] };
 const soLeitura = (respostas: Resposta[]) => {
