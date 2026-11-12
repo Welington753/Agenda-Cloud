@@ -60,6 +60,9 @@ export interface ListaDoDiretorio extends Omit<ListaEstabelecimentos, "items"> {
   /** Alcance que o servidor aplicou. Ausente numa API anterior ao alcance:
    * a lista então NÃO está confirmada como só de clientes. */
   scope?: EscopoDoDiretorio;
+  /** Período de cadastro aplicado; `null`: sem restrição. Ausente numa API
+   * anterior (que recusa o filtro com 400). */
+  created?: { from: string; to: string; timeZone: string } | null;
 }
 
 export const FILTROS_DO_DIRETORIO = [
@@ -162,10 +165,15 @@ function ehCondicao(v: unknown): v is CondicaoComercial {
 
 const escopoOuAusente = (v: unknown) => v === undefined || ESCOPOS_DO_DIRETORIO.includes(v as EscopoDoDiretorio);
 
+function ehCadastroOuAusente(v: unknown): boolean {
+  return v === undefined || v === null || (objeto(v) && dia(v.from) && dia(v.to) && texto(v.timeZone));
+}
+
 export function ehListaDoDiretorio(v: unknown): v is ListaDoDiretorio {
   return (
     ehListaEstabelecimentos(v) &&
     escopoOuAusente((v as unknown as Record<string, unknown>).scope) &&
+    ehCadastroOuAusente((v as unknown as Record<string, unknown>).created) &&
     v.items.every((i) => {
       const item = i as unknown as Record<string, unknown>;
       return (
@@ -224,5 +232,63 @@ export function ehVisaoGeral(v: unknown): v is VisaoGeral {
         ou(relativo)(i.daysLeft) &&
         ou(data)(i.expiredAt),
     )
+  );
+}
+
+/** Relatório por período (`GET /platform/reports`). Tudo vem calculado do
+ * servidor, inclusive o período aplicado (sem datas: mês atual em São Paulo
+ * pelo relógio dele). */
+export interface RelatorioDoPeriodo {
+  generatedAt: string;
+  scope: EscopoDoDiretorio;
+  timeZone: string;
+  period: { from: string; to: string; month: string | null; days: number };
+  currency: "BRL";
+  /** Recebimentos registrados à mão e não anulados agora; `canceledCount`:
+   * registros do mesmo intervalo anulados agora, fora da soma. */
+  payments: { count: number; totalCents: number; canceledCount: number };
+  byPlanCycle: { planId: string; planName: string; cycle: Ciclo; count: number; totalCents: number }[];
+  registrations: { count: number };
+}
+
+/** Exige todos os campos, inclusive o alcance e o período aplicados: uma
+ * resposta incompleta nunca aparece como zero. A soma dos grupos tem de bater
+ * com o total. */
+export function ehRelatorioDoPeriodo(v: unknown): v is RelatorioDoPeriodo {
+  if (!objeto(v) || !data(v.generatedAt) || !ESCOPOS_DO_DIRETORIO.includes(v.scope as EscopoDoDiretorio)) return false;
+  const per = v.period,
+    pag = v.payments,
+    cad = v.registrations;
+  if (
+    !texto(v.timeZone) ||
+    v.currency !== "BRL" ||
+    !objeto(per) ||
+    !dia(per.from) ||
+    !dia(per.to) ||
+    !(per.month === null || (texto(per.month) && /^\d{4}-\d{2}$/.test(per.month))) ||
+    !inteiro(per.days) ||
+    !objeto(pag) ||
+    ![pag.count, pag.totalCents, pag.canceledCount].every(inteiro) ||
+    !objeto(cad) ||
+    !inteiro(cad.count) ||
+    !Array.isArray(v.byPlanCycle)
+  )
+    return false;
+  const grupos = v.byPlanCycle as unknown[];
+  if (
+    !grupos.every(
+      (g) =>
+        objeto(g) &&
+        texto(g.planId) &&
+        texto(g.planName) &&
+        (g.cycle === "MONTHLY" || g.cycle === "QUARTERLY") &&
+        inteiro(g.count) &&
+        inteiro(g.totalCents),
+    )
+  )
+    return false;
+  const somados = grupos as { count: number; totalCents: number }[];
+  return (
+    somados.reduce((s, g) => s + g.count, 0) === pag.count && somados.reduce((s, g) => s + g.totalCents, 0) === pag.totalCents
   );
 }

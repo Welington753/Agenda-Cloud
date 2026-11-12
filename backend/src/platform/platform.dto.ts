@@ -11,9 +11,23 @@ import {
   ESTABLISHMENT_SCOPES,
   type EstablishmentScope,
 } from './portal-overview.js';
+import { checkDateRange, DATE_RANGE_MESSAGES } from './portal-reports.js';
 
 /** Alcance: clientes (padrão), internos/teste ou todos (portal-overview.ts). */
 const scopeSchema = z.enum(ESTABLISHMENT_SCOPES).default(DEFAULT_ESTABLISHMENT_SCOPE);
+
+/** Data de calendário `YYYY-MM-DD`; a existência da data e o tamanho do
+ * período são conferidos por `checkDateRange` (portal-reports.ts). */
+const calendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** Período opcional (as duas datas ou nenhuma). Não escolhe padrão: cada rota
+ * decide o que a ausência significa. */
+function refineDateRange(fromKey: string, toKey: string) {
+  return (dto: Record<string, unknown>, ctx: z.RefinementCtx) => {
+    const problema = checkDateRange(dto[fromKey] as string | undefined, dto[toKey] as string | undefined);
+    if (problema) ctx.addIssue({ code: 'custom', path: [fromKey], message: DATE_RANGE_MESSAGES[problema] });
+  };
+}
 
 export const establishmentIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,30}$/);
 
@@ -29,6 +43,10 @@ export const establishmentQuerySchema = z
     /** Filtro de acesso ou de condição contratada (portal-overview.ts). */
     filter: z.enum(ESTABLISHMENT_FILTERS).optional(),
     scope: scopeSchema,
+    /** Data de cadastro (`tenants.created_at`) no fuso da plataforma, as duas
+     * inclusas. Ausentes: sem restrição por cadastro. */
+    createdFrom: calendarDateSchema.optional(),
+    createdTo: calendarDateSchema.optional(),
     page: z
       .string()
       .regex(/^[1-9]\d{0,5}$/)
@@ -41,7 +59,8 @@ export const establishmentQuerySchema = z
       .pipe(z.number().int().min(1).max(100))
       .default(20),
   })
-  .strict();
+  .strict()
+  .superRefine(refineDateRange('createdFrom', 'createdTo'));
 /** `scope` ausente (chamada direta ao serviço) vale o padrão, como na rota. */
 export type EstablishmentQuery = Omit<z.infer<typeof establishmentQuerySchema>, 'scope'> & {
   scope?: EstablishmentScope;
@@ -50,6 +69,14 @@ export type EstablishmentQuery = Omit<z.infer<typeof establishmentQuerySchema>, 
 /** Visão geral: só o alcance dos indicadores. */
 export const overviewQuerySchema = z.object({ scope: scopeSchema }).strict();
 export type OverviewQuery = z.infer<typeof overviewQuerySchema>;
+
+/** Relatório por período: datas ausentes valem o mês atual em São Paulo,
+ * decidido no serviço (que devolve o período aplicado). */
+export const reportQuerySchema = z
+  .object({ from: calendarDateSchema.optional(), to: calendarDateSchema.optional(), scope: scopeSchema })
+  .strict()
+  .superRefine(refineDateRange('from', 'to'));
+export type ReportQuery = z.infer<typeof reportQuerySchema>;
 
 /** `updated_at` que a tela leu: se outra tela mudou o estabelecimento, 409. */
 const expectedUpdatedAtSchema = z.iso.datetime({ offset: true });
@@ -198,9 +225,22 @@ export const contractPriceSchema = z
   .strict();
 export type ContractPriceDto = z.infer<typeof contractPriceSchema>;
 
+/** Situação do registro no extrato: não anulado ou anulado. */
+export const SUBSCRIPTION_PAYMENT_STATUSES = ['RECEIVED', 'CANCELED'] as const;
+export type SubscriptionPaymentStatus = (typeof SUBSCRIPTION_PAYMENT_STATUSES)[number];
+
+/** Extrato. Tudo opcional, e a ausência mantém o comportamento anterior: todo
+ * o histórico (sem datas), todos os estabelecimentos (`scope` ausente vale
+ * `ALL` aqui, para não mudar quem já chamava a rota, inclusive com
+ * `tenantId`) e as duas situações. */
 export const subscriptionPaymentsQuerySchema = z
   .object({
     tenantId: establishmentIdSchema.optional(),
+    /** Data de recebimento (`payment_received_on`), as duas inclusas. */
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+    scope: z.enum(ESTABLISHMENT_SCOPES).default('ALL'),
+    status: z.enum(SUBSCRIPTION_PAYMENT_STATUSES).optional(),
     page: z
       .string()
       .regex(/^[1-9]\d{0,5}$/)
@@ -213,7 +253,8 @@ export const subscriptionPaymentsQuerySchema = z
       .pipe(z.number().int().min(1).max(100))
       .default(30),
   })
-  .strict();
+  .strict()
+  .superRefine(refineDateRange('from', 'to'));
 export type SubscriptionPaymentsQuery = z.infer<typeof subscriptionPaymentsQuerySchema>;
 
 /** Conceder "sem vencimento": motivo e confirmação explícita. */

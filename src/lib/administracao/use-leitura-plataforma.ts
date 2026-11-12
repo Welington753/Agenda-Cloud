@@ -10,6 +10,9 @@ export type LeituraPlataforma<T> =
   | {
       status: "erro";
       motivo: "sessao" | "permissao" | "ausente" | "rede" | "servidor";
+      /** Status HTTP da recusa, quando houve resposta. 400: a API recusou a
+       * consulta (por exemplo, uma API anterior que não conhece um filtro). */
+      codigo?: number;
     };
 
 /** A chave inclui a identidade e a consulta. Nem o resultado anterior nem
@@ -46,6 +49,7 @@ export function useLeituraPlataforma<T>(
         else
           estado = {
             status: "erro",
+            codigo: result.status,
             motivo:
               result.status === 401
                 ? "sessao"

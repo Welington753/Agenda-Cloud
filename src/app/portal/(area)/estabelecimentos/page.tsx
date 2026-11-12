@@ -3,7 +3,8 @@
 // Lista dos estabelecimentos no portal da plataforma, com plano, condição
 // contratada, situação do cadastro, modalidade e validade do acesso, sem
 // abrir cada ficha. Os filtros moram na URL (`alcance`, `q`, `situacao`,
-// `plano`, `filtro`, `pagina`): os links da Visão geral abrem a lista já filtrada e
+// `plano`, `filtro`, `cadastroDe`/`cadastroAte`, `pagina`): os links da
+// Visão geral e do relatório por período abrem a lista já filtrada e
 // voltar no navegador desfaz a busca. Tudo é calculado no servidor sobre o
 // conjunto completo; a página só mostra a fatia pedida. O alcance (clientes,
 // internos/teste, todos) só é afirmado quando o servidor o devolve.
@@ -31,6 +32,9 @@ import { ListaEstabelecimentos } from "@/components/administracao/lista-estabele
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { useCapacidades } from "@/lib/administracao/use-acesso-plataforma";
 import { ROTA_NOVO_ESTABELECIMENTO } from "@/lib/administracao/rotas";
+import { lerPeriodoDaUrl, textoDoPeriodo, type Intervalo } from "@/lib/administracao/periodo";
+
+const NOMES_DO_CADASTRO = { de: "cadastroDe", ate: "cadastroAte" };
 
 const CAMPO =
   "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
@@ -43,6 +47,9 @@ interface Filtro {
   situacao: string;
   plano: string;
   filtro: string;
+  /** Data de cadastro (as duas inclusas, horário de Brasília); `null`: sem
+   * restrição. Só chega pelo link do relatório e sai por "Remover período". */
+  cadastro: Intervalo | null;
   pagina: number;
 }
 
@@ -61,6 +68,7 @@ function lerFiltro(params: URLSearchParams): Filtro {
     situacao: ehSituacaoDoFiltro(situacao) ? situacao : "",
     plano: ID_PLANO.test(plano) ? plano : "",
     filtro: ehFiltroDoDiretorio(filtro) ? filtro : "",
+    cadastro: lerPeriodoDaUrl(params, NOMES_DO_CADASTRO).intervalo,
     pagina: Number.isSafeInteger(pagina) && pagina >= 1 ? pagina : 1,
   };
 }
@@ -72,9 +80,20 @@ function enderecoDo(filtro: Filtro, pathname: string): string {
   if (filtro.situacao) params.set("situacao", filtro.situacao);
   if (filtro.plano) params.set("plano", filtro.plano);
   if (filtro.filtro) params.set("filtro", filtro.filtro);
+  if (filtro.cadastro) {
+    params.set("cadastroDe", filtro.cadastro.de);
+    params.set("cadastroAte", filtro.cadastro.ate);
+  }
   if (filtro.pagina > 1) params.set("pagina", String(filtro.pagina));
   const busca = params.toString();
   return busca ? `${pathname}?${busca}` : pathname;
+}
+
+/** O servidor aplicou exatamente o período de cadastro pedido? Sem pedido,
+ * nada a confirmar. */
+function cadastroConfirmado(pedido: Intervalo | null, recebido: { from: string; to: string } | null | undefined): boolean {
+  if (!pedido) return true;
+  return !!recebido && recebido.from === pedido.de && recebido.to === pedido.ate;
 }
 
 export default function EstabelecimentosPage() {
@@ -102,6 +121,10 @@ function Estabelecimentos() {
   if (filtro.situacao) params.set("status", filtro.situacao);
   if (filtro.plano) params.set("planId", filtro.plano);
   if (filtro.filtro) params.set("filter", filtro.filtro);
+  if (filtro.cadastro) {
+    params.set("createdFrom", filtro.cadastro.de);
+    params.set("createdTo", filtro.cadastro.ate);
+  }
   // O padrão (clientes) não vai na consulta: o servidor já o aplica e
   // devolve `scope`; sem ele, a tela não afirma o recorte.
   if (filtro.escopo !== ESCOPO_PADRAO) params.set("scope", filtro.escopo);
@@ -121,7 +144,7 @@ function Estabelecimentos() {
   }
   function limpar() {
     setErroBusca("");
-    ir({ escopo: ESCOPO_PADRAO, q: "", situacao: "", plano: "", filtro: "", pagina: 1 });
+    ir({ escopo: ESCOPO_PADRAO, q: "", situacao: "", plano: "", filtro: "", cadastro: null, pagina: 1 });
   }
   const campo = (nome: keyof Filtro) => (valor: string) => setRascunho((r) => ({ ...r, [nome]: valor }));
 
@@ -214,13 +237,34 @@ function Estabelecimentos() {
           <span className="font-semibold text-ink">{FILTROS[filtro.filtro].rotulo}:</span> {FILTROS[filtro.filtro].descricao}
         </p>
       )}
+      {filtro.cadastro && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="filtro-cadastro">
+          <span>
+            <span className="font-semibold">Cadastros registrados em {textoDoPeriodo(filtro.cadastro)}</span>
+            <span className="text-ink-soft"> (data de criação do cadastro, horário de Brasília)</span>
+          </span>
+          <Botao variante="fantasma" className="min-h-11" onClick={() => ir({ ...filtro, cadastro: null, pagina: 1 })}>
+            Remover período
+          </Botao>
+        </div>
+      )}
       {erroBusca && (
         <p role="alert" className="text-sm text-danger">
           {erroBusca}
         </p>
       )}
       {estado.status !== "pronto" ? (
-        <EstadoLeitura estado={estado} recarregar={recarregar} />
+        <EstadoLeitura
+          estado={estado}
+          recarregar={recarregar}
+          mensagens={{
+            recusado: "Este servidor ainda não aceita este filtro. Nenhuma lista foi mostrada. Remova o período de cadastro.",
+          }}
+        />
+      ) : !cadastroConfirmado(filtro.cadastro, estado.dados.created) ? (
+        <p role="alert" className="rounded-xl border border-border bg-card p-6 text-sm" data-testid="filtro-nao-confirmado">
+          O servidor não confirmou o período de cadastro. A lista não foi mostrada para não parecer filtrada sem estar.
+        </p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">

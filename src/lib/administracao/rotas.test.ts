@@ -8,6 +8,8 @@ import {
   entradaDoPortal,
   rotaEstabelecimentosFiltrados,
   rotaFichaEstabelecimento,
+  rotaPagamentosFiltrados,
+  rotaRelatorio,
 } from "./rotas";
 
 describe("rotas do portal da plataforma", () => {
@@ -27,6 +29,27 @@ describe("rotas do portal da plataforma", () => {
       "/portal/estabelecimentos?alcance=INTERNAL&filtro=EXPIRING_SOON",
     );
     expect(rotaEstabelecimentosFiltrados({ alcance: "ALL" })).toBe("/portal/estabelecimentos?alcance=ALL");
+    // Data de cadastro: só as duas juntas.
+    expect(rotaEstabelecimentosFiltrados({ alcance: "INTERNAL", cadastroDe: "2026-10-01", cadastroAte: "2026-10-31" })).toBe(
+      "/portal/estabelecimentos?alcance=INTERNAL&cadastroDe=2026-10-01&cadastroAte=2026-10-31",
+    );
+    expect(rotaEstabelecimentosFiltrados({ cadastroDe: "2026-10-01" })).toBe("/portal/estabelecimentos");
+  });
+
+  it("links do relatório abrem o extrato e o relatório com período, alcance e situação", () => {
+    expect(rotaPagamentosFiltrados({})).toBe("/portal/pagamentos");
+    expect(rotaPagamentosFiltrados({ de: "2026-10-01", ate: "2026-10-31", situacao: "recebidos" })).toBe(
+      "/portal/pagamentos?de=2026-10-01&ate=2026-10-31&situacao=recebidos",
+    );
+    expect(rotaPagamentosFiltrados({ de: "2026-10-01", ate: "2026-10-31", alcance: "ALL", situacao: "anulados" })).toBe(
+      "/portal/pagamentos?de=2026-10-01&ate=2026-10-31&alcance=ALL&situacao=anulados",
+    );
+    expect(rotaPagamentosFiltrados({ alcance: "CLIENTS" })).toBe("/portal/pagamentos");
+    expect(rotaRelatorio({})).toBe("/portal/relatorios");
+    expect(rotaRelatorio({ periodo: { mes: "2026-10" }, alcance: "INTERNAL" })).toBe("/portal/relatorios?mes=2026-10&alcance=INTERNAL");
+    expect(rotaRelatorio({ periodo: { de: "2026-10-05", ate: "2026-10-20" } })).toBe(
+      "/portal/relatorios?de=2026-10-05&ate=2026-10-20",
+    );
   });
 
   it("reconhece só as páginas do portal", () => {
@@ -80,6 +103,7 @@ describe("seções do portal", () => {
       "Convites",
       "Planos e preços",
       "Pagamentos das assinaturas",
+      "Relatórios",
       "Proprietários da plataforma",
       "Histórico administrativo",
     ]);

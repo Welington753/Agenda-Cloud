@@ -37,9 +37,10 @@ import {
 } from "@/lib/administracao/diretorio";
 import { diaBr, reais } from "@/lib/administracao/validade";
 import {
-  ROTA_PAGAMENTOS_ASSINATURAS,
   rotaEstabelecimentosFiltrados,
   rotaFichaEstabelecimento,
+  rotaPagamentosFiltrados,
+  rotaRelatorio,
 } from "@/lib/administracao/rotas";
 
 const MOTIVO: Record<MotivoDeAtencao, string> = {
@@ -89,15 +90,28 @@ function Indicador({
   );
 }
 
-function Pagamentos({ pagamentos }: { pagamentos: VisaoGeral["payments"] }) {
+function Pagamentos({ pagamentos, alcance }: { pagamentos: VisaoGeral["payments"]; alcance: EscopoDoDiretorio }) {
   return (
     <Cartao>
       <CartaoCorpo className="space-y-3" data-testid="pagamentos-do-mes">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h2 className="font-semibold">Pagamentos de assinaturas em {textoMes(pagamentos.month)}</h2>
-          <Link href={ROTA_PAGAMENTOS_ASSINATURAS} className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline">
-            Ver pagamentos
-          </Link>
+          <div className="flex flex-wrap gap-x-4">
+            <Link
+              href={rotaPagamentosFiltrados({ de: pagamentos.from, ate: pagamentos.to, alcance, situacao: "recebidos" })}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+              data-testid="link-pagamentos-do-mes"
+            >
+              Ver pagamentos
+            </Link>
+            <Link
+              href={rotaRelatorio({ alcance })}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+              data-testid="link-outros-meses"
+            >
+              Ver outros meses
+            </Link>
+          </div>
         </div>
         <p className="text-3xl font-semibold tracking-tight tabular-nums" data-testid="pagamentos-do-mes-total">
           {reais(pagamentos.totalCents)}
@@ -108,8 +122,8 @@ function Pagamentos({ pagamentos }: { pagamentos: VisaoGeral["payments"] }) {
             : `${pagamentos.count} pagamento(s) confirmado(s) manualmente.`}
         </p>
         <p className="text-xs text-ink-soft" data-testid="pagamentos-alcance">
-          Só pagamentos dos estabelecimentos no alcance escolhido acima. Ver pagamentos abre o extrato completo, de todos os
-          estabelecimentos (inclusive internos/teste), e o total de lá pode ser diferente deste.
+          Só pagamentos dos estabelecimentos no alcance escolhido acima. Ver pagamentos abre o extrato com os mesmos filtros:
+          recebidos neste mês, não anulados, no mesmo alcance.
         </p>
         <p className="text-xs text-ink-soft">
           Critério: pagamentos das assinaturas do Agenda Cloud confirmados manualmente no portal, não anulados, com data de
@@ -323,7 +337,7 @@ function Conteudo({ visao, alcance }: { visao: VisaoGeral; alcance: EscopoDoDire
         </dl>
       </section>
 
-      <Pagamentos pagamentos={visao.payments} />
+      <Pagamentos pagamentos={visao.payments} alcance={alcance} />
       <Atencao visao={visao} alcance={alcance} />
     </>
   );

@@ -44,6 +44,7 @@ import {
   establishmentIdSchema,
   establishmentQuerySchema,
   overviewQuerySchema,
+  reportQuerySchema,
   reactivateEstablishmentSchema,
   setTestFlagSchema,
   suspendEstablishmentSchema,
@@ -52,6 +53,7 @@ import {
   type ChangePlanDto,
   type EstablishmentQuery,
   type OverviewQuery,
+  type ReportQuery,
   type ReactivateEstablishmentDto,
   type SetTestFlagDto,
   type SuspendEstablishmentDto,
@@ -98,6 +100,17 @@ export class PlatformController {
     @Query(new ZodValidationPipe(overviewQuerySchema)) query: OverviewQuery,
   ) {
     return this.platform.overview(request.auth.userId, query.scope);
+  }
+
+  /** Relatório por período: pagamentos de assinatura recebidos e cadastros
+   * registrados (mesma leitura do portal, nenhuma permissão nova). */
+  @Get('reports')
+  @Header('Cache-Control', 'private, no-store')
+  report(
+    @Req() request: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(reportQuerySchema)) query: ReportQuery,
+  ) {
+    return this.platform.report(request.auth.userId, query);
   }
 
   @Get('establishments')

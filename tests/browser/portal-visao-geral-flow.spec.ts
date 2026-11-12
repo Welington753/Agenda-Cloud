@@ -166,7 +166,7 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
     await expect(page.getByTestId("alcance-dos-numeros")).toContainText("Somente clientes");
     await expect(page.getByTestId("indicador-total")).toContainText("Clientes");
-    await expect(page.getByTestId("pagamentos-alcance")).toContainText("extrato completo");
+    await expect(page.getByTestId("pagamentos-alcance")).toContainText("mesmos filtros");
     await expect(page.getByRole("button", { name: "Clientes", exact: true })).toHaveAttribute("aria-pressed", "true");
     // Internos/teste: números da API no mesmo alcance, links levam o alcance.
     await page.getByRole("button", { name: "Internos/teste", exact: true }).click();
@@ -322,6 +322,8 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await expect(page.getByTestId("abrir-menu-usuario")).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 844 });
 
+    await relatoriosPorPeriodo(page, db, { loja, plano, userId: conta.user.id, marca });
+
     // Sessão expirada: volta à entrada do portal e, depois, à Visão geral.
     await page.goto(VISAO_GERAL);
     await expect(page.getByTestId("indicador-total")).toBeVisible();
@@ -349,3 +351,156 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await db.end();
   }
 });
+
+/**
+ * Relatórios por período (mesma sessão, sem login novo). Dados fictícios em
+ * 2002, fora do alcance das outras suítes: cadastros às 23:59:59.999 de 31/10
+ * e às 00:00 de 01/11 em São Paulo (hora local, com o horário de verão da
+ * época), recebidos nas duas pontas do mês, um anulado e um interno/teste.
+ */
+async function relatoriosPorPeriodo(
+  page: Page,
+  db: Awaited<ReturnType<typeof conectarBancoDeTeste>>,
+  f: { loja: (nome: string, status: string, legado: boolean) => Promise<string>; plano: string; userId: string; marca: string },
+) {
+  const RELATORIOS = "/portal/relatorios";
+  const criadoEm = async (tenantId: string, local: string) =>
+    db.query(`UPDATE tenants SET created_at = ($2::timestamp AT TIME ZONE '${TZ}') WHERE id = $1`, [tenantId, local]);
+  const pago = async (tenantId: string, inicio: string, fim: string, recebido: string, cents: number, ciclo = "MONTHLY", anulado = false) =>
+    db.query(
+      `INSERT INTO tenant_access_periods (id, tenant_id, kind, plan_id, starts_at, ends_at, anchor_day, billing_cycle,
+         contracted_price_cents, currency, payment_method, payment_received_on, confirmation_source, recorded_by_user_id, request_key,
+         canceled_at, canceled_by_user_id, cancel_reason, cancel_request_key)
+       VALUES ($1, $2, 'PAID', $3, ($4::date)::timestamp AT TIME ZONE '${TZ}', ($5::date)::timestamp AT TIME ZONE '${TZ}', 1,
+         $6::billing_cycle, $7, 'BRL', 'PIX', $8::date, 'MANUAL', $9, $10, $11, $12, $13, $14)`,
+      [
+        id(),
+        tenantId,
+        f.plano,
+        inicio,
+        fim,
+        ciclo,
+        cents,
+        recebido,
+        f.userId,
+        `chave-${id()}`,
+        anulado ? new Date() : null,
+        anulado ? f.userId : null,
+        anulado ? "registro fictício anulado" : null,
+        anulado ? `anula-${id()}` : null,
+      ],
+    );
+  const relA = await f.loja("RelA", "ACTIVE", true);
+  await criadoEm(relA, "2002-10-31 23:59:59.999");
+  await pago(relA, "2002-10-01", "2002-11-01", "2002-10-31", 5000);
+  await pago(relA, "2002-11-01", "2003-02-01", "2002-11-01", 15000, "QUARTERLY");
+  const relB = await f.loja("RelB", "ACTIVE", true);
+  await criadoEm(relB, "2002-11-01 00:00:00");
+  await pago(relB, "2002-09-01", "2002-10-01", "2002-10-01", 7000);
+  await pago(relB, "2002-10-01", "2002-11-01", "2002-10-15", 9000, "MONTHLY", true);
+  const relI = await f.loja("RelI", "ACTIVE", true);
+  await db.query("UPDATE tenants SET is_test = true WHERE id = $1", [relI]);
+  await criadoEm(relI, "2002-10-10 12:00:00");
+  await pago(relI, "2002-10-01", "2002-11-01", "2002-10-20", 11000);
+
+  const total = async () => sem(await page.getByTestId("relatorio-recebidos-total").innerText());
+  const relatorio = page.getByTestId("relatorio-do-periodo");
+
+  // Menu: mês atual decidido pelo servidor, números iguais aos da API.
+  await navPortal(page).getByRole("link", { name: "Relatórios" }).click();
+  await expect(page).toHaveURL(RELATORIOS);
+  const atual = (await (await page.request.get(`${API_DE_TESTE}/platform/reports`)).json()) as {
+    period: { from: string; to: string };
+    payments: { totalCents: number };
+  };
+  await expect(relatorio).toHaveAttribute("data-de", atual.period.from);
+  await expect(relatorio).toHaveAttribute("data-ate", atual.period.to);
+  expect(await total()).toBe(sem(reais(atual.payments.totalCents)));
+  await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
+  await expect(page.getByTestId("aviso-classificacao-atual")).toContainText("classificação de agora");
+
+  // Mês fechado, virada do mês e navegação: tudo na URL.
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await expect(page.getByTestId("periodo-aplicado")).toContainText("outubro de 2002");
+  expect(await total()).toBe(sem(reais(12000)));
+  await expect(page.getByTestId("relatorio-anulados-quantidade")).toHaveText("1");
+  await expect(page.getByTestId("relatorio-cadastros-quantidade")).toHaveText("1");
+  await expect(page.getByTestId("linha-plano-ciclo")).toHaveCount(1);
+  await page.getByRole("button", { name: "Mês seguinte" }).click();
+  await expect(page).toHaveURL(`${RELATORIOS}?mes=2002-11`);
+  await expect(page.getByTestId("periodo-aplicado")).toContainText("novembro de 2002");
+  expect(await total()).toBe(sem(reais(15000)));
+  await expect(page.getByTestId("relatorio-cadastros-quantidade")).toHaveText("1");
+  await page.getByRole("button", { name: "Mês anterior" }).click();
+  await expect(page).toHaveURL(`${RELATORIOS}?mes=2002-10`);
+
+  // Internos/teste: alcance na URL e nos links; o link abre exatamente os recebidos.
+  await page.getByRole("button", { name: "Internos/teste", exact: true }).click();
+  await expect(page).toHaveURL(`${RELATORIOS}?mes=2002-10&alcance=INTERNAL`);
+  await expect(relatorio).toHaveAttribute("data-alcance", "INTERNAL");
+  expect(await total()).toBe(sem(reais(11000)));
+  await page.getByTestId("link-recebidos").click();
+  await expect(page).toHaveURL("/portal/pagamentos?de=2002-10-01&ate=2002-10-31&alcance=INTERNAL&situacao=recebidos");
+  await expect(page.getByTestId("total-do-extrato")).toContainText("1 registro(s) recebidos em outubro de 2002");
+  await expect(page.getByTestId("lista-pagamentos-assinaturas").getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "INTERNAL");
+
+  // Clientes: anulados abrem só os anulados; cadastros abrem a lista filtrada.
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await page.getByTestId("link-anulados").click();
+  await expect(page).toHaveURL("/portal/pagamentos?de=2002-10-01&ate=2002-10-31&situacao=anulados");
+  const anulados = page.getByTestId("lista-pagamentos-assinaturas").getByRole("listitem");
+  await expect(anulados).toHaveCount(1);
+  await expect(anulados).toContainText("Anulado por correção");
+  await expect(anulados).toContainText(`${f.marca} Loja RelB`);
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await page.getByTestId("link-cadastros").click();
+  await expect(page).toHaveURL(`${LISTA}?cadastroDe=2002-10-01&cadastroAte=2002-10-31`);
+  await expect(page.getByTestId("filtro-cadastro")).toContainText("outubro de 2002");
+  await expect(item(page, `${f.marca} Loja RelA`)).toHaveCount(1);
+  await expect(item(page, `${f.marca} Loja RelB`)).toHaveCount(0);
+  await expect(page.getByTestId("total-da-lista")).toHaveText("1 estabelecimento(s) encontrado(s)");
+
+  // Período personalizado de dois dias; inválido é recusado na tela.
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await expect(relatorio).toBeVisible();
+  const form = page.getByTestId("periodo-personalizado");
+  await form.getByLabel("Período personalizado: de").fill("2002-11-01");
+  await form.getByLabel("até (inclusive)").fill("2002-10-31");
+  await form.getByRole("button", { name: "Aplicar período" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "anterior ou igual" })).toBeVisible();
+  await expect(page).toHaveURL(`${RELATORIOS}?mes=2002-10`);
+  await form.getByLabel("Período personalizado: de").fill("2002-10-31");
+  await form.getByLabel("até (inclusive)").fill("2002-11-01");
+  await form.getByRole("button", { name: "Aplicar período" }).click();
+  await expect(page).toHaveURL(`${RELATORIOS}?de=2002-10-31&ate=2002-11-01`);
+  await expect(page.getByTestId("periodo-aplicado")).toContainText("31/10/2002 a 01/11/2002");
+  expect(await total()).toBe(sem(reais(20000)));
+  await expect(page.getByTestId("relatorio-cadastros-quantidade")).toHaveText("2");
+  await expect(page.getByTestId("linha-plano-ciclo")).toHaveCount(2);
+
+  // Período vazio: zero explícito, sem grupos.
+  await page.goto(`${RELATORIOS}?mes=2002-08`);
+  await expect(page.getByTestId("relatorio-recebidos-quantidade")).toHaveText("Nenhum pagamento recebido neste período.");
+  expect(await total()).toBe(sem(reais(0)));
+  await expect(page.getByTestId("linha-plano-ciclo")).toHaveCount(0);
+
+  // Extrato aberto direto: todo o histórico, as duas situações, Clientes.
+  await page.goto("/portal/pagamentos");
+  await expect(page.getByTestId("total-do-extrato")).toContainText("em todo o histórico");
+  await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
+
+  // API anterior (sem a rota): mensagem própria, nunca zero.
+  await page.route("**/platform/reports**", (r) => r.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("ainda não estão disponíveis neste servidor");
+  await expect(relatorio).toHaveCount(0);
+  await page.unroute("**/platform/reports**");
+
+  // Celular: sem rolagem lateral.
+  await page.setViewportSize({ width: 360, height: 844 });
+  await page.goto(`${RELATORIOS}?mes=2002-10`);
+  await expect(relatorio).toBeVisible();
+  await semRolagemHorizontal(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+}

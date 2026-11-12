@@ -1,5 +1,6 @@
 import type { EstablishmentQuery } from './platform.dto.js';
-import { DEFAULT_ESTABLISHMENT_SCOPE, scopeSql } from './portal-overview.js';
+import { DEFAULT_ESTABLISHMENT_SCOPE, scopeSql, type EstablishmentScope } from './portal-overview.js';
+import { timestampInRangeSql } from './portal-reports.js';
 
 // Nome igual ao contexto real de sessão: unidade principal, com slug como
 // fallback. O lateral tem no máximo uma linha, logo não duplica tenants.
@@ -53,6 +54,12 @@ export function establishmentFilter(
   // contagem e à página, logo total e paginação seguem o alcance.
   const alcance = scopeSql(query.scope ?? DEFAULT_ESTABLISHMENT_SCOPE, 't');
   if (alcance) clauses.push(alcance);
+  // Data de cadastro no fuso da plataforma (as duas inclusas), a mesma regra
+  // dos "Cadastros registrados no período" do relatório.
+  if (query.createdFrom && query.createdTo) {
+    values.push(query.createdFrom, query.createdTo);
+    clauses.push(timestampInRangeSql('t.created_at', `$${values.length - 1}`, `$${values.length}`));
+  }
   if (ids) {
     values.push(ids);
     clauses.push(`t.id = ANY($${values.length}::varchar[])`);
@@ -61,4 +68,36 @@ export function establishmentFilter(
     sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
     values,
   };
+}
+
+/**
+ * Pagamentos de assinatura: UMA regra para a Visão geral, o relatório por
+ * período e o extrato. Períodos pagos confirmados à mão em BRL (a constraint
+ * do banco já exige os três juntos), pela data de recebimento registrada
+ * (`date`, as duas pontas inclusas), no alcance pela marca `is_test` atual.
+ * `status`: `RECEIVED` = não anulado agora; `CANCELED` = anulado agora;
+ * ausente = os dois. Exige `JOIN tenants t` na consulta.
+ */
+export function subscriptionPaymentWhere(filter: {
+  tenantId?: string;
+  from?: string;
+  to?: string;
+  scope: EstablishmentScope;
+  status?: 'RECEIVED' | 'CANCELED';
+}): { sql: string; values: unknown[] } {
+  const clauses = [`ap.kind = 'PAID'`, `ap.confirmation_source = 'MANUAL'`, `ap.currency = 'BRL'`];
+  const values: unknown[] = [];
+  if (filter.tenantId) {
+    values.push(filter.tenantId);
+    clauses.push(`ap.tenant_id = $${values.length}`);
+  }
+  if (filter.from && filter.to) {
+    values.push(filter.from, filter.to);
+    clauses.push(`ap.payment_received_on BETWEEN $${values.length - 1}::date AND $${values.length}::date`);
+  }
+  const alcance = scopeSql(filter.scope, 't');
+  if (alcance) clauses.push(alcance);
+  if (filter.status === 'RECEIVED') clauses.push('ap.canceled_at IS NULL');
+  if (filter.status === 'CANCELED') clauses.push('ap.canceled_at IS NOT NULL');
+  return { sql: `WHERE ${clauses.join(' AND ')}`, values };
 }
