@@ -43,6 +43,7 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 | `notifications/` | Base do WhatsApp automático: política, agendador na transação da reserva, fila, executor e provedor **simulado**. Nada chama o executor em produção | `appointments/` (chamado por ele) |
 | `accounts/` | Administração de contas da plataforma, convites, redefinição de senha, auditoria (`audit_logs`) | `email/`, `auth/` |
 | `platform/` | Portal da plataforma (só `MASTER_OWNER`, `platform-access.ts`): estabelecimentos, Ativo/Inativo, validade, sem vencimento (`no-expiry.service.ts`), preços do catálogo e contratados (`pricing.service.ts`), pagamentos das assinaturas | `accounts/`, `commercial/` |
+| `second-factor/` | Segundo fator (TOTP) das contas de plataforma: estado da sessão (`second-factor-state.ts`), guard de toda rota `/platform` (`second-factor.guard.ts`), cifra do segredo (`secret-cipher.ts`), códigos de recuperação, liberações e trava de tentativas (`second-factor.service.ts`) | `auth/`, `accounts/` (auditoria, e-mail, reauth) |
 | `email/` | Envio de e-mail (opcional; desligado sem variáveis) | — |
 | `config/` | Validação de ambiente, cookie, IP do cliente | — |
 | `database/` | DataSource de runtime (logger que omite segredos) e de migrations (logger padrão) | — |
@@ -108,6 +109,7 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Título, descrição e JSON-LD da página pública | `src/lib/agendamento-publico/metadados-publicos.ts`, com a leitura no servidor em `pagina-no-servidor.ts` (uma por requisição, `leitura-da-requisicao.ts`) |
 | Estabelecimento de teste fora da busca | marca em `tenants.is_test`, gravada só por `setTestFlag` (`platform/establishment-admin.service.ts`, `manageEstablishments`); `indexable` em `GET /public/:slug`; uma decisão por requisição em `src/proxy.ts` (`proxy-da-pagina-publica.ts`, regras em `indexacao-da-pagina.ts`: só a leitura da API na própria requisição, senão 503) vale para o `X-Robots-Tag` e, pelo cabeçalho interno `x-agenda-indexacao`, para o meta robots do layout |
 | Clientes x internos/teste no portal | alcance `CLIENTS`/`INTERNAL`/`ALL` pela marca `tenants.is_test`: `matchesScope`/`scopeSql` em `backend/src/platform/portal-overview.ts`, aplicado na lista, na Visão geral, no relatório por período e no extrato (`platform.service.ts`, `pricing.service.ts`); a tela só afirma o alcance que a API devolve (`alcanceConfirmado` em `src/lib/administracao/diretorio.ts`) |
+| Segundo fator das contas de plataforma | Estado e validade (12 h na sessão): `secondFactorStatus` em `backend/src/second-factor/second-factor-state.ts`; exigência nas rotas: `PlatformSecondFactorGuard` NA CLASSE de todo controller `@Controller('platform')` (exceções só em `ROTAS_SEM_SEGUNDO_FATOR`, conferidas por `second-factor-architecture.spec.ts` e por `test/second-factor.e2e-spec.ts`); troca de senha de conta master: `changePassword` em `auth.service.ts`; master novo: `second_factor_enrollment_required` (convite em `invites.service.ts`, promoção em `accounts-admin.service.ts`); fase e chaves: `PLATFORM_2FA_ENFORCEMENT`/`PLATFORM_TOTP_KEYS` (`env.validation.ts`). Plano: `docs/plans/2fa-contas-administrativas.md`; publicação e emergência: `docs/runbooks/publicacao-2fa-administrativo.md` |
 | Relatório por período do portal (SaaS) | `GET /platform/reports` (`report` em `platform.service.ts`); período: `checkDateRange`/`resolveReportPeriod`/`timestampInRangeSql` em `backend/src/platform/portal-reports.ts` (São Paulo, datas inclusas, até 366 dias, sem padrão no esquema); pagamentos de assinatura: uma regra só, `subscriptionPaymentWhere` em `platform.queries.ts`, usada pela Visão geral, pelo relatório e pelo extrato; tela em `src/lib/administracao/periodo.ts` (mesma validação, só afirma o período devolvido). Plano: `docs/plans/portal-relatorios-por-periodo.md` |
 | Slugs que nenhum cadastro novo recebe | `backend/src/common/reserved-slugs.ts`, aplicado em `resolveSlug` (`auth/slug.ts`, slug gerado do nome); `assertSlugChangeAllowed` (409 `SLUG_RESERVADO`) para uma rota futura que receba slug escolhido; `src/lib/agendamento-publico/slugs-reservados.test.ts` confere contra `src/app` e a semente; `scripts/lib/slugs-reservados-check.ts` copia a lista (conferida por teste) |
 
@@ -118,6 +120,12 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
   sessão, usuário e `must_change_password` a cada requisição.
 - **Senhas:** Argon2id em `credentials` (`password-hasher.ts`). Nunca voltam
   na resposta nem vão para log ou auditoria.
+- **Segundo fator (contas de plataforma):** TOTP pelo `otpauth` (versão
+  fixada); segredo cifrado com AES-256-GCM e chave só no ambiente da API;
+  códigos de recuperação só como SHA-256; reutilização barrada pela
+  aplicação (contador sob `FOR UPDATE`); trava de 15 minutos só nas
+  tentativas de segundo fator. O portal só abre com o código confirmado na
+  mesma sessão há menos de 12 horas.
 - **Logs:** `safe-typeorm-logger.ts` e `database-error.filter.ts` omitem
   parâmetros, hashes e tokens no runtime.
 - **IP do cliente:** `config/client-ip.ts` (ver o runbook do Render, seção 5).
