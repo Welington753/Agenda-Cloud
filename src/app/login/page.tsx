@@ -1,46 +1,17 @@
 "use client";
 
-// Login (Lote 6C.1) — o formulário principal agora fala com o backend real
-// (POST /auth/login, cookie HttpOnly). A demonstração continua existindo,
-// mas como um fluxo EXPLICITAMENTE separado (ver seção "Acessos para
-// demonstração" abaixo): clicar numa conta demo nunca preenche o formulário
-// real para depois submetê-lo — isso tentaria autenticar um e-mail fictício
-// contra o backend de verdade e falharia. Em vez disso, entra direto pela
-// simulação local (`autenticar`/`entrarComo`, inalterados desde antes deste
-// lote), sem nunca tocar a API real.
+// Login (Lote 6C.1) — o formulário fala com o backend real (POST /auth/login,
+// cookie HttpOnly). A demonstração não entra por aqui: ela fica na página
+// inicial ("Ver demonstração"), e esta página não importa nada dela (guardas
+// em src/lib/servicos/sem-dados-demo*.test.ts).
 import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, Crown, Headset, ShieldCheck, Store, UserCog, UserRound, Users } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context";
-import { autenticar, SENHA_DEMONSTRACAO } from "@/lib/auth/autenticacao";
-import { ROTA_INICIAL_POR_PAPEL_ESTABELECIMENTO, ROTA_INICIAL_POR_PAPEL_PLATAFORMA } from "@/lib/permissions";
+import { ShieldCheck } from "lucide-react";
 import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
-import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcaTimVix } from "@/components/marca/marca";
-import type { PapelEstabelecimento, PapelPlataforma } from "@/lib/types";
-
-interface ContaDemonstracao {
-  grupo: "Administração da plataforma" | "Equipe dos estabelecimentos";
-  nome: string;
-  email: string;
-  rotulo: string;
-  icone: typeof Crown;
-}
-
-const CONTAS_DEMONSTRACAO: ContaDemonstracao[] = [
-  { grupo: "Administração da plataforma", nome: "Ana Beatriz Ferreira", email: "ana.ferreira@agendabarber.com", rotulo: "MASTER_OWNER — controle total", icone: Crown },
-  { grupo: "Administração da plataforma", nome: "Rodrigo Salles", email: "rodrigo.salles@agendabarber.com", rotulo: "MASTER_ADMIN — gerencia estabelecimentos", icone: UserCog },
-  { grupo: "Administração da plataforma", nome: "Camila Duarte", email: "camila.duarte@agendabarber.com", rotulo: "MASTER_SUPPORT — acesso a suporte", icone: Headset },
-  { grupo: "Equipe dos estabelecimentos", nome: "Marcelo Nogueira", email: "marcelo@domnavalha.com.br", rotulo: "Dono — Barbearia Dom Navalha", icone: Store },
-  { grupo: "Equipe dos estabelecimentos", nome: "Juliana Prado", email: "juliana@domnavalha.com.br", rotulo: "Gerente — Barbearia Dom Navalha", icone: Users },
-  { grupo: "Equipe dos estabelecimentos", nome: "Débora Alves", email: "debora@domnavalha.com.br", rotulo: "Recepcionista — Barbearia Dom Navalha", icone: Users },
-  { grupo: "Equipe dos estabelecimentos", nome: "João Silva", email: "joao.silva@domnavalha.com.br", rotulo: "Profissional — Barbearia Dom Navalha", icone: UserRound },
-  { grupo: "Equipe dos estabelecimentos", nome: "Dra. Mariana Alves", email: "mariana@sorrisoleve.com.br", rotulo: "Dona — Clínica Sorriso Leve", icone: Building2 },
-  { grupo: "Equipe dos estabelecimentos", nome: "Bastião Nunes", email: "bastiao@barbeirobastiao.com.br", rotulo: "Dono e profissional — Barbeiro Bastião (plano Essencial)", icone: UserRound },
-];
 
 export default function LoginPage() {
   return (
@@ -55,7 +26,6 @@ export default function LoginPage() {
 // useSearchParams") — por isso o conteúdo real fica separado do export
 // default acima.
 function LoginPageConteudo() {
-  const { entrarComo } = useAuth();
   const { notificar } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,18 +33,6 @@ function LoginPageConteudo() {
   function destinoPosLogin(): string {
     const next = sanitizarDestinoInterno(searchParams.get("next"));
     return next ?? ROTA_PADRAO_POS_LOGIN;
-  }
-
-  function entrarComContaDemonstracao(conta: ContaDemonstracao) {
-    const resultado = autenticar(conta.email, SENHA_DEMONSTRACAO);
-    if (!resultado.ok) return;
-    entrarComo(resultado.sessao);
-    notificar(`Bem-vindo(a), ${resultado.sessao.nome.split(" ")[0]}. (ambiente de demonstração)`, "sucesso");
-    const destino =
-      resultado.sessao.escopo === "plataforma"
-        ? ROTA_INICIAL_POR_PAPEL_PLATAFORMA[resultado.sessao.papel as PapelPlataforma]
-        : ROTA_INICIAL_POR_PAPEL_ESTABELECIMENTO[resultado.sessao.papel as PapelEstabelecimento];
-    router.push(destino);
   }
 
   return (
@@ -127,66 +85,20 @@ function LoginPageConteudo() {
           />
 
           {/* Não há cadastro aberto: o acesso real vem do convite da
-              administração. Nunca a demonstração abaixo. */}
-          <p className="text-center text-sm text-ink-soft">
-            Ainda não tem acesso?{" "}
-            <Link href="/cadastro" className="font-medium text-accent hover:underline">
-              Saiba como obter
-            </Link>
-          </p>
-
-          <details className="rounded-[var(--radius-card)] border border-dashed border-border">
-            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink">
-              Ambiente de demonstração (sem conta real)
-            </summary>
-            <div className="space-y-4 border-t border-border px-4 py-4">
-              <p className="text-xs text-ink-soft">
-                Clique numa conta para entrar direto num ambiente simulado, sem senha e sem se conectar ao servidor
-                real. Nenhuma destas contas existe de verdade — são só para navegar pelas telas.
-              </p>
-              {(["Administração da plataforma", "Equipe dos estabelecimentos"] as const).map((grupo) => (
-                <div key={grupo} className="space-y-1.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{grupo}</p>
-                  {CONTAS_DEMONSTRACAO.filter((c) => c.grupo === grupo).map((conta) => {
-                    const Icone = conta.icone;
-                    return (
-                      <button
-                        key={conta.email}
-                        type="button"
-                        onClick={() => entrarComContaDemonstracao(conta)}
-                        className="flex w-full items-center gap-2.5 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-xs hover:bg-paper-muted"
-                      >
-                        <Icone size={14} className="shrink-0 text-ink-soft" />
-                        <span className="min-w-0 flex-1 truncate font-medium text-ink">{conta.nome}</span>
-                        <span className="shrink-0 text-ink-soft">{conta.rotulo}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </details>
-
-          <Cartao className="border-dashed">
-            <CartaoCorpo className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-paper-muted text-ink-soft">
-                <Store size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink">Você é um consumidor?</p>
-                <p className="text-xs text-ink-soft">Não é preciso login para agendar um horário.</p>
-              </div>
-              <Link href="/dom-navalha" className="shrink-0 text-xs font-semibold text-accent hover:underline">
-                Ver exemplo
+              administração. */}
+          <div className="space-y-3 border-t border-border pt-6 text-center">
+            <p className="text-sm text-ink-soft">
+              Ainda não tem acesso?{" "}
+              <Link href="/cadastro" className="font-medium text-accent hover:underline">
+                Saiba como obter
               </Link>
-            </CartaoCorpo>
-          </Cartao>
-
-          <p className="text-center text-xs text-ink-soft">
-            <Link href="/" className="underline hover:text-ink">
-              ← Voltar para a apresentação
-            </Link>
-          </p>
+            </p>
+            <p className="text-xs text-ink-soft">
+              <Link href="/" className="underline hover:text-ink">
+                ← Voltar para a apresentação
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>
