@@ -1,54 +1,33 @@
-import { CalendarCheck, MessageSquareOff, Smartphone, TimerOff } from "lucide-react";
-import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { LinkBotao } from "@/components/ui/button";
-import { SLOGAN_PRODUTO } from "@/lib/config";
+// Topo da página inicial, na faixa escura: o que é, para quem, e as três
+// chamadas. A prévia da agenda vem logo abaixo (previa-agenda.tsx), metade
+// sobre a faixa escura e metade sobre o creme.
 import Link from "next/link";
-import { HREF_COMO_OBTER_ACESSO, HREF_DEMONSTRACAO, HREF_ENTRAR } from "@/lib/site/conteudo-comercial";
-
-const BENEFICIOS = [
-  { icone: MessageSquareOff, titulo: "Menos mensagens", descricao: "O cliente marca sozinho, sem trocar mensagens para achar um horário livre." },
-  { icone: TimerOff, titulo: "Menos faltas", descricao: "Lembretes e confirmações claras reduzem os esquecimentos." },
-  { icone: CalendarCheck, titulo: "Agenda sempre visível", descricao: "Todos os horários do dia num só lugar, para você e para o cliente." },
-  { icone: Smartphone, titulo: "Sem aplicativo", descricao: "Funciona direto pelo navegador, no celular ou no computador." },
-];
+import { HREF_COMO_OBTER_ACESSO, HREF_DEMONSTRACAO, HREF_ENTRAR, TOPO } from "@/lib/site/conteudo-comercial";
+import { BOTAO_CLARO, BOTAO_CONTORNO_ESCURO, FAIXA_ESCURA, LINK_ESCURO } from "./estilos";
 
 export function Hero() {
   return (
-    <section id="produto" className="mx-auto max-w-5xl px-4 py-14 sm:px-8 sm:py-20">
-      <div className="mx-auto max-w-2xl text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-5xl">{SLOGAN_PRODUTO}</h1>
-        <p className="mt-4 text-base text-ink-soft sm:text-lg">
-          Para salões, clínicas, estúdios, terapeutas, pet shops e qualquer negócio que atenda com hora marcada.
-        </p>
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <LinkBotao href={HREF_COMO_OBTER_ACESSO} tamanho="lg" className="w-full sm:w-auto">
+    <section className={`${FAIXA_ESCURA} px-4 pt-14 pb-40 sm:px-8 sm:pt-20 sm:pb-48`}>
+      <div className="mx-auto max-w-3xl text-center">
+        <p className="text-sm font-semibold text-chrome-ink-soft">{TOPO.selo}</p>
+        <h1 className="mt-4 text-4xl leading-[1.1] font-bold tracking-tight text-balance sm:text-5xl lg:text-6xl">
+          {TOPO.titulo}
+        </h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base text-pretty text-chrome-ink-soft sm:text-lg">{TOPO.texto}</p>
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <a href={HREF_COMO_OBTER_ACESSO} className={BOTAO_CLARO}>
             Como obter acesso
-          </LinkBotao>
-          <LinkBotao href={HREF_ENTRAR} tamanho="lg" variante="secundaria" className="w-full sm:w-auto">
+          </a>
+          <Link href={HREF_ENTRAR} className={BOTAO_CONTORNO_ESCURO}>
             Entrar
-          </LinkBotao>
+          </Link>
         </div>
-        <p className="mt-4 text-sm text-ink-soft">
-          Quer só conhecer antes?{" "}
-          <Link href={HREF_DEMONSTRACAO} className="font-semibold text-accent hover:underline">
+        <p className="mt-5 text-sm text-chrome-ink-soft">
+          <Link href={HREF_DEMONSTRACAO} className={LINK_ESCURO}>
             Ver demonstração
           </Link>{" "}
-          — dados fictícios, guardados só neste navegador.
+          — {TOPO.notaDemonstracao}
         </p>
-      </div>
-
-      <div className="mx-auto mt-14 grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {BENEFICIOS.map((b) => (
-          <Cartao key={b.titulo}>
-            <CartaoCorpo>
-              <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-accent-soft text-[color:var(--color-accent-hover)]">
-                <b.icone size={18} />
-              </div>
-              <p className="font-semibold text-ink">{b.titulo}</p>
-              <p className="mt-1 text-sm text-ink-soft">{b.descricao}</p>
-            </CartaoCorpo>
-          </Cartao>
-        ))}
       </div>
     </section>
   );

@@ -22,10 +22,15 @@ test.describe("cadastro público fechado", () => {
       if (req.url().startsWith(API)) chamadasAApi.push(`${req.method()} ${new URL(req.url()).pathname}`);
     });
 
+    // A página inicial explica o convite na própria seção de contato.
     await page.goto("/");
     await expect(page.getByRole("link", { name: "Criar conta" })).toHaveCount(0);
     await page.getByRole("link", { name: "Como obter acesso" }).first().click();
-    await expect(page).toHaveURL(/\/cadastro$/);
+    await expect(page).toHaveURL(/\/#contato$/);
+    await expect(page.locator("#contato")).toContainText("Não há cadastro aberto");
+    await expect(page.locator("form")).toHaveCount(0);
+
+    await page.goto("/cadastro");
     await expect(page.getByRole("heading", { name: "O acesso é liberado pela administração" })).toBeVisible();
     await expect(page.locator("form")).toHaveCount(0);
     await expect(page.locator("input")).toHaveCount(0);
