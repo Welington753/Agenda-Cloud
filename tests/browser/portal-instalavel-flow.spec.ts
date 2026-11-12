@@ -10,12 +10,12 @@
 // Início nem o comportamento de links fora do escopo: isso é o roteiro no
 // aparelho real.
 //
-// Invocação própria (`npm run test:browser:portal-instalavel`): 2 aceites de
-// convite e 2 logins.
+// Invocação própria (`npm run test:browser:portal-instalavel`): 3 aceites de
+// convite e 4 logins.
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
-import { SEM_ACESSO_AO_PORTAL, VISAO_GERAL_DO_PORTAL, entrarPeloFormulario, navPortal } from "./support/portal";
+import { SEM_ACESSO_AO_PORTAL, VISAO_GERAL_DO_PORTAL, entrarPeloFormulario, navPortal, sairDoPortal } from "./support/portal";
 
 const SENHA = "senha-do-portal-instalavel-1";
 const id = () => randomUUID().replaceAll("-", "").slice(0, 10);
@@ -172,4 +172,75 @@ test("Portal AC com a sessão de quem não é proprietário da plataforma: recus
   await page.goto("/conta/visao-geral");
   await expect(page).toHaveURL(/\/conta\//);
   esperarOperacao(await cabecaDaPagina(page));
+});
+
+// Regressão do manifest duplicado (react/react#38155; ver o comentário de
+// `htmlLimitedBots` em next.config.ts). Com a CPU 8x mais lenta, a guarda de
+// sessão manda para a entrada antes de o React hidratar os metadados do HTML
+// inicial; com metadados em streaming, as tags do servidor ficavam órfãs e
+// cada página seguinte somava as suas. Um observador conta, desde o início do
+// documento, o maior número de `<link rel="manifest">` que existiu ao mesmo
+// tempo: até uma duplicação passageira reprova.
+test("CPU 8x mais lenta: acesso direto sem sessão, login, navegação, saída e volta nunca deixam dois manifests", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    const w = window as unknown as { __maiorContagemDeManifests: number };
+    w.__maiorContagemDeManifests = 0;
+    const contar = () => {
+      const n = document.querySelectorAll('link[rel="manifest"]').length;
+      if (n > w.__maiorContagemDeManifests) w.__maiorContagemDeManifests = n;
+    };
+    new MutationObserver(contar).observe(document, { childList: true, subtree: true });
+  });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 8 });
+
+  /** Espera a página atual ter o seu manifest e confere que nunca houve dois. */
+  async function manifestUnicoDoPortal() {
+    await expect.poll(async () => (await cabecaDaPagina(page)).manifests, { timeout: 20_000 }).toEqual([MANIFEST_PORTAL]);
+    esperarPortal(await cabecaDaPagina(page));
+    expect(await page.evaluate(() => (window as unknown as { __maiorContagemDeManifests: number }).__maiorContagemDeManifests)).toBe(1);
+  }
+
+  const db = await conectarBancoDeTeste();
+  try {
+    const marca = `portal-instalavel-lento-${id()}`;
+    const email = `${marca}@example.test`;
+    const conta = await criarContaDeTeste(page.request, {
+      ownerName: "Proprietária Fictícia Lenta",
+      businessName: `${marca} Negócio`,
+      email,
+      password: SENHA,
+    });
+    await db.query("DELETE FROM memberships WHERE user_id = $1", [conta.user.id]);
+    await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [conta.user.id]);
+    await page.context().clearCookies();
+
+    // Acesso direto ao start_url sem sessão: a guarda manda para a entrada.
+    await page.goto(VISAO_GERAL_DO_PORTAL);
+    await expect(page).toHaveURL("/portal?next=%2Fportal%2Fvisao-geral", { timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Entrar no portal" })).toBeVisible({ timeout: 20_000 });
+    await manifestUnicoDoPortal();
+
+    // Login e volta à Visão geral.
+    await entrarPeloFormulario(page, email, SENHA);
+    await expect(page).toHaveURL(VISAO_GERAL_DO_PORTAL, { timeout: 20_000 });
+    await expect(navPortal(page)).toBeVisible({ timeout: 20_000 });
+    await manifestUnicoDoPortal();
+
+    // Navegação interna.
+    await navPortal(page).getByRole("link", { name: "Estabelecimentos" }).click();
+    await expect(page).toHaveURL("/portal/estabelecimentos", { timeout: 20_000 });
+    await manifestUnicoDoPortal();
+
+    // Saída e volta ao portal pelo login.
+    await sairDoPortal(page);
+    await expect(page.getByRole("heading", { name: "Entrar no portal" })).toBeVisible({ timeout: 20_000 });
+    await manifestUnicoDoPortal();
+    await entrarPeloFormulario(page, email, SENHA);
+    await expect(navPortal(page)).toBeVisible({ timeout: 20_000 });
+    await manifestUnicoDoPortal();
+  } finally {
+    await db.end();
+  }
 });
