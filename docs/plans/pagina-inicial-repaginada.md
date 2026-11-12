@@ -105,5 +105,5 @@ Na primeira captura, a visualização "Por profissional" em duas colunas deixou 
   - db-e2e de contas e 2FA (31), contra PostgreSQL descartável com TLS;
   - suítes de navegador: auth 7, services 7, aparência 2, portal instalável 4 e segundo fator 1.
 - **Próximo passo:** PR para `integration/nestjs-typeorm-frontend` com `[skip render]` e CI completo verde no head final. Sem merge até nova aprovação.
-- **Só neste computador:** o stash do `CLAUDE.md`, a worktree `C:wtpmd` e o banco descartável local `home`.
+- **Só neste computador:** o stash do `CLAUDE.md`, a worktree `C:\wt\pmd` e o banco descartável local `home`.
 - **Restrições:** sem merge, deploy, Render, DNS, backup ou banco real. As comissões `5d74556` seguem separadas e primeiro na fila.
