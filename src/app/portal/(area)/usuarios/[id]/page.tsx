@@ -12,6 +12,7 @@ import { SecaoDados } from "@/components/administracao/ficha-usuario/secao-dados
 import { SecaoPlataforma } from "@/components/administracao/ficha-usuario/secao-plataforma";
 import { SecaoVinculos } from "@/components/administracao/ficha-usuario/secao-vinculos";
 import { SecaoAcesso } from "@/components/administracao/ficha-usuario/secao-acesso";
+import { SecaoSegundoFator } from "@/components/administracao/ficha-usuario/secao-segundo-fator";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { ehFichaUsuario } from "@/lib/administracao/contas";
 import { ROTA_HISTORICO, ROTA_USUARIOS } from "@/lib/administracao/rotas";
@@ -50,6 +51,7 @@ export default function FichaUsuarioPage() {
       <SecaoVinculos ficha={ficha} aoMudar={recarregar} />
       <SecaoPlataforma key={`plataforma-${ficha.updatedAt}`} ficha={ficha} aoMudar={recarregar} />
       <SecaoAcesso ficha={ficha} aoMudar={recarregar} />
+      <SecaoSegundoFator ficha={ficha} aoMudar={recarregar} />
     </div>
   );
 }

@@ -162,6 +162,9 @@ export type FalhaTrocaDeSenha =
   | { tipo: "limite_tentativas" }
   | { tipo: "dados_invalidos"; mensagem: string | null }
   | { tipo: "nao_autenticado" }
+  /** Conta da administração da plataforma: trocar a senha exige o segundo
+   * fator confirmado nesta sessão (ou cadastrado), em qualquer tela. */
+  | { tipo: "segundo_fator" }
   | { tipo: "falha_comunicacao" }
   | { tipo: "indisponivel" };
 
@@ -186,6 +189,12 @@ export async function trocarSenha(
     if (resultado.status === 400) {
       const mensagem = (resultado.data as { message?: unknown } | null)?.message;
       return { ok: false, falha: { tipo: "dados_invalidos", mensagem: typeof mensagem === "string" ? mensagem : null } };
+    }
+    if (resultado.status === 403) {
+      const codigo = (resultado.data as { code?: unknown } | null)?.code;
+      if (codigo === "SEGUNDO_FATOR_NECESSARIO" || codigo === "SEGUNDO_FATOR_CADASTRO_NECESSARIO") {
+        return { ok: false, falha: { tipo: "segundo_fator" } };
+      }
     }
     return { ok: false, falha: { tipo: "indisponivel" } };
   }

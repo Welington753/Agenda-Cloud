@@ -96,6 +96,7 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
   }
   if (!response.ok) {
     if (response.status === 403 && codigoDoBackend(data) === CODIGO_ACESSO_VENCIDO) avisarAcessoVencido();
+    if (response.status === 403 && CODIGOS_SEGUNDO_FATOR.has(codigoDoBackend(data) ?? "")) avisarSegundoFator();
     return { kind: "http-error", status: response.status, data };
   }
   return { kind: "success", status: response.status, data: data as T };
@@ -107,6 +108,17 @@ export const CODIGO_ACESSO_VENCIDO = "ACESSO_VENCIDO";
  * aberta antes do vencimento é relida, e a tela troca a página pelo aviso
  * de regularização em vez de ficar com erro (real-auth-context.tsx). */
 export const EVENTO_ACESSO_VENCIDO = "agenda:acesso-vencido";
+
+/** Códigos do servidor quando a sessão precisa do segundo fator (por
+ * exemplo, a verificação de 12 horas venceu com o portal aberto). */
+const CODIGOS_SEGUNDO_FATOR = new Set(["SEGUNDO_FATOR_NECESSARIO", "SEGUNDO_FATOR_CADASTRO_NECESSARIO"]);
+/** Evento de `window`: o portal relê o acesso e mostra a etapa do segundo
+ * fator no lugar da página (use-acesso-plataforma.tsx). */
+export const EVENTO_SEGUNDO_FATOR = "agenda:segundo-fator";
+
+function avisarSegundoFator() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENTO_SEGUNDO_FATOR));
+}
 
 function codigoDoBackend(data: unknown): string | null {
   if (typeof data !== "object" || data === null) return null;

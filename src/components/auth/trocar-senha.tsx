@@ -27,6 +27,8 @@ function mensagem(falha: FalhaTrocaDeSenha): string {
       return falha.mensagem ?? "Confira as senhas: a nova precisa ter de 10 a 128 caracteres e ser diferente da atual.";
     case "nao_autenticado":
       return "Sua sessão terminou. Entre de novo.";
+    case "segundo_fator":
+      return "Esta conta é da administração da plataforma: confirme o código do aplicativo autenticador no portal antes de trocar a senha.";
     case "falha_comunicacao":
       return "Não foi possível confirmar com o servidor. A senha pode ter sido trocada: tente entrar com a nova antes de repetir.";
     default:

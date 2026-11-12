@@ -106,6 +106,7 @@ describe("seções do portal", () => {
       "Relatórios",
       "Proprietários da plataforma",
       "Histórico administrativo",
+      "Segurança da conta",
     ]);
     expect(SECOES_ADMINISTRACAO.every((s) => s.href.startsWith("/portal/"))).toBe(true);
     expect(secaoAtiva("/portal/usuarios/u1", "/portal/usuarios")).toBe(true);

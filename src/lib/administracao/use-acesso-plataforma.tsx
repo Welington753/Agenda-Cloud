@@ -9,7 +9,8 @@
 // ou vínculo com estabelecimento. É só apresentação: cada leitura de dados da
 // administração é autorizada de novo no servidor, e um papel revogado vira
 // 403 ali mesmo que o item continue no menu até a próxima leitura.
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { EVENTO_SEGUNDO_FATOR } from "@/lib/api/http-client";
 import { ehAcesso, type AcessoPlataforma as Acesso } from "./contratos";
 import { useLeituraPlataforma, type LeituraPlataforma } from "./use-leitura-plataforma";
 
@@ -22,6 +23,12 @@ const Contexto = createContext<AcessoPlataforma | null>(null);
 
 export function AcessoPlataformaProvider({ children }: { children: ReactNode }) {
   const { estado, recarregar } = useLeituraPlataforma("/platform/access", ehAcesso);
+  // Uma rota do portal pediu o segundo fator (verificação vencida no meio do
+  // uso): relê o acesso, e o portão troca a página pela etapa do código.
+  useEffect(() => {
+    window.addEventListener(EVENTO_SEGUNDO_FATOR, recarregar);
+    return () => window.removeEventListener(EVENTO_SEGUNDO_FATOR, recarregar);
+  }, [recarregar]);
   const valor = useMemo(() => ({ estado, recarregar }), [estado, recarregar]);
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }
