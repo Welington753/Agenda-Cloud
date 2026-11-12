@@ -4,7 +4,7 @@
 // O token vem no FRAGMENTO (o navegador não o envia a servidor nenhum) e vai
 // só no corpo do POST. A liberação não dá acesso: a pessoa entra com a senha
 // e, nesta sessão, pode cadastrar um novo aplicativo autenticador por 30
-// minutos. Depois de usada, o portão do portal mostra o cadastro.
+// minutos. Depois de usada, a pessoa vai para a Segurança da conta.
 //
 // Sem sessão: o token fica só nesta aba (sessionStorage, apagado ao usar) e a
 // pessoa passa pela entrada do portal, que volta para cá.
@@ -14,7 +14,7 @@ import { ShieldCheck } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { usarLiberacao } from "@/lib/api/segundo-fator-api";
 import { mensagemDaFalha } from "@/lib/administracao/segundo-fator";
-import { entradaDoPortal, ROTA_LIBERACAO_SEGUNDO_FATOR, ROTA_VISAO_GERAL } from "@/lib/administracao/rotas";
+import { entradaDoPortal, ROTA_LIBERACAO_SEGUNDO_FATOR, ROTA_SEGURANCA } from "@/lib/administracao/rotas";
 import { MarcadorAparencia } from "@/components/aparencia/aparencia";
 import { MarcaAgendaCloud } from "@/components/marca/marca";
 
@@ -62,7 +62,9 @@ export default function LiberacaoDoSegundoFator() {
     usado.current = true;
     void usarLiberacao(token).then((r) => {
       esquecerToken();
-      if (r.ok) router.replace(ROTA_VISAO_GERAL);
+      // Segurança da conta: atrás do portão, que mostra o cadastro (master
+      // novo) ou a verificação com a opção de cadastrar o novo aplicativo.
+      if (r.ok) router.replace(ROTA_SEGURANCA);
       else setMensagem(mensagemDaFalha(r.falha));
     });
   }, [estado.status, router]);

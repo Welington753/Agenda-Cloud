@@ -57,6 +57,11 @@ export default defineConfig({
         EMAIL_API_KEY: "chave-local-de-teste",
         EMAIL_FROM: "nao-responda@agenda.test",
         EMAIL_API_BASE_URL: "http://127.0.0.1:3025",
+        // Segundo fator: chave FICTÍCIA (32 bytes fixos), só de teste. A fase
+        // fica no padrão de fora de production (`optional`): as suítes antigas
+        // seguem iguais, e a do segundo fator cadastra o fator do master dela.
+        PLATFORM_TOTP_KEYS: `1:${Buffer.alloc(32, 7).toString("base64")}`,
+        PLATFORM_TOTP_KEY_CURRENT: "1",
       },
       url: "http://localhost:3001/auth/me",
       reuseExistingServer: !process.env.CI,

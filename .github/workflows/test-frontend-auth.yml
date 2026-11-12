@@ -405,6 +405,25 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-instalavel
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-instalavel
 
+      # Verificação em duas etapas do portal: ativação pela Segurança da conta
+      # (QR, chave manual, código colado), entrada só com o código, código de
+      # recuperação no celular, liberação enviada por outro proprietário à
+      # caixa de e-mail LOCAL e cadastro do master novo. Chave TOTP FICTÍCIA
+      # (playwright.config.ts). Invocação própria (2 aceites, 4 logins).
+      - name: Run platform portal second factor (activation, code entry, recovery on mobile, grant by e-mail; 4 logins)
+        id: browser_portal_segundo_fator
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/portal-segundo-fator
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-segundo-fator
+
       # Invocação SEPARADA (aceite de convite: limite de 10 por 15 min por IP,
       # em memória no backend): empresa criada pela tela, e-mail na caixa
       # LOCAL (tests/browser/support/caixa-de-email.mjs, nada sai da
