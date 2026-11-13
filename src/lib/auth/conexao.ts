@@ -15,6 +15,18 @@ import { reduzirResultadoSessao, type EstadoAutenticacaoReal } from "./real-sess
  */
 export type EstadoConexao = "ok" | "acordando" | "sem_internet" | "sem_resposta";
 
+/** O aviso da faixa de conexão. Além dos estados da conexão, `erro_servidor`:
+ * a API RESPONDEU, mas com erro (500, por exemplo). Não é demora nem
+ * hibernação, e o texto não pode dizer que o servidor não respondeu. */
+export type AvisoConexao = EstadoConexao | "erro_servidor";
+
+/** Aviso do login: a leitura da sessão da abertura que falhou vira aviso na
+ * faixa (o formulário continua na tela), com o motivo que ela registrou. */
+export function avisoDaConexao(estado: EstadoAutenticacaoReal, conexao: EstadoConexao): AvisoConexao {
+  if (estado.status === "falha_comunicacao") return estado.motivo === "erro_servidor" ? "erro_servidor" : "sem_resposta";
+  return conexao;
+}
+
 /** Tempo com a página oculta (aplicativo em segundo plano, outra aba) a
  * partir do qual, ao voltar, a sessão é conferida de novo. Abaixo dos 15 min
  * que o Render gratuito espera antes de hibernar: voltar depois disso pode
