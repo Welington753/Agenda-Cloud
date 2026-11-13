@@ -6,12 +6,11 @@
 // (não há testing-library nesta suíte — ver vitest.config.ts), mesma
 // disciplina de `src/lib/site/sem-chamadas-backend.test.ts`.
 //
-// A única passagem permitida é a dos botões de demonstração do `/login`
-// (ver excecoes-demonstracao.ts), por arquivo e por módulo.
+// Não há exceção: o `/login` também é área real e não importa nada da
+// demonstração (ela entra pela página inicial, em `/onboarding`).
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EXCECOES_DEMONSTRACAO } from "./excecoes-demonstracao";
 
 const DIRETORIOS_ALVO = [
   "src/app/conta",
@@ -65,19 +64,9 @@ const MODULOS_DEMO = [
   "@/lib/access/access-control",
 ];
 
-function especificador(linha: string): string | undefined {
-  return /["']([^"']+)["']/.exec(linha)?.[1];
-}
-
-/** Linhas que importam `modulo` fora da exceção do login. A exceção exige o
- * arquivo E o especificador exatos: outro arquivo, ou um especificador que só
- * começa igual, reprova. */
-function importsProibidos(arquivo: string, conteudo: string, modulo: string): string[] {
-  return linhasDeImport(conteudo).filter(
-    (linha) =>
-      linha.includes(modulo) &&
-      !EXCECOES_DEMONSTRACAO.some((e) => e.arquivo === arquivo && especificador(linha) === e.modulo),
-  );
+/** Linhas que importam `modulo`. */
+function importsProibidos(conteudo: string, modulo: string): string[] {
+  return linhasDeImport(conteudo).filter((linha) => linha.includes(modulo));
 }
 
 describe("a área real da conta nunca importa a demonstração", () => {
@@ -90,7 +79,7 @@ describe("a área real da conta nunca importa a demonstração", () => {
   it.each(MODULOS_DEMO)("nenhum arquivo importa %s", (modulo) => {
     for (const arquivo of ARQUIVOS) {
       expect(
-        importsProibidos(arquivo, readFileSync(arquivo, "utf-8"), modulo),
+        importsProibidos(readFileSync(arquivo, "utf-8"), modulo),
         `${arquivo} não deveria importar ${modulo}`,
       ).toEqual([]);
     }
@@ -112,41 +101,21 @@ describe("a área real da conta nunca importa a demonstração", () => {
   });
 });
 
-describe("exceção do login (controle da guarda)", () => {
+describe("página de login (controle da guarda)", () => {
   const LOGIN = "src/app/login/page.tsx";
 
-  it("a página de login é varrida e ainda usa os dois imports da exceção", () => {
+  it("é varrida e não importa nenhum módulo da demonstração", () => {
     expect(ARQUIVOS).toContain(LOGIN);
-    const linhas = linhasDeImport(readFileSync(LOGIN, "utf-8"));
-    for (const excecao of EXCECOES_DEMONSTRACAO) {
-      expect(excecao.arquivo).toBe(LOGIN);
-      expect(linhas.map(especificador)).toContain(excecao.modulo);
-    }
+    const conteudo = readFileSync(LOGIN, "utf-8");
+    for (const modulo of MODULOS_DEMO) expect(importsProibidos(conteudo, modulo), modulo).toEqual([]);
   });
 
-  it("aceita os imports da exceção na página de login", () => {
-    const conteudo = [
+  it("o detector reprova os imports que os antigos botões de demonstração usavam", () => {
+    for (const linha of [
       'import { useAuth } from "@/lib/auth/auth-context";',
       'import { autenticar, SENHA_DEMONSTRACAO } from "@/lib/auth/autenticacao";',
-    ].join("\n");
-    for (const modulo of MODULOS_DEMO) expect(importsProibidos(LOGIN, conteudo, modulo)).toEqual([]);
+    ]) {
+      expect(MODULOS_DEMO.flatMap((modulo) => importsProibidos(linha, modulo))).toContain(linha);
+    }
   });
-
-  it("reprova outro módulo da demonstração na própria página de login", () => {
-    const conteudo = 'import { estabelecimentoRepository } from "@/lib/repositories";';
-    expect(importsProibidos(LOGIN, conteudo, "@/lib/repositories")).toEqual([conteudo]);
-  });
-
-  it("reprova um especificador que só começa igual ao da exceção", () => {
-    const conteudo = 'import { x } from "@/lib/auth/autenticacao-extra";';
-    expect(importsProibidos(LOGIN, conteudo, "@/lib/auth/autenticacao")).toEqual([conteudo]);
-  });
-
-  it.each(["src/components/auth/formulario-login.tsx", "src/app/login/layout.tsx", "src/app/portal/page.tsx"])(
-    "reprova o mesmo import em %s",
-    (arquivo) => {
-      const conteudo = 'import { useAuth } from "@/lib/auth/auth-context";';
-      expect(importsProibidos(arquivo, conteudo, "@/lib/auth/auth-context")).toEqual([conteudo]);
-    },
-  );
 });

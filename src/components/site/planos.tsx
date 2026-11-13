@@ -1,6 +1,13 @@
-// Planos: comparação compacta, sem preço (o valor é combinado na liberação do
-// acesso) e com uma única chamada.
-import { HREF_COMO_OBTER_ACESSO, NOTA_DOS_PLANOS, PLANOS_COMERCIAIS } from "@/lib/site/conteudo-comercial";
+// Planos: comparação compacta, com o preço mensal em destaque, a opção
+// trimestral abaixo (total dos três meses) e uma única chamada. Não há
+// checkout: a chamada leva à seção de contato.
+import {
+  HREF_COMO_OBTER_ACESSO,
+  NOTA_DOS_PLANOS,
+  PLANOS_COMERCIAIS,
+  ROTULOS_DE_PRECO,
+  precosExibidos,
+} from "@/lib/site/conteudo-comercial";
 import { BOTAO_PRINCIPAL } from "./estilos";
 
 export function Planos() {
@@ -20,6 +27,14 @@ export function Planos() {
             <div key={plano.codigo} className="border-b border-border py-6 md:border-b-0 md:px-6 md:first:pl-0 md:last:pr-0">
               <h3 className="text-xl font-bold text-ink">{plano.nome}</h3>
               <p className="mt-1 text-sm text-ink-soft">{plano.descricaoCurta}</p>
+              <p className="mt-4 flex flex-wrap items-baseline gap-x-2">
+                <span className="text-3xl font-bold tracking-tight text-ink">{precosExibidos(plano).mensal}</span>
+                <span className="text-base text-ink-soft">{ROTULOS_DE_PRECO.porMes}</span>
+              </p>
+              <p className="mt-1 text-base text-ink">
+                ou <span className="font-semibold">{precosExibidos(plano).trimestral}</span> {ROTULOS_DE_PRECO.porTrimestre}
+              </p>
+              <p className="text-sm text-ink-soft">{ROTULOS_DE_PRECO.totalDoTrimestre}</p>
               <ul className="mt-4 space-y-2">
                 {plano.destaques.map((item) => (
                   <li key={item} className="flex gap-2 text-base text-ink">
