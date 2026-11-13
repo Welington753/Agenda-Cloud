@@ -17,6 +17,7 @@ import { AuthService, type LoginResult } from '../src/auth/auth.service.js';
 import { InvalidCredentialsError } from '../src/auth/auth.errors.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
 import type { SessionContextResult, TenantContext } from '../src/auth/session-context.js';
+import { BusinessCategory } from '../src/entities/enums/business-category.enum.js';
 import { EstablishmentRole } from '../src/entities/enums/establishment-role.enum.js';
 import { TenantStatus } from '../src/entities/enums/tenant-status.enum.js';
 import { SESSION_COOKIE_NAME } from '../src/config/session-cookie.config.js';
@@ -38,6 +39,7 @@ const FAKE_TENANT_CONTEXT: TenantContext = {
   tenantId: 'tenant_1',
   tenantName: 'Studio Bela',
   tenantSlug: 'studio-bela',
+  tenantCategory: BusinessCategory.OTHER,
   role: EstablishmentRole.DONO,
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
   planCode: 'equipe',

@@ -22,6 +22,8 @@ import { ROTA_COMISSAO_EM_MASSA } from "@/lib/conta/rotas";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useAreas } from "@/lib/conta/use-areas";
+import { perfilDoPapel } from "@/lib/conta/papel";
+import { ROTULO_PROFISSIONAIS_PADRAO, rotuloDosProfissionais } from "@/lib/conta/termos";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -191,10 +193,14 @@ export default function ProfissionaisPage() {
   }
 
   const servicosDoTenant = estadoServicos.status === "carregada" ? estadoServicos.servicos : [];
+  // O título acompanha o item do menu do dono, que usa o termo do segmento
+  // ("Barbeiros" na barbearia). O menu do gerente não muda, nem o título dele.
+  const titulo =
+    perfilDoPapel(contexto.role) === "dono" ? rotuloDosProfissionais(contexto.tenantCategory) : ROTULO_PROFISSIONAIS_PADRAO;
 
   return (
     <PaginaConta
-      titulo="Profissionais"
+      titulo={titulo}
       descricao="Quem atende, os serviços de cada um e os horários de trabalho."
       acoes={
         estado.status === "carregada" &&

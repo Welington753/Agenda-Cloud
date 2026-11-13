@@ -468,7 +468,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await confirmarSenhaSePedir(ap, "senha-da-plataforma-123");
     await expect(validade.getByTestId("estado-validade")).toHaveText("Período pago");
     await page.goto("/conta/visao-geral");
-    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByTestId("acesso-vencido")).toHaveCount(0);
 
     const historico = (

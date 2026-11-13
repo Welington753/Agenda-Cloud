@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { TenantStatus } from '../entities/enums/tenant-status.enum.js';
 import { SESSION_COOKIE_NAME } from '../config/session-cookie.config.js';
@@ -29,6 +30,7 @@ const TENANT_CONTEXT_STUB: TenantContext = {
   tenantId: 'tenant_1',
   tenantName: 'Studio Bela',
   tenantSlug: 'studio-bela',
+  tenantCategory: BusinessCategory.OTHER,
   role: EstablishmentRole.DONO,
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
   planCode: 'equipe',

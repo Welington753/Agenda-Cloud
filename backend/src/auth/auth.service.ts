@@ -165,6 +165,7 @@ export class AuthService {
         tenantId: tenant.id,
         tenantName: unit?.name ?? tenant.slug,
         tenantSlug: tenant.slug,
+        tenantCategory: tenant.category,
         role: membership.role,
         unit: unit ? { id: unit.id, name: unit.name, isPrimary: unit.isPrimary } : null,
         planCode: plan.code,

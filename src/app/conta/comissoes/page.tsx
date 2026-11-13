@@ -62,7 +62,7 @@ export default function ComissoesPage() {
     <PaginaConta
       titulo="Comissões"
       descricao="Quanto cada profissional tem de comissão pelos atendimentos concluídos no período."
-      voltar={{ href: ROTA_INICIO, rotulo: "Voltar ao Início" }}
+      voltar={{ href: ROTA_INICIO, rotulo: "Voltar ao Dashboard" }}
       acoes={
         <Botao type="button" variante="secundaria" className="min-h-11" onClick={recarregar}>
           <RefreshCw size={16} aria-hidden="true" />

@@ -15,6 +15,9 @@
 //   ele estava no submenu), ao clicar fora, quando o foco sai do item e ao
 //   navegar.
 // - Fica dentro da tela: se a parte de baixo passar da janela, sobe.
+// - Posição fixa na janela, calculada a partir do item: o menu lateral rola
+//   quando a janela é baixa (são até oito áreas), e um painel preso ao item
+//   seria cortado pela rolagem. Rolar o menu ou mudar a janela reposiciona.
 //
 // No celular, nada disso aparece: "Configurações" fica na barra inferior e
 // leva ao índice, que funciona sem hover. As opções são as que esta sessão
@@ -41,7 +44,7 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
   const secoes = useSecoesDeConfiguracoes();
   const pathname = usePathname();
   const [aberto, setAberto] = useState(false);
-  const [deslocamento, setDeslocamento] = useState(0);
+  const [posicao, setPosicao] = useState<{ top: number; left: number } | null>(null);
   const raizRef = useRef<HTMLLIElement>(null);
   const botaoRef = useRef<HTMLButtonElement>(null);
   const painelRef = useRef<HTMLDivElement>(null);
@@ -85,23 +88,29 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
     };
   }, [aberto, fechar]);
 
-  // Dentro da tela: sobe o que passar da borda de baixo.
+  // Ao lado do item e dentro da tela: sobe o que passar da borda de baixo.
   useLayoutEffect(() => {
     if (!aberto) {
-      setDeslocamento(0);
+      setPosicao(null);
       return;
     }
     function ajustar() {
       const painel = painelRef.current;
       const raiz = raizRef.current;
       if (!painel || !raiz) return;
-      const topo = raiz.getBoundingClientRect().top;
-      const sobra = topo + painel.offsetHeight - (window.innerHeight - MARGEM_DA_JANELA);
-      setDeslocamento(sobra > 0 ? -Math.min(sobra, Math.max(0, topo - MARGEM_DA_JANELA)) : 0);
+      const item = raiz.getBoundingClientRect();
+      const sobra = item.top + painel.offsetHeight - (window.innerHeight - MARGEM_DA_JANELA);
+      const deslocamento = sobra > 0 ? -Math.min(sobra, Math.max(0, item.top - MARGEM_DA_JANELA)) : 0;
+      setPosicao({ top: item.top + deslocamento, left: item.right });
     }
     ajustar();
     window.addEventListener("resize", ajustar);
-    return () => window.removeEventListener("resize", ajustar);
+    // Captura: a rolagem acontece no menu lateral, não na janela.
+    window.addEventListener("scroll", ajustar, true);
+    return () => {
+      window.removeEventListener("resize", ajustar);
+      window.removeEventListener("scroll", ajustar, true);
+    };
   }, [aberto]);
 
   if (secoes.length === 0) {
@@ -179,8 +188,9 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
           data-testid="submenu-configuracoes"
           // A faixa transparente (pl-3) faz parte do item: atravessá-la não
           // conta como sair dele.
-          className="absolute top-0 left-full z-50 hidden pl-3 md:block"
-          style={deslocamento ? { transform: `translateY(${deslocamento}px)` } : undefined}
+          className="fixed z-50 hidden pl-3 md:block"
+          // Sem posição ainda (antes da primeira medida): fora da vista.
+          style={posicao ? { top: posicao.top, left: posicao.left } : { top: 0, left: 0, visibility: "hidden" }}
         >
           <nav
             aria-label="Opções de Configurações"

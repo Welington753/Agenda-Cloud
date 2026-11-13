@@ -12,6 +12,7 @@
 // nenhuma rota de negócio pode aceitar tenantId arbitrário do cliente sem
 // validar que existe uma Membership correspondente — isso é responsabilidade
 // de cada rota de negócio, nunca do SessionGuard.
+import type { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import type { TenantStatus } from '../entities/enums/tenant-status.enum.js';
 import type { AccessPeriodKind, AccessSituation, AccessState } from '../commercial/access-periods.js';
@@ -41,6 +42,9 @@ export interface TenantContext {
    * fluxo de cadastro atual). */
   tenantName: string;
   tenantSlug: string;
+  /** Segmento do estabelecimento. Só para a tela escolher o termo de quem
+   * atende ("Barbeiros" na barbearia); nenhuma regra decide por ele. */
+  tenantCategory: BusinessCategory;
   role: EstablishmentRole;
   unit: { id: string; name: string; isPrimary: boolean } | null;
   planCode: string;
