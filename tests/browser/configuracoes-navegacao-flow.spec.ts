@@ -304,6 +304,17 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
         "Equipe e acessos",
         "Comissões",
       ]);
+      // O menu inteiro cabe entre as duas barras: "Sair", o último item,
+      // fica à vista e recebe o toque mesmo num celular baixo.
+      await celular.setViewportSize({ width, height: 560 });
+      const sair = celular.getByRole("button", { name: "Sair" });
+      await sair.scrollIntoViewIfNeeded();
+      await expect(sair).toBeInViewport({ ratio: 1 });
+      const caixaDoSair = (await sair.boundingBox())!;
+      const barraInferior = (await nav(celular).boundingBox())!;
+      expect(caixaDoSair.y + caixaDoSair.height).toBeLessThanOrEqual(barraInferior.y);
+      await sair.tap({ trial: true });
+      await celular.setViewportSize({ width, height: 844 });
       await celular.keyboard.press("Escape");
       for (const [rotulo, caminho] of [
         ["Profissionais", /\/conta\/configuracoes\/profissionais$/],

@@ -38,6 +38,7 @@ No celular a barra inferior continua com quatro áreas (Dashboard, Agenda, Clien
 - **Recebimentos faz parte de Configurações para o dono.** Na página, "Configurações" fica marcada no menu e o retorno é "Voltar para Configurações". O endereço, o atalho do Dashboard e as permissões são os mesmos. Para o gerente nada muda: ele tem o item Recebimentos.
 - **Personalização não entrou.** Ela só existe na demonstração (`/painel/personalizacao`). Na área real não há tela nem rota. Nenhum link foi criado.
 - **Gerente, funcionário e administração da plataforma não mudam.** O menu do gerente segue as áreas concedidas, com os mesmos nomes.
+- **Menu da conta cabe na tela do celular.** Com quatro áreas a mais, o painel passava da tela em celulares baixos e "Sair" ficava fora de alcance. O painel ganhou altura máxima e rola por dentro.
 - **Menu lateral rola em janela baixa.** Com oito áreas, "Configurações" saía da tela numa janela de 400 px de altura. O menu passou a rolar por dentro e o submenu de Configurações ficou com posição fixa, calculada a partir do item.
 
 ## Ordem de publicação
