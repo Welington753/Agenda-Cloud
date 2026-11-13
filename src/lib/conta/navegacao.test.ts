@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemAtivo, itensDaNavegacao, itensDoDono, rotuloDoSino } from "./navegacao";
+import { itemAtivo, itensDaNavegacao, itensDoDono, retornoDeRecebimentos, rotuloDoSino } from "./navegacao";
 
 const DONO_COM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "COMISSOES_VER", "COMISSOES_CONFIGURAR"] };
 const DONO_SEM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "RECEBIMENTOS_VER"] };
@@ -128,6 +128,25 @@ describe("itemAtivo", () => {
     expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes/equipe")).toBe(true);
     expect(itemAtivo("/conta/comissoes", "/conta/comissoes")).toBe(true);
     expect(itemAtivo("/conta/minha-agenda/comissoes", "/conta/comissoes")).toBe(false);
+  });
+
+  it("para o dono, Recebimentos mantém Configurações ativa; para os outros perfis, não", () => {
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes", "dono")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos/", "/conta/configuracoes", "dono")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos-x", "/conta/configuracoes", "dono")).toBe(false);
+    // Só Configurações: nenhuma outra área do dono fica marcada junto.
+    for (const item of itensDoDono({ role: "DONO", areas: ["COMISSOES_VER"] })) {
+      expect(itemAtivo("/conta/recebimentos", item.href, "dono")).toBe(item.href === "/conta/configuracoes");
+    }
+    // O gerente tem o item Recebimentos: é ele que fica ativo.
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes", "gerente")).toBe(false);
+    expect(itemAtivo("/conta/recebimentos", "/conta/recebimentos", "gerente")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes")).toBe(false);
+  });
+
+  it("o retorno de Recebimentos leva o dono a Configurações; os outros perfis ficam como antes", () => {
+    expect(retornoDeRecebimentos("dono")).toEqual({ href: "/conta/configuracoes", rotulo: "Voltar para Configurações" });
+    expect(retornoDeRecebimentos("gerente")).toEqual({ href: "/conta/visao-geral", rotulo: "Voltar ao Início" });
   });
 
   it("não confunde prefixos parecidos nem rota ausente", () => {

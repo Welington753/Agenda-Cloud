@@ -173,7 +173,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
               {itens.map((item) =>
                 item.href === ROTA_CONFIGURACOES ? (
-                  <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href)} />
+                  <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href, perfil)} />
                 ) : (
                   <li
                     key={item.href}
@@ -184,7 +184,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   >
                     <LinkNavegacao
                       item={item}
-                      ativo={itemAtivo(pathname, item.href)}
+                      ativo={itemAtivo(pathname, item.href, perfil)}
                       contador={item.href === ROTA_AGENDA && ehDono ? pendentes : undefined}
                     />
                   </li>

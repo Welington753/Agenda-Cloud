@@ -127,13 +127,28 @@ export function itensDaNavegacao({
  * Serviços, Profissionais e Equipe e acessos moram sob
  * `/conta/configuracoes`, mas são áreas próprias: nelas, Configurações não
  * fica ativa.
+ *
+ * Com `perfil` "dono", Recebimentos conta como parte de Configurações: é
+ * por lá que o dono chega (grupo Financeiro), e ele não tem item próprio. O
+ * gerente tem o item Recebimentos e nada muda para ele.
  */
-export function itemAtivo(pathname: string | null, href: string): boolean {
+export function itemAtivo(pathname: string | null, href: string, perfil?: PerfilDaArea): boolean {
   if (!pathname) return false;
   const atual = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (href === "/conta") return atual === "/conta";
   if (href === ROTA_CONFIGURACOES && emAreaSobConfiguracoes(atual)) return false;
-  return atual === href || atual.startsWith(`${href}/`);
+  if (href === ROTA_CONFIGURACOES && perfil === "dono" && dentroDe(atual, ROTA_RECEBIMENTOS)) return true;
+  return dentroDe(atual, href);
+}
+
+const dentroDe = (atual: string, base: string) => atual === base || atual.startsWith(`${base}/`);
+
+/** Retorno da página de Recebimentos. O dono chega por Configurações e volta
+ * para lá. Para os outros perfis fica como sempre foi. */
+export function retornoDeRecebimentos(perfil: PerfilDaArea): { href: string; rotulo: string } {
+  return perfil === "dono"
+    ? { href: ROTA_CONFIGURACOES, rotulo: "Voltar para Configurações" }
+    : { href: ROTA_INICIO, rotulo: "Voltar ao Início" };
 }
 
 /** Nome acessível do sino do cabeçalho. Sem lista carregada (`null`), não

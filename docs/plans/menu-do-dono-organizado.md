@@ -35,6 +35,7 @@ No celular a barra inferior continua com quatro áreas (Dashboard, Agenda, Clien
 - **Acessos contextuais mantidos.** Horários e disponibilidade (com os bloqueios) continuam abertos pelo cartão de cada profissional. Os atalhos do Dashboard para Recebimentos e Comissões continuam. A comissão em massa continua em Profissionais.
 - **Comissões no menu só com o recurso no plano.** O item aparece quando a sessão traz a área `COMISSOES_VER`, que o servidor só dá com o recurso contratado e sem restrição ao dono (`backend/src/auth/session-areas.ts`). Sem a lista de áreas, o item não aparece. A rota continua recusando no servidor.
 - **Termo do segmento.** A sessão passa a informar o segmento do estabelecimento (`tenantCategory` no contexto, vindo de `tenants.category`). A regra fica em `src/lib/conta/termos.ts`: barbearia usa "Barbeiros"; os outros segmentos ficam com "Profissionais". Vale para o item do menu do dono e o título da página. O resto do texto da tela continua dizendo "profissional".
+- **Recebimentos faz parte de Configurações para o dono.** Na página, "Configurações" fica marcada no menu e o retorno é "Voltar para Configurações". O endereço, o atalho do Dashboard e as permissões são os mesmos. Para o gerente nada muda: ele tem o item Recebimentos.
 - **Personalização não entrou.** Ela só existe na demonstração (`/painel/personalizacao`). Na área real não há tela nem rota. Nenhum link foi criado.
 - **Gerente, funcionário e administração da plataforma não mudam.** O menu do gerente segue as áreas concedidas, com os mesmos nomes.
 - **Menu lateral rola em janela baixa.** Com oito áreas, "Configurações" saía da tela numa janela de 400 px de altura. O menu passou a rolar por dentro e o submenu de Configurações ficou com posição fixa, calculada a partir do item.
@@ -58,7 +59,6 @@ O web funciona com a API de antes: sem `tenantCategory` o termo fica "Profission
 - **Não rodou localmente:** `test:browser:proxy` (precisa de HTTPS local); fica para o CI.
 - **Próximo passo:** revisão do PR. Sem merge nem deploy até aprovação.
 - **Fora deste lote:**
-  - na página de Recebimentos aberta pelo índice, o retorno ainda diz "Voltar ao Dashboard", e nenhum item do menu do dono fica marcado nela;
   - o termo do segmento no restante dos textos e para o gerente;
   - a remoção das contas fictícias do login, que está no PR #112.
 - **Só neste computador:** a worktree `C:\wt\menu`.

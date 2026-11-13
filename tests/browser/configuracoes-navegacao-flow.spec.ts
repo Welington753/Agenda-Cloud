@@ -249,8 +249,12 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   for (const [i, caminho] of CAMINHOS.entries()) {
     await page.goto(caminho);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SECOES[i]);
-    // O retorno ao índice só existe nas subpáginas de Configurações.
-    await expect(page.getByTestId("voltar-configuracoes")).toHaveCount(caminho.startsWith("/conta/configuracoes/") ? 1 : 0);
+    // O retorno ao índice: o das subpáginas de Configurações ou, em
+    // Recebimentos (endereço próprio), o da própria página.
+    if (caminho.startsWith("/conta/configuracoes/")) await expect(page.getByTestId("voltar-configuracoes")).toBeVisible();
+    else await expect(page.getByRole("link", { name: "Voltar para Configurações" })).toHaveAttribute("href", "/conta/configuracoes");
+    // Em todas, "Configurações" é a área marcada (e só ela).
+    await expect(nav(page).locator('[aria-current="page"]')).toHaveText("Configurações");
   }
   expect(await page.evaluate(() => (window as unknown as { __pedidosDePermissao: number }).__pedidosDePermissao)).toBe(0);
 
@@ -287,7 +291,10 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
       await celular.goto("/conta/configuracoes");
       await celular.getByTestId("grupo-financeiro").getByRole("link", { name: /Recebimentos/ }).tap();
       await expect(celular).toHaveURL(/\/conta\/recebimentos$/);
+      await expect(nav(celular).locator('[aria-current="page"]')).toHaveText("Configurações");
       await semRolagemHorizontal(celular);
+      await celular.getByRole("link", { name: "Voltar para Configurações" }).tap();
+      await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
 
       // O que não cabe na barra, pelo menu da conta, na ordem do menu.
       await celular.getByTestId("abrir-menu-conta").tap();
