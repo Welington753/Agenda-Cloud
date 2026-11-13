@@ -3,13 +3,15 @@
 // conteudo-comercial.test.ts) e para os componentes de `src/components/site/`
 // ficarem só de apresentação.
 //
-// Regra do conteúdo: só o que o produto PUBLICADO sustenta. Sem preço, número
-// de clientes, depoimento, avaliação, integração ou automação; nada que ainda
+// Regra do conteúdo: só o que o produto PUBLICADO sustenta. Sem número de
+// clientes, depoimento, avaliação, integração ou automação; nada que ainda
 // não tenha tela funcionando (lembretes, WhatsApp automático, push,
 // multiunidade, personalização). Ver docs/plans/pagina-inicial-repaginada.md.
+// Os preços dos planos são os aprovados em docs/plans/home-precos-dos-planos.md.
 
 import type { CodigoPlano } from "../types";
 import { NOME_PRODUTO } from "../config";
+import { formatarMoeda } from "../format";
 
 export interface ItemNavegacao {
   rotulo: string;
@@ -155,34 +157,69 @@ export interface PlanoComercial {
   nome: string;
   descricaoCurta: string;
   destaques: string[];
+  /** Preço mensal, em centavos inteiros. */
+  precoMensalCentavos: number;
+  /** Preço do trimestre, em centavos inteiros: o TOTAL dos três meses, nunca
+   * um valor por mês. */
+  precoTrimestralCentavos: number;
 }
 
-/** Sem preço: o catálogo não tem valor (`price_cents` nulo) e o preço é
- * combinado na liberação do acesso. Multiunidade não existe no produto:
- * nenhum plano a promete. */
+/** Preços aprovados para divulgação. Esta é a única fonte dos valores da
+ * página inicial: a página é estática e não lê o catálogo do banco, que só o
+ * portal da administração alcança (backend/src/platform, `MASTER_OWNER`).
+ * Mudou o preço no catálogo? Mude aqui também, no mesmo lote.
+ * Multiunidade não existe no produto: nenhum plano a promete. */
 export const PLANOS_COMERCIAIS: PlanoComercial[] = [
   {
     codigo: "essencial",
     nome: "Básico",
     descricaoCurta: "Para quem atende sozinho ou com uma equipe pequena.",
     destaques: ["Agenda e página de agendamento", "Clientes, equipe e recebimentos", "Até 2 profissionais"],
+    precoMensalCentavos: 3990,
+    precoTrimestralCentavos: 10790,
   },
   {
     codigo: "equipe",
     nome: "Pro",
     descricaoCurta: "Para equipes que estão crescendo.",
     destaques: ["Tudo do Básico", "Até 5 profissionais", "Comissões por profissional e serviço"],
+    precoMensalCentavos: 6990,
+    precoTrimestralCentavos: 18890,
   },
   {
     codigo: "pro",
     nome: "Max",
     descricaoCurta: "Para equipes maiores.",
     destaques: ["Tudo do Pro", "Até 20 profissionais"],
+    precoMensalCentavos: 11990,
+    precoTrimestralCentavos: 32390,
   },
 ];
 
+export interface PrecosExibidos {
+  /** Ex.: "R$ 39,90". */
+  mensal: string;
+  /** Ex.: "R$ 107,90": total do trimestre. */
+  trimestral: string;
+}
+
+/** Os dois preços de um plano, formatados em reais. */
+export function precosExibidos(plano: PlanoComercial): PrecosExibidos {
+  return {
+    mensal: formatarMoeda(plano.precoMensalCentavos),
+    trimestral: formatarMoeda(plano.precoTrimestralCentavos),
+  };
+}
+
+export const ROTULOS_DE_PRECO = {
+  porMes: "por mês",
+  /** Vem depois do valor trimestral: "ou R$ 107,90 por trimestre". */
+  porTrimestre: "por trimestre",
+  totalDoTrimestre: "Total dos três meses, não um valor por mês.",
+} as const;
+
 export const NOTA_DOS_PLANOS =
-  "Sem preço publicado: o valor é combinado com a administração na liberação do acesso.";
+  "Valores por estabelecimento. No trimestral, o preço é o total dos três meses. O pagamento é combinado com a administração na liberação do acesso.";
 
 export const CONTATO = {
   titulo: "Como obter acesso",
