@@ -10,7 +10,9 @@
 import {
   ROTA_AGENDA,
   ROTA_CLIENTES,
+  ROTA_COMISSOES,
   ROTA_CONFIGURACOES,
+  ROTA_EQUIPE,
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
@@ -20,6 +22,7 @@ import {
   emAreaSobConfiguracoes,
 } from "./rotas";
 import { temArea, type AreaDoEstabelecimento, type PerfilDaArea } from "./papel";
+import { rotuloDosProfissionais } from "./termos";
 import type { TenantContextReal } from "@/lib/api/auth-api";
 
 export interface ItemNavegacaoConta {
@@ -32,20 +35,39 @@ export interface ItemNavegacaoConta {
   noCelular: "barra" | "menu";
 }
 
-/** Operação do dono, na ordem do dia a dia: o resumo, a agenda (que também
- * reúne as solicitações), os clientes, o que se atende e quem atende, e as
- * configurações. Serviços e Profissionais ficam fora da barra do celular
- * (quatro áreas no máximo) e aparecem no menu da conta. */
-export const ITENS_NAVEGACAO_CONTA: readonly ItemNavegacaoConta[] = [
-  { href: ROTA_INICIO, rotulo: "Início", noCelular: "barra" },
-  { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
-  { href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" },
-  { href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "menu" },
-  { href: ROTA_PROFISSIONAIS, rotulo: "Profissionais", noCelular: "menu" },
-  { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" },
-];
-
 const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" };
+
+/** O que o menu lê do contexto ativo: o papel, as áreas que o servidor
+ * liberou e o segmento do estabelecimento (ausente numa API anterior). */
+export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenantCategory?: string };
+
+/**
+ * Menu do dono: a visão geral, a agenda (que também reúne as solicitações),
+ * quem atende, o que se atende, os clientes, a equipe, as comissões e as
+ * configurações.
+ *
+ * - "Profissionais" usa o termo do segmento do estabelecimento ("Barbeiros"
+ *   na barbearia; ver termos.ts). O endereço é o mesmo.
+ * - "Comissões" só entra quando o servidor lista a área `COMISSOES_VER`, que
+ *   ele só dá com o recurso no plano e sem restrição ao dono. Sem a lista de
+ *   áreas (API anterior), não entra: a tela não presume o plano.
+ * - Na barra do celular ficam quatro (Dashboard, Agenda, Clientes e
+ *   Configurações); as outras aparecem no menu da conta.
+ */
+export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoConta[] {
+  const itens: ItemNavegacaoConta[] = [
+    { href: ROTA_INICIO, rotulo: "Dashboard", noCelular: "barra" },
+    { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
+    { href: ROTA_PROFISSIONAIS, rotulo: rotuloDosProfissionais(contexto?.tenantCategory), noCelular: "menu" },
+    { href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "menu" },
+    { href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" },
+    { href: ROTA_EQUIPE, rotulo: "Equipe e acessos", noCelular: "menu" },
+  ];
+  if (contexto?.areas?.includes("COMISSOES_VER")) {
+    itens.push({ href: ROTA_COMISSOES, rotulo: "Comissões", noCelular: "menu" });
+  }
+  return [...itens, ITEM_CONFIGURACOES];
+}
 
 /** Menu do funcionário: a própria agenda e as configurações pessoais. */
 export const ITENS_NAVEGACAO_FUNCIONARIO: readonly ItemNavegacaoConta[] = [
@@ -74,8 +96,7 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
 /**
  * Itens do menu para esta sessão. Só operação do estabelecimento ativo.
  *
- * - Dono com estabelecimento ativo: Início, Agenda, Clientes, Serviços,
- *   Profissionais e Configurações.
+ * - Dono com estabelecimento ativo: ver `itensDoDono`.
  * - Funcionário: "Minha agenda" e "Configurações".
  * - Gerente: as áreas concedidas pelo dono (ver `itensDoGerente`).
  * - Papel sem área (RECEPCIONISTA antigo): só "Configurações".
@@ -90,21 +111,22 @@ export function itensDaNavegacao({
   /** Perfil no estabelecimento ativo (ver papel.ts). */
   perfil?: PerfilDaArea;
   /** Contexto ativo, com as áreas que o servidor liberou (gerente). */
-  contexto?: Pick<TenantContextReal, "role" | "areas"> | null;
+  contexto?: ContextoDoMenu | null;
 }): readonly ItemNavegacaoConta[] {
   if (!comEstabelecimento) return [];
   if (perfil === "gerente") return itensDoGerente(contexto);
   if (perfil === "funcionario") return ITENS_NAVEGACAO_FUNCIONARIO;
   if (perfil === "sem-area") return [ITEM_CONFIGURACOES];
-  return ITENS_NAVEGACAO_CONTA;
+  return itensDoDono(contexto);
 }
 
 /**
  * O item corresponde à página atual? Vale também para as subpáginas
  * (`/conta/agendamentos/solicitacoes` continua em "Agenda";
  * `/conta/configuracoes/profissionais/{id}/horarios`, em "Profissionais").
- * Serviços e Profissionais moram sob `/conta/configuracoes`, mas são áreas
- * próprias: nelas, Configurações não fica ativa.
+ * Serviços, Profissionais e Equipe e acessos moram sob
+ * `/conta/configuracoes`, mas são áreas próprias: nelas, Configurações não
+ * fica ativa.
  */
 export function itemAtivo(pathname: string | null, href: string): boolean {
   if (!pathname) return false;

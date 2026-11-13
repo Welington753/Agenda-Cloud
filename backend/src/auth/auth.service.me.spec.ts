@@ -51,6 +51,7 @@ describe('AuthService.getSessionContext', () => {
       tenantId: tenant.id,
       tenantName: unit.name,
       tenantSlug: tenant.slug,
+      tenantCategory: tenant.category,
       role: EstablishmentRole.DONO,
       unit: { id: unit.id, name: unit.name, isPrimary: true },
       planCode: plan.code,

@@ -23,10 +23,17 @@ import { expect, test, type Page } from "@playwright/test";
 import { criarContaDeTeste } from "./support/contas-de-teste";
 
 const SENHA = "senha-de-configuracoes-e2e-1";
-const SECOES = ["Estabelecimento", "Equipe e acessos", "Notificações", "Aparência", "Perfil e segurança"];
-const CAMINHOS = ["estabelecimento", "equipe", "notificacoes", "aparencia", "perfil"].map(
-  (c) => `/conta/configuracoes/${c}`,
-);
+// O que não tem entrada própria no menu do dono, na ordem dos grupos do
+// índice (Estabelecimento, Financeiro e Sua conta). Recebimentos mora fora de
+// `/conta/configuracoes`, no endereço de sempre.
+const SECOES = ["Estabelecimento", "Notificações", "Recebimentos", "Aparência", "Perfil e segurança"];
+const CAMINHOS = [
+  "/conta/configuracoes/estabelecimento",
+  "/conta/configuracoes/notificacoes",
+  "/conta/recebimentos",
+  "/conta/configuracoes/aparencia",
+  "/conta/configuracoes/perfil",
+];
 
 const nav = (page: Page) => page.getByRole("navigation", { name: "Áreas da conta" });
 const submenu = (page: Page) => page.getByTestId("submenu-configuracoes");
@@ -74,11 +81,13 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/conta/visao-geral");
   await expect(nav(page).getByRole("link")).toHaveText([
-    "Início",
+    "Dashboard",
     "Agenda",
-    "Clientes",
-    "Serviços",
     "Profissionais",
+    "Serviços",
+    "Clientes",
+    "Equipe e acessos",
+    "Comissões",
     "Configurações",
   ]);
 
@@ -107,10 +116,10 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.mouse.move(origem.x + origem.width / 2, origem.y + origem.height / 2);
   await page.mouse.move(destino.x + 20, destino.y + destino.height / 2, { steps: 12 });
   await expect(submenu(page)).toBeVisible();
-  await submenu(page).getByRole("link", { name: "Equipe e acessos" }).click();
-  await expect(page).toHaveURL(/\/conta\/configuracoes\/equipe$/);
+  await submenu(page).getByRole("link", { name: "Notificações" }).click();
+  await expect(page).toHaveURL(/\/conta\/configuracoes\/notificacoes$/);
   await expect(submenu(page)).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Equipe e acessos");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Notificações");
   await expect(linkConfiguracoes).toHaveAttribute("aria-current", "page");
   // Sem barra interna das seções; só o retorno ao índice.
   await expect(page.getByRole("navigation", { name: "Seções de configurações" })).toHaveCount(0);
@@ -137,6 +146,18 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await expect(page).toHaveURL(/\/conta\/configuracoes$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Configurações");
   await expect(page.getByTestId("secoes-configuracoes").getByRole("link")).toHaveCount(SECOES.length);
+  expect(
+    await page.getByTestId("secoes-configuracoes").getByRole("link").evaluateAll((l) => l.map((a) => a.getAttribute("href"))),
+  ).toEqual(CAMINHOS);
+  // Agrupadas por assunto.
+  await expect(page.getByTestId("secoes-configuracoes").getByRole("heading", { level: 2 })).toHaveText([
+    "Estabelecimento",
+    "Financeiro",
+    "Sua conta",
+  ]);
+  await expect(page.getByTestId("grupo-estabelecimento").getByRole("link")).toHaveCount(2);
+  await expect(page.getByTestId("grupo-financeiro").getByRole("link")).toHaveText(/Recebimentos/);
+  await expect(page.getByTestId("grupo-conta").getByRole("link")).toHaveCount(2);
   await expect(page.getByTestId("voltar-configuracoes")).toHaveCount(0);
 
   // Clicar no texto "Configurações" abre o índice (não só o submenu).
@@ -162,7 +183,7 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.keyboard.press("ArrowDown");
   await expect(submenu(page).getByRole("link", { name: "Estabelecimento" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(submenu(page).getByRole("link", { name: "Equipe e acessos" })).toBeFocused();
+  await expect(submenu(page).getByRole("link", { name: "Notificações" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(submenu(page)).toHaveCount(0);
   await expect(botaoSubmenu(page)).toBeFocused();
@@ -178,7 +199,6 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await botaoSubmenu(page).focus();
   await page.keyboard.press("ArrowRight");
   await expect(submenu(page).getByRole("link", { name: "Estabelecimento" })).toBeFocused();
-  await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(submenu(page).getByRole("link", { name: "Notificações" })).toBeFocused();
   await page.keyboard.press("Enter");
@@ -201,10 +221,15 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.mouse.move(900, 300);
   await page.setViewportSize({ width: 1280, height: 844 });
 
-  // ------------------------------------------------ Serviços e Profissionais
+  // ------------------------------------------------ áreas do menu fora de Configurações
+  // Profissionais, Serviços e Equipe e acessos moram sob /conta/configuracoes
+  // (endereços mantidos), mas são áreas próprias: sem retorno ao índice e sem
+  // marcar "Configurações".
   for (const [rotulo, caminho] of [
-    ["Serviços", /\/conta\/configuracoes\/servicos$/],
     ["Profissionais", /\/conta\/configuracoes\/profissionais$/],
+    ["Serviços", /\/conta\/configuracoes\/servicos$/],
+    ["Equipe e acessos", /\/conta\/configuracoes\/equipe$/],
+    ["Comissões", /\/conta\/comissoes$/],
   ] as const) {
     await nav(page).getByRole("link", { name: rotulo }).click();
     await expect(page).toHaveURL(caminho);
@@ -216,12 +241,16 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await expect(page).toHaveURL(/\/conta\/configuracoes\/servicos$/);
   await page.goto("/conta/profissionais");
   await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
+  await page.goto("/conta/equipe");
+  await expect(page).toHaveURL(/\/conta\/configuracoes\/equipe$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Equipe e acessos");
 
   // ------------------------------------------------ endereços diretos das seções
   for (const [i, caminho] of CAMINHOS.entries()) {
     await page.goto(caminho);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SECOES[i]);
-    await expect(page.getByTestId("voltar-configuracoes")).toBeVisible();
+    // O retorno ao índice só existe nas subpáginas de Configurações.
+    await expect(page.getByTestId("voltar-configuracoes")).toHaveCount(caminho.startsWith("/conta/configuracoes/") ? 1 : 0);
   }
   expect(await page.evaluate(() => (window as unknown as { __pedidosDePermissao: number }).__pedidosDePermissao)).toBe(0);
 
@@ -243,7 +272,7 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
     const celular = await contexto.newPage();
     try {
       await celular.goto("/conta/visao-geral");
-      await expect(nav(celular).getByRole("link")).toHaveText(["Início", "Agenda", "Clientes", "Configurações"]);
+      await expect(nav(celular).getByRole("link")).toHaveText(["Dashboard", "Agenda", "Clientes", "Configurações"]);
       await expect(botaoSubmenu(celular)).toBeHidden();
       await nav(celular).getByRole("link", { name: "Configurações" }).tap();
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
@@ -254,10 +283,26 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
       await semRolagemHorizontal(celular);
 
-      // Serviços e Profissionais pelo menu da conta.
+      // Recebimentos pelo índice, no grupo Financeiro.
+      await celular.goto("/conta/configuracoes");
+      await celular.getByTestId("grupo-financeiro").getByRole("link", { name: /Recebimentos/ }).tap();
+      await expect(celular).toHaveURL(/\/conta\/recebimentos$/);
+      await semRolagemHorizontal(celular);
+
+      // O que não cabe na barra, pelo menu da conta, na ordem do menu.
+      await celular.getByTestId("abrir-menu-conta").tap();
+      await expect(celular.getByTestId("menu-mais-areas").getByRole("link")).toHaveText([
+        "Profissionais",
+        "Serviços",
+        "Equipe e acessos",
+        "Comissões",
+      ]);
+      await celular.keyboard.press("Escape");
       for (const [rotulo, caminho] of [
-        ["Serviços", /\/conta\/configuracoes\/servicos$/],
         ["Profissionais", /\/conta\/configuracoes\/profissionais$/],
+        ["Serviços", /\/conta\/configuracoes\/servicos$/],
+        ["Equipe e acessos", /\/conta\/configuracoes\/equipe$/],
+        ["Comissões", /\/conta\/comissoes$/],
       ] as const) {
         await celular.getByTestId("abrir-menu-conta").tap();
         const area = celular.getByTestId("menu-mais-areas").getByRole("link", { name: rotulo });

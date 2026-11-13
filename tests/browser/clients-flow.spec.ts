@@ -403,11 +403,13 @@ test.describe("clientes do estabelecimento", () => {
 
     // ------------------------------------------------ navegação: computador
     expect(await nav(page).getByRole("link").allTextContents()).toEqual([
-      "Início",
+      "Dashboard",
       "Agenda",
-      "Clientes",
-      "Serviços",
       "Profissionais",
+      "Serviços",
+      "Clientes",
+      "Equipe e acessos",
+      "Comissões",
       "Configurações",
     ]);
     await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
@@ -418,7 +420,7 @@ test.describe("clientes do estabelecimento", () => {
       await page.goto("/conta/clientes");
       await buscar(page, clienteDeA);
       await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
-      for (const rotulo of ["Início", "Agenda", "Clientes", "Configurações"]) {
+      for (const rotulo of ["Dashboard", "Agenda", "Clientes", "Configurações"]) {
         const link = nav(page).getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = (await link.boundingBox())!;
@@ -428,7 +430,8 @@ test.describe("clientes do estabelecimento", () => {
         expect(await link.locator("span").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
-      // Serviços e Profissionais não cabem na barra: ficam no menu da conta.
+      // Profissionais, Serviços, Equipe e acessos e Comissões não cabem na
+      // barra: ficam no menu da conta.
       await expect(nav(page).getByRole("link", { name: "Profissionais" })).toBeHidden();
       await page.getByTestId("abrir-menu-conta").click();
       await page.getByTestId("menu-mais-areas").getByRole("link", { name: "Profissionais" }).click();

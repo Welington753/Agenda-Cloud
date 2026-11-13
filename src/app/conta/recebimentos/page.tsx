@@ -85,8 +85,8 @@ export default function RecebimentosPage() {
     <ReautenticacaoProvider>
       <PaginaConta
         titulo="Recebimentos"
-        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores do Início."
-        voltar={{ href: ROTA_INICIO, rotulo: "Voltar ao Início" }}
+        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores do Dashboard."
+        voltar={{ href: ROTA_INICIO, rotulo: "Voltar ao Dashboard" }}
         acoes={
           <Botao type="button" variante="secundaria" className="min-h-11" onClick={recarregar}>
             <RefreshCw size={16} aria-hidden="true" />
