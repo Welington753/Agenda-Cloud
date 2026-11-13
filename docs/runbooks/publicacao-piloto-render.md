@@ -83,10 +83,14 @@ Comandos de cada serviço:
 
 | Serviço | Diretório | Build | Start | Health check |
 |---|---|---|---|---|
-| api | `backend/` | `npm ci --include=dev && npm run build` | `node dist/main.js` | `GET /` (responde 200 sem tocar no banco) |
+| api | `backend/` | `npm ci --include=dev && npm run build` | `node dist/main.js` | `GET /` (responde 200 sem tocar no banco). `GET /health` existe e consulta o banco, mas ainda não é o caminho configurado (ver abaixo) |
 | web | raiz | `npm ci --include=dev && npm run build` | `npm run start -- -H 0.0.0.0` (`next start`, que lê `PORT` do ambiente) | `GET /login` |
 
 `--include=dev` é necessário porque o build usa ferramentas que estão em `devDependencies` (`@nestjs/cli`, TypeScript, Tailwind). Uma variável `NODE_ENV=production` definida no serviço também vale durante o build, e sem esse parâmetro o `npm ci` deixaria essas ferramentas de fora.
+
+**A API confere as migrations antes de aceitar tráfego.** Ao iniciar, ela lê `typeorm_migrations` (só leitura) e compara com todas as migrations do código (`backend/src/database/required-migrations.ts`). Faltando qualquer uma, com a tabela ausente ou com o banco indisponível, o processo termina sem escutar a porta e o log do deploy mostra `[SchemaReadiness] A API não vai iniciar: ...` com os nomes das ausentes. O deploy falha e a versão anterior continua no ar. Isso não aplica migration nenhuma: aplique as que faltam pelo roteiro do lote e publique de novo. Migration a mais no banco não bloqueia e não prova compatibilidade. Detalhes e limites em `docs/plans/publicacao-segura.md`.
+
+**Health check com banco (`GET /health`), ainda não ativado.** O `healthCheckPath` da API continua `/`. A troca para `/health` é um passo separado, só com pedido explícito e só depois de uma API com essa rota estar no ar: o Blueprint sincroniza sozinho quando `render.yaml` muda na branch, e apontar o serviço publicado para uma rota que a versão no ar não tem tiraria a API do tráfego. Antes de voltar a API a um commit sem `/health`, volte o `healthCheckPath` para `/`.
 
 O build normal do backend (`nest build`) gera só `backend/dist/`. Ele **não** compila o runtime de migrations (`backend/dist-migrations/`, de `npm run build:migrations-runtime`), e nenhum comando do deploy aplica migration. O banco é inicializado à parte, na seção 6.
 
@@ -423,6 +427,7 @@ Sem mudar código: adicione o domínio ao serviço **web** (só a ele; a API con
 ## 8. Retorno ao commit anterior
 
 - **Deploy falhou antes de ficar Live:** o Render cancela sozinho quando o build falha ou o health check não passa. O deploy anterior continua no ar e não há nada a fazer além de investigar.
+- **API falhou com `[SchemaReadiness]` no log:** o banco não tem todas as migrations que aquele commit exige (ou estava indisponível). Nada foi alterado no banco. Confira a ordem do lote (migration, depois API, depois web) e publique de novo depois de aplicar a migration pelo roteiro correspondente.
 - **Ficou Live com defeito:** em cada serviço afetado, vá em **Deploys**, escolha o último deploy bom e clique em **Rollback**.
   - O rollback reutiliza o artefato daquele deploy, com as variáveis de ambiente e o comando de start da época.
   - Pelo painel, ele também desliga o auto-deploy, que já está desligado aqui.
