@@ -1,12 +1,29 @@
 import cookieParser from 'cookie-parser';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 import { AppModule } from './app.module.js';
 import { buildCorsOptions } from './config/cors.config.js';
+import { SchemaNotReadyError, ensureRequiredMigrations } from './database/schema-readiness.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  // Antes de qualquer gancho de módulo e de escutar a porta: o banco precisa
+  // ter todas as migrations que este código exige (database/schema-readiness.ts).
+  // Só leitura; a API nunca aplica migration. Faltando alguma, o processo
+  // termina com o diagnóstico e código de saída 1, sem aceitar tráfego: no
+  // Render, o deploy novo não fica saudável e o anterior continua no ar.
+  try {
+    await ensureRequiredMigrations(app.get(DataSource), new Logger('SchemaReadiness'));
+  } catch (erro) {
+    if (!(erro instanceof SchemaNotReadyError)) throw erro;
+    new Logger('SchemaReadiness').error(erro.message);
+    await app.close().catch(() => undefined);
+    process.exit(1);
+  }
 
   // Necessário para o futuro cookie de sessão (Lote 6B.3+, ver
   // config/session-cookie.config.ts) — nenhum endpoint emite cookie ainda
