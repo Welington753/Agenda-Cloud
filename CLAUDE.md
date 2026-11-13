@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-Agenda Cloud: agendamento multi-tenant para pequenos negócios. Interface, docs e mensagens de erro em português do Brasil; commits em inglês (Conventional Commits).
+Agenda Cloud: agendamento multi-tenant para pequenos negócios. O nome exibido ao usuário é **TimVix** (`NOME_PRODUTO` em `src/lib/config.ts`); repositório, serviços e chaves técnicas continuam "Agenda Cloud". Interface, docs e mensagens de erro em português do Brasil; commits em inglês (Conventional Commits).
 
 - **Mapa técnico** (módulos, fonte de cada regra, testes): `docs/arquitetura/mapa-tecnico.md`
 - **Plano de expansão** (ordem dos próximos lotes e decisões pendentes): `docs/plans/plano-de-expansao.md`
@@ -30,9 +30,16 @@ Dois projetos npm independentes, Node `>=24 <25`:
 | Permissão nova do gerente | `backend/src/common/manager-permissions.ts` (+ valor no enum `permission` por migration) |
 | Regra de negócio e SQL | `backend/src/<area>/<area>.service.ts` |
 | Forma do corpo da rota | `backend/src/<area>/<area>.dto.ts` (zod, corpo estrito) |
-| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente: 11 já estão no piloto) |
+| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente; 16 migrations aplicadas no piloto, conferido em 13/11/2026) |
 | Chamada à API pelo web | `src/lib/api/<area>-api.ts` (valida a forma da resposta; erro classificado pelo status; `mensagemDoBackend` para o texto) |
 | Regra de tela | `src/lib/<area>/*.ts` com `*.test.ts`; componente só desenha |
+| Item de menu ou seção de Configurações em `/conta` | `src/lib/conta/navegacao.ts` e `rotas.ts` (+ testes ao lado e `tests/browser/configuracoes-navegacao-flow.spec.ts`) |
+
+**Navegação de `/conta`:** o menu de cada papel sai de `src/lib/conta/navegacao.ts` (dono: Dashboard, Agenda, Profissionais, Serviços, Clientes, Equipe e acessos, Comissões, Configurações). Endereços e grupos do índice de Configurações ficam em `src/lib/conta/rotas.ts`. Página nova entra por esses dois arquivos, sem mudar endereço existente.
+
+- Item que depende do plano só aparece com a área correspondente em `areas` da sessão (ex.: Comissões com `COMISSOES_VER`); a tela nunca presume o plano.
+- Termo do segmento ("Barbeiros" na barbearia) vem de `src/lib/conta/termos.ts`, a partir de `tenantCategory` da sessão; sem ele, "Profissionais". A terminologia de `src/lib/verticals` é da demonstração.
+- Personalização só existe na demonstração: não criar link para ela na área real.
 
 Siga os nomes do arquivo vizinho (o backend mistura inglês e português; não renomeie em massa). Uma regra tem uma fonte: antes de escrever uma checagem, procure a existente pelo mapa técnico (seção 4).
 
