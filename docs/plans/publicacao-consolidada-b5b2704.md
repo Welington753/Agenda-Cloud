@@ -20,7 +20,7 @@ Leitura do Render em 16/11/2026, por volta de 12:15 UTC, e confirmação do resp
 | Banco do piloto | **16 migrations na última conferência, de 13/11 10:55 UTC; reconfirmar antes da execução.** Não é leitura de hoje |
 | Auto-Deploy | desligado nos dois serviços; nenhum deploy em fila |
 
-Os roteiros da fila foram escritos supondo **API e web em `8e8577d`**. O web está 11 merges à frente. A fila só começa depois de o web voltar a `8e8577d` (etapa 0, seção 4), e cada etapa termina com API e web no mesmo SHA.
+Os roteiros da fila foram escritos supondo **API e web em `8e8577d`**. O web está à frente (em `438e598` quando esta seção foi escrita; em `b5b2704` na releitura da seção 1.1). A fila só começa depois de o web voltar a `8e8577d` (etapa 0, seção 4), e cada etapa termina com API e web no mesmo SHA.
 
 ### 1.1 Releitura de 16/11/2026, por volta de 17:15 UTC
 
@@ -33,7 +33,11 @@ Só leitura do Render (lista de serviços e de deploys), depois do merge do PR #
 | Integração | `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2` (merge do PR #117) |
 | Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nenhum deploy em andamento |
 
-**O web live mudou depois que este plano foi escrito.** O passo 0.0 e o ponto de retorno da etapa 0 (seção 4.2) ainda citam `438e598`, e as tabelas das seções 4.1 e 4.3 descrevem o web em `438e598`. O alvo da etapa 0 (`8e8577d`) não muda, mas o estado de partida e o destino do retorno precisam ser revistos pelo responsável antes da execução: o par web `b5b2704` com API `8e8577d` não foi confirmado por ninguém. Esta atualização não reescreve a etapa 0.
+**O web live mudou depois que este plano foi escrito, e a etapa 0 foi corrigida por decisão do responsável (16/11/2026):** o estado de partida passa a ser web `b5b2704` com API `8e8577d`, o alvo continua `8e8577d` e o retorno, se a validação falhar, é o web de volta a `b5b2704` (seção 4.2). `438e598` fica como histórico: é o web do par que teve o login confirmado em 16/11. O par atual, web `b5b2704` com API `8e8577d`, **não teve login confirmado**.
+
+Entre `438e598` e `b5b2704` só entrou o PR #115 (conferência de migrations na inicialização da API e `GET /health`); `git diff 438e598 b5b2704 -- src` é vazio, então o que a seção 4.3 diz sobre as telas do web vale para os dois.
+
+**Esta leitura tem de ser refeita antes da execução** (passo 0.0). Um estado diferente deste exige reavaliar a etapa 0 antes de qualquer deploy.
 
 ## 2. Comprovado e pendente
 
@@ -41,13 +45,14 @@ Só leitura do Render (lista de serviços e de deploys), depois do merge do PR #
 
 | Fato | Evidência |
 |---|---|
-| Login, recarga com sessão, sair e entrar, e acesso às telas funcionam com web `438e598` e API `8e8577d` | confirmação do responsável em 16/11/2026, sem horário e sem leitura de log correspondente |
+| Login, recarga com sessão, sair e entrar, e acesso às telas funcionam com web `438e598` e API `8e8577d` | confirmação do responsável em 16/11/2026, sem horário e sem leitura de log correspondente. Este par não está mais no ar (seção 1.1) |
 | SHAs live, Auto-Deploy desligado, branch dos serviços, nada em fila | lista de deploys e de serviços do Render, 16/11 |
 | Uma API a partir de `b5e5586` não sobe no piloto como ele está | log do deploy `dep-dbs6p6ec6qcc738b5qg0` (14/11): `Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS` |
 | O que cada SHA da fila exige (tabela da seção 3) | leitura do código em cada commit: migrations, `env.validation.ts`, manifesto |
 | `5d74556`, `04c9a43` e `b5b2704` têm a mesma árvore do head que o CI aprovou | `5d74556` = head `e862b32`; `04c9a43` = head `edbeed0`; `b5b2704` = head `0329035`. CI com sucesso nos três heads |
 | `9de722d` (alvo da etapa 3) tem a mesma árvore do head que o CI aprovou, e o mesmo `backend/` de `b5b2704` | `9de722d` = head `6a9da3f` (`git diff` vazio); CI com sucesso nesse head (run 43912909010, primeira tentativa); `git diff b5b2704 9de722d -- backend` vazio |
 | Com a hospedagem respondendo 429 no lugar da API, o navegador pede a partida, a leitura se repete e o login fica disponível, **em ambiente local com a borda simulada** | suíte `test:browser:proxy` no head `6a9da3f`, local e no CI. Limite na seção 4.4 |
+| Autoria dos deploys manuais de 12/11 a 16/11 | declaração do responsável em 16/11/2026: foram feitos por ele, para tentar recuperar o acesso depois de um período de inatividade (decisão D2, seção 8) |
 | A API `8e8577d` aceita o schema 17 | tabela de compatibilidade de [`publicacao-tenant-teste-slugs.md`](../runbooks/publicacao-tenant-teste-slugs.md), seção 1 (leitura de código) |
 
 ### Pendente (conferir na hora, nunca presumir)
@@ -56,10 +61,10 @@ Só leitura do Render (lista de serviços e de deploys), depois do merge do PR #
 |---|---|
 | Quantidade e nomes das migrations no piloto hoje | `pilot:check-database`, no passo de conferência de cada etapa |
 | Nomes das variáveis no serviço da API. Em 12/11 não havia nenhuma `PLATFORM_*`; o erro de 14/11 cita duas das três, e a terceira (`PLATFORM_TOTP_KEY_CURRENT`) não foi conferida | painel do Render, aba Environment |
-| Quem fez os deploys manuais de 13/11 e 14/11 | painel do Render, aba Events de cada serviço. A lista de deploys só mostra o gatilho `manual` |
 | Tela de comissões de um profissional no estado atual. Pelo código, o web atual exige `exceptionsFingerprint`, que a API `8e8577d` não envia: a tela deve mostrar "Não foi possível carregar". Não reproduzido | a etapa 0 confere: com o web em `8e8577d`, a tela precisa abrir |
 | Quais estabelecimentos são de teste, quem são os proprietários reais do portal e onde ficam as duas cópias da chave TOTP | só o responsável sabe (seção 8). Nada disso é deduzido do banco nem escrito neste repositório |
 | Funcionalidades novas do web: comissão em massa, relatórios do portal, marca de teste, Segurança da conta, cabeçalhos e `noindex` do SEO | validação de cada etapa. Nenhuma está validada no piloto |
+| Login com o par que está no ar, web `b5b2704` e API `8e8577d` | ninguém confirmou. Não é pré-requisito da etapa 0, mas pesa no retorno dela (seção 4.2) |
 | Migrations 17 e 18 num banco com dados reais | só foram aplicadas em banco descartável |
 | Recuperação após hibernação no Render, sem deploy manual | passo 3.12. Só foi provada com a borda simulada (seção 4.4) |
 | Se a resposta real da borda ao proxy traz `Retry-After` ou algum cabeçalho `RateLimit*`. Esses cabeçalhos nunca foram observados diretamente | passo 3.12 e seção 4.4. Se estiverem presentes, a correção não age nesse caso |
@@ -90,13 +95,14 @@ Nenhuma etapa pode usar um SHA mais novo que o dela antes de o banco e as variá
 
 ## 4. Transição: API e web no SHA de cada etapa
 
-**Decisão do responsável (16/11/2026):** cada etapa termina com API e web no mesmo SHA, como os roteiros mandam e como o CI validou. O web não fica em `438e598` durante as etapas 1 e 2: a combinação de web mais novo com API mais antiga não foi validada.
+**Decisão do responsável (16/11/2026):** cada etapa termina com API e web no mesmo SHA, como os roteiros mandam e como o CI validou. O web não fica à frente da API (em `438e598` quando a decisão foi tomada, em `b5b2704` hoje) durante as etapas 1 e 2: a combinação de web mais novo com API mais antiga não foi validada.
 
 ### 4.1 Sequência de estados
 
 | Momento | API | Web | Banco esperado | O que sustenta este par |
 |---|---|---|---|---|
-| Hoje | `8e8577d` | `438e598` | 16 na última conferência de 13/11; reconfirmar antes da execução | login confirmado pelo responsável em 16/11. Nenhum roteiro descreve este par e o CI não o exercitou |
+| Histórico, até 16/11 12:59 UTC | `8e8577d` | `438e598` | 16 na última conferência de 13/11 | login confirmado pelo responsável em 16/11. Nenhum roteiro descreve este par e o CI não o exercitou. Não está mais no ar |
+| Hoje (leitura de 16/11, 17:15 UTC; reconferir no passo 0.0) | `8e8577d` | `b5b2704` | 16 na última conferência de 13/11; reconfirmar antes da execução | **nada**: login não confirmado, nenhum roteiro descreve este par e o CI não o exercitou |
 | **Etapa 0**, fim | `8e8577d` | `8e8577d` | 16 | os dois serviços no mesmo SHA; é o ponto de partida que o roteiro das comissões exige e o alvo do roteiro de recuperação, que valeu de 13/11 16:23 a 14/11 14:15 UTC. O responsável ainda não confirmou este par: o passo 0.2 faz isso |
 | Etapa 1, entre os deploys | `5d74556` | `8e8577d` | 16 | tabela de compatibilidade do roteiro das comissões: funciona (leitura de código) |
 | **Etapa 1**, fim | `5d74556` | `5d74556` | 16 | CI no head `e862b32`, mesma árvore |
@@ -135,19 +141,22 @@ Limite desta conferência: é leitura de código e de contrato. Os lotes #104, #
 
 O retorno é necessário para que todo estado da fila seja um que algum roteiro descreve:
 
-- **Sem ele**, a etapa 1 passaria por API `5d74556` com web `438e598`, par que nenhum roteiro avalia. A alternativa de levar o web direto de `438e598` para `5d74556` antes da API dá web `5d74556` com API `8e8577d`, que o roteiro das comissões registra como defeituoso e que inverte a ordem dele.
+- **Sem ele**, a etapa 1 passaria por API `5d74556` com web `b5b2704`, par que nenhum roteiro avalia. A alternativa de levar o web direto de `b5b2704` para `5d74556` antes da API dá web `5d74556` com API `8e8577d`, que o roteiro das comissões registra como defeituoso e que inverte a ordem dele.
 - **Com ele**, o passo 0 do roteiro das comissões (API e web em `8e8577d`) fica verdadeiro, e o rollback da etapa 1 tem um destino conhecido.
 
 É um deploy só do web, sem banco, sem variável e sem migration.
 
 | Passo | O que fazer | Continuar se | Parar se |
 |---|---|---|---|
-| 0.0 | Render, só leitura | API `8e8577d`, web `438e598`, Auto-Deploy desligado, nada em fila. Anote os IDs dos deploys live | qualquer outro SHA live |
-| 0.1 | Web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit | live no SHA; `/login` 200; `/agenda_api/auth/me` sem cookie 401 (com a API acordada) | o deploy não fica live: o Render mantém `438e598`, leia o log |
+| 0.0 | Render, só leitura. Reconfere a leitura da seção 1.1 | API `8e8577d`, web `b5b2704`, Auto-Deploy desligado, nada em fila. Anote os IDs dos deploys live | qualquer outro SHA live, em qualquer dos dois serviços. Estado diferente exige reavaliar a etapa antes de qualquer deploy |
+| 0.1 | Web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit | live no SHA; `/login` 200; `/agenda_api/auth/me` sem cookie 401 (com a API acordada) | o deploy não fica live: o Render mantém `b5b2704`, leia o log |
 | 0.2 | O responsável repete os quatro testes de 16/11 (entrar, recarregar com sessão, sair e entrar, abrir as telas) e abre a tela de comissões de um profissional | os quatro funcionam e a tela de comissões abre | qualquer um falha |
 
-- **Ponto de recuperação:** nenhum no banco, porque nada é escrito. O retorno é o web de volta a `438e598` (o deploy live anotado em 0.0), que é o estado confirmado em 16/11.
-- **Critério de parada:** se 0.2 falhar, volte o web a `438e598` e não comece a etapa 1. O par `8e8577d` com `8e8577d` nunca foi confirmado pelo responsável depois da recuperação; a etapa 0 é essa confirmação.
+- **Ponto de recuperação:** nenhum no banco, porque nada é escrito. O retorno é o web de volta a `b5b27046369b2b36ad339a41d44ff405fcb44c43` (o deploy live anotado em 0.0), que é o estado anterior à etapa.
+- **Critério de parada:** se 0.2 falhar, volte o web a `b5b2704` e **não comece a etapa 1**. O par `8e8577d` com `8e8577d` nunca foi confirmado pelo responsável depois da recuperação; a etapa 0 é essa confirmação.
+- **O retorno não é uma recuperação comprovada.** Ele só restaura o que estava no ar antes da etapa: web `b5b2704` com API `8e8577d`, par que ainda não teve login confirmado. Se 0.2 falhar e o web voltar a `b5b2704`, o piloto fica num estado não validado; a fila para ali e a situação é reavaliada com o responsável antes de qualquer outro passo.
+- **Histórico:** o último par com login confirmado pelo responsável foi web `438e598` com API `8e8577d` (16/11). Ele fica registrado como referência; não é o destino do retorno desta etapa.
+- **API hibernada não é falha da etapa:** antes de conferir 0.1 e 0.2, acorde a API pelo endereço dela (seção 4.4).
 - **Janela:** de preferência a mesma da etapa 1. Entre as duas há validação e parada: a etapa 1 só começa com o passo 0.2 aprovado pelo responsável, e o passo 1.0 relê o Render antes de qualquer coisa.
 
 ### 4.3 O que fica temporariamente indisponível
@@ -191,7 +200,7 @@ No plano gratuito a API hiberna depois de um tempo sem acesso. Desde 16/11/2026 
 2. Espere aparecer `Hello World!`. Na medição de 16/11 levou cerca de 32 s.
 3. Volte ao web e use "Tentar novamente" ou recarregue a página.
 
-**Não faça deploy nem reinício para recuperar o acesso.** Um deploy fora do plano muda os SHAs live e faz o passo 0 de cada etapa parar; os deploys manuais de 12/11 a 16/11 nasceram dessa tentativa.
+**Não faça deploy nem reinício para recuperar o acesso.** Este é o procedimento adotado (decisão D2, seção 8). Um deploy fora do plano muda os SHAs live e faz o passo 0 de cada etapa parar; os deploys manuais de 12/11 a 16/11 nasceram dessa tentativa.
 
 O contorno também vale para as verificações de cada etapa: antes de conferir `/agenda_api/auth/me` ou de o responsável testar o login, acorde a API pelo passo 1. Um 429 ou a tela de erro com a API hibernada não é falha do deploy.
 
@@ -437,7 +446,6 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 
 | # | Decisão | Recomendação |
 |---|---|---|
-| D2 | Deploys manuais fora do plano: identificar na aba Events quem fez os de 13/11 e 14/11 e combinar que, durante a fila, só há deploy pelo plano. Um deploy não previsto faz o passo 0 parar a etapa | combinar antes da etapa 0 |
 | D5 | 2FA com um só proprietário real: ensaiar a emergência antes em banco descartável, ou esperar um segundo | não criar conta só para chegar a dois |
 | D7 | Backup automático (O1): configurar antes da fila, entre etapas ou depois | antes da etapa 3, que é a que mais aumenta o valor do que está no banco |
 | D8 | Datas: uma sessão em casa por etapa; quando passar o 2FA para `required`; quando fazer a validação do `/health` | uma etapa por sessão, sem acumular |
@@ -445,6 +453,8 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 ### Decididas em 16/11/2026
 
 - **D1:** API e web no SHA de cada etapa. O web volta a `8e8577d` antes da etapa 1 (seção 4).
+- **D2:** autoria esclarecida. Os deploys manuais de 12/11 a 16/11 foram feitos pelo responsável, tentando recuperar o acesso depois da inatividade. **O procedimento adotado passa a ser despertar a API pelo endereço dela (seção 4.4), sem deploy para essa finalidade.** Durante a fila só há deploy pelo plano; um deploy não previsto continua fazendo o passo 0 parar a etapa.
+- **Etapa 0 corrigida:** parte de web `b5b2704` com API `8e8577d`, a reconferir no passo 0.0; o alvo continua `8e8577d`; se 0.2 falhar, o web volta a `b5b2704`, sem que isso seja recuperação comprovada, e a etapa 1 não começa (seção 4.2).
 - **D3:** etapas 2 e 3 com `pg_dump` e restauração validada; branch do Neon a mais é opcional (seção 6).
 - **D4:** a identificação dos estabelecimentos de teste é informação do responsável (tabela acima).
 - **D6:** a conferência do estado 18 é feita por consultas só de leitura com resultado esperado (etapa 3). Nenhum lote de código para isso.
@@ -455,6 +465,7 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 - **Feito (16/11/2026):** este plano e o registro do resultado no roteiro de recuperação. Só documentação.
 - **Feito depois (16/11/2026):** PR #117 integrado em `9de722d` (correção do proxy para a API hibernada, com CI aprovado no head `6a9da3f`). Este plano passou a apontar a etapa 3 para `9de722d`, ganhou o contorno das etapas 0 a 2 (seção 4.4) e a validação do acesso após hibernação (passo 3.12). Nada foi publicado.
 - **Não feito:** nenhum deploy, migration, backup, variável no Render ou leitura do banco real.
-- **A rever antes da etapa 0:** o web live passou a `b5b2704` (seção 1.1); o passo 0.0 e o retorno da etapa 0 ainda citam `438e598`.
-- **Próximo passo:** a decisão D2 e as informações da seção 8. Depois, a etapa 0 e a etapa 1, com pedido explícito, de preferência na mesma janela em casa, com parada entre elas.
+- **Feito depois (16/11/2026):** D2 respondida e etapa 0 corrigida para o estado lido na seção 1.1 (web `b5b2704`, API `8e8577d`). Só o texto do roteiro; nenhum desses deploys foi feito.
+- **Continuidade:** PR #117 integrado em `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`; a correção ainda não está publicada; o PR #118 (esta atualização do plano) aguarda revisão; a execução da fila não começou.
+- **Próximo passo:** a revisão do PR #118 e as informações da seção 8. Depois, a etapa 0 e a etapa 1, com pedido explícito, de preferência na mesma janela em casa, com parada entre elas.
 - **Se o estado mudar antes da etapa 0** (deploy novo no Render, commit novo na integração), releia a seção 1 e ajuste os SHAs antes de qualquer passo.
