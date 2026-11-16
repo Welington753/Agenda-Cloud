@@ -63,7 +63,7 @@ test.describe("login real, restauração de sessão e logout (cookie HttpOnly)",
     // Sem `next`, quem entra vai para o Início; o perfil fica em
     // Configurações → Perfil e segurança (também pelo menu da conta).
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
-    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await page.getByRole("navigation", { name: "Áreas da conta" }).getByRole("link", { name: "Configurações" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await page.getByTestId("secoes-configuracoes").getByRole("link", { name: /Estabelecimento/ }).click();

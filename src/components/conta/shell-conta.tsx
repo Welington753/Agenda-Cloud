@@ -4,10 +4,10 @@
 // (inspirado no da demonstração) e, no celular, barra superior com o
 // estabelecimento, o sino "Notificações" e o menu da conta (aparência,
 // notificações deste aparelho, Configurações e "Sair", ver
-// menu-conta.tsx) mais uma barra inferior com no máximo quatro áreas (Início,
-// Agenda, Clientes e Configurações para o dono). Serviços e Profissionais,
-// que não cabem na barra, ficam no menu da conta no celular. Sem rolagem
-// horizontal.
+// menu-conta.tsx) mais uma barra inferior com no máximo quatro áreas
+// (Dashboard, Agenda, Clientes e Configurações para o dono). Profissionais,
+// Serviços, Equipe e acessos e Comissões, que não cabem na barra, ficam no
+// menu da conta no celular. Sem rolagem horizontal.
 //
 // No computador, "Configurações" abre ao lado um submenu com as seções
 // (item-configuracoes.tsx); o texto continua levando ao índice.
@@ -166,12 +166,14 @@ export function ShellConta({ children }: { children: ReactNode }) {
         {itens.length > 0 && (
           <nav
             aria-label="Áreas da conta"
-            className="fixed inset-x-0 bottom-0 z-40 border-t border-chrome-border bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:flex-1 md:border-0 md:px-3 md:pb-0"
+            // No computador o menu rola por dentro quando a janela é baixa: a
+            // última área e o menu da conta continuam alcançáveis.
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-chrome-border bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:min-h-0 md:flex-1 md:overflow-y-auto md:border-0 md:px-3 md:pb-0 md:[scrollbar-width:thin]"
           >
             <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
               {itens.map((item) =>
                 item.href === ROTA_CONFIGURACOES ? (
-                  <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href)} />
+                  <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href, perfil)} />
                 ) : (
                   <li
                     key={item.href}
@@ -182,7 +184,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
                   >
                     <LinkNavegacao
                       item={item}
-                      ativo={itemAtivo(pathname, item.href)}
+                      ativo={itemAtivo(pathname, item.href, perfil)}
                       contador={item.href === ROTA_AGENDA && ehDono ? pendentes : undefined}
                     />
                   </li>

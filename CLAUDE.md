@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-Agenda Cloud: agendamento multi-tenant para pequenos negócios. Interface, docs e mensagens de erro em português do Brasil; commits em inglês (Conventional Commits).
+Agenda Cloud: agendamento multi-tenant para pequenos negócios. O nome exibido ao usuário é **TimVix** (`NOME_PRODUTO` em `src/lib/config.ts`); repositório, serviços e chaves técnicas continuam "Agenda Cloud". Interface, docs e mensagens de erro em português do Brasil; commits em inglês (Conventional Commits).
 
 - **Mapa técnico** (módulos, fonte de cada regra, testes): `docs/arquitetura/mapa-tecnico.md`
 - **Plano de expansão** (ordem dos próximos lotes e decisões pendentes): `docs/plans/plano-de-expansao.md`
@@ -16,8 +16,8 @@ Dois projetos npm independentes, Node `>=24 <25`:
 
 - **Raiz**: web Next.js (App Router, `src/app/`). Regras puras de tela em `src/lib/<area>/` com teste ao lado; um cliente por área em `src/lib/api/`.
   - **Área real** (sessão por cookie, API de verdade): `/conta/*` (estabelecimento); `/portal/*` (administração da plataforma, `src/lib/administracao/rotas.ts`); `/login`, `/cadastro`, `/convite` e `/redefinir-senha`; agendamento público em `/agendar/[slug]` (endereço canônico; `/<slug>` só encaminha para ele quando o slug não é da demonstração, com colisões pendentes no achado R6).
-  - **Exceção única:** `src/app/login/page.tsx` importa `@/lib/auth/auth-context` e `@/lib/auth/autenticacao` para os botões de "Acessos para demonstração", que entram pela simulação local sem tocar a API. O formulário real não usa esses módulos. A exceção vale só para esses dois imports nesse arquivo.
-  - **Guardas:** `src/lib/servicos/sem-dados-demo.test.ts` (imports diretos) e `sem-dados-demo-transitivo.test.ts` (cadeia inteira) reprovam qualquer outro caminho da área real até a demonstração. Pasta nova da área real entra nas listas dessas guardas.
+  - **Sem exceção:** nenhum arquivo da área real, inclusive `/login`, importa a demonstração. Ela entra só pela página inicial ("Ver demonstração", `/onboarding`).
+  - **Guardas:** `src/lib/servicos/sem-dados-demo.test.ts` (imports diretos) e `sem-dados-demo-transitivo.test.ts` (cadeia inteira) reprovam qualquer caminho da área real até a demonstração. Pasta nova da área real entra nas listas dessas guardas.
 - **`backend/`**: API NestJS + TypeORM + PostgreSQL. Um módulo por domínio em `backend/src/<area>/`.
   - `commercial/` não é módulo Nest: guarda o catálogo de planos (`plan-catalog.ts`), preços, períodos de acesso e o gate do recurso contratado (`commercial-gate.ts`). `common/tenant-authorization.ts` chama o gate depois do vínculo e antes da permissão pessoal. O plano libera pelo vínculo em `plan_features` (só migrations escrevem); uma linha em `tenant_feature_overrides` vence o plano para aquele estabelecimento.
 - **Legado, não estender:** a demonstração em `localStorage` (`src/app/painel`, `master`, `profissional`, `onboarding`, `src/app/[slug]`, `src/lib/repositories`) e o Prisma (`prisma/`, `src/generated/prisma`). TypeORM é a única fonte do schema; `src/architecture-prisma-boundary.test.ts` barra import novo de Prisma.
@@ -30,9 +30,16 @@ Dois projetos npm independentes, Node `>=24 <25`:
 | Permissão nova do gerente | `backend/src/common/manager-permissions.ts` (+ valor no enum `permission` por migration) |
 | Regra de negócio e SQL | `backend/src/<area>/<area>.service.ts` |
 | Forma do corpo da rota | `backend/src/<area>/<area>.dto.ts` (zod, corpo estrito) |
-| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente: 11 já estão no piloto) |
+| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente; 16 migrations aplicadas no piloto, conferido em 13/11/2026). Acrescente a classe a `backend/src/database/required-migrations.ts`: a API não sobe num banco sem todas as migrations desse manifesto |
 | Chamada à API pelo web | `src/lib/api/<area>-api.ts` (valida a forma da resposta; erro classificado pelo status; `mensagemDoBackend` para o texto) |
 | Regra de tela | `src/lib/<area>/*.ts` com `*.test.ts`; componente só desenha |
+| Item de menu ou seção de Configurações em `/conta` | `src/lib/conta/navegacao.ts` e `rotas.ts` (+ testes ao lado e `tests/browser/configuracoes-navegacao-flow.spec.ts`) |
+
+**Navegação de `/conta`:** o menu de cada papel sai de `src/lib/conta/navegacao.ts` (dono: Dashboard, Agenda, Profissionais, Serviços, Clientes, Equipe e acessos, Comissões, Configurações). Endereços e grupos do índice de Configurações ficam em `src/lib/conta/rotas.ts`. Página nova entra por esses dois arquivos, sem mudar endereço existente.
+
+- Item que depende do plano só aparece com a área correspondente em `areas` da sessão (ex.: Comissões com `COMISSOES_VER`); a tela nunca presume o plano.
+- Termo do segmento ("Barbeiros" na barbearia) vem de `src/lib/conta/termos.ts`, a partir de `tenantCategory` da sessão; sem ele, "Profissionais". A terminologia de `src/lib/verticals` é da demonstração.
+- Personalização só existe na demonstração: não criar link para ela na área real.
 
 Siga os nomes do arquivo vizinho (o backend mistura inglês e português; não renomeie em massa). Uma regra tem uma fonte: antes de escrever uma checagem, procure a existente pelo mapa técnico (seção 4).
 

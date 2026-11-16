@@ -46,7 +46,8 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 | `second-factor/` | Segundo fator (TOTP) das contas de plataforma: estado da sessão (`second-factor-state.ts`), guard de toda rota `/platform` (`second-factor.guard.ts`), cifra do segredo (`secret-cipher.ts`), códigos de recuperação, liberações e trava de tentativas (`second-factor.service.ts`) | `auth/`, `accounts/` (auditoria, e-mail, reauth) |
 | `email/` | Envio de e-mail (opcional; desligado sem variáveis) | — |
 | `config/` | Validação de ambiente, cookie, IP do cliente | — |
-| `database/` | DataSource de runtime (logger que omite segredos) e de migrations (logger padrão) | — |
+| `database/` | DataSource de runtime (logger que omite segredos) e de migrations (logger padrão); manifesto das migrations exigidas (`required-migrations.ts`) e conferência de inicialização (`schema-readiness.ts`) | — |
+| `health/` | `GET /health`: sonda leve do banco (`SELECT 1`) para o health check da hospedagem. Não confere migrations | — |
 | `entities/` | Entidades TypeORM e enums. Várias tabelas novas não têm entidade e são lidas por SQL explícito | — |
 
 ### Padrão de cada módulo de estabelecimento
@@ -111,6 +112,7 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Clientes x internos/teste no portal | alcance `CLIENTS`/`INTERNAL`/`ALL` pela marca `tenants.is_test`: `matchesScope`/`scopeSql` em `backend/src/platform/portal-overview.ts`, aplicado na lista, na Visão geral, no relatório por período e no extrato (`platform.service.ts`, `pricing.service.ts`); a tela só afirma o alcance que a API devolve (`alcanceConfirmado` em `src/lib/administracao/diretorio.ts`) |
 | Segundo fator das contas de plataforma | Estado e validade (12 h na sessão): `secondFactorStatus` em `backend/src/second-factor/second-factor-state.ts`; exigência nas rotas: `PlatformSecondFactorGuard` NA CLASSE de todo controller `@Controller('platform')` (exceções só em `ROTAS_SEM_SEGUNDO_FATOR`, conferidas por `second-factor-architecture.spec.ts` e por `test/second-factor.e2e-spec.ts`); troca de senha de conta master: `changePassword` em `auth.service.ts`; master novo: `second_factor_enrollment_required` (convite em `invites.service.ts`, promoção em `accounts-admin.service.ts`); fase e chaves: `PLATFORM_2FA_ENFORCEMENT`/`PLATFORM_TOTP_KEYS` (`env.validation.ts`). Plano: `docs/plans/2fa-contas-administrativas.md`; publicação e emergência: `docs/runbooks/publicacao-2fa-administrativo.md` |
 | Relatório por período do portal (SaaS) | `GET /platform/reports` (`report` em `platform.service.ts`); período: `checkDateRange`/`resolveReportPeriod`/`timestampInRangeSql` em `backend/src/platform/portal-reports.ts` (São Paulo, datas inclusas, até 366 dias, sem padrão no esquema); pagamentos de assinatura: uma regra só, `subscriptionPaymentWhere` em `platform.queries.ts`, usada pela Visão geral, pelo relatório e pelo extrato; tela em `src/lib/administracao/periodo.ts` (mesma validação, só afirma o período devolvido). Plano: `docs/plans/portal-relatorios-por-periodo.md` |
+| Migrations que a API exige para subir | Manifesto `REQUIRED_MIGRATIONS` em `backend/src/database/required-migrations.ts` (imports estáticos; o spec ao lado confere contra o diretório). `ensureRequiredMigrations` (`schema-readiness.ts`) roda em `main.ts` antes de `app.listen`, só leitura: falta de qualquer exigida, tabela de controle ausente ou banco indisponível encerram o processo; migration a mais só gera aviso. Disponibilidade do banco com a API no ar é outra regra: `DatabaseProbe` em `backend/src/health/` (`GET /health`). Plano: `docs/plans/publicacao-segura.md` |
 | Slugs que nenhum cadastro novo recebe | `backend/src/common/reserved-slugs.ts`, aplicado em `resolveSlug` (`auth/slug.ts`, slug gerado do nome); `assertSlugChangeAllowed` (409 `SLUG_RESERVADO`) para uma rota futura que receba slug escolhido; `src/lib/agendamento-publico/slugs-reservados.test.ts` confere contra `src/app` e a semente; `scripts/lib/slugs-reservados-check.ts` copia a lista (conferida por teste) |
 
 ## 5. Segurança transversal
@@ -185,7 +187,9 @@ Localmente nada muda: `npx playwright install chromium` e
 ## 7. Operação
 
 - Publicação: `render.yaml` e `docs/runbooks/publicacao-piloto-render.md`.
-  Deploy manual, primeiro a API e depois o web, no mesmo SHA.
+  Deploy manual, primeiro a API e depois o web, no mesmo SHA. A API não
+  sobe num banco sem todas as migrations do manifesto: o deploy falha e a
+  versão anterior continua no ar (`docs/plans/publicacao-segura.md`).
 - Migrations no piloto: um roteiro por lote em `docs/runbooks/`, com os
   scripts em `backend/scripts/` (lançador `.ps1`, aplicador `.mjs`,
   conferência de restauração e conferência do schema em `scripts/lib/`).

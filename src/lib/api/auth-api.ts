@@ -20,6 +20,10 @@ export interface TenantContextReal {
   unit: { id: string; name: string; isPrimary: boolean } | null;
   planCode: string;
   planName: string;
+  /** Segmento do estabelecimento (`BusinessCategory` do backend, ex.:
+   * "BARBERSHOP"). Só para o termo da tela (ver lib/conta/termos.ts).
+   * Ausente numa API anterior: a tela usa o termo geral. */
+  tenantCategory?: string;
   trial: { trialStartAt: string; trialEndAt: string; durationDays: number };
   tenantStatus: StatusTenantReal;
   /** Validade do acesso (assinatura do TimVix). `blocked`: vencido; o

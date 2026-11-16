@@ -1,29 +1,76 @@
 import { describe, expect, it } from "vitest";
-import { ITENS_NAVEGACAO_CONTA, itemAtivo, itensDaNavegacao, rotuloDoSino } from "./navegacao";
+import { itemAtivo, itensDaNavegacao, itensDoDono, retornoDeRecebimentos, rotuloDoSino } from "./navegacao";
 
-describe("ITENS_NAVEGACAO_CONTA", () => {
-  it("o dono tem seis áreas, na ordem do dia a dia, todas da área real", () => {
-    expect(ITENS_NAVEGACAO_CONTA.map((i) => [i.href, i.rotulo])).toEqual([
-      ["/conta/visao-geral", "Início"],
+const DONO_COM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "COMISSOES_VER", "COMISSOES_CONFIGURAR"] };
+const DONO_SEM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "RECEBIMENTOS_VER"] };
+
+describe("itensDoDono", () => {
+  it("as áreas na ordem pedida, todas da área real, nos endereços de antes", () => {
+    expect(itensDoDono(DONO_COM_COMISSOES).map((i) => [i.href, i.rotulo])).toEqual([
+      ["/conta/visao-geral", "Dashboard"],
       ["/conta/agendamentos", "Agenda"],
-      ["/conta/clientes", "Clientes"],
-      ["/conta/configuracoes/servicos", "Serviços"],
       ["/conta/configuracoes/profissionais", "Profissionais"],
+      ["/conta/configuracoes/servicos", "Serviços"],
+      ["/conta/clientes", "Clientes"],
+      ["/conta/configuracoes/equipe", "Equipe e acessos"],
+      ["/conta/comissoes", "Comissões"],
       ["/conta/configuracoes", "Configurações"],
     ]);
-    // Quatro na barra do celular; Serviços e Profissionais vão para o menu da conta.
-    expect(ITENS_NAVEGACAO_CONTA.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
-      "Início",
+  });
+
+  it("quatro na barra do celular; as outras vão para o menu da conta", () => {
+    const itens = itensDoDono(DONO_COM_COMISSOES);
+    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
+      "Dashboard",
       "Agenda",
       "Clientes",
       "Configurações",
     ]);
+    expect(itens.filter((i) => i.noCelular === "menu").map((i) => i.rotulo)).toEqual([
+      "Profissionais",
+      "Serviços",
+      "Equipe e acessos",
+      "Comissões",
+    ]);
+  });
+
+  it("Comissões só com a área que o servidor dá a quem tem o recurso no plano", () => {
+    expect(itensDoDono(DONO_SEM_COMISSOES).map((i) => i.rotulo)).not.toContain("Comissões");
+    // Sem a lista de áreas (API anterior) a tela não presume o plano.
+    expect(itensDoDono({ role: "DONO" }).map((i) => i.rotulo)).not.toContain("Comissões");
+    expect(itensDoDono(null).map((i) => i.rotulo)).not.toContain("Comissões");
+    // A área de configurar, sozinha, não abre a página das comissões apuradas.
+    expect(itensDoDono({ role: "DONO", areas: ["COMISSOES_CONFIGURAR"] }).map((i) => i.rotulo)).not.toContain("Comissões");
+  });
+
+  it("na barbearia, Profissionais aparece como Barbeiros, no mesmo endereço", () => {
+    const itens = itensDoDono({ ...DONO_SEM_COMISSOES, tenantCategory: "BARBERSHOP" });
+    expect(itens.map((i) => [i.href, i.rotulo])).toContainEqual(["/conta/configuracoes/profissionais", "Barbeiros"]);
+    expect(itens.map((i) => i.rotulo)).not.toContain("Profissionais");
+    expect(itensDoDono({ ...DONO_SEM_COMISSOES, tenantCategory: "CLINIC" }).map((i) => i.rotulo)).toContain("Profissionais");
+  });
+
+  it("não há Personalização: ela só existe na demonstração", () => {
+    expect(itensDoDono(DONO_COM_COMISSOES).map((i) => i.rotulo)).not.toContain("Personalização");
   });
 });
 
 describe("itensDaNavegacao", () => {
-  it("dono com estabelecimento: só a operação", () => {
-    expect(itensDaNavegacao({ comEstabelecimento: true })).toBe(ITENS_NAVEGACAO_CONTA);
+  it("dono com estabelecimento: o menu do dono", () => {
+    expect(itensDaNavegacao({ comEstabelecimento: true, contexto: DONO_COM_COMISSOES })).toEqual(itensDoDono(DONO_COM_COMISSOES));
+  });
+
+  it("o gerente não ganha Dashboard, Equipe e acessos nem Comissões, e o termo dele não muda", () => {
+    const contexto = {
+      role: "GERENTE" as const,
+      areas: ["AGENDA_VER", "PROFISSIONAIS_VER", "COMISSOES_VER"],
+      tenantCategory: "BARBERSHOP",
+    };
+    expect(itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto }).map((i) => i.rotulo)).toEqual([
+      "Agenda",
+      "Profissionais",
+      "Configurações",
+    ]);
   });
 
   it("nenhum perfil ganha atalho para o portal da plataforma nem grupo próprio", () => {
@@ -65,7 +112,7 @@ describe("itemAtivo", () => {
 
   it("subpáginas de Configurações mantêm Configurações ativa", () => {
     expect(itemAtivo("/conta/configuracoes/perfil", "/conta/configuracoes")).toBe(true);
-    expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes")).toBe(true);
+    expect(itemAtivo("/conta/configuracoes/notificacoes", "/conta/configuracoes")).toBe(true);
     expect(itemAtivo("/portal/estabelecimentos", "/conta/configuracoes")).toBe(false);
   });
 
@@ -74,6 +121,32 @@ describe("itemAtivo", () => {
     expect(itemAtivo("/conta/configuracoes/profissionais/p1/horarios", "/conta/configuracoes/profissionais")).toBe(true);
     expect(itemAtivo("/conta/configuracoes/servicos", "/conta/configuracoes")).toBe(false);
     expect(itemAtivo("/conta/configuracoes/servicos", "/conta/configuracoes/servicos")).toBe(true);
+  });
+
+  it("Equipe e acessos é área própria; Comissões fica ativa com o período na busca", () => {
+    expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes")).toBe(false);
+    expect(itemAtivo("/conta/configuracoes/equipe", "/conta/configuracoes/equipe")).toBe(true);
+    expect(itemAtivo("/conta/comissoes", "/conta/comissoes")).toBe(true);
+    expect(itemAtivo("/conta/minha-agenda/comissoes", "/conta/comissoes")).toBe(false);
+  });
+
+  it("para o dono, Recebimentos mantém Configurações ativa; para os outros perfis, não", () => {
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes", "dono")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos/", "/conta/configuracoes", "dono")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos-x", "/conta/configuracoes", "dono")).toBe(false);
+    // Só Configurações: nenhuma outra área do dono fica marcada junto.
+    for (const item of itensDoDono({ role: "DONO", areas: ["COMISSOES_VER"] })) {
+      expect(itemAtivo("/conta/recebimentos", item.href, "dono")).toBe(item.href === "/conta/configuracoes");
+    }
+    // O gerente tem o item Recebimentos: é ele que fica ativo.
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes", "gerente")).toBe(false);
+    expect(itemAtivo("/conta/recebimentos", "/conta/recebimentos", "gerente")).toBe(true);
+    expect(itemAtivo("/conta/recebimentos", "/conta/configuracoes")).toBe(false);
+  });
+
+  it("o retorno de Recebimentos leva o dono a Configurações; os outros perfis ficam como antes", () => {
+    expect(retornoDeRecebimentos("dono")).toEqual({ href: "/conta/configuracoes", rotulo: "Voltar para Configurações" });
+    expect(retornoDeRecebimentos("gerente")).toEqual({ href: "/conta/visao-geral", rotulo: "Voltar ao Início" });
   });
 
   it("não confunde prefixos parecidos nem rota ausente", () => {

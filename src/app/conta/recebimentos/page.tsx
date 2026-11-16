@@ -22,7 +22,9 @@ import { formatarMoeda } from "@/lib/format";
 import { dataCurta, mesDe, rotuloDoPeriodo, type PeriodoLocal } from "@/lib/conta/inicio";
 import { deslocar } from "@/lib/profissionais/calendario";
 import { hojeNoFuso } from "@/lib/profissionais/agenda-visual";
-import { ROTA_INICIO } from "@/lib/conta/rotas";
+import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
+import { retornoDeRecebimentos } from "@/lib/conta/navegacao";
+import { perfilDoPapel } from "@/lib/conta/papel";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { ReautenticacaoProvider } from "@/components/administracao/reautenticacao";
 import { Botao } from "@/components/ui/button";
@@ -85,8 +87,8 @@ export default function RecebimentosPage() {
     <ReautenticacaoProvider>
       <PaginaConta
         titulo="Recebimentos"
-        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores do Início."
-        voltar={{ href: ROTA_INICIO, rotulo: "Voltar ao Início" }}
+        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores do Dashboard."
+        voltar={retornoDeRecebimentos(perfilDoPapel(encontrarContextoPorTenantId(sessao.sessao, tenantId)?.role))}
         acoes={
           <Botao type="button" variante="secundaria" className="min-h-11" onClick={recarregar}>
             <RefreshCw size={16} aria-hidden="true" />

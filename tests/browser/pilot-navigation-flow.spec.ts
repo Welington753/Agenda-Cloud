@@ -109,14 +109,16 @@ test.describe("entrada e navegação do piloto", () => {
     await expect(page.getByTestId("usuario-conectado")).toContainText("Dona Navegação");
     const nav = navegacaoDaConta(page);
     expect(await nav.getByRole("link").allTextContents()).toEqual([
-      "Início",
+      "Dashboard",
       "Agenda",
-      "Clientes",
-      "Serviços",
       "Profissionais",
+      "Serviços",
+      "Clientes",
+      "Equipe e acessos",
+      "Comissões",
       "Configurações",
     ]);
-    await expect(nav.getByRole("link", { name: "Início" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     // Nenhum link da área real aponta para a demonstração.
     const hrefs = await nav
       .getByRole("link")
@@ -125,18 +127,23 @@ test.describe("entrada e navegação do piloto", () => {
     // Uma conta com um vínculo só não tem o que trocar.
     await expect(page.getByRole("link", { name: "Trocar de estabelecimento" })).toHaveCount(0);
 
-    // Configurações: as seções do estabelecimento e as pessoais (Serviços e
-    // Profissionais são áreas próprias do menu).
+    // Configurações: o que não tem entrada própria no menu, agrupado por
+    // assunto (Serviços, Profissionais e Equipe e acessos são áreas do menu).
     await nav.getByRole("link", { name: "Configurações" }).click();
     await expect(page).toHaveURL(/\/conta\/configuracoes$/);
     await expect(nav.getByRole("link", { name: "Configurações" })).toHaveAttribute("aria-current", "page");
     const secoes = page.getByTestId("secoes-configuracoes").getByRole("link");
     expect(await secoes.evaluateAll((links) => links.map((l) => l.getAttribute("href")))).toEqual([
       "/conta/configuracoes/estabelecimento",
-      "/conta/configuracoes/equipe",
       "/conta/configuracoes/notificacoes",
+      "/conta/recebimentos",
       "/conta/configuracoes/aparencia",
       "/conta/configuracoes/perfil",
+    ]);
+    await expect(page.getByTestId("secoes-configuracoes").getByRole("heading", { level: 2 })).toHaveText([
+      "Estabelecimento",
+      "Financeiro",
+      "Sua conta",
     ]);
 
     // Estabelecimento: o guia informativo de primeiros passos, com links da
@@ -165,11 +172,13 @@ test.describe("entrada e navegação do piloto", () => {
 
     for (const [rotulo, caminho] of [
       ["Agenda", /\/conta\/agendamentos$/],
-      ["Clientes", /\/conta\/clientes$/],
-      ["Serviços", /\/conta\/configuracoes\/servicos$/],
       ["Profissionais", /\/conta\/configuracoes\/profissionais$/],
+      ["Serviços", /\/conta\/configuracoes\/servicos$/],
+      ["Clientes", /\/conta\/clientes$/],
+      ["Equipe e acessos", /\/conta\/configuracoes\/equipe$/],
+      ["Comissões", /\/conta\/comissoes$/],
       ["Configurações", /\/conta\/configuracoes$/],
-      ["Início", /\/conta\/visao-geral$/],
+      ["Dashboard", /\/conta\/visao-geral$/],
     ] as const) {
       await nav.getByRole("link", { name: rotulo }).click();
       await expect(page).toHaveURL(caminho);
@@ -200,10 +209,13 @@ test.describe("entrada e navegação do piloto", () => {
       "/conta/configuracoes",
       "/conta/configuracoes/servicos",
       "/conta/configuracoes/profissionais",
+      "/conta/configuracoes/equipe",
+      "/conta/comissoes",
+      "/conta/recebimentos",
       "/conta/configuracoes/perfil",
     ]) {
       await page.goto(caminho);
-      for (const rotulo of ["Início", "Agenda", "Clientes", "Configurações"]) {
+      for (const rotulo of ["Dashboard", "Agenda", "Clientes", "Configurações"]) {
         const link = nav.getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = await link.boundingBox();

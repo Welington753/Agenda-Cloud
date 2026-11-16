@@ -7,7 +7,9 @@ import {
   CalendarDays,
   ClipboardList,
   Contact,
-  Home,
+  HandCoins,
+  KeyRound,
+  LayoutDashboard,
   Settings,
   Users,
   type LucideIcon,
@@ -17,7 +19,9 @@ import type { ItemNavegacaoConta } from "@/lib/conta/navegacao";
 import {
   ROTA_AGENDA,
   ROTA_CLIENTES,
+  ROTA_COMISSOES,
   ROTA_CONFIGURACOES,
+  ROTA_EQUIPE,
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
@@ -25,11 +29,13 @@ import {
 } from "@/lib/conta/rotas";
 
 export const ICONE_POR_HREF: Record<string, LucideIcon> = {
-  [ROTA_INICIO]: Home,
+  [ROTA_INICIO]: LayoutDashboard,
   [ROTA_AGENDA]: CalendarDays,
   [ROTA_CLIENTES]: Contact,
   [ROTA_SERVICOS]: ClipboardList,
   [ROTA_PROFISSIONAIS]: Users,
+  [ROTA_EQUIPE]: KeyRound,
+  [ROTA_COMISSOES]: HandCoins,
   [ROTA_CONFIGURACOES]: Settings,
   [ROTA_MINHA_AGENDA]: CalendarCheck,
 };
@@ -91,7 +97,7 @@ export function LinkNavegacao({
   /** Classes extras (ex.: espaço para o botão do submenu de Configurações). */
   className?: string;
 }) {
-  const Icone = ICONE_POR_HREF[item.href] ?? Home;
+  const Icone = ICONE_POR_HREF[item.href] ?? LayoutDashboard;
   return (
     <Link
       href={item.href}

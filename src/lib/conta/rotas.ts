@@ -1,16 +1,17 @@
 // Endereços da área REAL (`/conta/**`). Regras puras, sem React.
 //
-// Organização (ver docs/plans/operacao-diaria-configuracoes.md):
-// - Início, Agenda (com a aba Solicitações), Clientes, Serviços,
-//   Profissionais e Configurações para o dono;
+// Organização (ver docs/plans/menu-do-dono-organizado.md):
+// - Dashboard, Agenda (com a aba Solicitações), Profissionais, Serviços,
+//   Clientes, Equipe e acessos, Comissões (quando o plano inclui) e
+//   Configurações para o dono;
 // - Minha agenda para o funcionário;
-// - Configurações em subpáginas: as do estabelecimento só para o dono; as
-//   pessoais (Aparência, Perfil e segurança) para todos.
+// - Configurações em grupos: os do estabelecimento e o financeiro só para o
+//   dono; os pessoais (Aparência, Perfil e segurança) para todos.
 //
-// Serviços e Profissionais são áreas próprias do menu, fora de
-// Configurações, mas continuam nos endereços de antes
-// (`/conta/configuracoes/servicos` e `.../profissionais`): links já
-// compartilhados e os atalhos das outras telas não mudam.
+// Serviços, Profissionais e Equipe e acessos são áreas próprias do menu,
+// fora de Configurações, mas continuam nos endereços de antes
+// (`/conta/configuracoes/servicos`, `.../profissionais` e `.../equipe`):
+// links já compartilhados e os atalhos das outras telas não mudam.
 //
 // Os endereços antigos continuam funcionando: o next.config.ts encaminha para
 // cá, preservando a busca (as notificações já entregues usam
@@ -23,9 +24,9 @@ export const ROTA_SOLICITACOES = `${ROTA_AGENDA}/solicitacoes`;
 export const ROTA_CLIENTES = "/conta/clientes";
 export const ROTA_MINHA_AGENDA = "/conta/minha-agenda";
 export const ROTA_SELECIONAR_ESTABELECIMENTO = "/conta/selecionar-estabelecimento";
-/** Recebimentos manuais (dono), abertos pelo Início. */
+/** Recebimentos manuais (dono), abertos pelo Dashboard e por Configurações. */
 export const ROTA_RECEBIMENTOS = "/conta/recebimentos";
-/** Comissões apuradas por profissional (dono), abertas pelo Início. */
+/** Comissões apuradas por profissional (dono, com o recurso no plano). */
 export const ROTA_COMISSOES = "/conta/comissoes";
 /** As próprias comissões (funcionário, quando o dono libera). */
 export const ROTA_MINHAS_COMISSOES = "/conta/minha-agenda/comissoes";
@@ -60,44 +61,62 @@ export function rotaDisponibilidadeDoProfissional(id: string): string {
  * funcionário e o administrador sem estabelecimento. */
 export type AlcanceDaSecao = "estabelecimento" | "pessoal";
 
+/** Assunto da seção: é por ele que o índice de Configurações agrupa. */
+export type GrupoDaSecao = "estabelecimento" | "financeiro" | "conta";
+
+export const TITULO_DO_GRUPO: Record<GrupoDaSecao, string> = {
+  estabelecimento: "Estabelecimento",
+  financeiro: "Financeiro",
+  conta: "Sua conta",
+};
+
 export interface SecaoDeConfiguracoes {
   href: string;
   rotulo: string;
   descricao: string;
   alcance: AlcanceDaSecao;
+  grupo: GrupoDaSecao;
 }
 
-/** Seções na ordem da tela. */
+/** Seções na ordem da tela, já na ordem dos grupos. Só o que NÃO tem entrada
+ * própria no menu do dono: Equipe e acessos saiu daqui quando ganhou a sua
+ * (o endereço continua `/conta/configuracoes/equipe`). Recebimentos não tem
+ * entrada no menu do dono e fica aqui, além do atalho do Dashboard. */
 export const SECOES_CONFIGURACOES: readonly SecaoDeConfiguracoes[] = [
   {
     href: ROTA_CONFIG_ESTABELECIMENTO,
     rotulo: "Estabelecimento",
     descricao: "Plano, uso, agendamento online e primeiros passos.",
     alcance: "estabelecimento",
-  },
-  {
-    href: ROTA_EQUIPE,
-    rotulo: "Equipe e acessos",
-    descricao: "Logins da equipe, vagas do plano e permissões.",
-    alcance: "estabelecimento",
+    grupo: "estabelecimento",
   },
   {
     href: ROTA_NOTIFICACOES,
     rotulo: "Notificações",
     descricao: "Avisos de novas solicitações neste aparelho e som.",
     alcance: "estabelecimento",
+    grupo: "estabelecimento",
+  },
+  {
+    href: ROTA_RECEBIMENTOS,
+    rotulo: "Recebimentos",
+    descricao: "O que foi recebido por atendimento, com registro e estorno.",
+    alcance: "estabelecimento",
+    grupo: "financeiro",
   },
   {
     href: ROTA_APARENCIA,
     rotulo: "Aparência",
     descricao: "Claro, escuro ou seguir o aparelho.",
     alcance: "pessoal",
+    grupo: "conta",
   },
   {
     href: ROTA_PERFIL,
     rotulo: "Perfil e segurança",
     descricao: "Sua identificação, senha e saída do sistema.",
     alcance: "pessoal",
+    grupo: "conta",
   },
 ];
 
@@ -108,24 +127,45 @@ export function secoesDisponiveis(ehDonoComEstabelecimento: boolean): readonly S
     : SECOES_CONFIGURACOES.filter((secao) => secao.alcance === "pessoal");
 }
 
+export interface GrupoDeConfiguracoes {
+  grupo: GrupoDaSecao;
+  titulo: string;
+  secoes: readonly SecaoDeConfiguracoes[];
+}
+
+/** As seções reunidas por assunto, na ordem em que aparecem; grupo sem
+ * seção para esta pessoa não aparece. */
+export function agruparSecoes(secoes: readonly SecaoDeConfiguracoes[]): GrupoDeConfiguracoes[] {
+  const grupos: GrupoDeConfiguracoes[] = [];
+  for (const secao of secoes) {
+    const existente = grupos.find((g) => g.grupo === secao.grupo);
+    if (existente) existente.secoes = [...existente.secoes, secao];
+    else grupos.push({ grupo: secao.grupo, titulo: TITULO_DO_GRUPO[secao.grupo], secoes: [secao] });
+  }
+  return grupos;
+}
+
 /** Áreas do menu do dono que moram sob `/conta/configuracoes` (endereços
  * mantidos), mas não são seções de Configurações. */
-export const AREAS_SOB_CONFIGURACOES: readonly string[] = [ROTA_SERVICOS, ROTA_PROFISSIONAIS];
+export const AREAS_SOB_CONFIGURACOES: readonly string[] = [ROTA_SERVICOS, ROTA_PROFISSIONAIS, ROTA_EQUIPE];
+
+/** Páginas sob `/conta/configuracoes` que só o dono com estabelecimento
+ * usa. Recebimentos fica de fora: tem endereço próprio e também serve ao
+ * gerente com a área concedida. */
+const SO_DO_DONO_SOB_CONFIGURACOES: readonly string[] = [ROTA_CONFIG_ESTABELECIMENTO, ROTA_NOTIFICACOES];
 
 const dentroDe = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
 
-/** A página é Serviços ou Profissionais (inclusive subpáginas)? */
+/** A página é Serviços, Profissionais ou Equipe e acessos (inclusive
+ * subpáginas)? */
 export function emAreaSobConfiguracoes(pathname: string): boolean {
   return AREAS_SOB_CONFIGURACOES.some((href) => dentroDe(pathname, href));
 }
 
 /** A página é só do dono com estabelecimento: uma seção de Configurações do
- * estabelecimento, Serviços ou Profissionais? */
+ * estabelecimento, Serviços, Profissionais ou Equipe e acessos? */
 export function emSecaoDoEstabelecimento(pathname: string): boolean {
-  return (
-    emAreaSobConfiguracoes(pathname) ||
-    SECOES_CONFIGURACOES.some((secao) => secao.alcance === "estabelecimento" && dentroDe(pathname, secao.href))
-  );
+  return emAreaSobConfiguracoes(pathname) || SO_DO_DONO_SOB_CONFIGURACOES.some((href) => dentroDe(pathname, href));
 }
 
 /** Encaminhamentos temporários (307) dos endereços antigos, no formato do

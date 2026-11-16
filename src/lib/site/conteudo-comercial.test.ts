@@ -14,8 +14,10 @@ import {
   PARA_QUEM,
   PERGUNTAS_FREQUENTES,
   PLANOS_COMERCIAIS,
+  ROTULOS_DE_PRECO,
   SEGMENTOS,
   TOPO,
+  precosExibidos,
 } from "./conteudo-comercial";
 import { AGENDAMENTOS_DA_PREVIA, ROTULO_DA_PREVIA, agendamentosDaPrevia } from "./previa-da-agenda";
 
@@ -91,8 +93,17 @@ describe("só o que o produto publicado sustenta", () => {
     }
   });
 
-  it("sem depoimento, números de clientes ou preço", () => {
-    expect(textosAfirmativos()).not.toMatch(/r\$|\bclientes satisfeitos\b|avalia|depoimento/);
+  it("sem depoimento nem números de clientes", () => {
+    expect(textosAfirmativos()).not.toMatch(/\bclientes satisfeitos\b|avalia|depoimento/);
+  });
+
+  it("preço só na seção de planos: nenhum outro texto traz valor em reais", () => {
+    expect(textosAfirmativos()).not.toMatch(/r\$/);
+  });
+
+  it("não anuncia desconto, percentual, gratuidade, checkout nem pagamento automático", () => {
+    const texto = [textosAfirmativos(), ...Object.values(ROTULOS_DE_PRECO)].join(" ").toLowerCase();
+    expect(texto).not.toMatch(/%|desconto|econom|grátis|gratuit|assine|checkout|pix|boleto|cartão|automátic[ao] de pagamento/);
   });
 
   it("o pedido do cliente entra na agenda como aguardando confirmação, nunca como confirmado", () => {
@@ -116,8 +127,49 @@ describe("planos comerciais", () => {
     ]);
   });
 
-  it("sem preço publicado", () => {
-    expect(NOTA_DOS_PLANOS).toMatch(/Sem preço publicado/);
+  it("preços aprovados, em centavos inteiros: mensal e total do trimestre", () => {
+    expect(
+      PLANOS_COMERCIAIS.map((p) => [p.nome, p.precoMensalCentavos, p.precoTrimestralCentavos]),
+    ).toEqual([
+      ["Básico", 3990, 10790],
+      ["Pro", 6990, 18890],
+      ["Max", 11990, 32390],
+    ]);
+    for (const plano of PLANOS_COMERCIAIS) {
+      expect(Number.isInteger(plano.precoMensalCentavos)).toBe(true);
+      expect(Number.isInteger(plano.precoTrimestralCentavos)).toBe(true);
+    }
+  });
+
+  it("mostra os preços em reais, como aprovados", () => {
+    // O formatador separa "R$" do número com espaço não separável.
+    const semEspacoEspecial = (texto: string) => texto.replace(/ /g, " ");
+    expect(
+      PLANOS_COMERCIAIS.map((p) => {
+        const precos = precosExibidos(p);
+        return [semEspacoEspecial(precos.mensal), semEspacoEspecial(precos.trimestral)];
+      }),
+    ).toEqual([
+      ["R$ 39,90", "R$ 107,90"],
+      ["R$ 69,90", "R$ 188,90"],
+      ["R$ 119,90", "R$ 323,90"],
+    ]);
+  });
+
+  it("o trimestral é apresentado como total dos três meses, nunca como valor por mês", () => {
+    expect(ROTULOS_DE_PRECO.porMes).toBe("por mês");
+    expect(ROTULOS_DE_PRECO.porTrimestre).toBe("por trimestre");
+    expect(ROTULOS_DE_PRECO.totalDoTrimestre).toMatch(/Total dos três meses/);
+    expect(NOTA_DOS_PLANOS).toMatch(/total dos três meses/);
+    // Um total de trimestre maior que o mensal: se alguém trocar os campos
+    // ou digitar o trimestral como valor mensal, o teste reprova.
+    for (const plano of PLANOS_COMERCIAIS) {
+      expect(plano.precoTrimestralCentavos).toBeGreaterThan(plano.precoMensalCentavos);
+    }
+  });
+
+  it("não sobrou o texto de quando a página não publicava preço", () => {
+    expect(NOTA_DOS_PLANOS).not.toMatch(/Sem preço publicado/);
   });
 
   it("nenhum plano promete multiunidade, que não existe no produto", () => {

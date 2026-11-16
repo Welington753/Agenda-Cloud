@@ -6,7 +6,7 @@
 // refaz só a LEITURA da sessão.
 import { CloudOff, Loader2, WifiOff } from "lucide-react";
 import { Botao } from "@/components/ui/button";
-import type { EstadoConexao } from "@/lib/auth/conexao";
+import type { AvisoConexao } from "@/lib/auth/conexao";
 
 export const TEXTO_ACORDANDO =
   "Depois de um tempo sem uso, o servidor pode levar cerca de um minuto para responder. Esta tela continua sozinha quando ele responder.";
@@ -33,7 +33,7 @@ export function ConectandoAoServidor({ conexao }: { conexao: "acordando" | "sem_
 
 /** Faixa discreta com a tela já aberta (ou no login/cadastro): nunca
  * esconde o conteúdo nem o que foi digitado. `null` com a conexão normal. */
-export function FaixaConexao({ conexao, aoTentarDeNovo }: { conexao: EstadoConexao; aoTentarDeNovo: () => void }) {
+export function FaixaConexao({ conexao, aoTentarDeNovo }: { conexao: AvisoConexao; aoTentarDeNovo: () => void }) {
   if (conexao === "ok") return null;
   const base =
     "flex items-start gap-2 rounded-[var(--radius-control)] border border-border bg-paper-muted p-3 text-sm text-ink";
@@ -53,11 +53,16 @@ export function FaixaConexao({ conexao, aoTentarDeNovo }: { conexao: EstadoConex
       </div>
     );
   }
+  const erroServidor = conexao === "erro_servidor";
   return (
-    <div role="alert" className={base} data-testid="faixa-conexao-sem-resposta">
+    <div role="alert" className={base} data-testid={erroServidor ? "faixa-conexao-erro-servidor" : "faixa-conexao-sem-resposta"}>
       <CloudOff size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-2">
-        <p>O servidor não respondeu a tempo. O que está na tela foi mantido.</p>
+        <p>
+          {erroServidor
+            ? "O servidor respondeu com um erro. O que está na tela foi mantido."
+            : "O servidor não respondeu a tempo. O que está na tela foi mantido."}
+        </p>
         <Botao type="button" variante="secundaria" tamanho="sm" onClick={aoTentarDeNovo}>
           Tentar novamente
         </Botao>

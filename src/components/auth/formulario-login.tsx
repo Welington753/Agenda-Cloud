@@ -15,6 +15,7 @@ import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { FaixaConexao } from "@/components/conexao/aviso-conexao";
+import { avisoDaConexao } from "@/lib/auth/conexao";
 
 const CAMPO =
   "w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent";
@@ -33,7 +34,7 @@ export function FormularioLogin({
 }) {
   const { login, estado, conexao, recarregar } = useRealAuth();
   const aguardandoServidor = conexao === "acordando" || conexao === "sem_internet";
-  const conexaoExibida = estado.status === "falha_comunicacao" ? "sem_resposta" : conexao;
+  const conexaoExibida = avisoDaConexao(estado, conexao);
   const { notificar } = useToast();
 
   const [email, setEmail] = useState("");

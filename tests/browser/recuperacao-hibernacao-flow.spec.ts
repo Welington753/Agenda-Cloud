@@ -347,6 +347,45 @@ test.describe("sessão (/conta e login)", () => {
     expect(logins).toBe(1);
     await contexto.close();
   });
+
+  // Regressão: com a API publicada lendo uma coluna que o banco ainda não
+  // tinha, /auth/me e /auth/login respondiam 500 em menos de um segundo, e o
+  // login mostrava "O servidor não respondeu a tempo" (hibernação), o que
+  // escondia o erro real. Nada vai à API: as duas respostas são simuladas.
+  test("500 da própria API no login: aviso de erro do servidor, nunca \"não respondeu a tempo\"; nada é repetido", async ({
+    browser,
+  }) => {
+    const contexto = await browser.newContext();
+    const page = await contexto.newPage();
+    await page.clock.install();
+    const erro500 = { status: 500, contentType: "application/json", body: JSON.stringify({ statusCode: 500, message: "Internal server error" }) };
+    let leituras = 0;
+    let logins = 0;
+    await page.route(AUTH_ME, (rota) => {
+      leituras += 1;
+      return rota.fulfill(erro500);
+    });
+    await page.route("**/auth/login", (rota) => {
+      logins += 1;
+      return rota.fulfill(erro500);
+    });
+
+    await page.goto("/login");
+    await expect(page.getByTestId("faixa-conexao-erro-servidor")).toContainText("O servidor respondeu com um erro");
+    await expect(page.getByTestId("faixa-conexao-sem-resposta")).toHaveCount(0);
+    await expect(page.getByText("não respondeu a tempo")).toHaveCount(0);
+
+    await page.getByLabel("E-mail").fill("conta-ficticia@example.test");
+    await page.getByLabel("Senha").fill("senha-ficticia-123");
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Não foi possível entrar agora" })).toBeVisible();
+    await expect(page.getByLabel("E-mail")).toHaveValue("conta-ficticia@example.test");
+
+    await page.clock.runFor(5 * 60_000);
+    expect(leituras).toBe(1);
+    expect(logins).toBe(1);
+    await contexto.close();
+  });
 });
 
 test.describe("link público de agendamento", () => {

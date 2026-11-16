@@ -260,7 +260,7 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     // só abre depois que `/conta` terminou de levar ao Início (senão o
     // redirecionamento fecha o menu recém-aberto).
     await expect(page).toHaveURL(/\/conta\/visao-geral$/);
-    await expect(page.getByRole("heading", { name: "Início" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
     await page.getByTestId("abrir-menu-conta").click();
 

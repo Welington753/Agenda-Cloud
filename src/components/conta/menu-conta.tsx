@@ -188,6 +188,11 @@ export function MenuConta({
           className={clsx(
             "absolute top-full right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-3 text-ink shadow-[var(--shadow-lift)]",
             "md:top-auto md:right-auto md:bottom-full md:left-0 md:mt-0 md:mb-2 md:w-80",
+            // Cabe na janela e rola por dentro: num celular baixo, com as
+            // áreas que não entram na barra, "Sair" ficaria fora da tela. No
+            // celular desconta a barra superior e a inferior; no computador,
+            // o rodapé do menu lateral, de onde o painel abre para cima.
+            "max-h-[calc(100dvh-8.5rem-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain md:max-h-[calc(100dvh-6rem)]",
           )}
         >
           <div className="min-w-0 px-2">

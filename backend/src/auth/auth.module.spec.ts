@@ -41,6 +41,7 @@ const FAKE_TENANT_CONTEXT = {
   tenantId: 'tenant_1',
   tenantName: 'Studio Bela',
   tenantSlug: 'studio-bela',
+  tenantCategory: 'OTHER',
   role: 'DONO',
   unit: { id: 'unit_1', name: 'Studio Bela', isPrimary: true },
   planCode: 'equipe',

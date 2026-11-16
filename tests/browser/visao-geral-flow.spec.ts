@@ -364,7 +364,7 @@ test.describe("visão geral e estrutura comum da área real", () => {
     await expect(page.getByTestId("agenda-do-dia")).toContainText("Cliente Em Atendimento");
     await fotografar(page, "agenda");
 
-    await nav(page).getByRole("link", { name: "Início" }).click();
+    await nav(page).getByRole("link", { name: "Dashboard" }).click();
     await page.getByTestId("atalho-novo-agendamento").click();
     // O formulário é o da agenda, aberto no painel; a URL volta a ficar limpa.
     await expect(page.getByTestId("painel-novo-agendamento")).toBeVisible();

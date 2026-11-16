@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessaoRealContexto, TenantContextReal } from "@/lib/api/auth-api";
-import { LIMIAR_RETORNO_MS, aplicarVerificacao, rotaDispensaSessao } from "./conexao";
+import { LIMIAR_RETORNO_MS, aplicarVerificacao, avisoDaConexao, rotaDispensaSessao } from "./conexao";
 import type { EstadoAutenticacaoReal } from "./real-session-state";
 
 const CONTEXTO: TenantContextReal = {
@@ -101,5 +101,24 @@ describe("rotaDispensaSessao", () => {
 describe("LIMIAR_RETORNO_MS", () => {
   it("fica abaixo dos 15 min que o Render gratuito espera antes de hibernar", () => {
     expect(LIMIAR_RETORNO_MS).toBeLessThan(15 * 60_000);
+  });
+});
+
+describe("avisoDaConexao (faixa do login)", () => {
+  it("erro da própria API na leitura da sessão: erro do servidor, nunca \"não respondeu a tempo\"", () => {
+    // Regressão: um 500 em /auth/me (API publicada sem a migração que ela
+    // lia) aparecia no login como \"O servidor não respondeu a tempo\".
+    expect(avisoDaConexao({ status: "falha_comunicacao", motivo: "erro_servidor" }, "ok")).toBe("erro_servidor");
+  });
+
+  it("sem resposta da API na leitura da sessão: sem_resposta", () => {
+    expect(avisoDaConexao({ status: "falha_comunicacao", motivo: "sem_resposta" }, "ok")).toBe("sem_resposta");
+  });
+
+  it("sessão decidida ou carregando: o estado da conexão, sem mudança", () => {
+    expect(avisoDaConexao({ status: "nao_autenticado" }, "ok")).toBe("ok");
+    expect(avisoDaConexao({ status: "carregando" }, "acordando")).toBe("acordando");
+    expect(avisoDaConexao(AUTENTICADO, "sem_internet")).toBe("sem_internet");
+    expect(avisoDaConexao(AUTENTICADO, "sem_resposta")).toBe("sem_resposta");
   });
 });
