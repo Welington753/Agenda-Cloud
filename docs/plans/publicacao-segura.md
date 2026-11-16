@@ -17,7 +17,7 @@ O que foi conferido antes de mudar:
 
 ### Conferência na inicialização
 
-- **Manifesto:** `backend/src/database/required-migrations.ts` importa estaticamente as 18 classes e expõe os nomes (`REQUIRED_MIGRATIONS`). Sem glob em tempo de execução: o que vai para o `dist` é exatamente essa lista. `required-migrations.spec.ts` reprova uma migration do diretório fora do manifesto e um nome que não exista no diretório.
+- **Manifesto:** `backend/src/database/required-migrations.ts` importa estaticamente as 18 classes e expõe os nomes (`REQUIRED_MIGRATIONS`). Sem glob em tempo de execução: o que vai para o `dist` é exatamente essa lista. `required-migrations.spec.ts` parte do que o DataSource de migrations carrega (glob `migrations/**/!(*.spec).{ts,js}`: qualquer `.ts`/`.js` que não seja spec, em qualquer subpasta). Ele reprova uma migration carregável fora do manifesto, um nome do manifesto sem arquivo e qualquer arquivo carregável fora da convenção `<13 dígitos>-<Nome>.ts` ou dentro de subpasta; nada é ignorado em silêncio.
 - **Conferência:** `backend/src/database/schema-readiness.ts`, chamada em `main.ts` depois de `NestFactory.create` e antes de `app.listen`. Nesse ponto nenhum gancho de módulo rodou e nenhuma porta escuta.
 - **Só leitura:** uma transação `READ ONLY` com `statement_timeout`; `to_regclass` para saber se a tabela de controle existe; `SELECT name`; `ROLLBACK`. Nada é criado, alterado ou aplicado. `migrationsRun` e `synchronize` continuam `false`. (`migration:show`, ao contrário, cria a tabela de controle; ele não é usado aqui.)
 - **Comparação:** pelo nome de cada migration do manifesto. Não compara quantidade nem só a última.
@@ -73,16 +73,50 @@ Decisões:
 - **A ordem de publicação continua manual.** A conferência impede a API adiantada de entrar em serviço; ela não aplica nada nem impede publicar web e API em SHAs diferentes.
 - **O health check do Render ainda usa `GET /`.** Até a troca (seção 5), uma queda do banco com a API no ar não é vista pelo Render.
 - **Depois da troca para `/health`:** 60 s de banco fora reiniciam a instância, e o reinício só completa quando o banco voltar (a conferência de inicialização exige o banco). Enquanto a API estiver acordada, a sonda consulta o banco a cada 5 s no máximo, o que pode impedir o Neon de suspender por inatividade nesse período. A documentação do Render não diz se o health check conta como tráfego para a hibernação do plano gratuito. Esses pontos precisam ser pesados antes da troca.
+- **Queda silenciosa de rede não foi validada.** O DataSource de runtime não define prazo de conexão, prazo de consulta no cliente nem keepalive (não alterado neste lote). Se uma conexão do pool morrer sem aviso (sem `RST`), a consulta da sonda fica pendurada até o sistema operacional desistir, o que pode levar minutos. Nesse intervalo `/health` responde 503 na hora, sem abrir outra consulta, **mesmo que o banco já tenha voltado**. O cenário 5b (seção 6) parou o banco local, que encerra as conexões com aviso; ele não cobre este caso. Com o `healthCheckPath` em `/`, isso não afeta o tráfego. Depois da troca, 60 s nesse estado reiniciam a instância.
+- **Validação exigida antes de ativar `/health`:** reproduzir a queda silenciosa em ambiente descartável (por exemplo, um repasse TCP que para de encaminhar sem fechar as conexões), medir quanto tempo `/health` leva para voltar a 200 depois que o banco volta, e decidir com esse número se o reinício pelo Render basta ou se a sonda precisa de prazo próprio de conexão e de consulta. Essa mudança, se necessária, é de outro lote.
 
 ## 5. Publicação
 
 Este lote não tem migration nem variável nova. Publicar a API deste commit num banco que não tenha as 18 migrations faz o deploy falhar e manter a versão anterior, que é o comportamento desejado. A fila continua a mesma: migration, depois API, depois web, pelo runbook de cada lote.
 
-Troca do health check, **passo separado, não executado e só com pedido explícito:**
+**Este PR não autoriza nem executa publicação nenhuma.** O que segue só registra o que a API deste commit exige do piloto.
+
+### O que falta no piloto para esta versão
+
+A última conferência do piloto, em 13/11/2026, encontrou **16 migrations** aplicadas. Esse número é o registro daquela conferência, não uma conferência nova: o estado precisa ser conferido de novo na hora, pelo roteiro.
+
+O manifesto deste commit exige 18. Em relação àquela conferência faltam duas, e a API deste commit recusa subir num banco com 16 ou com 17:
+
+| Migration exigida | Roteiro que a aplica |
+|---|---|
+| `TenantTestFlag1793664000000` (17) | [`publicacao-tenant-teste-slugs.md`](../runbooks/publicacao-tenant-teste-slugs.md) |
+| `AdminSecondFactor1793750400000` (18) | [`publicacao-2fa-administrativo.md`](../runbooks/publicacao-2fa-administrativo.md) |
+
+Além das migrations, este commit já contém o segundo fator das contas de plataforma. Em production a API não sobe sem as três variáveis abaixo no serviço da API (validação de ambiente, anterior a este lote):
+
+- `PLATFORM_2FA_ENFORCEMENT`, com a fase inicial `optional`. A passagem para `required` é uma etapa posterior do roteiro do 2FA.
+- `PLATFORM_TOTP_KEYS`
+- `PLATFORM_TOTP_KEY_CURRENT`
+
+Os valores das chaves são gerados e guardados como manda a seção 1 do roteiro do 2FA. Nunca entram em commit, conversa, log ou neste documento.
+
+A fila e os requisitos de cada roteiro continuam valendo como estão escritos neles; este lote não muda nenhum:
+
+1. Comissões em massa (`publicacao-comissoes-em-massa-piloto.md`), separada, sem migration, no estado 16.
+2. Migration 17 e o pacote dela, pelo roteiro do estabelecimento de teste, incluindo a classificação obrigatória dos testes antigos.
+3. Chave TOTP e variáveis, migration 18 e o pacote do 2FA, pelo roteiro do 2FA, com os requisitos que só se conferem na hora (proprietários ativos, e-mail conferido).
+
+Uma API deste commit só entra depois de as duas migrations estarem aplicadas e as três variáveis definidas. Publicada antes disso, o deploy falha e a versão anterior continua no ar.
+
+### Troca do health check
+
+**Passo separado, não executado e só com pedido explícito:**
 
 1. Publicar uma API que já tenha `GET /health` e conferir que ela responde 200 no ambiente publicado.
-2. Só então mudar `healthCheckPath` da API para `/health` em `render.yaml`, num PR próprio. O merge sincroniza o Blueprint e reimplanta o serviço.
-3. Se a API voltar a um commit anterior a este lote, voltar antes o `healthCheckPath` para `/`.
+2. Fazer a validação da queda silenciosa de rede descrita na seção 4 e decidir com o resultado.
+3. Só então mudar `healthCheckPath` da API para `/health` em `render.yaml`, num PR próprio. O merge sincroniza o Blueprint e reimplanta o serviço.
+4. Se a API voltar a um commit anterior a este lote, voltar antes o `healthCheckPath` para `/`.
 
 ## 6. Validação
 
@@ -111,8 +145,10 @@ Testes automatizados:
 - **Feito:** manifesto, conferência na inicialização, `GET /health`, testes e esta documentação (mapa técnico, runbook do Render e `CLAUDE.md`).
 - **Validação local:** `typecheck`, `lint`, unitários, `test:e2e` e `test:db-e2e` completo em banco novo; os sete cenários da seção 6 com o processo real.
 - **Não feito, de propósito:** nenhuma mudança no `render.yaml`, no Render ou em banco real; nenhum deploy; nenhuma migration.
+- **Revisão de 16/11/2026:** a seção 5 passou a nomear o que falta no piloto para esta versão; o teste do manifesto deixou de ignorar arquivo carregável fora da convenção ou em subpasta; a queda silenciosa de rede entrou nas limitações, com a validação exigida antes de ativar `/health`.
 - **Próximo passo:** revisão do PR com o CI verde no head final. Sem merge até aprovação.
 - **Depois do merge, cada um com pedido explícito:** a fila de publicação pelos runbooks e, à parte, a troca do `healthCheckPath` (seção 5).
-- **Migration nova, daqui em diante:** acrescentar a classe ao manifesto no mesmo PR; o teste ao lado reprova o esquecimento.
+- **Migration nova, daqui em diante:** acrescentar a classe ao manifesto no mesmo PR, com o arquivo direto em `backend/src/migrations/` e no nome `<13 dígitos>-<Nome>.ts`; o teste ao lado reprova o esquecimento e o arquivo fora da convenção.
+- **Pendências anotadas, sem mudança neste lote:** `app.close()` sem prazo na recusa de inicialização (`main.ts`) e a validação da queda silenciosa de rede (seção 4).
 - **Pendência separada:** o teste de login real no piloto.
 - **Só neste computador:** o cluster descartável da validação, na pasta temporária da sessão.
