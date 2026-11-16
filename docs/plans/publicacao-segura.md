@@ -150,5 +150,5 @@ Testes automatizados:
 - **Depois do merge, cada um com pedido explícito:** a fila de publicação pelos runbooks e, à parte, a troca do `healthCheckPath` (seção 5).
 - **Migration nova, daqui em diante:** acrescentar a classe ao manifesto no mesmo PR, com o arquivo direto em `backend/src/migrations/` e no nome `<13 dígitos>-<Nome>.ts`; o teste ao lado reprova o esquecimento e o arquivo fora da convenção.
 - **Pendências anotadas, sem mudança neste lote:** `app.close()` sem prazo na recusa de inicialização (`main.ts`) e a validação da queda silenciosa de rede (seção 4).
-- **Pendência separada:** o teste de login real no piloto.
+- **Teste de login real no piloto:** confirmado pelo responsável em 16/11/2026, com o web em `438e598` e a API em `8e8577d` (`docs/runbooks/recuperacao-login-piloto-rollback.md`, seção 8). A fila de publicação está em `publicacao-consolidada-b5b2704.md`.
 - **Só neste computador:** o cluster descartável da validação, na pasta temporária da sessão.
