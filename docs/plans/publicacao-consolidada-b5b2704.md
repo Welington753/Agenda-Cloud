@@ -15,7 +15,7 @@ Leitura do Render em 16/11/2026, por volta de 12:15 UTC, e confirmação do resp
 | API live | `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` (`dep-dbreqklckfvc73e2loag`, desde 13/11 10:59:21 UTC) |
 | Web live | `438e598bcc98dfa13aa45087fbfaafdfb1b33a0e` (`dep-dbs6p8qfngtc73bsm7sg`, desde 14/11 14:15:48 UTC) |
 | Integração | `b5b27046369b2b36ad339a41d44ff405fcb44c43` (merge do PR #115) |
-| Banco do piloto | 16 migrations **na última conferência conhecida, de 13/11 10:55 UTC**. Não é leitura atual |
+| Banco do piloto | **16 migrations na última conferência, de 13/11 10:55 UTC; reconfirmar antes da execução.** Não é leitura de hoje |
 | Auto-Deploy | desligado nos dois serviços; nenhum deploy em fila |
 
 Os roteiros da fila foram escritos supondo **API e web em `8e8577d`**. O web está 11 merges à frente. A fila só começa depois de o web voltar a `8e8577d` (etapa 0, seção 4), e cada etapa termina com API e web no mesmo SHA.
@@ -74,9 +74,9 @@ Nenhuma etapa pode usar um SHA mais novo que o dela antes de o banco e as variá
 
 ### 4.1 Sequência de estados
 
-| Momento | API | Web | Banco | O que sustenta este par |
+| Momento | API | Web | Banco esperado | O que sustenta este par |
 |---|---|---|---|---|
-| Hoje | `8e8577d` | `438e598` | 16 | login confirmado pelo responsável em 16/11. Nenhum roteiro descreve este par e o CI não o exercitou |
+| Hoje | `8e8577d` | `438e598` | 16 na última conferência de 13/11; reconfirmar antes da execução | login confirmado pelo responsável em 16/11. Nenhum roteiro descreve este par e o CI não o exercitou |
 | **Etapa 0**, fim | `8e8577d` | `8e8577d` | 16 | os dois serviços no mesmo SHA; é o ponto de partida que o roteiro das comissões exige e o alvo do roteiro de recuperação, que valeu de 13/11 16:23 a 14/11 14:15 UTC. O responsável ainda não confirmou este par: o passo 0.2 faz isso |
 | Etapa 1, entre os deploys | `5d74556` | `8e8577d` | 16 | tabela de compatibilidade do roteiro das comissões: funciona (leitura de código) |
 | **Etapa 1**, fim | `5d74556` | `5d74556` | 16 | CI no head `e862b32`, mesma árvore |
@@ -87,7 +87,29 @@ Nenhuma etapa pode usar um SHA mais novo que o dela antes de o banco e as variá
 | Etapa 3, entre os deploys | `b5b2704` | `04c9a43` | 18 | roteiro do 2FA, seção 3: quem não tem fator usa o portal como antes |
 | **Etapa 3**, fim | `b5b2704` | `b5b2704` | 18 | CI no head `0329035`, mesma árvore |
 
-Limite desta tabela: só os pares de fim de etapa passaram pelo CI. Os estados "entre os deploys" duram o tempo de um deploy, seguem a ordem que cada roteiro manda (API e depois web) e foram avaliados nos roteiros por leitura de código, cada um para o lote dele. As etapas 2 e 3 trazem outros lotes junto (#104, #106, #108, #110 e #111 a #115), que nenhuma tabela de compatibilidade cobre nesse intervalo. Por isso ninguém valida nem grava nada entre os dois deploys de uma etapa.
+A coluna do banco é o estado esperado, não uma leitura: cada etapa reconfirma com a conferência dela antes de qualquer escrita ou deploy.
+
+Limite desta tabela: só os pares de fim de etapa passaram pelo CI. Os estados "entre os deploys" duram o tempo de um deploy e seguem a ordem que cada roteiro manda (API e depois web).
+
+### 4.1.1 Gravações durante os pares transitórios
+
+**A pausa do operador não bloqueia ninguém.** Durante um deploy o piloto continua no ar: clientes agendam pela página pública e quem está logado em `/conta` continua gravando. O plano não supõe o contrário. O que o operador controla é só o que ele mesmo faz: não valida funcionalidade nova e não faz ação administrativa no portal entre o deploy da API e o do web.
+
+Por isso a compatibilidade de cada par transitório foi conferida pelos contratos, com `git diff` da API entre os SHAs e leitura dos validadores do web. Não foi feito teste por HTTP: a leitura não deixou dúvida concreta que pedisse um.
+
+| Par transitório | O que muda na API em relação ao web que está no ar | Gravações |
+|---|---|---|
+| API `5d74556`, web `8e8577d`, banco 16 | só `backend/src/commissions`: duas rotas novas (`POST bulk-settings` e `bulk-settings/preview`) e três campos **opcionais** no `PUT` das configurações. Agendamento público, agenda e login sem mudança | compatíveis. O `PUT` do web antigo, sem os campos novos, mantém as exceções como estão |
+| API e web `5d74556`, banco 17 (depois da migration) | nenhuma mudança de código. A coluna `is_test` nasce com padrão `false` e a API em serviço não a lê | compatíveis. Um cadastro novo recebe o padrão |
+| API `04c9a43`, web `5d74556`, banco 17 | agendamento público: só um campo a mais na resposta (`indexable`). Cadastro: o gerador de slug pula os reservados. Portal: rotas novas (relatórios, marca de teste) e filtros novos opcionais, com padrão | compatíveis. Nenhum campo foi removido nem passou a ser obrigatório |
+| API `04c9a43`, web `04c9a43`, banco 18 (depois da migration e das variáveis) | nenhuma mudança de código. Tabelas e colunas novas, anuláveis ou com padrão, que a API em serviço não lê | compatíveis |
+| API `b5b2704` (`optional`), web `04c9a43`, banco 18 | agendamento público e agenda sem mudança. `auth/me` ganha um campo (`tenantCategory`). As rotas do portal passam pelo guarda do segundo fator, que na fase `optional` libera quem não tem fator | compatíveis para o uso comum. Restrição só administrativa, abaixo |
+
+Os validadores do web conferem os campos que usam e ignoram os que não conhecem (nenhum `.strict()` em `src/` nos três SHAs), então um campo a mais na resposta não quebra o web anterior.
+
+**Nenhum par exige bloqueio de gravações**, e este plano não propõe modo de manutenção. A única restrição é de operação, no último par: até o web de `b5b2704` estar no ar, ninguém convida nem promove conta de plataforma e ninguém cadastra o aplicativo. Uma conta de plataforma nova nasce obrigada a cadastrar o fator, e o web anterior não tem a tela para isso: ela ficaria bloqueada no portal, nunca liberada (roteiro do 2FA, seção 3).
+
+Limite desta conferência: é leitura de código e de contrato. Os lotes #104, #106, #108, #110 e #111 a #115 não têm tabela de compatibilidade própria nos roteiros; a conclusão acima vem do `diff`, não de execução.
 
 ### 4.2 Etapa 0: o retorno do web a `8e8577d`
 
@@ -106,7 +128,7 @@ O retorno é necessário para que todo estado da fila seja um que algum roteiro 
 
 - **Ponto de recuperação:** nenhum no banco, porque nada é escrito. O retorno é o web de volta a `438e598` (o deploy live anotado em 0.0), que é o estado confirmado em 16/11.
 - **Critério de parada:** se 0.2 falhar, volte o web a `438e598` e não comece a etapa 1. O par `8e8577d` com `8e8577d` nunca foi confirmado pelo responsável depois da recuperação; a etapa 0 é essa confirmação.
-- A etapa 0 pode ser feita na mesma sessão da etapa 1, antes dela.
+- **Janela:** de preferência a mesma da etapa 1. Entre as duas há validação e parada: a etapa 1 só começa com o passo 0.2 aprovado pelo responsável, e o passo 1.0 relê o Render antes de qualquer coisa.
 
 ### 4.3 O que fica temporariamente indisponível
 
@@ -141,7 +163,7 @@ Outra mudança de comportamento, no sentido contrário: o web atual responde 503
 
 ## 5. Sequência
 
-Uma etapa por sessão (a etapa 0 pode ir junto com a 1). Não comece uma etapa sem a anterior encerrada e validada.
+Uma etapa por sessão. A etapa 0 fica, de preferência, na mesma janela da etapa 1, com a validação do passo 0.2 e uma parada entre elas. Não comece uma etapa sem a anterior encerrada e validada.
 
 Regras para todas as etapas:
 
@@ -151,7 +173,7 @@ Regras para todas as etapas:
 - **Nunca no piloto:** `migration:revert`, `migration:show`, restauração de backup por cima, `Reset from parent`.
 - **Deploy por commit:** `render deploys create <serviço> --commit <sha completo> --wait --confirm`, ou "Deploy a specific commit" no painel. Nunca "Deploy latest commit".
 - Uma falha de deploy antes de ficar live não exige ação: o Render mantém a versão anterior. Leia o log antes de tentar de novo.
-- Entre o deploy da API e o do web de uma etapa, ninguém valida nem grava nada (seção 4.1).
+- Entre o deploy da API e o do web de uma etapa, o operador não valida funcionalidade nova nem faz ação administrativa no portal. Isso não bloqueia o uso: clientes e equipes continuam gravando, e os pares transitórios aceitam essas gravações (seção 4.1.1).
 
 ### Etapa 1: comissões em massa (`5d74556`)
 
@@ -224,7 +246,14 @@ Roteiro: [`publicacao-2fa-administrativo.md`](../runbooks/publicacao-2fa-adminis
 
 O `pilot:check-database` não tem expectativa para o estado 18, e nenhum lote de código será criado para isso. Depois da migration, `after-tenant-test-flag` passa a reprovar com `migration_history`, porque exige exatamente 17: é esperado. A contagem e o log da API **não bastam**: a conferência é o bloco abaixo, só de leitura, no `psql` com a URL direta do piloto, no molde de [`publicacao-piloto-render.md`](../runbooks/publicacao-piloto-render.md), seção 6.D, passo 4.
 
-As consultas foram escritas a partir do código da migration (`backend/src/migrations/1793750400000-AdminSecondFactor.ts`) e **não foram executadas**. Rode o bloco primeiro num PostgreSQL descartável com as 18 aplicadas e confirme os resultados antes de usar no piloto.
+As consultas foram escritas a partir do código da migration (`backend/src/migrations/1793750400000-AdminSecondFactor.ts`) e **executadas em 16/11/2026 num PostgreSQL 18.6 local e descartável**, com TLS, as 18 migrations aplicadas pelo `migration:run` da árvore de `b5b2704` e dados fictícios (três usuários e duas sessões). Os sete resultados saíram como na tabela abaixo. Depois, com um fator, um código de recuperação e uma sessão verificada fictícios, a consulta 7 deixou de dar zero e as consultas 1 a 6 não mudaram.
+
+Limite do ensaio: o banco local é PostgreSQL 18, e a versão do Neon no piloto não foi lida. A consulta 4 filtra `contype` para não depender da versão (o PostgreSQL 18 registra `NOT NULL` em `pg_constraint`).
+
+**Quando cada resultado vale:**
+
+- **Consultas 1 a 6 (histórico e estrutura):** valem logo depois da migration e continuam valendo em qualquer momento posterior.
+- **Consulta 7 (contagens):** só é conferida no passo 3.6, entre a migration (3.5) e o deploy da API (3.8). Nesse intervalo nenhum código em serviço escreve nessas tabelas e colunas. **Depois do passo 3.8 não se exige zero:** a API nova registra tentativas, cadastros, fatores, códigos e liberações, marca sessões verificadas e marca contas de plataforma novas como obrigadas. Um número diferente de zero depois disso é uso normal, não divergência.
 
 ```sql
 BEGIN TRANSACTION READ ONLY;
@@ -295,7 +324,7 @@ Resultados esperados:
 | 4 | `second_factor_attempts`: c 1, f 1, p 1. `second_factor_enrollments`: c 1, f 2, p 1, u 1. `second_factor_grants`: c 4, f 2, p 1, u 1. `second_factor_recovery_codes`: f 1, p 1, u 1. `user_second_factors`: c 5, f 1, p 1. A segunda consulta devolve uma linha, `ck_sessions_second_factor_method` |
 | 5 | Quatro linhas: `idx_second_factor_grants_user`, `pk_second_factor_grants`, `uq_second_factor_grants_request_key`, `uq_second_factor_grants_token_hash` |
 | 6 | Sete linhas: `RECOVERY_CODES_REGENERATED`, `RECOVERY_CODE_USED`, `SECOND_FACTOR_ENABLED`, `SECOND_FACTOR_GRANT_ISSUED`, `SECOND_FACTOR_GRANT_USED`, `SECOND_FACTOR_LOCKED`, `SECOND_FACTOR_REPLACED` |
-| 7 | Sete zeros. Vale logo depois da migration, antes do passo 3.8: depois que a API nova sobe e alguém cadastra o fator, estes números mudam |
+| 7 | Sete zeros, **só no passo 3.6** (depois da migration e antes do deploy da API). Depois do passo 3.8 estes números mudam com o uso e não são mais conferidos contra zero |
 
 As consultas da seção 2 do roteiro do 2FA (proprietários com fator e segredos por versão de chave) continuam servindo depois do passo 3.10. O log `18 de 18 registradas no banco` do passo 3.8 é uma segunda prova, não a única.
 
@@ -334,7 +363,7 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 
 ### Informações que só o responsável tem
 
-Sem elas, o passo indicado não começa. Nenhuma é deduzida do banco, de nome ou de plano, e nenhuma é escrita neste repositório.
+**Nenhuma foi fornecida até agora.** São pré-condições da execução, não fatos confirmados: sem cada uma, o passo indicado não começa. Nenhuma é deduzida do banco, de nome ou de plano, e nenhuma é escrita neste repositório.
 
 | Informação | Usada em |
 |---|---|
@@ -364,5 +393,5 @@ Sem elas, o passo indicado não começa. Nenhuma é deduzida do banco, de nome o
 
 - **Feito (16/11/2026):** este plano e o registro do resultado no roteiro de recuperação. Só documentação.
 - **Não feito:** nenhum deploy, migration, backup, variável no Render ou leitura do banco real.
-- **Próximo passo:** a decisão D2. Depois, a etapa 0 e a etapa 1, com pedido explícito, numa sessão em casa.
+- **Próximo passo:** a decisão D2 e as informações da seção 8. Depois, a etapa 0 e a etapa 1, com pedido explícito, de preferência na mesma janela em casa, com parada entre elas.
 - **Se o estado mudar antes da etapa 0** (deploy novo no Render, commit novo na integração), releia a seção 1 e ajuste os SHAs antes de qualquer passo.
