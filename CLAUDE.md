@@ -30,7 +30,7 @@ Dois projetos npm independentes, Node `>=24 <25`:
 | Permissão nova do gerente | `backend/src/common/manager-permissions.ts` (+ valor no enum `permission` por migration) |
 | Regra de negócio e SQL | `backend/src/<area>/<area>.service.ts` |
 | Forma do corpo da rota | `backend/src/<area>/<area>.dto.ts` (zod, corpo estrito) |
-| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente; 16 migrations aplicadas no piloto, conferido em 13/11/2026) |
+| Schema | migration NOVA em `backend/src/migrations/` (nunca editar uma existente; 16 migrations aplicadas no piloto, conferido em 13/11/2026). Acrescente a classe a `backend/src/database/required-migrations.ts`: a API não sobe num banco sem todas as migrations desse manifesto |
 | Chamada à API pelo web | `src/lib/api/<area>-api.ts` (valida a forma da resposta; erro classificado pelo status; `mensagemDoBackend` para o texto) |
 | Regra de tela | `src/lib/<area>/*.ts` com `*.test.ts`; componente só desenha |
 | Item de menu ou seção de Configurações em `/conta` | `src/lib/conta/navegacao.ts` e `rotas.ts` (+ testes ao lado e `tests/browser/configuracoes-navegacao-flow.spec.ts`) |
