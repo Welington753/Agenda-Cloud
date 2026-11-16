@@ -94,9 +94,19 @@ function sufixo(): string {
 /** Porta de controle do relé entre o Next.js e a API (api-controlavel.mjs). */
 const CONTROLE_RELE = "http://127.0.0.1:3446";
 
-async function modoDaApi(modo: "normal" | "lenta" | "fora"): Promise<void> {
+type ModoDoRele = "normal" | "lenta" | "fora" | "hibernada-texto" | "hibernada-html";
+
+async function modoDaApi(modo: ModoDoRele): Promise<void> {
   const r = await fetch(`${CONTROLE_RELE}/modo/${modo}`, { method: "POST" });
   expect(r.status).toBe(200);
+}
+
+/** Modo atual do relé e contadores desde a última troca de modo: pedidos de
+ * partida recebidos (`GET /`) e respostas 429 dadas no lugar da API. */
+async function estadoDoRele(): Promise<{ modo: ModoDoRele; partidas: number; respostasDaHospedagem: number }> {
+  const r = await fetch(`${CONTROLE_RELE}/estado`);
+  expect(r.status).toBe(200);
+  return (await r.json()) as { modo: ModoDoRele; partidas: number; respostasDaHospedagem: number };
 }
 
 /** Estabelecimentos fictícios com página pública ligada, um por chave; o
@@ -441,4 +451,74 @@ test.describe("piloto na mesma origem, em HTTPS isolado", () => {
     // Outro cliente (outro endereço para a borda da API) tem o próprio limite.
     expect((await tentativa("127.0.0.6", 0)).status).toBe(401);
   });
+});
+
+// API do plano gratuito hibernada, como no piloto em 2026-11-16: a hospedagem
+// responde 429 ao proxy do web na hora e NÃO acorda a API; só um pedido de
+// fora (o do navegador) acorda. Aqui o proxy é o real (Next.js compilado) e a
+// hospedagem é o relé local, nos dois formatos recebidos no piloto. Sem a
+// regra do 429 em src/lib/api/proxy.ts, o texto puro vira "O servidor
+// respondeu com um erro" e a página de desafio é relida até o prazo acabar;
+// nos dois casos o pedido de partida nunca sai e estes testes falham.
+//
+// Depende de `API_PROXY_TARGET` no BUILD do frontend (como no Render): é ele
+// que põe a origem da API no `connect-src` da CSP, sem o que o navegador
+// bloqueia o pedido de partida.
+test.describe("API hibernada: a hospedagem responde 429 ao proxy", () => {
+  const FAIXAS_DE_FALHA = '[data-testid="faixa-conexao-erro-servidor"], [data-testid="faixa-conexao-sem-resposta"]';
+
+  for (const [formato, modo] of [
+    ["texto puro", "hibernada-texto"],
+    ["página de desafio", "hibernada-html"],
+  ] as const) {
+    test(`429 em ${formato}: o navegador pede a partida, a leitura se repete e o login fica disponível`, async ({
+      page,
+    }) => {
+      const leituras: { status: number; marcada: boolean; acordar: string | undefined }[] = [];
+      const foraDaLeitura: string[] = [];
+      page.on("response", (resposta) => {
+        const url = new URL(resposta.url());
+        if (url.pathname !== "/agenda_api/auth/me") return;
+        const cabecalhos = resposta.headers();
+        leituras.push({
+          status: resposta.status(),
+          marcada: cabecalhos["x-agenda-proxy-error"] === "upstream-unavailable",
+          acordar: cabecalhos["x-agenda-acordar-api"],
+        });
+      });
+      page.on("request", (requisicao) => {
+        const url = new URL(requisicao.url());
+        if (requisicao.method() !== "GET") foraDaLeitura.push(`${requisicao.method()} ${url.pathname}`);
+      });
+
+      await modoDaApi(modo);
+      try {
+        await page.goto("/login");
+
+        // Resposta da hospedagem → pedido de partida feito pelo navegador.
+        await expect
+          .poll(async () => (await estadoDoRele()).partidas, { timeout: 20_000, message: "pedido de partida" })
+          .toBe(1);
+        expect(leituras[0]).toEqual({ status: 502, marcada: true, acordar: "http://127.0.0.1:3002" });
+
+        // Nova leitura → 401 da API → o aviso some e o formulário fica disponível.
+        await expect(page.getByRole("button", { name: "Entrar" })).toBeEnabled({ timeout: 40_000 });
+        await expect(page.locator(FAIXAS_DE_FALHA)).toHaveCount(0);
+        await expect(page.getByTestId("faixa-conexao-acordando")).toHaveCount(0);
+        await expect(page.getByLabel("E-mail ou login")).toBeEditable();
+
+        expect(leituras.at(-1)).toEqual({ status: 401, marcada: false, acordar: undefined });
+        expect(leituras.length, "pelo menos uma leitura repetida").toBeGreaterThanOrEqual(2);
+        for (const anterior of leituras.slice(0, -1)) expect(anterior.status).toBe(502);
+
+        const estado = await estadoDoRele();
+        expect(estado.modo, "a API subiu pelo pedido de partida").toBe("normal");
+        expect(estado.partidas, "um único pedido de partida").toBe(1);
+        expect(estado.respostasDaHospedagem).toBe(leituras.length - 1);
+        expect(foraDaLeitura, "nenhuma escrita foi enviada").toEqual([]);
+      } finally {
+        await modoDaApi("normal");
+      }
+    });
+  }
 });

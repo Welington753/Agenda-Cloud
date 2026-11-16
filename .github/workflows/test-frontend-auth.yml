@@ -799,10 +799,15 @@ jobs:
       # Modo do PILOTO (mesma origem): o frontend é recompilado com
       # `NEXT_PUBLIC_API_URL=/agenda_api`, e o navegador passa a falar só com
       # ele. Fica DEPOIS das suítes acima porque substitui o build anterior
-      # (chamada direta à porta 3001), que elas usam.
+      # (chamada direta à porta 3001), que elas usam. `API_PROXY_TARGET` no
+      # build, como no Render: põe a origem da API (aqui, o relé local) no
+      # `connect-src` da CSP, para o navegador poder pedir a partida da API
+      # hibernada (src/lib/api/acordar-api.ts). Mesmo valor que
+      # playwright.proxy.config.ts dá ao `next start`.
       - name: Build frontend (same-origin proxy mode)
         env:
           NEXT_PUBLIC_API_URL: "/agenda_api"
+          API_PROXY_TARGET: "http://127.0.0.1:3002"
         run: npm run build
 
       # HTTPS isolado (ver playwright.proxy.config.ts): borda TLS local com

@@ -167,3 +167,57 @@ PostgreSQL 18.6 descartável no scratchpad, com TLS (`ssl = on`, certificado aut
 1. Revisar o PR #59 com a correção da partida pelo navegador.
 2. Decidir o merge e a publicação. Deploy só do web (`agenda-cloud-piloto-web`). Pela regra do PR #45, ambos os serviços saem do mesmo commit, o que implica redeploy da API sem mudança de código e com as mesmas variáveis VAPID.
 3. Depois de publicar, repetir no piloto um ciclo frio (mais de 20 min sem acesso à API) clicando em Entrar e conferir no log da API a partida logo após o pedido do navegador.
+
+## Atualização 2026-11-16: a borda passou a responder 429
+
+Diagnóstico só de leitura no piloto (web `b5b2704`, API `8e8577d`), sem deploy nem reinício.
+
+### Observado
+
+- Com a API hibernada, `GET /agenda_api/auth/me` (o proxy chamando a API) recebeu **429** em 0,26–0,77 s, em dois formatos, e nenhum deles acordou a API:
+  - `text/plain; charset=utf-8`, corpo `Too Many Requests\n` (18 bytes);
+  - `text/html; charset=UTF-8`, página de desafio da Cloudflare (`<title>Just a moment...</title>`, script em `/cdn-cgi/challenge-platform/`, `cZone` com o host da API), 5,7 kB.
+- Nenhum trazia `Retry-After` nem `RateLimit-*` (o proxy repassa esses cabeçalhos quando existem, e eles não chegaram).
+- Os cabeçalhos da resposta ao proxy (`cf-mitigated`, `server` etc.) não foram vistos: o proxy não os repassa, e de fora do Render a borda não responde 429 (acorda a API). A regra abaixo usa só o que foi observado.
+- A regra de 2026-10-22 (5xx em HTML) não cobria nenhum dos dois. O texto puro chegava à tela como erro conclusivo ("O servidor respondeu com um erro"); a página de desafio era relida até o prazo acabar. Em nenhum caso o navegador pedia a partida, então nada acordava a API. "Tentar novamente" só funcionava depois de a API subir por outro motivo.
+- Um `GET /` `no-cors` feito pelo navegador (o pedido de `acordar-api.ts`) resolveu em 32,4 s e a API subiu.
+
+### Formato dos 429 da própria API (versão publicada `8e8577d` e integração)
+
+Conferido no código e com o `express-rate-limit` 8.7.0 / Express 5.2.1 instalados (mesmas versões nos dois):
+
+| Origem | Content-Type | Corpo | `RateLimit-*` e `Retry-After` |
+| --- | --- | --- | --- |
+| Limitadores de login e de conta | `text/html; charset=utf-8` | `Too many requests, please try again later.` | sim |
+| Limitadores da página pública | `application/json` | `{ statusCode: 429, message }` | sim |
+| Limites de negócio do pedido público | `application/json` | `{ statusCode: 429, message }` | não |
+
+O 429 legítimo do login também é HTML. Por isso o tipo do conteúdo sozinho não distingue a hospedagem da API.
+
+### Correção
+
+`src/lib/api/proxy.ts`, função `ehLimiteDaHospedagem`: um 429 é tratado como a hospedagem respondendo no lugar da API (mesmo caminho do 5xx em HTML: 502 com `X-Agenda-Proxy-Error` e `X-Agenda-Acordar-Api`) só quando **todas** as condições valem:
+
+1. não tem `Retry-After`, `RateLimit` nem `RateLimit-*`;
+2. o corpo tem até 64 kB e não é vazio;
+3. é `text/plain` com o corpo exatamente `Too Many Requests` (sem contar espaços nas pontas), **ou** é `text/html` contendo `/cdn-cgi/challenge-platform/`.
+
+Qualquer outro 429 passa como veio, com status, corpo e cabeçalhos de limite. Nada mudou no navegador: o despertar é o de `acordar-api.ts`, e só leituras se repetem.
+
+### Limites da heurística
+
+- É uma leitura do que a borda devolveu em 2026-11-16, não um contrato do Render nem da Cloudflare. Se o texto ou a página mudarem, ou se a borda passar a enviar `Retry-After`, o 429 volta a passar sem marca e a tela volta a mostrar erro do servidor, como antes. A falha é para o lado de preservar a resposta.
+- Um 429 da própria API só seria confundido se viesse sem nenhum cabeçalho de limite **e** com um dos dois corpos acima. Nenhum ponto da API produz isso hoje. Um limitador novo que responda texto puro `Too Many Requests` sem `standardHeaders` quebraria essa separação.
+- Uma página de desafio com outro status (403, por exemplo) não foi observada e não entra na regra.
+
+### Validação local (2026-11-16)
+
+- `proxy-hospedagem.test.ts`: os dois formatos da hospedagem (leitura e POST de login, uma chamada só), os três 429 da API, os formatos da hospedagem acompanhados de cabeçalho de limite e os casos ambíguos.
+- `test:browser:proxy` (Next.js compilado com o proxy real, API real, PostgreSQL 18.6 descartável com as 18 migrations): o relé `tests/browser/support/api-controlavel.mjs` ganhou os modos `hibernada-texto` e `hibernada-html`, que respondem 429 a tudo e só acordam com `GET /`. Fluxo provado nos dois formatos: resposta da hospedagem, um pedido de partida do navegador, nova leitura, 401 da API, aviso some e o formulário de login fica disponível, sem nenhuma escrita.
+- Controle negativo: com o `proxy.ts` da base (`1f718d8`), 4 testes unitários novos e os 2 de navegador falham (`pedido de partida: Expected 1, Received 0`; na tela, "O servidor respondeu com um erro" no texto puro e "Aguardando o servidor..." na página de desafio).
+- O build da suíte `proxy` passou a receber `API_PROXY_TARGET`, como no Render, para a CSP permitir o pedido de partida.
+
+### Falta (evidência externa)
+
+- Ver no piloto, depois de publicar o web com esta correção: mais de 15 min sem acesso, abrir `/login` e conferir no log da API a partida logo após o pedido do navegador, sem deploy nem reinício. A subida observada (~32 s) cabe no prazo de 100 s das leituras.
+- Por que a borda trocou o 502 de outubro pelo 429 continua sem resposta.

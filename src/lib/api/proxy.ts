@@ -42,7 +42,59 @@ const CABECALHOS_PARA_NAVEGADOR = [
   "ratelimit-policy",
 ];
 
+/** Cabeçalhos que os limitadores da própria API sempre enviam num 429
+ * (express-rate-limit com `standardHeaders: true`: `RateLimit-*` e
+ * `Retry-After`). Um 429 com qualquer um deles nunca é tratado como
+ * resposta da hospedagem. */
+const CABECALHOS_DE_LIMITE_DA_API = [
+  "retry-after",
+  "ratelimit",
+  "ratelimit-limit",
+  "ratelimit-remaining",
+  "ratelimit-reset",
+  "ratelimit-policy",
+];
+/** Corpo exato do 429 em texto puro que a borda do Render devolveu ao
+ * servidor do web com a API hibernada (piloto, 2026-11-16). */
+const TEXTO_429_DA_BORDA = "Too Many Requests";
+/** Endereço do script de desafio, presente na página "Just a moment..." da
+ * Cloudflare que a mesma borda devolveu com 429 (piloto, 2026-11-16). */
+const MARCA_DO_DESAFIO_DA_BORDA = "/cdn-cgi/challenge-platform/";
+/** A página de desafio observada tinha 5,7 kB. Corpo maior que isto não é
+ * examinado e passa como veio. */
+const TAMANHO_MAXIMO_PAGINA_DA_BORDA = 64 * 1024;
+
 type Fetch = (entrada: URL, init: RequestInit) => Promise<Response>;
+
+/** `true` quando o 429 é um dos dois formatos que a hospedagem devolveu no
+ * lugar da API hibernada, em menos de 1 s e sem acordá-la (piloto,
+ * 2026-11-16, ver docs/plans/recuperacao-apos-hibernacao-continuidade.md):
+ *
+ * - `text/plain` com o corpo `Too Many Requests`;
+ * - `text/html` com a página de desafio da Cloudflare.
+ *
+ * Nos dois, sem `Retry-After` nem `RateLimit-*`.
+ *
+ * É uma heurística sobre o que foi observado, não um contrato da
+ * hospedagem. Limites:
+ * - se a borda mudar o texto, a página ou passar a enviar `Retry-After`, o
+ *   429 volta a passar sem marca e a tela mostra erro do servidor, como
+ *   antes desta regra (falha para o lado de preservar a resposta);
+ * - um 429 da própria API nunca casa: os limitadores dela enviam
+ *   `RateLimit-*` e `Retry-After`, com corpo JSON ou o HTML
+ *   `Too many requests, please try again later.`, e os limites de negócio
+ *   respondem JSON. Qualquer outro 429 (JSON, corpo vazio, outro texto,
+ *   outro HTML) é ambíguo e passa como veio. */
+function ehLimiteDaHospedagem(resposta: Response, conteudo: ArrayBuffer): boolean {
+  if (resposta.status !== 429) return false;
+  if (CABECALHOS_DE_LIMITE_DA_API.some((nome) => resposta.headers.has(nome))) return false;
+  if (conteudo.byteLength === 0 || conteudo.byteLength > TAMANHO_MAXIMO_PAGINA_DA_BORDA) return false;
+  const tipo = resposta.headers.get("content-type")?.toLowerCase() ?? "";
+  const texto = new TextDecoder().decode(conteudo);
+  if (tipo.startsWith("text/plain")) return texto.trim() === TEXTO_429_DA_BORDA;
+  if (tipo.startsWith("text/html")) return texto.includes(MARCA_DO_DESAFIO_DA_BORDA);
+  return false;
+}
 
 function respostaDoProxy(status: number, mensagem: string, apiIndisponivel = false): Response {
   const headers = new Headers({ "cache-control": "no-store" });
@@ -159,8 +211,12 @@ export async function encaminharParaApi(
   // no lugar dela: com a API hibernada, o Render devolve a este servidor uma
   // página 502 em menos de 1 s e NÃO acorda a API (piloto, 2026-10-22). Vai
   // ao navegador como indisponível, com a origem pública da API, para que o
-  // próprio navegador peça a partida (lib/api/acordar-api.ts).
-  if (resposta.status >= 500 && resposta.headers.get("content-type")?.toLowerCase().includes("text/html")) {
+  // próprio navegador peça a partida (lib/api/acordar-api.ts). Em
+  // 2026-11-16 a mesma situação passou a chegar como 429 da borda, em dois
+  // formatos (ver `ehLimiteDaHospedagem`), e segue o mesmo caminho.
+  const paginaDeErroDaHospedagem =
+    resposta.status >= 500 && resposta.headers.get("content-type")?.toLowerCase().includes("text/html");
+  if (paginaDeErroDaHospedagem || ehLimiteDaHospedagem(resposta, conteudo)) {
     const indisponivel = respostaDoProxy(502, "API indisponível.", true);
     indisponivel.headers.set(CABECALHO_ACORDAR_API, configuracao.destino.origin);
     return indisponivel;
