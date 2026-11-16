@@ -1,6 +1,6 @@
 # Recuperação do login do piloto: retorno de API e web para `8e8577d`
 
-**Status: proposta. Nada foi executado.** Cada passo marcado como escrita só pode ser feito com autorização explícita.
+**Status: executado em 13/11/2026; recuperação funcional confirmada pelo responsável em 16/11/2026, com o web em `438e598` e a API em `8e8577d`.** O resultado está na seção 8. As seções 1 a 7 ficam como foram escritas em 12/11/2026 (a proposta), para registro: o estado descrito nelas não é mais o atual. Qualquer nova execução de um passo de escrita continua dependendo de autorização explícita.
 
 Diagnóstico completo: `docs/plans/login-limpeza-e-falha-de-acesso.md` (PR #112). Resumo: a API live (`23fda23`) lê `tenants.is_test`, que vem da migração 17. A migração não está no banco do piloto, por isso `POST /auth/login` e `GET /auth/me` (com cookie) respondem 500 desde 2026-11-11 20:14 UTC.
 
@@ -157,3 +157,50 @@ Com API e web em `8e8577d` e o banco no estado 16, o piloto volta ao ponto de pa
 4. **#111 (página inicial, TimVix)** e **#112 (limpeza do login)**, junto com o que estiver em `integration`, no mesmo SHA para API e web.
 
 Nenhum deploy de `integration` à frente de `8e8577d` deve ser feito antes de a migração correspondente estar aplicada.
+
+**Atualização de 16/11/2026:** a premissa desta seção (API e web em `8e8577d`) deixou de valer para o web, que está em `438e598` (seção 8). A fila reconciliada com esse estado, com os SHAs de cada etapa, está em [`docs/plans/publicacao-consolidada-b5b2704.md`](../plans/publicacao-consolidada-b5b2704.md).
+
+## 8. Resultado
+
+### O que foi executado
+
+Horários em UTC, lidos na lista de deploys do Render.
+
+| Data | Fato | Origem |
+|---|---|---|
+| 13/11 10:55 | Conferência só de leitura do banco (seção 3): `RESULT: SUCCESS`, `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 0/2`, `BASELINE_FAILURES: none` | autorizada |
+| 13/11 10:58:02 | Web live em `8e8577d` (`dep-dbrep9tckfvc73e2ideg`) | passo 1 da seção 4, autorizado |
+| 13/11 10:59:21 | API live em `8e8577d` (`dep-dbreqklckfvc73e2loag`). Log com `Nest application successfully started`, sem erro de schema | passo 2 da seção 4, autorizado |
+| 13/11 11:01 a 13:02 | Deploys manuais de `187c507` fora deste roteiro: o web ficou live nesse commit; cinco deploys da API terminaram em `update_failed` e a API seguiu em `8e8577d` | autor não identificado |
+| 13/11 16:23:17 | Web de volta a `8e8577d` (`dep-dbrjhs49v7es73cpd01g`) | autorizado, só o web |
+| 14/11 14:13 a 14:15 | Deploys manuais de `438e598` fora deste roteiro: o web ficou live (`dep-dbs6p8qfngtc73bsm7sg`, 14:15:48); o da API (`dep-dbs6p6ec6qcc738b5qg0`) falhou na inicialização, com `Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS`, e a API seguiu em `8e8577d` | autor não identificado: a lista de deploys só mostra o gatilho `manual`; o nome aparece apenas na aba Events do painel |
+
+Nenhuma migration foi aplicada, nenhuma variável foi alterada e nenhum dado foi mudado por este roteiro.
+
+### Estado em que a recuperação foi confirmada (16/11/2026)
+
+| Serviço | Deploy live | Commit | Live desde (UTC) |
+|---|---|---|---|
+| API | `dep-dbreqklckfvc73e2loag` | `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` | 13/11 10:59:21 |
+| Web | `dep-dbs6p8qfngtc73bsm7sg` | `438e598bcc98dfa13aa45087fbfaafdfb1b33a0e` | 14/11 14:15:48 |
+
+Auto-Deploy desligado nos dois serviços, branch `integration/nestjs-typeorm-frontend`, nenhum deploy em andamento ou em fila (leitura de 16/11).
+
+**Os dois serviços não estão no mesmo SHA.** O alvo da seção 2 (API e web em `8e8577d`) valeu de 13/11 16:23 até o deploy manual do web em 14/11. O que o responsável validou foi a combinação acima, não o par em `8e8577d`.
+
+### Confirmação do responsável
+
+Em 16/11/2026 o responsável informou que os testes manuais pedidos funcionaram: entrar, recarregar mantendo a sessão, sair e entrar novamente, e os acessos às telas.
+
+- É uma confirmação do responsável, feita no navegador dele. Não há horário registrado, e não foi feita leitura de log da API correspondente a esses acessos (item 3 da seção 5).
+- Na mesma data, sem credencial, `GET /agenda_api/auth/me` pelo web respondeu 401 depois de a API acordar. Antes disso, a borda respondeu 429 por alguns minutos: é a hibernação do plano gratuito, não falha da aplicação.
+
+### O que esta confirmação não cobre
+
+- **As funcionalidades novas do web `438e598` não foram validadas.** A API `8e8577d` não tem as rotas de comissão em massa, relatórios do portal, marca de teste, segundo fator nem `GET /health`. As telas que dependem delas não fazem parte do que foi confirmado.
+- **Tela de comissões de um profissional** (`/conta/configuracoes/profissionais/<id>/comissoes`): pelo código, o web a partir de `5d74556` exige o campo `exceptionsFingerprint`, que a API `8e8577d` não envia. O roteiro das comissões em massa já registra essa combinação como "Não foi possível carregar". Não foi reproduzido nem confirmado no piloto; fica como ponto a conferir.
+- **Quantidade de migrations:** 16 é a conferência de 13/11 10:55 UTC, não uma leitura de 16/11.
+
+### Próximo passo
+
+A recuperação termina aqui. A publicação do que está integrado segue o plano [`docs/plans/publicacao-consolidada-b5b2704.md`](../plans/publicacao-consolidada-b5b2704.md), etapa por etapa, cada uma com pedido explícito.
