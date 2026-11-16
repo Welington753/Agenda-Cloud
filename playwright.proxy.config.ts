@@ -9,7 +9,10 @@ import { defineConfig, devices } from "@playwright/test";
 // - a API roda com `NODE_ENV=production`: o cookie de sessão sai `Secure`,
 //   e `FRONTEND_URL` precisa ser HTTPS, como na hospedagem;
 // - o frontend precisa ter sido compilado com `NEXT_PUBLIC_API_URL=/agenda_api`
-//   (modo mesma origem); o navegador nunca fala com a porta da API;
+//   (modo mesma origem) e `API_PROXY_TARGET=http://127.0.0.1:3002` (o relé
+//   abaixo; entra no `connect-src` da CSP no build, como no Render). O
+//   navegador nunca fala com a porta da API; o único pedido dele fora da
+//   origem do frontend é a partida da API hibernada, `GET /` no relé;
 // - a borda (tests/browser/support/borda-https.mjs) termina o TLS e escreve
 //   `CF-Connecting-IP` como a borda do Render. Há uma borda na frente de cada
 //   serviço, como na hospedagem: 3443 → Next.js e 3444 → API (chamadas
@@ -19,7 +22,9 @@ import { defineConfig, devices } from "@playwright/test";
 // - entre o Next.js e a API fica um relé local
 //   (tests/browser/support/api-controlavel.mjs, porta 3002) que repassa tudo
 //   sem mudar nada, e que o teste põe em modo "lenta" ou "fora" para provar a
-//   decisão de indexação da página pública com a API falhando.
+//   decisão de indexação da página pública com a API falhando, e em modo
+//   "hibernada" para provar a recuperação quando a hospedagem responde 429
+//   no lugar da API.
 //
 // `API_PROXY_SECRET` vem do ambiente (valor descartável do job de CI); os dois
 // processos recebem o mesmo valor.
