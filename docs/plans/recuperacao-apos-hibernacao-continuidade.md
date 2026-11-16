@@ -221,3 +221,22 @@ Qualquer outro 429 passa como veio, com status, corpo e cabeçalhos de limite. N
 
 - Ver no piloto, depois de publicar o web com esta correção: mais de 15 min sem acesso, abrir `/login` e conferir no log da API a partida logo após o pedido do navegador, sem deploy nem reinício. A subida observada (~32 s) cabe no prazo de 100 s das leituras.
 - Por que a borda trocou o 502 de outubro pelo 429 continua sem resposta.
+- Confirmar que a resposta real da borda ao proxy vem sem `Retry-After` e sem `RateLimit*`. Os testes locais e do CI usam uma borda simulada; se a resposta real trouxer algum desses cabeçalhos, a regra preserva o 429 e não recupera esse caso. A verificação é o passo 3.12 de [`publicacao-consolidada-b5b2704.md`](publicacao-consolidada-b5b2704.md).
+
+### Integração (2026-11-16)
+
+PR #117 integrado em `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2` (head `6a9da3f`, CI aprovado nesse head). Nada publicado: a correção chega ao piloto na etapa 3 do plano de publicação. Até lá vale o contorno manual da seção 4.4 daquele plano.
+
+## Achado à parte: mensagem do 429 legítimo do login (não reproduzido, não corrigido)
+
+Registrado em 2026-11-16, durante a correção acima. **É leitura de código, não foi reproduzido** em navegador nem em teste, e não faz parte do PR #117.
+
+- Os limitadores de login e de conta da API respondem 429 com `text/html; charset=utf-8` e o corpo `Too many requests, please try again later.` (padrão do `express-rate-limit` com mensagem em texto, enviado por `res.send`), com `RateLimit-*` e `Retry-After`.
+- `src/lib/api/http-client.ts` (linhas 68 e 69 em `9de722d`) devolve `network-error` para qualquer resposta com `Content-Type` contendo `text/html`, antes de olhar o status.
+- `src/lib/api/auth-api.ts` só chega a `limite_tentativas` quando recebe o status 429 como erro HTTP.
+
+**Consequência provável:** quem estoura o limite de tentativas de login vê o aviso de falha de conexão ("Não foi possível conectar ao servidor") em vez de "Muitas tentativas seguidas", e a tela pode tratar a situação como API fora do ar. O limite em si continua valendo na API; o defeito seria só na mensagem.
+
+**O que não se sabe:** se algum teste ou caminho cobre esse caso de outro modo, e o que a tela mostra de fato. O achado já existia antes do PR #117, que não muda esse comportamento: o proxy repassa esse 429 sem alteração, com corpo e cabeçalhos.
+
+**Fora do escopo deste lote.** Antes de qualquer correção: reproduzir (seis logins seguidos contra uma API local) e decidir onde corrigir, no cliente HTTP ou no formato da resposta do limitador. Mexer no limitador é mexer na proteção do login e pede lote próprio.
