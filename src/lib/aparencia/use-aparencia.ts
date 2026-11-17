@@ -62,3 +62,10 @@ export function useAparencia() {
 
   return { preferencia, escolher };
 }
+
+/** O tema "Azul e branco" está escolhido? Só a tela que o desenha (portal da
+ * plataforma, com <MarcadorTemaAzul />) muda a organização por isto. No
+ * servidor e na hidratação é sempre `false`, como o padrão. */
+export function useTemaAzul(): boolean {
+  return useAparencia().preferencia === "azul";
+}

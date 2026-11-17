@@ -95,19 +95,41 @@ export function rotaFichaUsuario(id: string): string {
   return `${ROTA_USUARIOS}/${encodeURIComponent(id)}`;
 }
 
-/** Seções do portal, na ordem do menu. */
-export const SECOES_ADMINISTRACAO: readonly { href: string; rotulo: string }[] = [
-  { href: ROTA_VISAO_GERAL, rotulo: "Visão geral" },
-  { href: ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotulo: "Estabelecimentos" },
-  { href: ROTA_USUARIOS, rotulo: "Responsáveis e acessos" },
-  { href: ROTA_CONVITES, rotulo: "Convites" },
-  { href: ROTA_PLANOS_E_PRECOS, rotulo: "Planos e preços" },
-  { href: ROTA_PAGAMENTOS_ASSINATURAS, rotulo: "Pagamentos das assinaturas" },
-  { href: ROTA_RELATORIOS, rotulo: "Relatórios" },
-  { href: ROTA_PAPEIS, rotulo: "Proprietários da plataforma" },
-  { href: ROTA_HISTORICO, rotulo: "Histórico administrativo" },
-  { href: ROTA_SEGURANCA, rotulo: "Segurança da conta" },
+type Secao = { href: string; rotulo: string };
+
+/** Seções do portal agrupadas por assunto, na ordem do menu. O título do
+ * grupo só aparece no tema "Azul e branco"; nos outros temas o menu continua
+ * uma coluna única, na mesma ordem. */
+export const GRUPOS_SECOES_ADMINISTRACAO: readonly { titulo: string | null; secoes: readonly Secao[] }[] = [
+  { titulo: null, secoes: [{ href: ROTA_VISAO_GERAL, rotulo: "Visão geral" }] },
+  {
+    titulo: "Gestão",
+    secoes: [
+      { href: ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotulo: "Estabelecimentos" },
+      { href: ROTA_USUARIOS, rotulo: "Responsáveis e acessos" },
+      { href: ROTA_CONVITES, rotulo: "Convites" },
+    ],
+  },
+  {
+    titulo: "Comercial",
+    secoes: [
+      { href: ROTA_PLANOS_E_PRECOS, rotulo: "Planos e preços" },
+      { href: ROTA_PAGAMENTOS_ASSINATURAS, rotulo: "Pagamentos das assinaturas" },
+      { href: ROTA_RELATORIOS, rotulo: "Relatórios" },
+    ],
+  },
+  {
+    titulo: "Administração",
+    secoes: [
+      { href: ROTA_PAPEIS, rotulo: "Proprietários da plataforma" },
+      { href: ROTA_HISTORICO, rotulo: "Histórico administrativo" },
+      { href: ROTA_SEGURANCA, rotulo: "Segurança da conta" },
+    ],
+  },
 ];
+
+/** Seções do portal, na ordem do menu. */
+export const SECOES_ADMINISTRACAO: readonly Secao[] = GRUPOS_SECOES_ADMINISTRACAO.flatMap((g) => g.secoes);
 
 export function secaoAtiva(pathname: string | null, href: string): boolean {
   if (!pathname) return false;

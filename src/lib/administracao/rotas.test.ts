@@ -112,4 +112,11 @@ describe("seções do portal", () => {
     expect(secaoAtiva("/portal/usuarios/u1", "/portal/usuarios")).toBe(true);
     expect(secaoAtiva("/portal/usuarios-x", "/portal/usuarios")).toBe(false);
   });
+
+  it("grupos por assunto mantêm a mesma ordem e cada seção uma vez só", async () => {
+    const { GRUPOS_SECOES_ADMINISTRACAO, SECOES_ADMINISTRACAO } = await import("./rotas");
+    expect(GRUPOS_SECOES_ADMINISTRACAO.map((g) => g.titulo)).toEqual([null, "Gestão", "Comercial", "Administração"]);
+    expect(GRUPOS_SECOES_ADMINISTRACAO.flatMap((g) => g.secoes)).toEqual(SECOES_ADMINISTRACAO);
+    expect(new Set(SECOES_ADMINISTRACAO.map((s) => s.href)).size).toBe(SECOES_ADMINISTRACAO.length);
+  });
 });
