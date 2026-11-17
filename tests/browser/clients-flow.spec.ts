@@ -421,7 +421,7 @@ test.describe("clientes do estabelecimento", () => {
       await buscar(page, clienteDeA);
       await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
       for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Configurações"]) {
-        const link = nav(page).getByRole("link", { name: rotulo });
+        const link = nav(page).getByRole("link", { name: rotulo, exact: true });
         await expect(link).toBeInViewport();
         const caixa = (await link.boundingBox())!;
         expect(caixa.height).toBeGreaterThanOrEqual(44);
