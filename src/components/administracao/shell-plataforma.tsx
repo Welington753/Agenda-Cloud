@@ -61,9 +61,11 @@ export function ShellPlataforma({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="sticky top-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 bg-chrome px-4 py-3 text-chrome-ink md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col md:items-stretch md:gap-0 md:p-0">
+      {/* `azul:`: o menu claro do tema "Azul e branco" precisa de uma borda
+          para se separar do fundo; os temas escuros não a recebem. */}
+      <aside className="sticky top-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 bg-chrome px-4 py-3 text-chrome-ink azul:border-b azul:border-chrome-border md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col md:items-stretch md:gap-0 md:p-0 md:azul:border-r md:azul:border-b-0">
         <div className="col-start-1 row-start-1 min-w-0 md:px-5 md:py-6">
-          <Link href={ROTA_ADMINISTRACAO} className={`inline-flex rounded-[var(--radius-control)] ${FOCO}`}>
+          <Link href={ROTA_ADMINISTRACAO} className={`inline-flex rounded-[var(--radius-control)] azul:[&_svg]:text-accent ${FOCO}`}>
             <MarcaTimVix />
           </Link>
           <p
@@ -97,7 +99,9 @@ export function ShellPlataforma({ children }: { children: ReactNode }) {
           <AbasAdministracao
             id={idSecoes}
             className={clsx(
-              "col-span-3 row-start-2 -mx-4 mt-3 border-t border-chrome-border px-3 pt-3 md:mx-0 md:mt-0 md:block md:flex-1 md:overflow-y-auto md:border-0 md:pt-0",
+              // Celular: a barra é fixa no topo; um menu mais alto que a tela
+              // rola por dentro, senão os últimos itens ficariam inalcançáveis.
+              "col-span-3 row-start-2 -mx-4 mt-3 max-h-[calc(100dvh-5.5rem)] overflow-y-auto border-t border-chrome-border px-3 pt-3 pb-1 md:mx-0 md:mt-0 md:block md:max-h-none md:flex-1 md:border-0 md:pt-0 md:pb-0",
               menuAberto ? "block" : "hidden",
             )}
           />

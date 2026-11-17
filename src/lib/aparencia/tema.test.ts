@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
-import { APARENCIA_PADRAO, CHAVE_APARENCIA, OPCOES_APARENCIA, SCRIPT_APARENCIA, lerPreferenciaSalva } from "./tema";
+import {
+  APARENCIA_PADRAO,
+  CHAVE_APARENCIA,
+  OPCOES_APARENCIA,
+  SCRIPT_APARENCIA,
+  lerPreferenciaSalva,
+  opcoesAparencia,
+} from "./tema";
 
 /** Roda o script inline como o navegador rodaria, com storage e <html> falsos. */
 function rodarScript(salvo: string | null, storageQuebrado = false) {
@@ -34,6 +41,18 @@ describe("preferência de aparência", () => {
     expect(rodarScript("escuro")).toBe("escuro");
     expect(rodarScript("claro")).toBe("claro");
     expect(rodarScript(null)).toBe("sistema");
+  });
+
+  it("'Azul e branco' é opcional: aceito quando salvo, oferecido só onde existe ou já escolhido", () => {
+    expect(lerPreferenciaSalva("azul")).toBe("azul");
+    expect(rodarScript("azul")).toBe("azul");
+    // Quem nunca escolheu nada continua seguindo o aparelho.
+    expect(rodarScript(null)).toBe("sistema");
+    const rotulos = (disponivel: boolean, atual: Parameters<typeof opcoesAparencia>[1]) =>
+      opcoesAparencia(disponivel, atual).map((o) => o.rotulo);
+    expect(rotulos(true, "sistema")).toEqual(["Claro", "Escuro", "Seguir aparelho", "Azul e branco"]);
+    expect(rotulos(false, "escuro")).toEqual(["Claro", "Escuro", "Seguir aparelho"]);
+    expect(rotulos(false, "azul")).toEqual(["Claro", "Escuro", "Seguir aparelho", "Azul e branco"]);
   });
 
   it("valor adulterado ou storage bloqueado não quebram a página", () => {
@@ -72,5 +91,30 @@ describe("tokens do tema escuro (globals.css)", () => {
     const sistema = bloco('  html[data-tema="sistema"]:has([data-aparencia-adaptavel])');
     expect(escuro).toContain("--color-paper:");
     expect(sistema).toBe(escuro);
+  });
+});
+
+describe("tokens do tema 'Azul e branco' (globals.css)", () => {
+  const css = readFileSync(path.resolve(__dirname, "../../app/globals.css"), "utf-8");
+  const seletor = 'html[data-tema="azul"]:has([data-tema-azul-disponivel])';
+
+  it("só valem com a escolha 'azul' em página que desenha o tema", () => {
+    expect(css).toContain(`${seletor} {`);
+    expect(css).not.toMatch(/^\s*html\[data-tema="azul"\]\s*\{/m);
+    // Nunca dentro da media query do aparelho: não é aplicado sozinho.
+    const inicioMedia = css.indexOf("@media (prefers-color-scheme: dark)");
+    const fimMedia = css.indexOf('/* Tema opcional "Azul e branco"');
+    expect(fimMedia).toBeGreaterThan(inicioMedia);
+    expect(css.slice(inicioMedia, fimMedia)).not.toContain("azul");
+    // A variante `azul:` usa a mesma condição do bloco.
+    expect(css).toContain(`@custom-variant azul (&:where(${seletor} *));`);
+  });
+
+  it("define os mesmos tokens de cor do tema escuro", () => {
+    const tokens = (inicio: string) => {
+      const i = css.indexOf(inicio);
+      return [...css.slice(css.indexOf("{", i) + 1, css.indexOf("}", i)).matchAll(/(--[\w-]+):/g)].map((m) => m[1]).sort();
+    };
+    expect(tokens(seletor)).toEqual(tokens('html[data-tema="escuro"]:has([data-aparencia-adaptavel])'));
   });
 });

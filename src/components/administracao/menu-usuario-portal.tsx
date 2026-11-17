@@ -97,7 +97,7 @@ export function MenuUsuarioPortal({
             <p className="truncate text-sm font-semibold">{nome}</p>
             <p className="truncate text-xs text-ink-soft">{identificacao}</p>
           </div>
-          <SeletorAparencia className="px-2" />
+          <SeletorAparencia className="px-2" temaAzulDisponivel />
           <button
             type="button"
             onClick={aoSair}

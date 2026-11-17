@@ -140,6 +140,60 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
   }
 }
 
+/* Tema opcional "Azul e branco" — SÓ com a escolha "azul" e SÓ em página que
+   o desenha (MarcadorTemaAzul: por ora, o portal da plataforma). Nas demais,
+   o valor "azul" não entra em bloco nenhum e a página fica no Claro. Não há
+   versão "seguir aparelho": é uma escolha manual e sempre clara.
+
+   Fundo branco gelo, cartões brancos, azul (#2563eb) nos botões principais,
+   links, indicadores e item ativo; títulos e texto em azul-marinho. Sucesso,
+   aviso e erro mantêm cores próprias (aviso escurecido para 4.5:1 em texto
+   pequeno). Contraste sobre o cartão (#fff) e o fundo (#f3f7fc): texto ≥ 13:1,
+   secundário ≥ 7:1, discreto ≥ 5.6:1, azul ≥ 4.8:1, borda de campo ≥ 3.3:1.
+   Sobre o azul-claro (accent-soft) o azul fica em 4.4:1: texto pequeno ali usa
+   o azul escuro (accent-hover, 5.7:1). O menu lateral (chrome) fica branco, com
+   texto escuro. */
+html[data-tema="azul"]:has([data-tema-azul-disponivel]) {
+  color-scheme: light;
+  --color-ink: #172b4d;
+  --color-ink-soft: #475569;
+  --color-ink-muted: #556377;
+  --color-paper: #f3f7fc;
+  --color-paper-muted: #e9f0fa;
+  --color-card: #ffffff;
+  --color-border: #d7e3f4;
+  --color-border-strong: #7c8da6;
+  --color-border-control: #b9c9e0;
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-soft: #e3edfd;
+  --color-focus: #2563eb;
+  --color-success: #1f6f47;
+  --color-success-soft: #dcf1e5;
+  --color-danger: #b42318;
+  --color-danger-soft: #fde7e5;
+  --color-warning: #8a5a00;
+  --color-warning-soft: #fdf3dc;
+  --color-info: #1e4e8c;
+  --color-info-soft: #e3edfd;
+  --color-on-accent: #ffffff;
+  --color-on-danger: #ffffff;
+  --color-chrome: #ffffff;
+  --color-chrome-ink: #172b4d;
+  --color-chrome-ink-soft: #475569;
+  --color-chrome-hover: #eef4fc;
+  --color-chrome-selected: #e3edfd;
+  --color-chrome-border: #d7e3f4;
+  --color-chrome-marker: #2563eb;
+  --color-chrome-focus: #2563eb;
+  --shadow-soft: 0 1px 2px rgba(23, 43, 77, 0.05), 0 4px 14px rgba(23, 43, 77, 0.06);
+  --shadow-lift: 0 10px 28px rgba(23, 43, 77, 0.14);
+}
+
+/* `azul:` — classe que só vale com o tema "Azul e branco" desenhado (mesma
+   condição do bloco acima). Os outros temas nunca a recebem. */
+@custom-variant azul (&:where(html[data-tema="azul"]:has([data-tema-azul-disponivel]) *));
+
 @theme inline {
   --color-ink: var(--color-ink);
   --color-ink-soft: var(--color-ink-soft);

@@ -13,6 +13,9 @@
 // - Celular: seções recolhidas, aparência no menu do usuário, sem rolagem
 //   lateral. Sessão expirada volta à entrada do portal e à Visão geral.
 // - A operação continua sem atalho para o portal.
+// - Tema opcional "Azul e branco": escolher, recarregar (persiste), mesmos
+//   números, resumo do alcance com "Sobre este filtro" pelo teclado, ordem
+//   dos blocos no celular e volta ao Claro com o arranjo de sempre.
 //
 // Invocação própria (`npm run test:browser:portal-visao-geral`): 1 aceite de
 // convite e 3 logins (limite de produção: 5 por 15 minutos por IP).
@@ -322,6 +325,7 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await expect(page.getByTestId("abrir-menu-usuario")).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 844 });
 
+    await temaAzulEBranco(page);
     await relatoriosPorPeriodo(page, db, { loja, plano, userId: conta.user.id, marca });
 
     // Sessão expirada: volta à entrada do portal e, depois, à Visão geral.
@@ -351,6 +355,88 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await db.end();
   }
 });
+
+/** Topo do elemento na página, para conferir a ordem dos blocos. */
+async function topo(page: Page, testId: string) {
+  const caixa = await page.getByTestId(testId).first().boundingBox();
+  expect(caixa, testId).not.toBeNull();
+  return caixa!.y;
+}
+
+/**
+ * Tema opcional "Azul e branco" (mesma sessão, sem login novo): só aparece
+ * para quem o escolhe, persiste ao recarregar, mostra os mesmos números em
+ * outro arranjo e devolve o arranjo de sempre ao voltar para o Claro.
+ */
+async function temaAzulEBranco(page: Page) {
+  const html = page.locator("html");
+  const escolher = async (rotulo: string) => {
+    await page.getByTestId("abrir-menu-usuario").click();
+    await page.getByTestId("menu-usuario").getByTestId("seletor-aparencia").getByText(rotulo, { exact: true }).click();
+    await page.keyboard.press("Escape");
+  };
+  await page.goto(VISAO_GERAL);
+  await expect(page.getByTestId("indicador-total")).toBeVisible();
+  await expect(page.getByTestId("resumo-atencao")).toHaveCount(0);
+
+  await escolher("Azul e branco");
+  await expect(html).toHaveAttribute("data-tema", "azul");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-tema", "azul");
+  await expect(page.getByTestId("resumo-atencao")).toBeVisible();
+  await expect(navPortal(page).getByText("Gestão", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("menu-usuario")).toHaveCount(0);
+
+  // Mesmos números da API, no arranjo do tema.
+  const api = (await (await page.request.get(`${API_DE_TESTE}/platform/overview`)).json()) as Visao;
+  for (const [testId, chave] of [
+    ["indicador-total", "total"],
+    ["indicador-liberados", "allowed"],
+    ["indicador-bloqueados", "blocked"],
+    ["indicador-vencendo", "expiringSoon"],
+    ["indicador-suspensos", "suspended"],
+    ["indicador-contrato-pendente", "contractPending"],
+    ["atalho-validade-vencida", "validityBlocked"],
+  ] as const) {
+    await expect(page.getByTestId(`${testId}-valor`)).toHaveText(String(api.establishments[chave]));
+  }
+
+  // Alcance: resumo curto; a explicação completa abre pelo teclado.
+  await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
+  await expect(page.getByTestId("resumo-do-alcance")).toHaveText("Estabelecimentos não marcados como internos/teste.");
+  const descricao = page.getByTestId("descricao-do-alcance");
+  await expect(descricao).toBeHidden();
+  await page.getByText("Sobre este filtro", { exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(descricao).toBeVisible();
+  await expect(descricao).toContainText("não comprova que ele foi conferido como cliente");
+
+  // Computador: Modalidade à esquerda de Atenção.
+  const x = async (testId: string) => (await page.getByTestId(testId).boundingBox())!.x;
+  expect(await x("modalidades")).toBeLessThan(await x("resumo-atencao"));
+
+  // Celular: indicadores, Atenção, Pagamentos, Modalidade, lista; sem rolagem lateral.
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByTestId("resumo-atencao")).toBeVisible();
+    await semRolagemHorizontal(page);
+    const lista = (await page.getByTestId("lista-atencao").count()) ? "lista-atencao" : "atencao-vazia";
+    const ordem = ["indicador-bloqueados", "resumo-atencao", "pagamentos-do-mes", "modalidades", lista];
+    const tops: number[] = [];
+    for (const testId of ordem) tops.push(await topo(page, testId));
+    expect(tops).toEqual([...tops].sort((a, b) => a - b));
+  }
+  await page.setViewportSize({ width: 1280, height: 844 });
+
+  // Volta a um tema anterior: o arranjo de sempre, também depois de recarregar.
+  await escolher("Claro");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-tema", "claro");
+  await expect(page.getByTestId("indicador-total")).toBeVisible();
+  await expect(page.getByTestId("resumo-atencao")).toHaveCount(0);
+  await expect(page.locator('section[aria-label="Estabelecimentos"] > a')).toHaveCount(6);
+  await expect(navPortal(page).getByText("Gestão", { exact: true })).toBeHidden();
+}
 
 /**
  * Relatórios por período (mesma sessão, sem login novo). Dados fictícios em

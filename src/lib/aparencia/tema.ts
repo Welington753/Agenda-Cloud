@@ -1,4 +1,4 @@
-// Aparência (claro, escuro ou seguir o aparelho) — regras puras, testadas em
+// Aparência (claro, escuro, seguir o aparelho ou azul e branco) — regras puras, testadas em
 // tema.test.ts.
 //
 // ONDE VALE: só nas páginas REAIS que se declaram adaptáveis
@@ -18,22 +18,42 @@
 // A escolha manual fica só neste navegador (localStorage): é preferência de
 // quem está diante da tela, não da conta nem do estabelecimento.
 
-export type PreferenciaAparencia = "claro" | "escuro" | "sistema";
+//
+// TEMA OPCIONAL "AZUL E BRANCO" (`data-tema="azul"`): claro, com menu lateral
+// branco e azul nos destaques. Por ora só o portal da plataforma o desenha
+// (<MarcadorTemaAzul />, ver globals.css); nas outras páginas adaptáveis o
+// mesmo valor salvo aparece como o Claro, sem quebrar nada. Nunca é aplicado
+// sozinho: só quem o escolhe no seletor passa a vê-lo.
+
+export type PreferenciaAparencia = "claro" | "escuro" | "sistema" | "azul";
 
 export const CHAVE_APARENCIA = "agenda-cloud:aparencia";
 
 /** Valor que o servidor envia: segue o aparelho até haver escolha salva. */
 export const APARENCIA_PADRAO: PreferenciaAparencia = "sistema";
 
-export const OPCOES_APARENCIA: readonly { valor: PreferenciaAparencia; rotulo: string }[] = [
+type OpcaoAparencia = { valor: PreferenciaAparencia; rotulo: string };
+
+/** Opções que valem em toda página adaptável. */
+export const OPCOES_APARENCIA: readonly OpcaoAparencia[] = [
   { valor: "claro", rotulo: "Claro" },
   { valor: "escuro", rotulo: "Escuro" },
   { valor: "sistema", rotulo: "Seguir aparelho" },
 ];
 
+export const OPCAO_AZUL: OpcaoAparencia = { valor: "azul", rotulo: "Azul e branco" };
+
+/**
+ * Opções do seletor. "Azul e branco" aparece onde o tema existe e também onde
+ * ele já é a escolha salva (assim um rádio sempre fica marcado).
+ */
+export function opcoesAparencia(temaAzulDisponivel: boolean, atual: PreferenciaAparencia): readonly OpcaoAparencia[] {
+  return temaAzulDisponivel || atual === "azul" ? [...OPCOES_APARENCIA, OPCAO_AZUL] : OPCOES_APARENCIA;
+}
+
 /** Valor salvo → preferência. Qualquer coisa estranha vira o padrão. */
 export function lerPreferenciaSalva(bruto: string | null | undefined): PreferenciaAparencia {
-  return bruto === "claro" || bruto === "escuro" || bruto === "sistema" ? bruto : APARENCIA_PADRAO;
+  return bruto === "claro" || bruto === "escuro" || bruto === "sistema" || bruto === "azul" ? bruto : APARENCIA_PADRAO;
 }
 
 /**
@@ -44,4 +64,4 @@ export function lerPreferenciaSalva(bruto: string | null | undefined): Preferenc
  */
 export const SCRIPT_APARENCIA = `(function(){try{var v=localStorage.getItem(${JSON.stringify(
   CHAVE_APARENCIA,
-)});if(v==="claro"||v==="escuro"||v==="sistema")document.documentElement.setAttribute("data-tema",v)}catch(e){}})()`;
+)});if(v==="claro"||v==="escuro"||v==="sistema"||v==="azul")document.documentElement.setAttribute("data-tema",v)}catch(e){}})()`;
