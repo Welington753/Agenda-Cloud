@@ -9,7 +9,7 @@
 // plataforma.
 import type { ReactNode } from "react";
 import { RequireRealSession } from "@/components/auth/require-real-session";
-import { MarcadorAparencia, MarcadorTemaAzul } from "@/components/aparencia/aparencia";
+import { MarcadorAparencia } from "@/components/aparencia/aparencia";
 import { AcessoPlataformaProvider } from "@/lib/administracao/use-acesso-plataforma";
 import { ShellPlataforma } from "@/components/administracao/shell-plataforma";
 import { entradaDoPortal } from "@/lib/administracao/rotas";
@@ -18,8 +18,6 @@ export default function PlataformaLayout({ children }: { children: ReactNode }) 
   return (
     <>
       <MarcadorAparencia />
-      {/* Tema opcional "Azul e branco": só desenhado na área do portal. */}
-      <MarcadorTemaAzul />
       <RequireRealSession entrada={entradaDoPortal}>
         <AcessoPlataformaProvider>
           <ShellPlataforma>{children}</ShellPlataforma>

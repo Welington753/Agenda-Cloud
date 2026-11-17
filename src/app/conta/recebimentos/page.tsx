@@ -87,7 +87,7 @@ export default function RecebimentosPage() {
     <ReautenticacaoProvider>
       <PaginaConta
         titulo="Recebimentos"
-        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores do Dashboard."
+        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores da Visão geral."
         voltar={retornoDeRecebimentos(perfilDoPapel(encontrarContextoPorTenantId(sessao.sessao, tenantId)?.role))}
         acoes={
           <Botao type="button" variante="secundaria" className="min-h-11" onClick={recarregar}>

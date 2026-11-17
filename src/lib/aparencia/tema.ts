@@ -20,10 +20,10 @@
 
 //
 // TEMA OPCIONAL "AZUL E BRANCO" (`data-tema="azul"`): claro, com menu lateral
-// branco e azul nos destaques. Por ora só o portal da plataforma o desenha
-// (<MarcadorTemaAzul />, ver globals.css); nas outras páginas adaptáveis o
-// mesmo valor salvo aparece como o Claro, sem quebrar nada. Nunca é aplicado
-// sozinho: só quem o escolhe no seletor passa a vê-lo.
+// branco e azul nos destaques. Vale em toda página adaptável e, por ser uma
+// escolha manual e sempre clara, também no agendamento público deste
+// navegador (ver globals.css). Nunca é aplicado sozinho: só quem o escolhe no
+// seletor passa a vê-lo; o padrão continua "sistema".
 
 export type PreferenciaAparencia = "claro" | "escuro" | "sistema" | "azul";
 
@@ -34,22 +34,13 @@ export const APARENCIA_PADRAO: PreferenciaAparencia = "sistema";
 
 type OpcaoAparencia = { valor: PreferenciaAparencia; rotulo: string };
 
-/** Opções que valem em toda página adaptável. */
+/** Opções do seletor, iguais em toda página adaptável. */
 export const OPCOES_APARENCIA: readonly OpcaoAparencia[] = [
   { valor: "claro", rotulo: "Claro" },
   { valor: "escuro", rotulo: "Escuro" },
   { valor: "sistema", rotulo: "Seguir aparelho" },
+  { valor: "azul", rotulo: "Azul e branco" },
 ];
-
-export const OPCAO_AZUL: OpcaoAparencia = { valor: "azul", rotulo: "Azul e branco" };
-
-/**
- * Opções do seletor. "Azul e branco" aparece onde o tema existe e também onde
- * ele já é a escolha salva (assim um rádio sempre fica marcado).
- */
-export function opcoesAparencia(temaAzulDisponivel: boolean, atual: PreferenciaAparencia): readonly OpcaoAparencia[] {
-  return temaAzulDisponivel || atual === "azul" ? [...OPCOES_APARENCIA, OPCAO_AZUL] : OPCOES_APARENCIA;
-}
 
 /** Valor salvo → preferência. Qualquer coisa estranha vira o padrão. */
 export function lerPreferenciaSalva(bruto: string | null | undefined): PreferenciaAparencia {

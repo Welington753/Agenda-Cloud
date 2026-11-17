@@ -110,6 +110,22 @@ Paleta inicial sugerida, ajustável à referência:
   alcance desce para a segunda linha, sem rolagem lateral); **não** é um teste
   de zoom real de 200% do navegador, que não foi executado.
 
+**Todos os ambientes (2026-11-17, branch `feat/tema-azul-todos-ambientes`, só local):**
+
+- "Azul e branco" passou a valer em toda página adaptável (portal, entrada do
+  portal, login, recuperação de senha, cadastro, convite, liberação do 2FA e
+  `/conta`) e no agendamento público deste navegador, quando escolhido nele.
+  Saíram o marcador `MarcadorTemaAzul`, a volta ao Claro e o aviso "Nesta
+  área...". O seletor mostra sempre as quatro opções; o padrão segue
+  "Seguir aparelho" e as escolhas salvas continuam valendo.
+- Mesmo mecanismo (`data-tema` + `localStorage`), mesmos tokens; só bordas
+  `azul:` nos menus brancos (conta, login, entrada do portal, 2FA).
+- Demonstração e site continuam claros. No agendamento, Claro/Escuro salvos
+  continuam ignorados (segue o aparelho); só o azul salvo vale ali.
+- Validação local (banco descartável limpo, dados fictícios): Vitest 70 verdes;
+  `aparencia-e-notificacoes` (3 testes, com o novo do azul) e
+  `portal-visao-geral` verdes.
+
 **Não feito:** demais telas do portal com arranjo próprio (hoje só recebem as
 cores), entrada do portal (`/portal`, login) e conta do dono.
 

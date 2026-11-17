@@ -81,7 +81,7 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/conta/visao-geral");
   await expect(nav(page).getByRole("link")).toHaveText([
-    "Dashboard",
+    "Visão geral",
     "Agenda",
     "Profissionais",
     "Serviços",
@@ -276,7 +276,7 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
     const celular = await contexto.newPage();
     try {
       await celular.goto("/conta/visao-geral");
-      await expect(nav(celular).getByRole("link")).toHaveText(["Dashboard", "Agenda", "Clientes", "Configurações"]);
+      await expect(nav(celular).getByRole("link")).toHaveText(["Visão geral", "Agenda", "Clientes", "Configurações"]);
       await expect(botaoSubmenu(celular)).toBeHidden();
       await nav(celular).getByRole("link", { name: "Configurações" }).tap();
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);

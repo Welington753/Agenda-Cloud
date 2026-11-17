@@ -99,9 +99,9 @@ export default function EstabelecimentoPage() {
             </div>
           </div>
           <p className="text-xs text-ink-soft">
-            O uso do plano (profissionais e acessos da equipe) aparece no{" "}
+            O uso do plano (profissionais e acessos da equipe) aparece na{" "}
             <Link href={ROTA_INICIO} className="font-medium text-[color:var(--color-accent-hover)] hover:underline">
-              Dashboard
+              Visão geral
             </Link>{" "}
             e em{" "}
             <Link href={ROTA_EQUIPE} className="font-medium text-[color:var(--color-accent-hover)] hover:underline">

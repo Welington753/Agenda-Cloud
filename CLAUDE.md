@@ -35,7 +35,7 @@ Dois projetos npm independentes, Node `>=24 <25`:
 | Regra de tela | `src/lib/<area>/*.ts` com `*.test.ts`; componente só desenha |
 | Item de menu ou seção de Configurações em `/conta` | `src/lib/conta/navegacao.ts` e `rotas.ts` (+ testes ao lado e `tests/browser/configuracoes-navegacao-flow.spec.ts`) |
 
-**Navegação de `/conta`:** o menu de cada papel sai de `src/lib/conta/navegacao.ts` (dono: Dashboard, Agenda, Profissionais, Serviços, Clientes, Equipe e acessos, Comissões, Configurações). Endereços e grupos do índice de Configurações ficam em `src/lib/conta/rotas.ts`. Página nova entra por esses dois arquivos, sem mudar endereço existente.
+**Navegação de `/conta`:** o menu de cada papel sai de `src/lib/conta/navegacao.ts` (dono: Visão geral, Agenda, Profissionais, Serviços, Clientes, Equipe e acessos, Comissões, Configurações). Endereços e grupos do índice de Configurações ficam em `src/lib/conta/rotas.ts`. Página nova entra por esses dois arquivos, sem mudar endereço existente.
 
 - Item que depende do plano só aparece com a área correspondente em `areas` da sessão (ex.: Comissões com `COMISSOES_VER`); a tela nunca presume o plano.
 - Termo do segmento ("Barbeiros" na barbearia) vem de `src/lib/conta/termos.ts`, a partir de `tenantCategory` da sessão; sem ele, "Profissionais". A terminologia de `src/lib/verticals` é da demonstração.

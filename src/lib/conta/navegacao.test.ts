@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { itemAtivo, itensDaNavegacao, itensDoDono, retornoDeRecebimentos, rotuloDoSino } from "./navegacao";
+import { gruposDaNavegacao, itemAtivo, itensDaNavegacao, itensDoDono, retornoDeRecebimentos, rotuloDoSino } from "./navegacao";
 
 const DONO_COM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "COMISSOES_VER", "COMISSOES_CONFIGURAR"] };
 const DONO_SEM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "RECEBIMENTOS_VER"] };
@@ -7,7 +7,7 @@ const DONO_SEM_COMISSOES = { role: "DONO" as const, areas: ["AGENDA_VER", "RECEB
 describe("itensDoDono", () => {
   it("as áreas na ordem pedida, todas da área real, nos endereços de antes", () => {
     expect(itensDoDono(DONO_COM_COMISSOES).map((i) => [i.href, i.rotulo])).toEqual([
-      ["/conta/visao-geral", "Dashboard"],
+      ["/conta/visao-geral", "Visão geral"],
       ["/conta/agendamentos", "Agenda"],
       ["/conta/configuracoes/profissionais", "Profissionais"],
       ["/conta/configuracoes/servicos", "Serviços"],
@@ -21,7 +21,7 @@ describe("itensDoDono", () => {
   it("quatro na barra do celular; as outras vão para o menu da conta", () => {
     const itens = itensDoDono(DONO_COM_COMISSOES);
     expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
-      "Dashboard",
+      "Visão geral",
       "Agenda",
       "Clientes",
       "Configurações",
@@ -60,7 +60,7 @@ describe("itensDaNavegacao", () => {
     expect(itensDaNavegacao({ comEstabelecimento: true, contexto: DONO_COM_COMISSOES })).toEqual(itensDoDono(DONO_COM_COMISSOES));
   });
 
-  it("o gerente não ganha Dashboard, Equipe e acessos nem Comissões, e o termo dele não muda", () => {
+  it("o gerente não ganha Visão geral, Equipe e acessos nem Comissões, e o termo dele não muda", () => {
     const contexto = {
       role: "GERENTE" as const,
       areas: ["AGENDA_VER", "PROFISSIONAIS_VER", "COMISSOES_VER"],
@@ -162,5 +162,38 @@ describe("rotuloDoSino", () => {
     expect(rotuloDoSino(0)).toBe("Notificações: nenhuma solicitação pendente");
     expect(rotuloDoSino(1)).toBe("Notificações: 1 solicitação pendente");
     expect(rotuloDoSino(7)).toBe("Notificações: 7 solicitações pendentes");
+  });
+});
+
+describe("gruposDaNavegacao (tema Azul e branco)", () => {
+  const resumo = (itens: Parameters<typeof gruposDaNavegacao>[0]) =>
+    gruposDaNavegacao(itens).map((g) => [g.titulo, g.itens.map((i) => i.rotulo)]);
+
+  it("dono: Visão geral sem título e três grupos na ordem aprovada", () => {
+    expect(resumo(itensDoDono(DONO_COM_COMISSOES))).toEqual([
+      [null, ["Visão geral"]],
+      ["Atendimento", ["Agenda", "Clientes"]],
+      ["Gestão do negócio", ["Profissionais", "Serviços", "Comissões"]],
+      ["Administração", ["Equipe e acessos", "Configurações"]],
+    ]);
+  });
+
+  it("não acrescenta item: sem Comissões no plano, o grupo segue sem ela; termo do segmento mantido", () => {
+    const grupos = resumo(itensDoDono({ ...DONO_SEM_COMISSOES, tenantCategory: "BARBERSHOP" }));
+    expect(grupos[2]).toEqual(["Gestão do negócio", ["Barbeiros", "Serviços"]]);
+  });
+
+  it("grupo sem item não aparece; mesmos itens e endereços da lista", () => {
+    const gerente = itensDaNavegacao({
+      comEstabelecimento: true,
+      perfil: "gerente",
+      contexto: { role: "GERENTE", areas: ["CLIENTES_VER"] },
+    });
+    expect(resumo(gerente)).toEqual([
+      ["Atendimento", ["Clientes"]],
+      ["Administração", ["Configurações"]],
+    ]);
+    const dono = itensDoDono(DONO_COM_COMISSOES);
+    expect(gruposDaNavegacao(dono).flatMap((g) => g.itens).map((i) => i.href).sort()).toEqual(dono.map((i) => i.href).sort());
   });
 });

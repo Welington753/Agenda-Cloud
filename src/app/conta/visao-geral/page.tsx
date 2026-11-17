@@ -100,7 +100,7 @@ export default function InicioPage() {
 
   if (!contexto) {
     return (
-      <PaginaConta titulo="Dashboard">
+      <PaginaConta titulo="Visão geral">
         <Cartao>
           <CartaoCorpo className="flex items-start gap-3">
             <Store size={20} className="mt-0.5 shrink-0 text-ink-soft" />
@@ -115,7 +115,7 @@ export default function InicioPage() {
 
   return (
     <PaginaConta
-      titulo="Dashboard"
+      titulo="Visão geral"
       descricao={
         painel ? (
           <>

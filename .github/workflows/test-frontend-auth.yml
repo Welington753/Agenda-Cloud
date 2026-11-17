@@ -714,15 +714,16 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/servicos-publicos
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:servicos-publicos
 
-      # Invocação SEPARADA (2 cadastros, 1 login, 3 pedidos públicos):
-      # aparência claro/escuro/seguir aparelho (primeira visita, escolha
+      # Invocação SEPARADA (3 cadastros, 2 logins, 4 pedidos públicos):
+      # aparência claro/escuro/seguir aparelho/azul e branco (primeira visita, escolha
       # salva aplicada antes da pintura, demonstração sempre clara, destaque
       # do horário, foco e contraste) e o menu da conta (sino com pendentes
       # reais, situação das notificações deste aparelho sem pedir permissão,
       # nenhuma consulta de solicitações a mais, Sair). Capturas em 360, 390
-      # e 1280 px nos dois temas. Chaves VAPID só deste processo, para o
+      # e 1280 px nos dois temas, mais o azul em /conta, login, recuperação,
+      # portal e agendamento. Chaves VAPID só deste processo, para o
       # servidor responder "push ligado"; nada é enviado.
-      - name: Run real browser flows (light/dark appearance, account menu notifications)
+      - name: Run real browser flows (light/dark/blue appearance, account menu notifications)
         id: browser_aparencia
         env:
           NODE_ENV: development

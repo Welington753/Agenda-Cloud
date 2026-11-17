@@ -37,7 +37,7 @@ function LoginPageConteudo() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-chrome p-10 text-chrome-ink lg:flex">
+      <div className="hidden flex-col justify-between bg-chrome p-10 text-chrome-ink azul:border-r azul:border-chrome-border lg:flex">
         <div>
           <MarcaTimVix />
         </div>

@@ -47,7 +47,7 @@ function EntradaDoPortalConteudo() {
 
   return (
     <div className="min-h-screen bg-paper">
-      <header className="bg-chrome text-chrome-ink">
+      <header className="bg-chrome text-chrome-ink azul:border-b azul:border-chrome-border">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
           <MarcaTimVix />
           <p className="flex min-w-0 items-center gap-1 text-sm font-semibold">
