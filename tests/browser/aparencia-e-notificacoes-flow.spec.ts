@@ -1,9 +1,10 @@
-// Aparência (claro, escuro, seguir aparelho) e o menu da conta com as
+// Aparência (claro, escuro, seguir aparelho, azul e branco) e o menu da conta com as
 // notificações — navegador real, backend real e PostgreSQL descartável.
 //
 // O QUE ESTE TESTE PROVA:
-// - o agendamento público segue SEMPRE o aparelho, sem seletor, mesmo com
-//   uma escolha manual salva pelo dono neste navegador — e acompanha a
+// - o agendamento público segue o aparelho, sem seletor, mesmo com uma
+//   escolha manual Claro/Escuro salva pelo dono neste navegador (só "Azul e
+//   branco" salvo também vale ali, último teste) — e acompanha a
 //   mudança do aparelho com a página aberta;
 // - a escolha manual da área privada fica salva, é aplicada ANTES da
 //   primeira pintura (sem lampejo, sem erro de hidratação) e continua intacta
@@ -15,13 +16,17 @@
 //   sem gravar nada; menu da conta com pendentes, situação das notificações
 //   neste aparelho (verificada ao abrir, sem pedir permissão), som e acesso
 //   aos controles existentes — e nenhuma consulta de solicitações a mais;
-// - 360, 390 e 1280 px sem rolagem lateral, com nomes longos.
+// - 360, 390 e 1280 px sem rolagem lateral, com nomes longos;
+// - "Azul e branco": escolhido em /conta, salvo, aplicado antes da pintura
+//   em /conta, login, recuperação, portal e no agendamento deste navegador
+//   (vence o aparelho escuro); a demonstração fica clara; voltar a Claro,
+//   Escuro ou Seguir aparelho restaura o comportamento de antes.
 //
 // O QUE ELE NÃO PROVA: notificação recebida num celular (nada é enviado;
 // as chaves VAPID desta execução só ligam o push no servidor). O teste
 // físico no iPhone fica para depois da publicação.
 //
-// Orçamento: 1 cadastro e 1 login (limites de 5 por IP); 3 pedidos públicos.
+// Orçamento: 3 cadastros e 2 logins (limites de 5 por IP); 4 pedidos públicos.
 // Invocação própria (`npm run test:browser:aparencia`).
 import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
@@ -490,5 +495,181 @@ test("menu da conta: sino com pendentes reais, notificações deste aparelho, ap
   await expect(page).toHaveURL(/\/login$/);
   expect(await fundo(page)).toBe(PAPEL_ESCURO);
   await page.screenshot({ path: test.info().outputPath("login-escuro-390.png") });
+  await contexto.close();
+});
+
+// ------------------------------------------- tema opcional "Azul e branco" em todos os ambientes
+// Orçamento: 1 cadastro e 1 login; 1 pedido público.
+const PAPEL_AZUL = "rgb(243, 247, 252)";
+// Horário escolhido: accent-hover (#1d4ed8), como nos outros temas.
+const DESTAQUE_AZUL = "rgb(29, 78, 216)";
+
+test("Azul e branco: escolha salva vale em /conta, login, recuperação, portal e agendamento; outros temas preservados", async ({
+  browser,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const sufixo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const estabelecimento = `Clínica Azul e Branco ${sufixo}`;
+  const email = `azul-${sufixo}@example.test`;
+  await contaPorConvite(request, { ownerName: "Dona Azul", businessName: estabelecimento, email, phone: "11977770004", password: SENHA });
+
+  // Aparelho ESCURO de propósito: o azul escolhido tem de vencer o aparelho.
+  const contexto = await browser.newContext({ viewport: { width: 390, height: 780 }, colorScheme: "dark" });
+  await vigiarPrimeiraPintura(contexto);
+  const page = await contexto.newPage();
+  const erros = errosDeHidratacao(page);
+  await page.goto("/login");
+  // Sem escolha salva: segue o aparelho (o azul nunca é o padrão).
+  expect(await fundo(page)).toBe(PAPEL_ESCURO);
+  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("Senha").fill(SENHA);
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+
+  // Serviço, profissional e página pública (1 pedido no fim).
+  const me = await api<{ activeContext: { tenantId: string } }>(page, "/auth/me");
+  const base = `/tenants/${me.corpo.activeContext.tenantId}`;
+  const servico = await api<{ service: { id: string } }>(page, `${base}/services`, "POST", {
+    name: "Consulta de avaliação",
+    shortDescription: "Primeira conversa",
+    priceCents: 12000,
+    priceVisible: true,
+    durationMinutes: 60,
+    bufferAfterMinutes: 0,
+    modality: "IN_PERSON",
+    activeInPublicBooking: true,
+    requiresManualConfirmation: false,
+  });
+  expect(servico.status).toBe(201);
+  const prof = await api<{ professional: { id: string } }>(page, `${base}/professionals`, "POST", {
+    name: "Ana Azevedo",
+    serviceIds: [servico.corpo.service.id],
+  });
+  expect(prof.status).toBe(201);
+  expect(
+    (await api(page, `${base}/professionals/${prof.corpo.professional.id}/schedule`, "PUT", {
+      days: [{ weekday: WEEKDAY_DA_DATA, intervals: [{ start: "09:00", end: "18:00" }] }],
+    })).status,
+  ).toBe(200);
+  const { corpo } = await api<{ settings: { slug: string } }>(page, `${base}/public-booking`, "PUT", { enabled: true });
+  const link = `/agendar/${corpo.settings.slug}`;
+
+  // ------------------------------------------- seleção e persistência em /conta
+  await page.goto("/conta/configuracoes/aparencia");
+  const seletor = page.getByTestId("seletor-aparencia");
+  await expect(seletor.getByRole("radio")).toHaveCount(4);
+  await seletor.getByText("Azul e branco", { exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-tema", "azul");
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await expect(page.getByTestId("aviso-azul-indisponivel")).toHaveCount(0);
+  await page.reload();
+  expect(await temaNaPrimeiraPintura(page)).toBe("azul");
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await expect(page.getByTestId("seletor-aparencia").getByRole("radio", { name: "Azul e branco" })).toBeChecked();
+  expect(await contraste(page, "h1")).toBeGreaterThanOrEqual(7);
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath("azul-conta-aparencia-390.png"), fullPage: true });
+  await page.goto("/conta/visao-geral");
+  await expect(page.getByTestId("periodo-indicadores")).toBeVisible();
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath("azul-conta-visao-geral-390.png"), fullPage: true });
+  // O mesmo seletor no menu da conta mostra a escolha.
+  await page.getByTestId("abrir-menu-conta").click();
+  const menu = page.getByTestId("menu-conta");
+  await expect(menu.getByTestId("seletor-aparencia").getByRole("radio", { name: "Azul e branco" })).toBeChecked();
+  await page.screenshot({ path: test.info().outputPath("azul-conta-menu-390.png") });
+  await page.keyboard.press("Escape");
+
+  // ------------------------------------------- agendamento público deste navegador
+  await page.goto(link);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(estabelecimento);
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await expect(page.getByTestId("seletor-aparencia")).toHaveCount(0);
+  expect(await contraste(page, "h1")).toBeGreaterThanOrEqual(7);
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath("azul-agendar-390-1-servico.png"), fullPage: true });
+  await ateOHorario(page, /Consulta de avaliação/, "09:00");
+  const escolhido = page.getByTestId("lista-horarios-publicos").getByRole("button", { name: "09:00", exact: true });
+  await expect(escolhido).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => escolhido.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(DESTAQUE_AZUL);
+  expect(await contraste(page, '[data-testid="lista-horarios-publicos"] [aria-pressed="true"]')).toBeGreaterThanOrEqual(4.5);
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath("azul-agendar-390-2-horario.png"), fullPage: true });
+  await page.getByTestId("continuar-horario").click();
+  await page.getByLabel("Nome").fill("Maria Aparecida dos Santos Oliveira");
+  await page.getByLabel("WhatsApp com DDD").fill("(11) 98888-0201");
+  await page.getByTestId("revisar-pedido").click();
+  await page.getByTestId("enviar-pedido").click();
+  await expect(page.getByTestId("recibo-titulo")).toBeVisible();
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await page.screenshot({ path: test.info().outputPath("azul-agendar-390-3-recibo.png"), fullPage: true });
+
+  // Celular estreito: sem rolagem lateral no agendamento e na conta.
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(link);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await semRolagemHorizontal(page);
+  await page.goto("/conta/configuracoes/aparencia");
+  await expect(page.getByTestId("seletor-aparencia")).toBeVisible();
+  await semRolagemHorizontal(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/conta/visao-geral");
+  await expect(page.getByTestId("periodo-indicadores")).toBeVisible();
+  expect(await fundo(page)).toBe(PAPEL_AZUL);
+  await page.screenshot({ path: test.info().outputPath("azul-conta-visao-geral-1440.png") });
+  await page.goto(link);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("azul-agendar-1440.png") });
+
+  // A demonstração não muda.
+  await page.goto("/");
+  expect(await fundo(page)).toBe(PAPEL_CLARO);
+
+  // ------------------------------------------- entradas sem sessão (navegador limpo, azul salvo)
+  const anonimo = await browser.newContext({ viewport: { width: 390, height: 780 }, colorScheme: "dark" });
+  const a = await anonimo.newPage();
+  await a.goto("/login");
+  await a.evaluate((chave) => localStorage.setItem(chave, "azul"), CHAVE_APARENCIA);
+  for (const [caminho, titulo] of [
+    ["/login", "Entrar"],
+    ["/redefinir-senha", null],
+    ["/portal", "Entrar no portal"],
+  ] as const) {
+    await a.goto(caminho);
+    if (titulo) await expect(a.getByRole("heading", { level: 1, name: titulo })).toBeVisible();
+    else await expect(a.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await fundo(a), caminho).toBe(PAPEL_AZUL);
+    expect(await contraste(a, "h1"), caminho).toBeGreaterThanOrEqual(7);
+    await semRolagemHorizontal(a);
+    await a.screenshot({ path: test.info().outputPath(`azul-${caminho.slice(1)}-390.png`), fullPage: true });
+  }
+  await a.goto("/login");
+  // Botão principal do login: texto branco sobre o azul.
+  expect(await contraste(a, 'button[type="submit"]')).toBeGreaterThanOrEqual(4.5);
+  await a.setViewportSize({ width: 1440, height: 900 });
+  await a.goto("/login");
+  expect(await fundo(a)).toBe(PAPEL_AZUL);
+  await a.screenshot({ path: test.info().outputPath("azul-login-1440.png") });
+  await anonimo.close();
+
+  // ------------------------------------------- volta aos outros temas
+  await page.setViewportSize({ width: 390, height: 780 });
+  await page.goto("/conta/configuracoes/aparencia");
+  const escolher = (rotulo: string) => page.getByTestId("seletor-aparencia").getByText(rotulo, { exact: true }).click();
+  await escolher("Claro");
+  expect(await fundo(page)).toBe(PAPEL_CLARO);
+  await escolher("Escuro");
+  expect(await fundo(page)).toBe(PAPEL_ESCURO);
+  await escolher("Seguir aparelho");
+  expect(await fundo(page)).toBe(PAPEL_ESCURO);
+  await page.reload();
+  expect(await temaNaPrimeiraPintura(page)).toBe("sistema");
+  // Sem o azul, o agendamento volta a seguir só o aparelho.
+  await page.goto(link);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  expect(await fundo(page)).toBe(PAPEL_ESCURO);
+  expect(erros, "sem erro de hidratação").toEqual([]);
   await contexto.close();
 });

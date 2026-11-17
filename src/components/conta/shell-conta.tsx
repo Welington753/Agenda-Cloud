@@ -131,7 +131,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-chrome-ink md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0">
+      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-chrome-ink azul:border-b azul:border-chrome-border md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0 md:azul:border-r md:azul:border-b-0">
         {/* Marca, estabelecimento ativo e o sino "Notificações" */}
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
           <div className="min-w-0">

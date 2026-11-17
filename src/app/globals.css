@@ -140,10 +140,13 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
   }
 }
 
-/* Tema opcional "Azul e branco" — SÓ com a escolha "azul" e SÓ em página que
-   o desenha (MarcadorTemaAzul: por ora, o portal da plataforma). Nas demais,
-   o valor "azul" não entra em bloco nenhum e a página fica no Claro. Não há
-   versão "seguir aparelho": é uma escolha manual e sempre clara.
+/* Tema opcional "Azul e branco" — SÓ com a escolha "azul", em toda página
+   adaptável (MarcadorAparencia: portal, login, recuperação, cadastro, convite
+   e /conta) e no agendamento público (MarcadorAparelho) quando quem usa este
+   navegador escolheu o azul. Demonstração e site não entram aqui e ficam
+   claros como sempre. Não há versão "seguir aparelho": é uma escolha manual e
+   sempre clara. O seletor de atributo dá a este bloco especificidade maior que
+   a do escuro do aparelho, então no agendamento o azul escolhido vence.
 
    Fundo branco gelo, cartões brancos, azul (#2563eb) nos botões principais,
    links, indicadores e item ativo; títulos e texto em azul-marinho. Sucesso,
@@ -153,7 +156,7 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
    Sobre o azul-claro (accent-soft) o azul fica em 4.4:1: texto pequeno ali usa
    o azul escuro (accent-hover, 5.7:1). O menu lateral (chrome) fica branco, com
    texto escuro. */
-html[data-tema="azul"]:has([data-tema-azul-disponivel]) {
+html[data-tema="azul"]:is(:has([data-aparencia-adaptavel]), :has([data-aparencia-aparelho])) {
   color-scheme: light;
   --color-ink: #172b4d;
   --color-ink-soft: #475569;
@@ -190,9 +193,9 @@ html[data-tema="azul"]:has([data-tema-azul-disponivel]) {
   --shadow-lift: 0 10px 28px rgba(23, 43, 77, 0.14);
 }
 
-/* `azul:` — classe que só vale com o tema "Azul e branco" desenhado (mesma
+/* `azul:` — classe que só vale com o tema "Azul e branco" aplicado (mesma
    condição do bloco acima). Os outros temas nunca a recebem. */
-@custom-variant azul (&:where(html[data-tema="azul"]:has([data-tema-azul-disponivel]) *));
+@custom-variant azul (&:where(html[data-tema="azul"]:is(:has([data-aparencia-adaptavel]), :has([data-aparencia-aparelho])) *));
 
 @theme inline {
   --color-ink: var(--color-ink);
