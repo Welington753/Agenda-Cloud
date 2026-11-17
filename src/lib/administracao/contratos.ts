@@ -36,9 +36,16 @@ export interface EstabelecimentoAdministrado {
     code: string;
     name: string;
     catalogPriceCents: number | null;
-    maxProfessionals: number;
+    /** `null`: sem limite contratual de profissionais (assinatura modular). */
+    maxProfessionals: number | null;
     maxUnits: number;
   };
+  /** Limite de usuários da equipe em vigor; ausente numa API anterior. */
+  teamUserLimit?: number;
+  /** `true`: limite próprio do estabelecimento; `false`: segue o plano. */
+  ownTeamUserLimit?: boolean;
+  /** Assinatura modular (Agendamento essencial + adicionais). */
+  modular?: boolean;
   owners: {
     id: string;
     name: string;
@@ -107,6 +114,8 @@ export interface DetalheEstabelecimento extends EstabelecimentoAdministrado {
     archive: boolean;
     reactivate: boolean;
     changePlan: boolean;
+    /** Alterar a assinatura modular (ou converter). Ausente numa API anterior. */
+    changeSubscription?: boolean;
     recordPayment: boolean;
     extendTrial: boolean;
     grantCourtesy: boolean;
@@ -213,8 +222,11 @@ export function ehEstabelecimento(
     objeto(plan) &&
     [plan.id, plan.code, plan.name].every(texto) &&
     (plan.catalogPriceCents === null || inteiro(plan.catalogPriceCents)) &&
-    inteiro(plan.maxProfessionals) &&
+    (plan.maxProfessionals === null || inteiro(plan.maxProfessionals)) &&
     inteiro(plan.maxUnits) &&
+    (value.teamUserLimit === undefined || inteiro(value.teamUserLimit)) &&
+    (value.ownTeamUserLimit === undefined || typeof value.ownTeamUserLimit === "boolean") &&
+    (value.modular === undefined || typeof value.modular === "boolean") &&
     Array.isArray(value.owners) &&
     value.owners.every(
       (owner: unknown) =>

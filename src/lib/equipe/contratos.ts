@@ -108,9 +108,10 @@ export interface MembroDaEquipe {
 
 export interface VisaoDaEquipe {
   tenant: { id: string; name: string; slug?: string };
-  plan: { name: string; maxProfessionals: number };
+  /** `maxProfessionals: null`: sem limite contratual de profissionais. */
+  plan: { name: string; maxProfessionals: number | null };
   seats: Vagas;
-  professionals: { active: number; limit: number };
+  professionals: { active: number; limit: number | null };
   grantablePermissions: { permission: PermissaoFuncionario; label: string }[];
   permissionLabels: { permission: PermissaoFuncionario; label: string }[];
   maxInviteSends: number;
@@ -226,7 +227,7 @@ export function ehVisaoDaEquipe(v: unknown): v is VisaoDaEquipe {
     objeto(v) &&
     objeto(v.tenant) &&
     objeto(v.plan) &&
-    inteiro(v.plan.maxProfessionals) &&
+    (v.plan.maxProfessionals === null || inteiro(v.plan.maxProfessionals)) &&
     ehVagas(v.seats) &&
     objeto(v.professionals) &&
     inteiro(v.professionals.active) &&
@@ -315,14 +316,20 @@ export const ROTULO_PERFIL: Record<string, string> = {
   RECEPCIONISTA: "Recepcionista (papel antigo)",
 };
 
-/** Texto das vagas, sempre com os números que o servidor contou. */
-export function textoDasVagas(vagas: Vagas): string {
-  const partes = [`${vagas.activeAccesses} ativo${vagas.activeAccesses === 1 ? "" : "s"}`];
-  // Convites são do fluxo antigo: só entram no texto quando existem.
-  if (vagas.pendingInvites > 0) {
-    partes.push(`${vagas.pendingInvites} convite${vagas.pendingInvites === 1 ? "" : "s"} pendente${vagas.pendingInvites === 1 ? "" : "s"}`);
-  }
-  return `${vagas.used} de ${vagas.limit} em uso (${partes.join(", ")})`;
+/** Texto das vagas ("3 de 5 acessos utilizados"), sempre com os números que o
+ * servidor contou. Reservas por convite só aparecem quando existem. Usado
+ * também pelo portal (aba "Plano e adicionais"). */
+export function textoDasVagas(vagas: Pick<Vagas, "used" | "limit" | "pendingInvites">): string {
+  const base = `${vagas.used} de ${vagas.limit} ${vagas.limit === 1 ? "acesso utilizado" : "acessos utilizados"}`;
+  if (vagas.pendingInvites <= 0) return base;
+  const reservas = `${vagas.pendingInvites} ${vagas.pendingInvites === 1 ? "reservado" : "reservados"} por convite`;
+  return `${base} (${reservas})`;
+}
+
+/** Acima do limite contratado (contagem nova ou limite reduzido antes desta
+ * regra): ninguém perde acesso, só não entra ninguém novo. */
+export function acimaDoLimite(vagas: Pick<Vagas, "used" | "limit">): boolean {
+  return vagas.used > vagas.limit;
 }
 
 /** Confirmação de cada ação, com o horário e o cliente da reserva. */

@@ -147,3 +147,26 @@ export async function criarContaDeTeste(api: APIRequestContext, dados: DadosDeCo
     membership: { role: "DONO" },
   };
 }
+
+/** Preço base da assinatura modular (exemplo, não aprovado) para a criação
+ * de estabelecimento funcionar no banco descartável. O plano modular nasce
+ * como a API nova o cria (commercial/modular-plan.ts); só grava preço se
+ * ainda não houver. */
+export async function garantirPrecoBaseModular(db: Client, gravadoPor: string, centavos = 2990): Promise<void> {
+  await db.query(
+    `INSERT INTO plans (id, code, name, price_cents, short_description, max_professionals, max_units)
+     VALUES ('plan_modular', 'modular', 'Agendamento essencial', NULL, '', NULL, 1) ON CONFLICT (id) DO NOTHING`,
+  );
+  await db.query(
+    `INSERT INTO plan_features (id, plan_id, feature_id)
+     SELECT 'pf_modular_' || lower(f.key::text), 'plan_modular', f.id FROM features f
+      WHERE f.key::text IN ('AGENDA', 'AGENDAMENTO_PUBLICO', 'PROFISSIONAIS', 'CONSUMIDORES', 'EQUIPE', 'PAGAMENTOS')
+     ON CONFLICT (plan_id, feature_id) DO NOTHING`,
+  );
+  await db.query(
+    `INSERT INTO plan_prices (id, plan_id, billing_cycle, amount_cents, recorded_at, recorded_by_user_id, request_key)
+     SELECT substr(md5(random()::text), 1, 24), 'plan_modular', 'MONTHLY', $1::int, now(), $2::varchar, 'browser-base-' || md5(random()::text)
+      WHERE NOT EXISTS (SELECT 1 FROM plan_prices WHERE plan_id = 'plan_modular' AND billing_cycle = 'MONTHLY')`,
+    [centavos, gravadoPor],
+  );
+}

@@ -19,7 +19,7 @@ import { CalendarDays, CalendarPlus, ShieldAlert, Store } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { rotuloDaData } from "@/lib/profissionais/agendamentos";
-import type { FalhaPainel } from "@/lib/api/dashboard-api";
+import { temIndicadores, type FalhaPainel } from "@/lib/api/dashboard-api";
 import {
   erroDoPeriodo,
   periodoDaEscolha,
@@ -34,6 +34,7 @@ import { AvisoSolicitacoes } from "@/components/conta/aviso-solicitacoes";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Carregando, ComoCalculamos, Financeiro, Hoje, Periodo, Plano, Proximos } from "./blocos";
+import { IndicadoresNaoContratados } from "./indicadores-nao-contratados";
 
 const ESCOLHAS: { valor: EscolhaDePeriodo; rotulo: string }[] = [
   { valor: "hoje", rotulo: "Hoje" },
@@ -170,6 +171,9 @@ export default function InicioPage() {
         <div className="space-y-8" aria-busy={estado.status === "carregando"}>
           <Hoje painel={painel} aoAtualizar={recarregar} atualizando={estado.status === "carregando"} />
 
+          {!temIndicadores(painel) ? (
+            <IndicadoresNaoContratados />
+          ) : (
           <section aria-labelledby="titulo-periodo" className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -243,6 +247,7 @@ export default function InicioPage() {
             <Periodo painel={painel} />
             <Financeiro painel={painel} />
           </section>
+          )}
 
           <Proximos painel={painel} />
 

@@ -1,13 +1,27 @@
 "use client";
 
-import { useParams } from "next/navigation";
+// Ficha do estabelecimento em abas (`?aba=`): Dados, Plano e adicionais,
+// Responsáveis e Histórico. Cada aba reaproveita os blocos de antes; o que é
+// do plano anterior (troca de plano e valor contratado) só aparece para quem
+// ainda não tem assinatura modular.
+import { Suspense } from "react";
+import Link from "next/link";
+import clsx from "clsx";
+import { History, Info, Layers, Users, type LucideIcon } from "lucide-react";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   ehDetalheEstabelecimento,
   SITUACOES,
   SEGMENTOS,
   dataCadastro,
+  type DetalheEstabelecimento,
 } from "@/lib/administracao/contratos";
-import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS } from "@/lib/administracao/rotas";
+import {
+  abaDaFicha,
+  rotaFichaEstabelecimento,
+  ROTA_ESTABELECIMENTOS_ADMINISTRADOS,
+  type AbaDaFicha,
+} from "@/lib/administracao/rotas";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
@@ -23,6 +37,8 @@ import { AcessoSemVencimento } from "@/components/administracao/sem-vencimento";
 import { PrecoContratado } from "@/components/administracao/preco-contratado";
 import { MarcaDeTeste } from "@/components/administracao/marca-de-teste";
 import { SeloInternoTeste } from "@/components/administracao/alcance-do-portal";
+import { PlanoEAdicionais } from "@/components/administracao/plano-e-adicionais";
+import { HistoricoDaAssinatura } from "@/components/administracao/historico-assinatura";
 
 function Dado({ titulo, valor }: { titulo: string; valor: string }) {
   return (
@@ -32,8 +48,25 @@ function Dado({ titulo, valor }: { titulo: string; valor: string }) {
     </div>
   );
 }
+
+const ABAS: { aba: AbaDaFicha; rotulo: string; icone: LucideIcon }[] = [
+  { aba: "dados", rotulo: "Dados", icone: Info },
+  { aba: "plano", rotulo: "Plano e adicionais", icone: Layers },
+  { aba: "responsaveis", rotulo: "Responsáveis", icone: Users },
+  { aba: "historico", rotulo: "Histórico", icone: History },
+];
+
 export default function DetalhePage() {
+  return (
+    <Suspense fallback={<p className="py-12 text-center text-ink-soft">Carregando o portal…</p>}>
+      <Detalhe />
+    </Suspense>
+  );
+}
+
+function Detalhe() {
   const { id } = useParams<{ id: string }>();
+  const aba = abaDaFicha(useSearchParams().get("aba"));
   const { estado, recarregar } = useLeituraPlataforma(
     `/platform/establishments/${encodeURIComponent(id)}`,
     ehDetalheEstabelecimento,
@@ -60,67 +93,73 @@ export default function DetalhePage() {
           Atualizar
         </Botao>
       </header>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Cartao>
-          <CartaoCorpo>
-            <h2 className="mb-4 font-semibold">Estabelecimento</h2>
-            <dl className="grid grid-cols-2 gap-4">
-              <Dado
-                titulo="Situação operacional"
-                valor={
-                  item.status === "SUSPENDED" || item.status === "ARCHIVED"
-                    ? `Inativo (${SITUACOES[item.status]})`
-                    : "Ativo"
-                }
-              />
-              <Dado
-                titulo="Segmento"
-                valor={SEGMENTOS[item.category] ?? item.category}
-              />
-              <Dado
-                titulo="Cadastrado em"
-                valor={dataCadastro(item.createdAt)}
-              />
-              <Dado titulo="Fuso horário" valor={item.timezone} />
-            </dl>
-          </CartaoCorpo>
-        </Cartao>
-        <Cartao>
-          <CartaoCorpo>
-            <h2 className="mb-4 font-semibold">Responsáveis</h2>
-            {item.owners.length === 0 ? (
-              <p className="text-sm text-ink-soft">
-                Sem responsável vinculado.
-              </p>
-            ) : (
-              <ul className="space-y-4">
-                {item.owners.map((owner) => (
-                  <li key={owner.id} className="space-y-1 text-sm">
-                    <p className="break-words font-semibold">{owner.name}</p>
-                    <p className="break-all">{owner.email}</p>
-                    <p>{owner.phone || "Telefone não informado"}</p>
-                    <p className="text-xs text-ink-soft">
-                      Conta{" "}
-                      {owner.status === "ACTIVE"
-                        ? "ativa"
-                        : owner.status === "INVITED"
-                          ? "convidada"
-                          : "suspensa"}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+      <nav
+        aria-label="Seções do estabelecimento"
+        className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-paper-muted p-1 md:grid-cols-4"
+      >
+        {ABAS.map(({ aba: alvo, rotulo, icone: Icone }) => (
+          <Link
+            key={alvo}
+            href={rotaFichaEstabelecimento(item.id, alvo)}
+            aria-current={alvo === aba ? "page" : undefined}
+            className={clsx(
+              "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-center text-sm font-semibold",
+              alvo === aba ? "bg-accent text-on-accent shadow-sm" : "text-ink-soft hover:bg-card hover:text-ink",
             )}
-          </CartaoCorpo>
-        </Cartao>
-      </div>
+          >
+            <Icone size={18} aria-hidden="true" className="hidden shrink-0 sm:block" />
+            {rotulo}
+          </Link>
+        ))}
+      </nav>
+      {aba === "dados" && <AbaDados item={item} recarregar={recarregar} />}
+      {aba === "plano" && <PlanoEAdicionais tenantId={item.id} nome={item.name} aoMudar={recarregar} />}
+      {aba === "responsaveis" && <AbaResponsaveis item={item} />}
+      {aba === "historico" && <HistoricoDaAssinatura tenantId={item.id} />}
+    </div>
+  );
+}
+
+function AbaDados({ item, recarregar }: { item: DetalheEstabelecimento; recarregar: () => void }) {
+  return (
+    <>
+      <Cartao>
+        <CartaoCorpo>
+          <h2 className="mb-4 font-semibold">Estabelecimento</h2>
+          <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Dado
+              titulo="Situação operacional"
+              valor={
+                item.status === "SUSPENDED" || item.status === "ARCHIVED"
+                  ? `Inativo (${SITUACOES[item.status]})`
+                  : "Ativo"
+              }
+            />
+            <Dado
+              titulo="Segmento"
+              valor={SEGMENTOS[item.category] ?? item.category}
+            />
+            <Dado
+              titulo="Cadastrado em"
+              valor={dataCadastro(item.createdAt)}
+            />
+            <Dado titulo="Fuso horário" valor={item.timezone} />
+            {item.teamUserLimit !== undefined && (
+              <Dado
+                titulo="Limite de usuários da equipe"
+                valor={`${item.teamUserLimit}${item.ownTeamUserLimit ? "" : " (do plano)"}`}
+              />
+            )}
+          </dl>
+        </CartaoCorpo>
+      </Cartao>
       {/* A versão lida entra na chave: depois de uma ação, os formulários
           recomeçam com os dados novos do servidor. */}
       <SituacaoDoEstabelecimento key={`situacao-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <ValidadeDoAcesso key={`validade-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <AcessoSemVencimento key={`sem-vencimento-${item.updatedAt}`} item={item} aoMudar={recarregar} />
-      <PrecoContratado key={`preco-${item.updatedAt}`} item={item} aoMudar={recarregar} />
-      <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />
+      {!item.modular && <PrecoContratado key={`preco-${item.updatedAt}`} item={item} aoMudar={recarregar} />}
+      {!item.modular && <PlanoDoEstabelecimento key={`plano-${item.updatedAt}`} item={item} aoMudar={recarregar} />}
       <DadosCadastrais key={`dados-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <MarcaDeTeste key={`teste-${item.updatedAt}`} item={item} aoMudar={recarregar} />
       <Cartao>
@@ -144,7 +183,42 @@ export default function DetalhePage() {
           )}
         </CartaoCorpo>
       </Cartao>
+    </>
+  );
+}
+
+function AbaResponsaveis({ item }: { item: DetalheEstabelecimento }) {
+  return (
+    <>
+      <Cartao>
+        <CartaoCorpo>
+          <h2 className="mb-4 font-semibold">Responsáveis</h2>
+          {item.owners.length === 0 ? (
+            <p className="text-sm text-ink-soft">
+              Sem responsável vinculado.
+            </p>
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {item.owners.map((owner) => (
+                <li key={owner.id} className="space-y-1 text-sm">
+                  <p className="break-words font-semibold">{owner.name}</p>
+                  <p className="break-all">{owner.email}</p>
+                  <p>{owner.phone || "Telefone não informado"}</p>
+                  <p className="text-xs text-ink-soft">
+                    Conta{" "}
+                    {owner.status === "ACTIVE"
+                      ? "ativa"
+                      : owner.status === "INVITED"
+                        ? "convidada"
+                        : "suspensa"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CartaoCorpo>
+      </Cartao>
       <PessoasEstabelecimento tenantId={item.id} />
-    </div>
+    </>
   );
 }

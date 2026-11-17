@@ -145,7 +145,7 @@ test("gerente sem profissional: só as áreas concedidas, sem contato nem preço
     await expect(cartao.getByTestId("profissional-vinculado")).toHaveText("Nenhum: não atende clientes");
     await expect(cartao.getByTestId("permissoes-efetivas")).toContainText("Solicitações");
     // Ocupa vaga; nenhum profissional foi criado.
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 acessos utilizados");
     const [{ total }] = (await db.query("SELECT count(*)::int AS total FROM professionals WHERE tenant_id = $1", [tenantId])).rows;
     expect(total).toBe(2);
     const [conta] = (await db.query("SELECT email, email_verified FROM users WHERE username = $1", [login])).rows;

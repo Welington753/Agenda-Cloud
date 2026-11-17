@@ -21,6 +21,7 @@ import {
 import { ROTULO_STATUS } from "@/lib/profissionais/agendamentos";
 import {
   SITUACOES_ATENDIMENTO,
+  type PainelComIndicadores,
   type PainelDoEstabelecimento,
   type ProximoAtendimentoDoPainel,
 } from "@/lib/api/dashboard-api";
@@ -112,7 +113,7 @@ export function Hoje({
   );
 }
 
-export function Periodo({ painel }: { painel: PainelDoEstabelecimento }) {
+export function Periodo({ painel }: { painel: PainelComIndicadores }) {
   const resumo = painel.periodSummary;
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -145,7 +146,7 @@ export function Periodo({ painel }: { painel: PainelDoEstabelecimento }) {
 /** Dinheiro do período: só os recebimentos registrados à mão em
  * Recebimentos. Sem registro, mostra zero recebido e ticket "—" (nunca um
  * valor tirado do preço das reservas). */
-export function Financeiro({ painel }: { painel: PainelDoEstabelecimento }) {
+export function Financeiro({ painel }: { painel: PainelComIndicadores }) {
   const { finance, period } = painel;
   // Comissões só com o recurso no plano e a permissão (o servidor confere).
   const verComissoes = useAreas()("COMISSOES_VER");
@@ -261,7 +262,7 @@ export function Plano({ painel }: { painel: PainelDoEstabelecimento }) {
           <div>
             <p className="text-xs font-medium text-ink-soft">Profissionais ativos</p>
             <p className="font-semibold text-ink" data-testid="uso-profissionais">
-              {plan.activeProfessionals} de {plan.maxProfessionals}
+              {plan.maxProfessionals === null ? plan.activeProfessionals : `${plan.activeProfessionals} de ${plan.maxProfessionals}`}
             </p>
             <Link href={ROTA_PROFISSIONAIS} className="text-sm text-[color:var(--color-accent-hover)] hover:underline">
               Profissionais

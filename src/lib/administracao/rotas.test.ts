@@ -101,7 +101,7 @@ describe("seções do portal", () => {
       "Estabelecimentos",
       "Contas e acessos",
       "Convites",
-      "Planos e preços",
+      "Planos e adicionais",
       "Pagamentos das assinaturas",
       "Relatórios",
       "Proprietários da plataforma",

@@ -17,7 +17,7 @@
 // limite de 10 por 15 minutos por IP, e esta suíte usa 6.
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
+import { conectarBancoDeTeste, criarContaDeTeste, garantirPrecoBaseModular } from "./support/contas-de-teste";
 
 const CAIXA = "http://127.0.0.1:3025";
 const SENHA_ADMIN = "senha-da-administracao-123";
@@ -108,6 +108,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
       password: SENHA_ADMIN,
     });
     await db.query("UPDATE users SET platform_role = 'MASTER_OWNER' WHERE id = $1", [admin.user.id]);
+    await garantirPrecoBaseModular(db, admin.user.id);
     const main = page.getByRole("main");
 
     // ---------------------------------------------- 1. empresa nova + ativação
@@ -115,11 +116,17 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await page.getByRole("link", { name: "Novo estabelecimento" }).click();
     await page.getByLabel("Nome do estabelecimento").fill(`${marca} Barbearia Nova`);
     await page.getByLabel("Segmento").selectOption("BARBERSHOP");
-    await page.getByLabel("Plano do catálogo").selectOption({ index: 1 });
+    await page.getByLabel("Limite de usuários da equipe").fill("3");
+    // Preço do adicional ainda a definir neste banco: não dá para marcar.
+    await expect(page.getByTestId("adicional-INDICADORES").getByRole("checkbox")).toBeDisabled();
+    await expect(page.getByTestId("futuro-ESTOQUE").getByRole("checkbox")).toBeDisabled();
     await page.getByLabel("Nome", { exact: true }).fill("Dona Nova");
     await page.getByLabel("E-mail").fill(`${marca}-DONA@example.test`);
     await capturar(page, "novo-estabelecimento");
-    await page.getByRole("button", { name: "Criar e convidar" }).click();
+    await page.getByRole("button", { name: "Revisar e criar" }).click();
+    await expect(page.getByTestId("revisao-criacao")).toContainText("Novo valor recorrente");
+    await expect(page.getByTestId("revisao-criacao")).toContainText("Limite de usuários da equipe: 3");
+    await page.getByRole("dialog").getByRole("button", { name: "Criar e convidar" }).click();
     const resultado = page.getByTestId("resultado-envio");
     await expect(resultado).toContainText("Estabelecimento criado e convite registrado.");
     await expect(resultado).toContainText("E-mail aceito pelo provedor");
@@ -164,7 +171,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     });
     const [nova] = (await db.query("SELECT id FROM units WHERE name = $1", [`${marca} Barbearia Nova`])).rows;
     const [{ tenant_id: tenantNovo }] = (await db.query("SELECT tenant_id FROM units WHERE id = $1", [nova.id])).rows;
-    await page.goto(`/portal/estabelecimentos/${tenantNovo}`);
+    await page.goto(`/portal/estabelecimentos/${tenantNovo}?aba=responsaveis`);
     const pessoas = main.getByText("Pessoas com acesso").locator("..");
     await expect(pessoas.getByTestId("pessoas-estabelecimento")).toContainText("Dona Nova");
     await page.getByLabel("Nome", { exact: true }).fill("Nome Digitado Diferente");
@@ -212,7 +219,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
 
     await request.post(`${CAIXA}/controle`, { data: { falhar: true } });
     try {
-      await page.goto(`/portal/estabelecimentos/${tenantNovo}`);
+      await page.goto(`/portal/estabelecimentos/${tenantNovo}?aba=responsaveis`);
       await page.getByLabel("Nome", { exact: true }).fill("Pessoa Sem Envio");
       await page.getByLabel("E-mail").fill(`${marca}-sem-envio@example.test`);
       await page.getByRole("button", { name: "Convidar como dono(a)" }).click();

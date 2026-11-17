@@ -150,7 +150,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
       "Estabelecimentos",
       "Contas e acessos",
       "Convites",
-      "Planos e preços",
+      "Planos e adicionais",
       "Pagamentos das assinaturas",
       "Relatórios",
       "Proprietários da plataforma",
@@ -171,16 +171,19 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     // estabelecimento ativo nem cria vínculo.
     await page.getByRole("link", { name: `${marca} Negócio 0`, exact: true }).click();
     await expect(page.getByRole("heading", { name: `${marca} Negócio 0`, exact: true })).toBeVisible();
-    await expect(page.getByText("Sem responsável vinculado.", { exact: true })).toBeVisible();
     await expect(page.getByTestId("situacao-operacional")).toHaveText("Inativo");
+    await page.getByRole("navigation", { name: "Seções do estabelecimento" }).getByRole("link", { name: "Responsáveis" }).click();
+    await expect(page.getByText("Sem responsável vinculado.", { exact: true })).toBeVisible();
 
     // Endereços antigos da ficha encaminham para o portal.
     for (const antigo of ["/administracao", "/conta/administracao"]) {
       await page.goto(`${antigo}/estabelecimentos/${account.tenant.id}`);
       await expect(page).toHaveURL(`${LISTA}/${account.tenant.id}`);
     }
+    await page.goto(`${LISTA}/${account.tenant.id}?aba=responsaveis`);
     await expect(page.getByRole("heading", { name: "Responsáveis", exact: true })).toBeVisible();
     await expect(page.getByText(`${marca}@example.test`, { exact: true }).first()).toBeVisible();
+    await page.goto(`${LISTA}/${account.tenant.id}`);
     // Estabelecimento gravado direto no banco, marcado como anterior ao
     // controle: validade ainda não definida, nem paga nem teste renovado.
     await expect(page.getByTestId("validade-acesso").getByTestId("estado-validade")).toHaveText("Validade ainda não definida");
@@ -251,8 +254,8 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(main.getByRole("status")).toHaveText("22 estabelecimento(s) encontrado(s)");
     await expect(page.getByTestId("selo-interno-teste")).toHaveCount(0);
 
-    // Planos e preços: preço pendente nunca aparece como gratuito.
-    await navPortal(page).getByRole("link", { name: "Planos e preços" }).click();
+    // Planos e adicionais: preço pendente nunca aparece como gratuito.
+    await navPortal(page).getByRole("link", { name: "Planos e adicionais" }).click();
     await expect(page.getByTestId(`preco-${planoTeste}-MONTHLY`)).toHaveText("Pendente");
     const cartaoPlano = page
       .getByTestId("catalogo-de-precos")

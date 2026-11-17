@@ -149,7 +149,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     // ------------------------------------- 1. acesso criado pela equipe
     await page.goto("/conta/configuracoes/equipe");
     await expect(main.getByRole("heading", { name: "Equipe e acessos" })).toBeVisible();
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 em uso (0 ativos)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("0 de 5 acessos utilizados");
     // O fluxo principal não convida por e-mail.
     await expect(main.getByRole("button", { name: /Convidar/ })).toHaveCount(0);
     await page.getByTestId("profissional-sem-acesso").filter({ hasText: "Ana Lima" }).getByRole("button", { name: /Criar acesso/ }).click();
@@ -163,7 +163,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await page.getByTestId("acesso-criado").getByRole("button", { name: "Concluir" }).click();
     const ana = page.getByTestId("acesso-equipe").filter({ hasText: "Ana Lima" });
     await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 acessos utilizados");
 
     const funcionaria = await novaPagina(browser);
     const fp = funcionaria.page;
@@ -250,7 +250,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     expect(conviteBruno.status(), await conviteBruno.text()).toBe(200);
     await page.goto("/conta/configuracoes/equipe");
     await expect(page.getByTestId("convite-antigo").filter({ hasText: "Bruno Reis" })).toContainText("Convite pendente");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (1 ativo, 1 convite pendente)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 acessos utilizados (1 reservado por convite)");
     const bruno = await novaPagina(browser);
     const token = /#t=([0-9a-f]{64})/.exec(await linkDoConvite(request, `${marca}-bruno@example.test`))![1];
     expect((await bruno.page.request.post(`${API_DE_TESTE}/invites/accept`, { data: { token, password: "senha-do-bruno-12" } })).status()).toBe(200);
@@ -273,7 +273,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
 
     // ------------------- 3. permissão liberada, retirada e acesso suspenso
     await page.goto("/conta/configuracoes/equipe");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 em uso (2 ativos)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("2 de 5 acessos utilizados");
     await expect(page.getByTestId("convite-antigo")).toHaveCount(0);
     await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso ativo");
     await ana.getByRole("button", { name: "Editar permissões" }).click();
@@ -309,7 +309,7 @@ test("dono cria acesso, funcionária vê só a própria agenda, permissões e su
     await page.getByRole("dialog").getByRole("button", { name: "Suspender acesso" }).click();
     await confirmarSenhaSePedir(page, SENHA_DONO);
     await expect(ana.getByTestId("situacao-acesso")).toHaveText("Acesso suspenso");
-    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 em uso (1 ativo)");
+    await expect(page.getByTestId("vagas-equipe")).toHaveText("1 de 5 acessos utilizados");
     await fp.getByRole("button", { name: "Atualizar" }).click();
     await expect(fp.getByRole("main").getByRole("alert")).toContainText("não está disponível agora");
     await fp.reload();
