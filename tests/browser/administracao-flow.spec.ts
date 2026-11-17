@@ -148,7 +148,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await expect(navPortal(page).getByRole("link")).toHaveText([
       "Visão geral",
       "Estabelecimentos",
-      "Responsáveis e acessos",
+      "Contas e acessos",
       "Convites",
       "Planos e preços",
       "Pagamentos das assinaturas",

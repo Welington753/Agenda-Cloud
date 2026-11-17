@@ -52,21 +52,6 @@ export interface UsuarioResumo {
   memberships: { tenantId: string; tenantName: string; role: string; tenantStatus: string }[];
 }
 
-export interface ListaUsuarios {
-  items: UsuarioResumo[];
-  total: number;
-  page: number;
-  pageSize: number;
-  summary: {
-    total: number;
-    active: number;
-    invited: number;
-    suspended: number;
-    platformAccounts: number;
-    withoutEstablishment: number;
-  };
-}
-
 export interface Vinculo {
   id: string;
   tenant: { id: string; name: string; slug: string; status: string };
@@ -94,6 +79,10 @@ export interface RedefinicaoSenha {
 export interface FichaUsuario extends Omit<UsuarioResumo, "memberships"> {
   lastSeenAt: string | null;
   activeSessions: number;
+  /** O servidor omitiu os dados de plataforma para quem olha (conta
+   * classificada pelo vínculo com estabelecimento). Ausente numa API
+   * anterior: conta como não. */
+  platformDataHidden?: boolean;
   platformCapabilities: Capacidades;
   ineffectivePlatformPermissions: string[];
   memberships: Vinculo[];
@@ -191,27 +180,6 @@ export function ehConvite(v: unknown): v is Convite {
     inteiro(v.sendCount) &&
     inteiro(v.maxSends) &&
     objeto(v.createdBy)
-  );
-}
-
-function ehUsuarioResumo(v: unknown): boolean {
-  return (
-    objeto(v) &&
-    [v.id, v.name, v.email, v.status, v.createdAt, v.updatedAt].every(texto) &&
-    typeof v.emailVerified === "boolean" &&
-    typeof v.hasPassword === "boolean" &&
-    lista(v.memberships) &&
-    lista(v.platformPermissions)
-  );
-}
-
-export function ehListaUsuarios(v: unknown): v is ListaUsuarios {
-  return (
-    pagina(v, ehUsuarioResumo) &&
-    objeto((v as Record<string, unknown>).summary) &&
-    ["total", "active", "invited", "suspended", "platformAccounts", "withoutEstablishment"].every((k) =>
-      inteiro(((v as Record<string, unknown>).summary as Record<string, unknown>)[k]),
-    )
   );
 }
 

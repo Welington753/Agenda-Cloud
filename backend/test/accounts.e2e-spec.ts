@@ -114,6 +114,26 @@ describe('gestão de contas — HTTP', () => {
     await request(server()).post('/platform/users/alvo/block').send({ expectedUpdatedAt: quando, userId: 'outro' }).expect(400);
   });
 
+  it('lista de contas: aba de estabelecimentos por padrão, aba desconhecida e filtro de papel recusados', async () => {
+    await request(server()).get('/platform/users').expect(200).expect('Cache-Control', 'private, no-store');
+    expect(directory.listUsers).toHaveBeenLastCalledWith('proven_user', { scope: 'ESTABLISHMENTS', page: 1, pageSize: 20 });
+    await request(server()).get('/platform/users?scope=ADMINS&q=ana&status=SUSPENDED').expect(200);
+    expect(directory.listUsers).toHaveBeenLastCalledWith('proven_user', {
+      scope: 'ADMINS',
+      q: 'ana',
+      status: 'SUSPENDED',
+      page: 1,
+      pageSize: 20,
+    });
+    directory.listUsers.mockClear();
+    await request(server()).get('/platform/users?scope=TODAS').expect(400);
+    await request(server()).get('/platform/users?platformRole=MASTER_OWNER').expect(400);
+    expect(directory.listUsers).not.toHaveBeenCalled();
+    // A recusa do serviço (aba de administradores sem permissão) chega como 403.
+    directory.listUsers.mockRejectedValueOnce(new ForbiddenException('sem permissão'));
+    await request(server()).get('/platform/users?scope=ADMINS').expect(403);
+  });
+
   it('recusa campos forjados, papéis sem efeito e permissões que não liberam nada', async () => {
     const base = { requestKey: KEY, name: 'Pessoa Teste', email: 'pessoa@example.test' };
     await request(server()).post('/platform/establishments/t1/invites').send({ ...base, role: 'GERENTE' }).expect(400);

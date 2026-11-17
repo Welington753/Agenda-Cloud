@@ -95,6 +95,12 @@ export function rotaFichaUsuario(id: string): string {
   return `${ROTA_USUARIOS}/${encodeURIComponent(id)}`;
 }
 
+/** "Contas e acessos" numa aba. Mesmo endereço de antes (`/portal/usuarios`);
+ * a aba de administradores vai em `?aba=administradores`. */
+export function rotaContasEAcessos(aba: "estabelecimentos" | "administradores" = "estabelecimentos"): string {
+  return aba === "administradores" ? `${ROTA_USUARIOS}?aba=administradores` : ROTA_USUARIOS;
+}
+
 type Secao = { href: string; rotulo: string };
 
 /** Seções do portal agrupadas por assunto, na ordem do menu. O título do
@@ -106,7 +112,7 @@ export const GRUPOS_SECOES_ADMINISTRACAO: readonly { titulo: string | null; seco
     titulo: "Gestão",
     secoes: [
       { href: ROTA_ESTABELECIMENTOS_ADMINISTRADOS, rotulo: "Estabelecimentos" },
-      { href: ROTA_USUARIOS, rotulo: "Responsáveis e acessos" },
+      { href: ROTA_USUARIOS, rotulo: "Contas e acessos" },
       { href: ROTA_CONVITES, rotulo: "Convites" },
     ],
   },

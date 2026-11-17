@@ -161,36 +161,65 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
 
   const ultimaMensagemPara = (destino: string) => [...caixa.recebidos].reverse().find((m) => m.to === destino)!;
 
-  it('lista contas antigas, sem empresa e administradores, com contadores do conjunto filtrado e várias páginas', async () => {
+  const ESTAB = 'ESTABLISHMENTS' as const;
+  const ADMINS = 'ADMINS' as const;
+
+  it('abas de contas: responsáveis e administradores separados, com contadores do conjunto filtrado e várias páginas', async () => {
     const dono = await conta('lista-dono');
     await conta('lista-sem-empresa');
     await conta('lista-admin', { role: 'MASTER_ADMIN', permissions: ['ESTABLISHMENTS_MANAGE'] });
-    await conta('lista-convidada', { status: 'INVITED', semSenha: true });
+    const convidada = await conta('lista-convidada', { status: 'INVITED', semSenha: true });
     const master = await conta('lista-master', { role: 'MASTER_OWNER' });
     const t = await tenant('lista');
+    const t2 = await tenant('lista-2');
+    const t3 = await tenant('lista-3');
     await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [id(), dono.userId, t]);
+    await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [id(), convidada.userId, t2]);
+    const outro = await conta('lista-outro-dono');
+    await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'DONO')`, [id(), outro.userId, t3]);
 
-    const pagina1 = await directory.listUsers(master.userId, { q: marca, page: 1, pageSize: 2 });
-    const pagina3 = await directory.listUsers(master.userId, { q: marca, page: 3, pageSize: 2 });
-    expect(pagina1.total).toBeGreaterThanOrEqual(5);
+    const pagina1 = await directory.listUsers(master.userId, { scope: ESTAB, q: `${marca}-lista`, page: 1, pageSize: 2 });
+    const pagina2 = await directory.listUsers(master.userId, { scope: ESTAB, q: `${marca}-lista`, page: 2, pageSize: 2 });
+    expect(pagina1.scope).toBe(ESTAB);
+    expect(pagina1.total).toBe(3);
     expect(pagina1.items).toHaveLength(2);
-    expect(pagina3.items.length).toBeGreaterThanOrEqual(1);
-    expect(pagina1.summary.total).toBe(pagina1.total);
-    const semEmpresa = await directory.listUsers(master.userId, { q: `${marca}-lista-sem`, page: 1, pageSize: 20 });
-    expect(semEmpresa.items.map((u: { email: string }) => u.email)).toEqual([email('lista-sem-empresa')]);
-    expect(semEmpresa.summary.withoutEstablishment).toBe(1);
-    const convidadas = await directory.listUsers(master.userId, { q: marca, status: 'INVITED' as never, page: 1, pageSize: 20 });
-    expect(convidadas.items.every((u: { status: string }) => u.status === 'INVITED')).toBe(true);
+    expect(pagina2.items).toHaveLength(1);
+    expect(pagina1.summary).toEqual({ total: 3, active: 2, invited: 1, suspended: 0 });
+    // A aba de estabelecimentos nunca leva dado de plataforma.
+    for (const item of pagina1.items) expect(item).not.toHaveProperty('platformRole');
+    const convidadas = await directory.listUsers(master.userId, {
+      scope: ESTAB,
+      q: `${marca}-lista`,
+      status: 'INVITED' as never,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(convidadas.items.map((u: { id: string }) => u.id)).toEqual([convidada.userId]);
     // Contadores por situação continuam do conjunto inteiro da busca.
-    expect(convidadas.summary.total).toBe(pagina1.total);
-    const doTenant = await directory.listUsers(master.userId, { tenantId: t, page: 1, pageSize: 20 });
+    expect(convidadas.summary.total).toBe(3);
+    const doTenant = await directory.listUsers(master.userId, { scope: ESTAB, tenantId: t, page: 1, pageSize: 20 });
     expect(doTenant.items.map((u: { id: string }) => u.id)).toEqual([dono.userId]);
-    const json = JSON.stringify(pagina1);
+    // Busca pelo nome do estabelecimento.
+    const porNome = await directory.listUsers(master.userId, { scope: ESTAB, q: `${marca} lista-3`, page: 1, pageSize: 20 });
+    expect(porNome.items.map((u: { id: string }) => u.id)).toEqual([outro.userId]);
+
+    const admins = await directory.listUsers(master.userId, { scope: ADMINS, q: `${marca}-lista`, page: 1, pageSize: 20 });
+    expect(admins.scope).toBe(ADMINS);
+    expect(admins.items.map((u: { email: string }) => u.email).sort()).toEqual([email('lista-admin'), email('lista-master')].sort());
+    expect(admins.summary).toEqual({ total: 2, active: 2, invited: 0, suspended: 0 });
+    for (const item of admins.items) expect(item).not.toHaveProperty('establishments');
+    // Conta sem vínculo nenhum não é cliente nem administrador.
+    for (const scope of [ESTAB, ADMINS]) {
+      expect((await directory.listUsers(master.userId, { scope, q: `${marca}-lista-sem`, page: 1, pageSize: 20 })).total).toBe(0);
+    }
+    const json = JSON.stringify([pagina1, admins]);
     expect(json).not.toMatch(/argon2|password_hash|token/i);
-    await expect(directory.listUsers(dono.userId, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
+    for (const scope of [ESTAB, ADMINS]) {
+      await expect(directory.listUsers(dono.userId, { scope, page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
+    }
   });
 
-  it('conta só de funcionário fica fora da lista global (busca, páginas e contadores) e continua na equipe', async () => {
+  it('contas dos estabelecimentos: funcionário, sem vínculo e só administrador ficam fora; múltiplos vínculos sem duplicar', async () => {
     const m = `${marca}-func`;
     const master = await conta('func-master', { role: 'MASTER_OWNER' });
     const masterSemEmpresa = await conta('func-master-solo', { role: 'MASTER_OWNER' });
@@ -214,6 +243,10 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
 
     const donoA = await conta('func-dono-a');
     await vincular(donoA.userId, tA, 'DONO');
+    // Dono dos dois estabelecimentos: uma conta, dois estabelecimentos.
+    const donoDuplo = await conta('func-dono-duplo');
+    await vincular(donoDuplo.userId, tA, 'DONO');
+    await vincular(donoDuplo.userId, tB, 'DONO');
     // Funcionário exclusivo, em um e em dois estabelecimentos.
     const recepcao = await conta('func-recepcao');
     await vincular(recepcao.userId, tA, 'RECEPCIONISTA');
@@ -227,19 +260,25 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const mista = await conta('func-mista');
     await vincular(mista.userId, tB, 'DONO');
     await vincular(mista.userId, tA, 'RECEPCIONISTA');
-    // Funcionária de A com convite pendente para ser dona (fluxo de responsável).
+    // Funcionária de A com convite pendente para ser dona de B.
     const futuraDona = await conta('func-futura-dona');
     await vincular(futuraDona.userId, tA, 'RECEPCIONISTA');
     await convidar(futuraDona.userId, tB, 'DONO');
-    // Responsável ainda sem estabelecimento (convite de dono pendente, sem vínculo).
+    // Responsável ainda sem vínculo (convite de dono pendente).
     const responsavelPendente = await conta('func-responsavel', { status: 'INVITED', semSenha: true });
     await convidar(responsavelPendente.userId, tB, 'DONO');
-    // Papel de plataforma com vínculo de funcionário: área da plataforma, continua.
+    // Papel de plataforma com vínculo de funcionário: só administrador.
     // (Sem GERENTE nestes cenários: o levantamento de vagas de
     // pilot-team-manager-check lista só os primeiros estabelecimentos com
     // gerente, no mesmo banco.)
     const adminFunc = await conta('func-admin', { role: 'MASTER_ADMIN', permissions: ['ESTABLISHMENTS_MANAGE'] });
     await vincular(adminFunc.userId, tB, 'RECEPCIONISTA');
+    // Proprietário da plataforma que também é dono de A: aparece nas duas
+    // abas, classificado pelo vínculo, sem dado administrativo na de clientes.
+    const masterDono = await conta('func-master-dono', { role: 'MASTER_OWNER' });
+    await vincular(masterDono.userId, tA, 'DONO');
+    // Conta sem vínculo nenhum.
+    const solta = await conta('func-solta');
 
     const contar = async () =>
       (
@@ -247,49 +286,69 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
           `SELECT (SELECT count(*) FROM users WHERE email::text LIKE $1)::int AS users,
                   (SELECT count(*) FROM memberships WHERE tenant_id IN ($2, $3))::int AS memberships,
                   (SELECT count(*) FROM invites WHERE tenant_id IN ($2, $3))::int AS invites,
-                  (SELECT count(*) FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email::text LIKE $1)::int AS sessions`,
+                  (SELECT count(*) FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email::text LIKE $1)::int AS sessions,
+                  (SELECT string_agg(id || ':' || COALESCE(platform_role::text, '-') || ':' || status, ',' ORDER BY id)
+                     FROM users WHERE email::text LIKE $1) AS roles`,
           [`${m}%`, tA, tB],
         )) as Record<string, number>[]
       )[0];
     const antes = await contar();
 
     const esperados = [
-      masterSemEmpresa.userId,
-      master.userId,
       donoA.userId,
+      donoDuplo.userId,
       mista.userId,
       futuraDona.userId,
       responsavelPendente.userId,
-      adminFunc.userId,
+      masterDono.userId,
     ].sort();
-    const fora = [recepcao.userId, funcDuplo.userId, convidadaFunc.userId];
-    const tudo = await directory.listUsers(master.userId, { q: m, page: 1, pageSize: 50 });
-    const ids = tudo.items.map((u: { id: string }) => u.id);
+    const fora = [
+      recepcao.userId,
+      funcDuplo.userId,
+      convidadaFunc.userId,
+      adminFunc.userId,
+      master.userId,
+      masterSemEmpresa.userId,
+      solta.userId,
+    ];
+    type Linha = { id: string; establishments: { tenantId: string; relation: string }[] };
+    const tudo = await directory.listUsers(master.userId, { scope: ESTAB, q: m, page: 1, pageSize: 50 });
+    const ids: string[] = tudo.items.map((u: { id: string }) => u.id);
     expect([...ids].sort()).toEqual(esperados);
+    expect(ids.some((i) => fora.includes(i))).toBe(false);
     expect(tudo.total).toBe(esperados.length);
-    expect(tudo.summary.total).toBe(esperados.length);
-    // Sem vínculo: só os dois MASTER_OWNER e a responsável pendente.
-    expect(tudo.summary.withoutEstablishment).toBe(3);
-    expect(tudo.summary.invited).toBe(1);
-    expect(tudo.summary.platformAccounts).toBe(3);
-    // A pessoa com múltiplos vínculos aparece com todos eles.
-    const linhaMista = tudo.items.find((u: { id: string }) => u.id === mista.userId) as { memberships: { role: string }[] };
-    expect(linhaMista.memberships.map((v) => v.role).sort()).toEqual(['DONO', 'RECEPCIONISTA']);
+    expect(tudo.summary).toEqual({ total: esperados.length, active: esperados.length - 1, invited: 1, suspended: 0 });
+    const linha = (userId: string) => tudo.items.find((u: Linha) => u.id === userId) as Linha;
+    // Dono de dois estabelecimentos: uma linha, dois estabelecimentos.
+    expect(linha(donoDuplo.userId).establishments.map((e) => e.tenantId).sort()).toEqual([tA, tB].sort());
+    // Vínculo de funcionário não vira estabelecimento do responsável.
+    expect(linha(mista.userId).establishments).toEqual([expect.objectContaining({ tenantId: tB, relation: 'OWNER' })]);
+    expect(linha(futuraDona.userId).establishments).toEqual([
+      expect.objectContaining({ tenantId: tB, relation: 'PENDING_INVITE' }),
+    ]);
+    expect(linha(masterDono.userId)).not.toHaveProperty('platformRole');
 
-    // Paginação e busca: o critério vale antes delas.
+    // Paginação e busca: o critério da aba vale antes delas.
     const paginas: string[] = [];
     for (let page = 1; page <= 4; page += 1) {
-      paginas.push(...(await directory.listUsers(master.userId, { q: m, page, pageSize: 2 })).items.map((u: { id: string }) => u.id));
+      const pagina = await directory.listUsers(master.userId, { scope: ESTAB, q: m, page, pageSize: 2 });
+      paginas.push(...pagina.items.map((u: { id: string }) => u.id));
     }
     expect([...paginas].sort()).toEqual(esperados);
-    expect((await directory.listUsers(master.userId, { q: `${m}-recepcao`, page: 1, pageSize: 20 })).total).toBe(0);
-    const porEstabelecimento = await directory.listUsers(master.userId, { tenantId: tA, page: 1, pageSize: 20 });
+    for (const nome of ['recepcao', 'duplo', 'convidada', 'admin', 'solta', 'master-solo']) {
+      expect((await directory.listUsers(master.userId, { scope: ESTAB, q: `${m}-${nome}`, page: 1, pageSize: 20 })).total).toBe(0);
+    }
+    const porEstabelecimento = await directory.listUsers(master.userId, { scope: ESTAB, tenantId: tA, page: 1, pageSize: 20 });
     expect(porEstabelecimento.items.map((u: { id: string }) => u.id).sort()).toEqual(
-      [donoA.userId, mista.userId, futuraDona.userId].sort(),
+      [donoA.userId, donoDuplo.userId, masterDono.userId].sort(),
     );
     expect(porEstabelecimento.summary.total).toBe(3);
-    const semPapel = await directory.listUsers(master.userId, { q: m, platformRole: 'NONE' as never, page: 1, pageSize: 20 });
-    expect(semPapel.items.some((u: { id: string }) => fora.includes(u.id))).toBe(false);
+
+    const admins = await directory.listUsers(master.userId, { scope: ADMINS, q: m, page: 1, pageSize: 20 });
+    expect(admins.items.map((u: { id: string }) => u.id).sort()).toEqual(
+      [master.userId, masterSemEmpresa.userId, adminFunc.userId, masterDono.userId].sort(),
+    );
+    expect(admins.summary.total).toBe(4);
 
     // Continuam na equipe do estabelecimento e na própria ficha.
     const equipeA = await directory.establishmentMembers(master.userId, tA);
@@ -302,15 +361,24 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     const equipeB = await directory.establishmentMembers(master.userId, tB);
     expect(equipeB.members.map((v: { user: { id: string } }) => v.user.id)).toContain(funcDuplo.userId);
     expect((await directory.userDetail(master.userId, recepcao.userId)).memberships).toHaveLength(1);
+    // Quem cuida dos acessos da plataforma vê os dados de plataforma da conta mista.
+    expect(await directory.userDetail(master.userId, masterDono.userId)).toMatchObject({
+      platformRole: 'MASTER_OWNER',
+      platformDataHidden: false,
+    });
 
-    // Só leitura: nada apagado nem alterado; a recusa do portal continua.
+    // Só leitura: nada apagado, nenhum vínculo, papel ou situação alterado.
     expect(await contar()).toEqual(antes);
-    await expect(directory.listUsers(recepcao.userId, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
-    await expect(directory.listUsers(mista.userId, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
-    await expect(directory.listUsers(adminFunc.userId, { page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
+    // Sem acesso ao portal: lista das duas abas e ficha por id direto recusadas.
+    for (const quem of [recepcao, mista, adminFunc, donoA]) {
+      for (const scope of [ESTAB, ADMINS]) {
+        await expect(directory.listUsers(quem.userId, { scope, page: 1, pageSize: 20 })).rejects.toThrow(ForbiddenException);
+      }
+      await expect(directory.userDetail(quem.userId, masterSemEmpresa.userId)).rejects.toThrow(ForbiddenException);
+    }
   });
 
-  it('convite vencido não conta como pendente para a lista global (mesmo critério da equipe)', async () => {
+  it('convite vencido não torna ninguém responsável (mesmo critério da equipe)', async () => {
     const m = `${marca}-venc`;
     const master = await conta('venc-master', { role: 'MASTER_OWNER' });
     const tA = await tenant('venc-a');
@@ -323,12 +391,10 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
                 now() - interval '7 days', now() + $6::interval, u.id FROM users u WHERE u.id = $7`,
         [id(), tenantId, role, id() + id(), master.userId, expiraEm, userId],
       );
-    // Só um convite de funcionário, já vencido: a equipe não o mostra, então
-    // a conta precisa continuar na lista global.
-    const vencida = await conta('venc-func', { status: 'INVITED', semSenha: true });
-    await convidar(vencida.userId, tA, 'RECEPCIONISTA', '-1 hour');
-    // Funcionária de A cujo convite para ser dona de B venceu: não é mais
-    // responsável pendente, fica só na equipe.
+    // Convite de dono vencido, sem vínculo: não é responsável.
+    const vencida = await conta('venc-dona', { status: 'INVITED', semSenha: true });
+    await convidar(vencida.userId, tA, 'DONO', '-1 hour');
+    // Funcionária de A cujo convite para ser dona de B venceu: fica só na equipe.
     const exFutura = await conta('venc-ex-futura');
     await db.query(`INSERT INTO memberships (id, user_id, tenant_id, role) VALUES ($1, $2, $3, 'RECEPCIONISTA')`, [
       id(),
@@ -336,15 +402,13 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
       tA,
     ]);
     await convidar(exFutura.userId, tB, 'DONO', '-1 hour');
+    // Convite de dono ainda válido: responsável pendente.
+    const pendente = await conta('venc-pendente', { status: 'INVITED', semSenha: true });
+    await convidar(pendente.userId, tB, 'DONO', '1 hour');
 
-    const equipeA = await directory.establishmentMembers(master.userId, tA);
-    expect(equipeA.pendingInvites.map((c: { targetUser: { id: string } | null }) => c.targetUser?.id)).not.toContain(
-      vencida.userId,
-    );
-    const lista = await directory.listUsers(master.userId, { q: m, page: 1, pageSize: 20 });
-    expect(lista.items.map((u: { id: string }) => u.id).sort()).toEqual([master.userId, vencida.userId].sort());
-    expect(lista.summary.total).toBe(2);
-    expect(lista.summary.invited).toBe(1);
+    const lista = await directory.listUsers(master.userId, { scope: ESTAB, q: m, page: 1, pageSize: 20 });
+    expect(lista.items.map((u: { id: string }) => u.id)).toEqual([pendente.userId]);
+    expect(lista.summary).toEqual({ total: 1, active: 0, invited: 1, suspended: 0 });
   });
 
   it('nova empresa com responsável: conta pendente, e-mail aceito pelo provedor, ativação e entrada', async () => {
@@ -522,8 +586,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     await expect(convite(comum.userId)).rejects.toThrow(ForbiddenException);
     await expect(convite(suporte.userId)).rejects.toThrow(ForbiddenException);
     // Papéis delegados não abrem nem a consulta: o portal é só do proprietário.
-    await expect(directory.listUsers(suporte.userId, { q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
-    await expect(directory.listUsers(delegado.userId, { q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
+    await expect(directory.listUsers(suporte.userId, { scope: ESTAB, q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
+    await expect(directory.listUsers(delegado.userId, { scope: ESTAB, q: marca, page: 1, pageSize: 5 })).rejects.toThrow(ForbiddenException);
     await expect(convite(delegado.userId)).rejects.toThrow(ForbiddenException);
 
     for (const sessao of [delegado]) await reauth(sessao.userId, sessao.sessionId);

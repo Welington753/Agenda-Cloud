@@ -1,5 +1,7 @@
 # Portal: contas só de funcionário fora da lista global de contas
 
+> **Substituído** por [portal-contas-e-acessos.md](portal-contas-e-acessos.md) (17/11/2026): a lista virou "Contas e acessos", com abas separadas no servidor, e `STAFF_ONLY_ACCOUNT_SQL` deu lugar a `ESTABLISHMENT_ACCOUNT_SQL` e `ADMIN_ACCOUNT_SQL`. O texto abaixo é histórico.
+
 Base: integration `6fac73c`. Sem migration, sem mudança de autorização.
 
 ## Pedido

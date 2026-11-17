@@ -28,7 +28,7 @@ export default function FichaUsuarioPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link href={ROTA_USUARIOS} className="inline-flex min-h-11 items-center text-sm font-medium text-accent">
-            ← Usuários
+            ← Contas e acessos
           </Link>
           <h1 className="break-words text-2xl font-bold">{ficha.name}</h1>
           <p className="break-all text-sm text-ink-soft">{ficha.email}</p>
@@ -49,9 +49,11 @@ export default function FichaUsuarioPage() {
           o que está no servidor. */}
       <SecaoDados key={`dados-${ficha.updatedAt}`} ficha={ficha} aoMudar={recarregar} />
       <SecaoVinculos ficha={ficha} aoMudar={recarregar} />
-      <SecaoPlataforma key={`plataforma-${ficha.updatedAt}`} ficha={ficha} aoMudar={recarregar} />
+      {/* Conta classificada pelo vínculo: o servidor omitiu os dados de
+          plataforma para quem olha, e as seções deles não aparecem. */}
+      {!ficha.platformDataHidden && <SecaoPlataforma key={`plataforma-${ficha.updatedAt}`} ficha={ficha} aoMudar={recarregar} />}
       <SecaoAcesso ficha={ficha} aoMudar={recarregar} />
-      <SecaoSegundoFator ficha={ficha} aoMudar={recarregar} />
+      {!ficha.platformDataHidden && <SecaoSegundoFator ficha={ficha} aoMudar={recarregar} />}
     </div>
   );
 }

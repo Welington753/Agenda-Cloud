@@ -107,12 +107,18 @@ export const platformInviteSchema = z
   .strict();
 export type PlatformInviteDto = z.infer<typeof platformInviteSchema>;
 
+/** Abas de "Contas e acessos": responsáveis pelos estabelecimentos (padrão)
+ * ou contas administrativas da plataforma. Cada aba é um conjunto separado
+ * no servidor (busca, situação, páginas e totais). */
+export const USER_SCOPES = ['ESTABLISHMENTS', 'ADMINS'] as const;
+export type UserScope = (typeof USER_SCOPES)[number];
+
 export const usersQuerySchema = z
   .object({
+    scope: z.enum(USER_SCOPES).default('ESTABLISHMENTS'),
     q,
     status: z.enum(UserStatus).optional(),
     tenantId: idSchema.optional(),
-    platformRole: z.enum([...Object.values(PlatformRole), 'NONE'] as unknown as [string, ...string[]]).optional(),
     page,
     pageSize,
   })

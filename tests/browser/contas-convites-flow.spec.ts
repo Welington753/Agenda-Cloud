@@ -236,11 +236,11 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
 
     // ------------------------------------- 4. bloqueio com sessão aberta
     await page.goto("/portal/usuarios");
-    await page.getByLabel("Buscar por nome ou e-mail").fill(emailDona);
+    await page.getByLabel("Estabelecimento, responsável ou e-mail").fill(emailDona);
     await page.getByRole("button", { name: "Pesquisar" }).click();
-    await expect(main.getByRole("status")).toHaveText("1 conta(s) encontrada(s)");
+    await expect(main.getByRole("status")).toHaveText("1 conta de estabelecimento");
     await capturar(page, "usuarios");
-    await page.getByTestId("lista-usuarios").getByRole("link", { name: "Dona Nova" }).click();
+    await page.getByTestId("lista-contas").getByRole("link", { name: "Ver conta: Dona Nova" }).click();
     await expect(page.getByRole("heading", { name: "Dona Nova", level: 1 })).toBeVisible();
     await capturar(page, "ficha-usuario");
     await page.getByRole("button", { name: "Bloquear conta" }).click();

@@ -29,7 +29,7 @@
     "test:browser:portal-visao-geral": "playwright test tests/browser/portal-visao-geral-flow.spec.ts",
     "test:browser:portal-instalavel": "playwright test tests/browser/portal-instalavel-flow.spec.ts",
     "test:browser:portal-segundo-fator": "playwright test tests/browser/portal-segundo-fator-flow.spec.ts",
-    "test:browser:contas": "playwright test tests/browser/contas-convites-flow.spec.ts",
+    "test:browser:contas": "playwright test tests/browser/contas-convites-flow.spec.ts tests/browser/portal-contas-e-acessos-flow.spec.ts",
     "test:browser:equipe": "playwright test tests/browser/equipe-acessos-flow.spec.ts",
     "test:browser:acesso-usuario": "playwright test tests/browser/acesso-por-usuario-flow.spec.ts",
     "test:browser:gerente": "playwright test tests/browser/gerente-acessos-flow.spec.ts",

@@ -1,190 +1,220 @@
 "use client";
 
-// Contas de responsáveis e da plataforma (não os clientes da agenda):
-// antigas, administradores, sem estabelecimento e pendentes. Contas só de
-// funcionário ficam na equipe de cada estabelecimento; o servidor as tira
-// antes da busca, da paginação e dos contadores. Busca por nome
-// ou e-mail, filtros por situação, estabelecimento e papel. Os contadores são
-// do conjunto filtrado inteiro (sem o filtro de situação, que eles
-// detalham), nunca da página carregada.
-import { useState, type FormEvent } from "react";
+// Contas e acessos: responsáveis pelos estabelecimentos e contas
+// administrativas da plataforma, em abas separadas. Cada aba é um conjunto
+// próprio no servidor (`scope`): busca, situação, páginas e totais nunca
+// misturam as duas. Funcionários ficam em "Equipe e acessos", na conta de
+// cada estabelecimento; clientes da agenda não são contas daqui.
+//
+// A aba de administradores só aparece com `managePlatformAccess` confirmado
+// pelo servidor, e a API recusa a lista para quem não o tem: esconder aqui é
+// só apresentação. Endereço mantido (`/portal/usuarios`); a aba vai em
+// `?aba=administradores`.
+import { Suspense } from "react";
 import Link from "next/link";
-import { Search, UserCheck, UserX, Users, Clock3 } from "lucide-react";
-import { Botao } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge-base";
-import { EstatisticaCard } from "@/components/ui/estatistica-card";
+import { useSearchParams } from "next/navigation";
+import clsx from "clsx";
+import { LockKeyhole, Plus, Store, UserRound, Users, type LucideIcon } from "lucide-react";
+import { LinkBotao } from "@/components/ui/button";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
-import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
-import { ehListaUsuarios, ehOpcoesEstabelecimento } from "@/lib/administracao/contas";
-import { PAPEIS_ESTABELECIMENTO, PAPEIS_PLATAFORMA, SITUACOES_CONTA, corConta, dataHora } from "@/lib/administracao/rotulos";
-import { rotaFichaUsuario } from "@/lib/administracao/rotas";
+import {
+  AcaoDaConta,
+  AtualizarContas,
+  CELULA,
+  FiltrosDasContas,
+  LINHA,
+  PaginacaoDasContas,
+  ROTULO_CELULA,
+  ResumoDasContas,
+  SemContas,
+  SituacaoDaConta,
+  TabelaDeContas,
+  useListaDaAba,
+} from "@/components/administracao/contas-e-acessos";
+import { useCapacidades } from "@/lib/administracao/use-acesso-plataforma";
+import {
+  abaDaUrl,
+  ehListaAdministradores,
+  ehListaResponsaveis,
+  perfilAdministrativo,
+  tituloDaLista,
+  type AbaContas,
+  type ContaAdministrativa,
+  type ContaResponsavel,
+} from "@/lib/administracao/contas-e-acessos";
+import { ROTA_ESTABELECIMENTOS_ADMINISTRADOS, ROTA_PAPEIS, rotaContasEAcessos } from "@/lib/administracao/rotas";
 
-const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
-const VAZIO = { q: "", status: "", tenantId: "", platformRole: "", page: 1 };
+export default function ContasEAcessosPage() {
+  return (
+    <Suspense fallback={<p className="py-12 text-center text-ink-soft">Carregando o portal…</p>}>
+      <ContasEAcessos />
+    </Suspense>
+  );
+}
 
-export default function UsuariosPage() {
-  const [form, setForm] = useState(VAZIO);
-  const [filtro, setFiltro] = useState(VAZIO);
-  const [erroBusca, setErroBusca] = useState("");
-  const params = new URLSearchParams({ page: String(filtro.page), pageSize: "20" });
-  for (const chave of ["q", "status", "tenantId", "platformRole"] as const) if (filtro[chave]) params.set(chave, filtro[chave]);
-  const { estado, recarregar } = useLeituraPlataforma(`/platform/users?${params}`, ehListaUsuarios);
-  const opcoes = useLeituraPlataforma("/platform/establishment-options", ehOpcoesEstabelecimento);
-
-  function pesquisar(evento: FormEvent) {
-    evento.preventDefault();
-    if (form.q.trim().length === 1) {
-      setErroBusca("Digite ao menos 2 caracteres ou deixe a busca vazia.");
-      return;
-    }
-    setErroBusca("");
-    setFiltro({ ...form, q: form.q.trim(), page: 1 });
-  }
-  const campo = (nome: "q" | "status" | "tenantId" | "platformRole") => ({
-    value: form[nome],
-    onChange: (e: { target: { value: string } }) => setForm((f) => ({ ...f, [nome]: e.target.value })),
-  });
+function ContasEAcessos() {
+  const capacidades = useCapacidades();
+  const busca = useSearchParams();
+  const podeVerAdministradores = capacidades.managePlatformAccess;
+  const aba = abaDaUrl(busca.get("aba"), podeVerAdministradores);
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Usuários</h1>
-          <p className="mt-1 max-w-xl text-sm text-ink-soft">
-            Responsáveis pelos estabelecimentos e contas da plataforma. Quem é só funcionário aparece na equipe de
-            cada estabelecimento, e clientes que marcam horário ficam na agenda dele; nenhum dos dois aparece aqui.
-          </p>
-        </div>
-        <Botao variante="secundaria" onClick={recarregar} className="min-h-11">
-          Atualizar
-        </Botao>
-      </header>
-      {estado.status === "pronto" && (
-        <section aria-label="Resumo das contas encontradas" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <EstatisticaCard icone={Users} rotulo="No conjunto" valor={String(estado.dados.summary.total)} />
-          <EstatisticaCard icone={UserCheck} rotulo="Ativas" valor={String(estado.dados.summary.active)} corIcone="success" />
-          <EstatisticaCard icone={Clock3} rotulo="Aguardando ativação" valor={String(estado.dados.summary.invited)} corIcone="info" />
-          <EstatisticaCard icone={UserX} rotulo="Bloqueadas" valor={String(estado.dados.summary.suspended)} corIcone="warning" />
-        </section>
-      )}
-      <form onSubmit={pesquisar} className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto]">
-        <label className="min-w-0 text-sm font-medium">
-          Buscar por nome ou e-mail
-          <input className={CAMPO} maxLength={120} {...campo("q")} />
-        </label>
-        <label className="min-w-0 text-sm font-medium">
-          Situação da conta
-          <select className={CAMPO} {...campo("status")}>
-            <option value="">Todas</option>
-            {Object.entries(SITUACOES_CONTA).map(([valor, rotulo]) => (
-              <option key={valor} value={valor}>
-                {rotulo}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="min-w-0 text-sm font-medium">
-          Estabelecimento
-          <select className={CAMPO} {...campo("tenantId")} disabled={opcoes.estado.status !== "pronto"}>
-            <option value="">Todos</option>
-            {opcoes.estado.status === "pronto" &&
-              opcoes.estado.dados.items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="min-w-0 text-sm font-medium">
-          Papel na plataforma
-          <select className={CAMPO} {...campo("platformRole")}>
-            <option value="">Todos</option>
-            <option value="NONE">Sem papel de plataforma</option>
-            {Object.keys(PAPEIS_PLATAFORMA).map((valor) => (
-              <option key={valor} value={valor}>
-                {valor}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Botao type="submit" className="min-h-11">
-          <Search size={17} aria-hidden="true" />
-          Pesquisar
-        </Botao>
-      </form>
-      {erroBusca && (
-        <p role="alert" className="text-sm text-danger">
-          {erroBusca}
+      <header>
+        <h1 className="text-2xl font-bold">Contas e acessos</h1>
+        <p className="mt-1 max-w-xl text-sm text-ink-soft">
+          Organize o acesso dos seus clientes e da sua equipe de administração.
         </p>
+      </header>
+      {podeVerAdministradores && (
+        <nav aria-label="Tipo de conta" className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-paper-muted p-1">
+          <AbaLink aba="estabelecimentos" atual={aba} icone={Store} rotulo="Contas dos estabelecimentos" />
+          <AbaLink aba="administradores" atual={aba} icone={LockKeyhole} rotulo="Administradores do sistema" />
+        </nav>
       )}
+      {/* `key`: trocar de aba começa a busca do zero. */}
+      {aba === "administradores" ? <ListaAdministradores key="adm" /> : <ListaResponsaveis key="est" />}
+    </div>
+  );
+}
+
+function AbaLink({ aba, atual, icone: Icone, rotulo }: { aba: AbaContas; atual: AbaContas; icone: LucideIcon; rotulo: string }) {
+  const ativa = aba === atual;
+  return (
+    <Link
+      href={rotaContasEAcessos(aba)}
+      aria-current={ativa ? "page" : undefined}
+      className={clsx(
+        "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-center text-sm font-semibold",
+        ativa ? "bg-accent text-on-accent shadow-sm" : "text-ink-soft hover:bg-card hover:text-ink",
+      )}
+    >
+      <Icone size={18} aria-hidden="true" className="hidden shrink-0 sm:block" />
+      {rotulo}
+    </Link>
+  );
+}
+
+function ListaResponsaveis() {
+  const lista = useListaDaAba<ContaResponsavel>("estabelecimentos", ehListaResponsaveis);
+  const capacidades = useCapacidades();
+  const { estado } = lista;
+  return (
+    <>
+      <div className="flex justify-end">
+        <AtualizarContas recarregar={lista.recarregar} />
+      </div>
+      {estado.status === "pronto" && <ResumoDasContas resumo={estado.dados.summary} rotuloTotal="Contas de clientes" />}
+      <FiltrosDasContas lista={lista} rotuloBusca="Estabelecimento, responsável ou e-mail" />
       {estado.status !== "pronto" ? (
-        <EstadoLeitura estado={estado} recarregar={recarregar} />
+        <EstadoLeitura estado={estado} recarregar={lista.recarregar} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p role="status" className="text-sm text-ink-soft">
-              {estado.dados.total} conta(s) encontrada(s)
-            </p>
-            <Botao
-              variante="fantasma"
-              className="min-h-11"
-              onClick={() => {
-                setForm(VAZIO);
-                setFiltro(VAZIO);
-              }}
-            >
-              Limpar filtros
-            </Botao>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 role="status" className="text-lg font-semibold">
+              {tituloDaLista("estabelecimentos", estado.dados.total)}
+            </h2>
+            {capacidades.manageEstablishments && (
+              <div className="flex flex-col gap-1 sm:items-end">
+                <LinkBotao href={ROTA_ESTABELECIMENTOS_ADMINISTRADOS} className="min-h-11" aria-describedby="dica-convidar">
+                  <Plus size={17} aria-hidden="true" />
+                  Convidar responsável
+                </LinkBotao>
+                <span id="dica-convidar" className="text-xs text-ink-soft">
+                  O convite é feito no estabelecimento (ou ao criar um novo).
+                </span>
+              </div>
+            )}
           </div>
           {estado.dados.items.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card p-8 text-center text-ink-soft">Nenhuma conta encontrada.</p>
+            <SemContas />
           ) : (
-            <ul className="space-y-3" data-testid="lista-usuarios">
-              {estado.dados.items.map((u) => (
-                <li key={u.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <Link href={rotaFichaUsuario(u.id)} className="inline-flex min-h-11 items-center break-words font-semibold hover:text-accent">
-                        {u.name}
-                      </Link>
-                      <p className="break-all text-sm text-ink-soft">{u.email}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge cor={corConta(u.status)}>{SITUACOES_CONTA[u.status]}</Badge>
-                      {u.platformRole && <Badge cor="destaque">{u.platformRole}</Badge>}
-                    </div>
-                  </div>
-                  <p className="mt-2 text-xs text-ink-soft">
-                    E-mail {u.emailVerified ? "verificado" : "não verificado"} · criada em {dataHora(u.createdAt)}
-                    {u.status === "ACTIVE" && !u.hasPassword ? " · sem senha" : ""}
-                  </p>
-                  <p className="mt-1 text-xs text-ink-soft">
-                    {u.memberships.length === 0
-                      ? "Sem estabelecimento"
-                      : u.memberships.map((m) => `${m.tenantName} (${PAPEIS_ESTABELECIMENTO[m.role] ?? m.role})`).join(" · ")}
-                  </p>
-                </li>
+            <TabelaDeContas testId="lista-contas" colunas={["Estabelecimento", "Responsável", "Situação da conta", "Ações"]}>
+              {estado.dados.items.map((c) => (
+                <tr key={c.id} className={LINHA}>
+                  <td className={CELULA}>
+                    <span className={ROTULO_CELULA}>Estabelecimento:</span>
+                    <ul className="inline md:block md:space-y-1">
+                      {c.establishments.map((e) => (
+                        <li key={e.tenantId} className="flex items-center gap-2 font-semibold">
+                          <Store size={18} aria-hidden="true" className="hidden shrink-0 text-accent md:block" />
+                          <span className="break-words">{e.tenantName}</span>
+                          {e.relation === "PENDING_INVITE" && <span className="shrink-0 text-xs font-normal text-ink-soft">(convite)</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className={CELULA}>
+                    <span className={ROTULO_CELULA}>Responsável:</span>
+                    <span className="font-semibold">{c.name}</span>
+                    <span className="block break-all text-ink-soft">{c.email}</span>
+                  </td>
+                  <SituacaoDaConta status={c.status} />
+                  <AcaoDaConta conta={c} />
+                </tr>
               ))}
-            </ul>
+            </TabelaDeContas>
           )}
-          <nav aria-label="Paginação" className="flex flex-wrap items-center justify-between gap-2">
-            <Botao variante="secundaria" disabled={filtro.page === 1} onClick={() => setFiltro((f) => ({ ...f, page: f.page - 1 }))} className="min-h-11">
-              Anterior
-            </Botao>
-            <span className="text-sm text-ink-soft">
-              Página {filtro.page} de {Math.max(1, Math.ceil(estado.dados.total / estado.dados.pageSize))}
-            </span>
-            <Botao
-              variante="secundaria"
-              disabled={filtro.page * estado.dados.pageSize >= estado.dados.total}
-              onClick={() => setFiltro((f) => ({ ...f, page: f.page + 1 }))}
-              className="min-h-11"
-            >
-              Próxima
-            </Botao>
-          </nav>
+          <PaginacaoDasContas lista={lista} total={estado.dados.total} pageSize={estado.dados.pageSize} />
         </>
       )}
-    </div>
+      <p className="flex items-start gap-2 rounded-xl bg-accent-soft p-4 text-sm text-ink-soft">
+        <Users size={18} aria-hidden="true" className="mt-0.5 shrink-0" />
+        Funcionários são gerenciados pelo dono em Equipe e acessos, na conta do estabelecimento.
+      </p>
+    </>
+  );
+}
+
+function ListaAdministradores() {
+  const lista = useListaDaAba<ContaAdministrativa>("administradores", ehListaAdministradores);
+  const { estado } = lista;
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-ink-soft">
+          Acesso exclusivo aos proprietários da plataforma.{" "}
+          <Link href={ROTA_PAPEIS} className="font-medium text-accent">
+            O que cada papel pode fazer
+          </Link>
+        </p>
+        <AtualizarContas recarregar={lista.recarregar} />
+      </div>
+      {estado.status === "pronto" && <ResumoDasContas resumo={estado.dados.summary} rotuloTotal="Administradores" />}
+      <FiltrosDasContas lista={lista} rotuloBusca="Nome ou e-mail" />
+      {estado.status !== "pronto" ? (
+        <EstadoLeitura estado={estado} recarregar={lista.recarregar} />
+      ) : (
+        <>
+          <h2 role="status" className="text-lg font-semibold">
+            {tituloDaLista("administradores", estado.dados.total)}
+          </h2>
+          {estado.dados.items.length === 0 ? (
+            <SemContas />
+          ) : (
+            <TabelaDeContas testId="lista-administradores" colunas={["Administrador", "Perfil", "Situação", "Ações"]}>
+              {estado.dados.items.map((c) => (
+                <tr key={c.id} className={LINHA}>
+                  <td className={CELULA}>
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                      <UserRound size={18} aria-hidden="true" className="shrink-0 text-accent" />
+                      {c.name}
+                    </span>
+                    <span className="block break-all text-ink-soft">{c.email}</span>
+                  </td>
+                  <td className={CELULA}>
+                    <span className={ROTULO_CELULA}>Perfil:</span>
+                    {perfilAdministrativo(c.platformRole)}
+                  </td>
+                  <SituacaoDaConta status={c.status} />
+                  <AcaoDaConta conta={c} />
+                </tr>
+              ))}
+            </TabelaDeContas>
+          )}
+          <PaginacaoDasContas lista={lista} total={estado.dados.total} pageSize={estado.dados.pageSize} />
+        </>
+      )}
+    </>
   );
 }

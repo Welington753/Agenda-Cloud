@@ -82,6 +82,20 @@ export function assertCanManageAccount(actor: Actor, target: { id: string; platf
   requireCapability(actor, 'manageEstablishments');
 }
 
+/** Ficha de uma conta com papel de plataforma vista por quem não cuida dos
+ * acessos da plataforma (`managePlatformAccess`): com vínculo ou convite de
+ * estabelecimento, a conta é classificada pelo vínculo e a ficha sai sem os
+ * dados administrativos (`HIDDEN`); sem vínculo, é só administrativa e a
+ * ficha não existe para quem olha (`NOT_FOUND`, inclusive por endereço
+ * direto). */
+export function platformDataVisibility(
+  actor: Actor,
+  target: { platformRole: PlatformRole | null; hasEstablishmentLink: boolean },
+): 'VISIBLE' | 'HIDDEN' | 'NOT_FOUND' {
+  if (!target.platformRole || actor.caps.managePlatformAccess) return 'VISIBLE';
+  return target.hasEstablishmentLink ? 'HIDDEN' : 'NOT_FOUND';
+}
+
 export function canManageAccount(actor: Actor, target: { id: string; platformRole: PlatformRole | null }): boolean {
   try {
     assertCanManageAccount(actor, target);
