@@ -39,6 +39,7 @@ import {
   MIGRATIONS_ATE_TENANT_TESTE,
 } from '../scripts/lib/tenant-teste-schema.js';
 import { comTodosOsRecursos } from './support/plano-de-teste.js';
+import { garantirPrecoBase } from './support/assinatura.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -176,6 +177,7 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
     hash = await hashPassword(SENHA);
 
     const responsavel = await conta('master', 'MASTER_OWNER');
+    await garantirPrecoBase(db, responsavel.userId);
     masterId = responsavel.userId;
     master = await entrar(responsavel.email);
 
@@ -285,7 +287,8 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
           requestKey: `chave-${id()}`,
           businessName,
           category: 'OTHER',
-          planId: plano,
+          addons: [],
+          teamUserLimit: 1,
           owner: { name: 'Dono convidado', email: `${marca}-res-${id()}@example.test` },
         })
         .expect(200);
@@ -324,7 +327,8 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
       requestKey: `chave-${id()}`,
       businessName,
       category: 'OTHER',
-      planId: plano,
+      addons: [],
+      teamUserLimit: 1,
       owner: { name: 'Dono convidado', email: `${marca}-esc-${id()}@example.test` },
       ...extra,
     });
@@ -349,7 +353,8 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
           requestKey: `chave-${id()}`,
           businessName: 'Administração',
           category: 'OTHER',
-          planId: plano,
+          addons: [],
+          teamUserLimit: 1,
           owner: { name: 'Dono convidado', email: `${marca}-sim-${id()}@example.test` },
         }),
       ),
@@ -368,7 +373,7 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
     // compartilhado; o baseline das comissões conta só o catálogo.
     // Migrations criadas depois deste kit: o kit as recusa de propósito (só
     // serve no commit dele); o teste as conhece por nome e as tira daqui.
-    const POSTERIORES_AO_KIT = ['AdminSecondFactor1793750400000'];
+    const POSTERIORES_AO_KIT = ['AdminSecondFactor1793750400000', 'ModularSubscription1793836800000'];
     const soCatalogo = {
       ...estado,
       migrationNames: estado.migrationNames.slice(0, MIGRATIONS_ATE_TENANT_TESTE.length),

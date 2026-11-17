@@ -248,7 +248,8 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     )) as { code: string; name: string; max_professionals: number; max_units: number; recursos: string[] }[];
     expect(catalogo.map(({ recursos, ...plano }) => ({ ...plano, recursos: recursos.length }))).toEqual([
       { code: 'equipe', name: 'Pro', max_professionals: 5, max_units: 1, recursos: 8 },
-      { code: 'essencial', name: 'Básico', max_professionals: 2, max_units: 1, recursos: 6 },
+      // + RELATORIOS (ModularSubscription): os indicadores da Visão geral.
+      { code: 'essencial', name: 'Básico', max_professionals: 2, max_units: 1, recursos: 7 },
       { code: 'pro', name: 'Max', max_professionals: 20, max_units: 5, recursos: 13 },
     ]);
     expect(catalogo[0].recursos).toEqual(['AGENDA', 'AGENDAMENTO_PUBLICO', 'COMISSOES', 'CONSUMIDORES', 'EQUIPE', 'PAGAMENTOS', 'PROFISSIONAIS', 'RELATORIOS']);

@@ -576,6 +576,14 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
     expect(await q(`SELECT plan_id FROM tenants WHERE id = $1`, [legado.tenantId])).toEqual([{ plan_id: planoTeste }]);
   });
 
+  it('compatibilidade: corpo de criação do web anterior recebe 403 sem permissão e 409 TELA_DESATUALIZADA com ela', async () => {
+    const comum = await conta('compat-comum');
+    expect((await erroDe(invites.refuseOutdatedCreation(comum.userId))).constructor.name).toBe('ForbiddenException');
+    const recusa = await erroDe(invites.refuseOutdatedCreation(master.userId));
+    expect(recusa.getResponse?.()).toMatchObject({ code: 'TELA_DESATUALIZADA' });
+    expect(recusa.getResponse?.()?.message).toMatch(/Recarregue a página/);
+  });
+
   it('cliente atual sem configuração: limite do plano, recursos e contrato iguais aos de antes', async () => {
     const est = await estabelecimento('intacto', planoDois);
     const uso = await staffSeatUsage(db.manager, est.tenantId, 2, new Date());

@@ -204,9 +204,9 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       expect(ehPlanos(listaAnterior.rows)).toBe(true);
       expect(Number(features.rows[0]?.n)).toBe(13);
       // 22 do catálogo inicial + 4 da CommercialAccess (o que o código já usava)
-      // + 1 da ProfessionalCommissions (comissões no Pro) + 2 da
-      // ModularSubscription (RELATORIOS no Básico e no Pro).
-      expect(Number(planFeatures.rows[0]?.n)).toBe(29);
+      // + 1 da ProfessionalCommissions (comissões no Pro) + 1 da
+      // ModularSubscription (RELATORIOS no Básico; o Pro já tinha).
+      expect(Number(planFeatures.rows[0]?.n)).toBe(28);
       expect(Number(tenants.rows[0]?.n)).toBe(0);
       expect(Number(users.rows[0]?.n)).toBe(0);
     } finally {

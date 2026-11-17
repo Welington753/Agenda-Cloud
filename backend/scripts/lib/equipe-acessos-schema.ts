@@ -212,6 +212,10 @@ export async function lerExcessoDePlano(client: PgClientLike): Promise<ExcessoDe
                    : '0'
                })::text AS vagas
          FROM tenants t JOIN plans p ON p.id = t.plan_id
+        -- Plano modular (ModularSubscription, posterior a este levantamento):
+        -- sem limite de profissionais e com limite de usuários próprio; fora
+        -- da regra anterior. A coluna existe antes e depois.
+        WHERE p.max_professionals IS NOT NULL
         ORDER BY t.created_at, t.id`,
     );
     const papeis = await client.query<{ papel: string; total: string }>(

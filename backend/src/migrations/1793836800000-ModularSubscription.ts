@@ -18,9 +18,10 @@
 // 5. Versões da assinatura (`tenant_subscriptions` + itens): append-only,
 //    com instantâneo dos preços do catálogo na data. Mudar o catálogo nunca
 //    reescreve uma versão.
-// 6. RELATORIOS entra nos planos Básico e Pro: a Visão geral passa a separar
-//    os indicadores (resumo do período e financeiro) pelo recurso RELATORIOS,
-//    e quem já usa não pode perder.
+// 6. RELATORIOS entra no plano Básico (o Pro e o Max já tinham; a linha do
+//    Pro fica como garantia idempotente): a Visão geral passa a separar os
+//    indicadores (resumo do período e financeiro) pelo recurso RELATORIOS, e
+//    quem já usa não pode perder.
 // 7. Trava no banco (gatilho de constraint adiado): um estabelecimento só
 //    fica no plano modular com limite preenchido e uma versão de assinatura.
 //    Protege contra a API anterior, que não sabe gravar assinatura.
@@ -90,7 +91,8 @@ export const ADDON_MODULE_ROWS = [
   },
 ] as const;
 
-/** RELATORIOS nos planos atuais que ainda não o tinham (ids fixos para o `down`). */
+/** RELATORIOS nos planos atuais (ids fixos para o `down`; no Pro a linha
+ * original já existe e o INSERT não faz nada). */
 export const RELATORIOS_PLAN_FEATURES = [
   { id: 'pf_ms_essencial_relatorios', planId: 'plan_essencial' },
   { id: 'pf_ms_equipe_relatorios', planId: 'plan_equipe' },

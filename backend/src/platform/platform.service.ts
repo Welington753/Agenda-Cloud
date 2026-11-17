@@ -439,14 +439,16 @@ export class PlatformService {
           archive: caps.manageEstablishmentLifecycle && (operando || status === 'SUSPENDED'),
           reactivate:
             caps.manageEstablishmentLifecycle && (status === 'SUSPENDED' || status === 'ARCHIVED') && !!extra.restoreStatus,
-          changePlan: caps.manageEstablishmentLifecycle,
+          // Assinatura modular: plano e contrato só pela aba "Plano e adicionais".
+          changePlan: caps.manageEstablishmentLifecycle && !establishment.modular,
+          changeSubscription: caps.manageEstablishmentLifecycle && status !== 'ARCHIVED',
           recordPayment: registraValidade,
           extendTrial: registraValidade && !periodos.some((p) => p.kind !== 'TRIAL'),
           grantCourtesy: registraValidade,
           correctPeriod: registraValidade,
           grantNoExpiry: registraValidade && !concessaoVigente,
           revokeNoExpiry: registraValidade && !!concessaoVigente,
-          changeContract: registraValidade,
+          changeContract: registraValidade && !establishment.modular,
         },
         /** Ativo/Inativo: a situação administrativa, separada da validade
          * comercial e dos papéis da plataforma. Inativo (suspenso ou

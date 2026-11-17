@@ -68,6 +68,7 @@ import type { StaffInviteDto } from '../team/team.dto.js';
 import { firstTrial } from '../commercial/access-periods.js';
 import { ensureModularPlan, MODULAR_PLAN_CODE, MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
 import { writeSubscriptionVersion } from '../platform/subscription.service.js';
+import { OUTDATED_SCREEN_CODE, OUTDATED_SCREEN_MESSAGE } from './create-establishment.pipe.js';
 
 export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
   'Este e-mail não está disponível para convite. Use outro e-mail.';
@@ -116,6 +117,15 @@ export class InvitesService {
   ) {}
 
   // ---------------------------------------------------------------- criação
+
+  /** Corpo de criação do web anterior (sem limite nem assinatura): quem não
+   * pode criar recebe a recusa de sempre; quem pode, `TELA_DESATUALIZADA`. */
+  async refuseOutdatedCreation(actorId: string): Promise<never> {
+    await this.dataSource.transaction(async (manager) => {
+      requireCapability(await loadActor(manager, actorId), 'manageEstablishments');
+    });
+    throw new ConflictException({ code: OUTDATED_SCREEN_CODE, message: OUTDATED_SCREEN_MESSAGE });
+  }
 
   async createEstablishment(actorId: string, dto: CreateEstablishmentDto, now = new Date()) {
     const replay = await this.replay(actorId, dto.requestKey);
