@@ -16,7 +16,7 @@ import type { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import { EFFECTIVE_PLATFORM_PERMISSIONS, platformCapabilities } from '../platform/platform-access.js';
 import type { AuditQuery, InvitesQuery, UsersQuery } from './accounts.dto.js';
-import { canManageAccount, loadActor, type Actor } from './actor.js';
+import { canManageAccount, loadActor, platformDataVisibility, requireCapability, type Actor } from './actor.js';
 import { INVITE_COLUMNS, INVITE_FROM, INVITE_STATUS_SQL, type InviteView } from './invite-views.js';
 import { PASSWORD_RESET_COLUMNS, type PasswordResetView } from './password-resets.service.js';
 import {
@@ -97,21 +97,38 @@ const MEMBERSHIP_COLUMNS = `m.id, m.tenant_id AS "tenantId", ${TENANT_NAME} AS "
 const MEMBERSHIP_FROM = `FROM memberships m JOIN tenants t ON t.id = m.tenant_id`;
 const MEMBERSHIP_SELECT = `SELECT ${MEMBERSHIP_COLUMNS} ${MEMBERSHIP_FROM}`;
 
-/** Conta só de funcionário: nenhum papel de plataforma, nenhum vínculo nem
- * convite pendente de DONO, e ao menos um vínculo ou convite pendente de
- * outro papel. Fica fora da lista global de contas (continua na equipe de
- * cada estabelecimento e na ficha); quem não tem vínculo nenhum (responsável
- * ainda sem estabelecimento, conta antiga, proprietário da plataforma)
- * continua. Nada é apagado nem alterado. "Pendente" é o mesmo de
- * `INVITE_STATUS_SQL`: convite vencido não conta, nem para manter nem para
- * tirar a conta da lista (a equipe do estabelecimento também não o mostra). */
-export const STAFF_ONLY_ACCOUNT_SQL = `(u.platform_role IS NULL
-  AND NOT EXISTS (SELECT 1 FROM memberships dm WHERE dm.user_id = u.id AND dm.role = 'DONO')
-  AND NOT EXISTS (SELECT 1 FROM invites di WHERE di.target_user_id = u.id AND di.status = 'PENDING'
-    AND di.establishment_role = 'DONO' AND di.expires_at > now())
-  AND (EXISTS (SELECT 1 FROM memberships sm WHERE sm.user_id = u.id AND sm.role <> 'DONO')
-    OR EXISTS (SELECT 1 FROM invites si WHERE si.target_user_id = u.id AND si.status = 'PENDING'
-      AND si.type = 'ESTABLISHMENT' AND si.establishment_role <> 'DONO' AND si.expires_at > now())))`;
+/** Convite de responsável (DONO) ainda pendente para a conta `u`. "Pendente"
+ * é o mesmo de `INVITE_STATUS_SQL`: convite vencido não conta. */
+const PENDING_OWNER_INVITE = `oi.target_user_id = u.id AND oi.type = 'ESTABLISHMENT' AND oi.status = 'PENDING'
+  AND oi.establishment_role = 'DONO' AND oi.expires_at > now() AND oi.tenant_id IS NOT NULL`;
+
+/** Estabelecimentos dos quais a conta `u` é responsável: vínculo DONO real
+ * ou convite de DONO pendente. Vínculos de funcionário nunca entram. */
+const OWNED_TENANT_IDS = `(SELECT om.tenant_id FROM memberships om WHERE om.user_id = u.id AND om.role = 'DONO'
+  UNION SELECT oi.tenant_id FROM invites oi WHERE ${PENDING_OWNER_INVITE})`;
+
+/** Aba "Contas dos estabelecimentos": só quem é responsável por ao menos um
+ * estabelecimento. Conta só de funcionário fica na equipe de cada
+ * estabelecimento; conta sem vínculo nenhum não é presumida cliente; papel de
+ * plataforma não entra na decisão (conta com os dois aparece pelo vínculo, sem
+ * os dados administrativos). Nada é apagado nem alterado. */
+export const ESTABLISHMENT_ACCOUNT_SQL = `EXISTS ${OWNED_TENANT_IDS}`;
+
+/** Aba "Administradores do sistema": contas com papel de plataforma. */
+export const ADMIN_ACCOUNT_SQL = `u.platform_role IS NOT NULL`;
+
+/** Uma linha por estabelecimento do responsável, sem repetir a conta: vínculo
+ * DONO (`OWNER`) ou convite pendente (`PENDING_INVITE`) para um
+ * estabelecimento em que ainda não é dono. */
+const OWNED_ESTABLISHMENTS_JSON = `COALESCE((SELECT json_agg(json_build_object('tenantId', t.id, 'tenantName', ${TENANT_NAME},
+    'tenantStatus', t.status, 'relation', x.relation, 'membershipStatus', x.membership_status) ORDER BY x.created_at, t.id)
+  FROM (SELECT om.tenant_id, 'OWNER' AS relation, om.status::text AS membership_status, om.created_at
+          FROM memberships om WHERE om.user_id = u.id AND om.role = 'DONO'
+        UNION ALL
+        SELECT DISTINCT ON (oi.tenant_id) oi.tenant_id, 'PENDING_INVITE', NULL, oi.created_at
+          FROM invites oi WHERE ${PENDING_OWNER_INVITE}
+           AND NOT EXISTS (SELECT 1 FROM memberships xm WHERE xm.user_id = u.id AND xm.tenant_id = oi.tenant_id AND xm.role = 'DONO')) x
+  JOIN tenants t ON t.id = x.tenant_id), '[]'::json)`;
 
 @Injectable()
 export class AccountsDirectoryService {
@@ -193,23 +210,27 @@ export class AccountsDirectoryService {
   }
 
   listUsers(actorId: string, query: UsersQuery) {
-    return this.read(actorId, async (manager) => {
-      // Antes da busca, da paginação e dos contadores: contas só de
-      // funcionário não entram em nenhum deles.
-      const base: string[] = [`NOT ${STAFF_ONLY_ACCOUNT_SQL}`];
+    return this.read(actorId, async (manager, actor) => {
+      const admins = query.scope === 'ADMINS';
+      // Contas administrativas: só quem cuida dos acessos da plataforma.
+      if (admins) requireCapability(actor, 'managePlatformAccess');
+      // A aba vale antes da busca, da paginação e dos contadores.
+      const base: string[] = [admins ? ADMIN_ACCOUNT_SQL : ESTABLISHMENT_ACCOUNT_SQL];
       const values: unknown[] = [];
       if (query.q) {
         values.push(escaparLike(query.q));
-        base.push(`(u.name ILIKE $${values.length} OR u.email::text ILIKE $${values.length} OR u.username::text ILIKE $${values.length})`);
+        const n = values.length;
+        const daConta = `u.name ILIKE $${n} OR u.email::text ILIKE $${n} OR u.username::text ILIKE $${n}`;
+        base.push(
+          admins
+            ? `(${daConta})`
+            : `(${daConta} OR EXISTS (SELECT 1 FROM tenants t WHERE t.id IN ${OWNED_TENANT_IDS}
+                AND (${TENANT_NAME} ILIKE $${n} OR t.slug::text ILIKE $${n})))`,
+        );
       }
-      if (query.tenantId) {
+      if (query.tenantId && !admins) {
         values.push(query.tenantId);
-        base.push(`EXISTS (SELECT 1 FROM memberships fm WHERE fm.user_id = u.id AND fm.tenant_id = $${values.length})`);
-      }
-      if (query.platformRole === 'NONE') base.push('u.platform_role IS NULL');
-      else if (query.platformRole) {
-        values.push(query.platformRole);
-        base.push(`u.platform_role = $${values.length}::platform_role`);
+        base.push(`$${values.length} IN ${OWNED_TENANT_IDS}`);
       }
       const comSituacao = [...base];
       const valoresComSituacao = [...values];
@@ -222,15 +243,17 @@ export class AccountsDirectoryService {
         `SELECT count(*)::int AS total FROM users u ${filtro.sql}`,
         filtro.values,
       );
+      // Cada aba devolve só os dados dela: a de estabelecimentos nunca leva
+      // papel nem permissão de plataforma, a de administradores nunca leva
+      // vínculos com estabelecimentos.
+      const colunasDaAba = admins
+        ? `u.platform_role AS "platformRole"`
+        : `${OWNED_ESTABLISHMENTS_JSON} AS establishments`;
       const items = await manager.query(
-        `SELECT u.id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.phone, u.status, u.email_verified AS "emailVerified",
-                u.platform_role AS "platformRole", COALESCE(to_json(u.platform_permissions), '[]'::json) AS "platformPermissions",
+        `SELECT u.id, u.name, COALESCE(u.email::text, u.username::text) AS email, u.status, u.email_verified AS "emailVerified",
                 u.created_at AS "createdAt", u.updated_at AS "updatedAt",
                 EXISTS (SELECT 1 FROM credentials c WHERE c.user_id = u.id) AS "hasPassword",
-                COALESCE((SELECT json_agg(json_build_object('tenantId', t.id, 'tenantName', ${TENANT_NAME},
-                    'role', m.role, 'status', m.status, 'tenantStatus', t.status) ORDER BY m.created_at, m.id)
-                  FROM memberships m JOIN tenants t ON t.id = m.tenant_id WHERE m.user_id = u.id), '[]'::json)
-                  AS memberships
+                ${colunasDaAba}
            FROM users u ${filtro.sql}
           ORDER BY u.created_at DESC, u.id DESC
           LIMIT $${filtro.values.length + 1} OFFSET $${filtro.values.length + 2}`,
@@ -240,14 +263,11 @@ export class AccountsDirectoryService {
         `SELECT count(*)::int AS total,
                 count(*) FILTER (WHERE u.status = 'ACTIVE')::int AS active,
                 count(*) FILTER (WHERE u.status = 'INVITED')::int AS invited,
-                count(*) FILTER (WHERE u.status = 'SUSPENDED')::int AS suspended,
-                count(*) FILTER (WHERE u.platform_role IS NOT NULL)::int AS "platformAccounts",
-                count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM memberships sm WHERE sm.user_id = u.id))::int
-                  AS "withoutEstablishment"
+                count(*) FILTER (WHERE u.status = 'SUSPENDED')::int AS suspended
            FROM users u ${juntar(base)}`,
         values,
       );
-      return { items, total: count.total, page: query.page, pageSize: query.pageSize, summary };
+      return { scope: query.scope, items, total: count.total, page: query.page, pageSize: query.pageSize, summary };
     });
   }
 
@@ -293,19 +313,36 @@ export class AccountsDirectoryService {
           WHERE r.user_id = $1 ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
         [userId],
       );
+      const visibilidade = platformDataVisibility(actor, {
+        platformRole: user.platformRole,
+        hasEstablishmentLink:
+          memberships.length > 0 || invites.some((linha) => linha.invite.type === 'ESTABLISHMENT'),
+      });
+      if (visibilidade === 'NOT_FOUND') throw new NotFoundException('Conta não encontrada.');
+      const ocultar = visibilidade === 'HIDDEN';
+      // `pode` usa o papel real: ocultar o dado nunca libera uma ação.
       const pode = canManageAccount(actor, { id: user.id, platformRole: user.platformRole });
       return {
         ...user,
-        platformCapabilities: platformCapabilities({
-          status: user.status as never,
-          platformRole: user.platformRole ?? undefined,
-          platformPermissions: user.platformPermissions as never,
-        }),
-        ineffectivePlatformPermissions: user.platformPermissions.filter(
-          (p) => !EFFECTIVE_PLATFORM_PERMISSIONS.includes(p as never),
+        platformRole: ocultar ? null : user.platformRole,
+        platformPermissions: ocultar ? [] : user.platformPermissions,
+        /** Dados de plataforma omitidos para quem olha (conta classificada
+         * pelo vínculo com estabelecimento). */
+        platformDataHidden: ocultar,
+        platformCapabilities: platformCapabilities(
+          ocultar
+            ? null
+            : {
+                status: user.status as never,
+                platformRole: user.platformRole ?? undefined,
+                platformPermissions: user.platformPermissions as never,
+              },
         ),
+        ineffectivePlatformPermissions: ocultar
+          ? []
+          : user.platformPermissions.filter((p) => !EFFECTIVE_PLATFORM_PERMISSIONS.includes(p as never)),
         memberships: memberships.map(vinculoParaTela),
-        invites: invites.map((linha) => linha.invite),
+        invites: invites.map((linha) => linha.invite).filter((c) => !ocultar || c.type === 'ESTABLISHMENT'),
         latestPasswordReset: reset?.reset ?? null,
         /** O que a conta que está olhando pode fazer aqui (o servidor confere
          * de novo em cada operação). */

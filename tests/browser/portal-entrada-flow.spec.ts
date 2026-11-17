@@ -80,7 +80,7 @@ test("proprietário sem estabelecimento: entrada, login, celular, sessão expira
 
     // Sessão expirada no servidor: a próxima abertura volta à entrada do portal.
     await page.goto("/portal/usuarios");
-    await expect(page.getByRole("heading", { name: "Usuários", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Contas e acessos", exact: true })).toBeVisible();
     await db.query(
       "UPDATE sessions SET created_at = now() - interval '1 day', expires_at = now() - interval '1 minute' WHERE user_id = $1",
       [conta.user.id],

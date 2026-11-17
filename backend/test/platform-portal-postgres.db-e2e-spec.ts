@@ -256,6 +256,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       '/platform/overview',
       '/platform/reports',
       '/platform/users',
+      '/platform/users?scope=ADMINS',
       '/platform/invites',
       '/platform/audit',
       '/platform/roles',

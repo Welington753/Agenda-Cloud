@@ -99,7 +99,7 @@ describe("seções do portal", () => {
     expect(SECOES_ADMINISTRACAO.map((s) => s.rotulo)).toEqual([
       "Visão geral",
       "Estabelecimentos",
-      "Responsáveis e acessos",
+      "Contas e acessos",
       "Convites",
       "Planos e preços",
       "Pagamentos das assinaturas",
@@ -111,6 +111,12 @@ describe("seções do portal", () => {
     expect(SECOES_ADMINISTRACAO.every((s) => s.href.startsWith("/portal/"))).toBe(true);
     expect(secaoAtiva("/portal/usuarios/u1", "/portal/usuarios")).toBe(true);
     expect(secaoAtiva("/portal/usuarios-x", "/portal/usuarios")).toBe(false);
+  });
+
+  it("Contas e acessos mantém o endereço antigo; a aba de administradores vai na busca", async () => {
+    const { rotaContasEAcessos } = await import("./rotas");
+    expect(rotaContasEAcessos()).toBe("/portal/usuarios");
+    expect(rotaContasEAcessos("administradores")).toBe("/portal/usuarios?aba=administradores");
   });
 
   it("grupos por assunto mantêm a mesma ordem e cada seção uma vez só", async () => {
