@@ -327,11 +327,10 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
   it('duas entradas disputando a última vaga do limite: uma passa; convite × redução nunca passam juntos', async () => {
     const est = await estabelecimento('corrida');
     await assinaturas.setTeamLimit(master.userId, master.sessionId, est.tenantId, { expectedUpdatedAt: await versao(est.tenantId), teamUserLimit: 1 });
-    const resultados = await Promise.allSettled([
-      convidar(est, await profissional(est, 'a'), 'a'),
-      convidar(est, await profissional(est, 'b'), 'b'),
-      convidar(est, await profissional(est, 'c'), 'c'),
-    ]);
+    // Profissionais antes: um convite iniciado enquanto o próximo await
+    // corre rejeitaria sem tratador ligado (rejeição não tratada).
+    const pessoas = [await profissional(est, 'a'), await profissional(est, 'b'), await profissional(est, 'c')];
+    const resultados = await Promise.allSettled(pessoas.map((pessoa, i) => convidar(est, pessoa, 'abc'[i])));
     expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await vagas(est)).toMatchObject({ used: 1, limit: 1 });
 
