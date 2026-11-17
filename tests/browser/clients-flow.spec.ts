@@ -403,7 +403,7 @@ test.describe("clientes do estabelecimento", () => {
 
     // ------------------------------------------------ navegação: computador
     expect(await nav(page).getByRole("link").allTextContents()).toEqual([
-      "Dashboard",
+      "Visão geral",
       "Agenda",
       "Profissionais",
       "Serviços",
@@ -420,7 +420,7 @@ test.describe("clientes do estabelecimento", () => {
       await page.goto("/conta/clientes");
       await buscar(page, clienteDeA);
       await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
-      for (const rotulo of ["Dashboard", "Agenda", "Clientes", "Configurações"]) {
+      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Configurações"]) {
         const link = nav(page).getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = (await link.boundingBox())!;

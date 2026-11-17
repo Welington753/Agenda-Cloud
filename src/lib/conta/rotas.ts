@@ -1,7 +1,7 @@
 // Endereços da área REAL (`/conta/**`). Regras puras, sem React.
 //
 // Organização (ver docs/plans/menu-do-dono-organizado.md):
-// - Dashboard, Agenda (com a aba Solicitações), Profissionais, Serviços,
+// - Visão geral, Agenda (com a aba Solicitações), Profissionais, Serviços,
 //   Clientes, Equipe e acessos, Comissões (quando o plano inclui) e
 //   Configurações para o dono;
 // - Minha agenda para o funcionário;
@@ -24,7 +24,7 @@ export const ROTA_SOLICITACOES = `${ROTA_AGENDA}/solicitacoes`;
 export const ROTA_CLIENTES = "/conta/clientes";
 export const ROTA_MINHA_AGENDA = "/conta/minha-agenda";
 export const ROTA_SELECIONAR_ESTABELECIMENTO = "/conta/selecionar-estabelecimento";
-/** Recebimentos manuais (dono), abertos pelo Dashboard e por Configurações. */
+/** Recebimentos manuais (dono), abertos pela Visão geral e por Configurações. */
 export const ROTA_RECEBIMENTOS = "/conta/recebimentos";
 /** Comissões apuradas por profissional (dono, com o recurso no plano). */
 export const ROTA_COMISSOES = "/conta/comissoes";
@@ -81,7 +81,7 @@ export interface SecaoDeConfiguracoes {
 /** Seções na ordem da tela, já na ordem dos grupos. Só o que NÃO tem entrada
  * própria no menu do dono: Equipe e acessos saiu daqui quando ganhou a sua
  * (o endereço continua `/conta/configuracoes/equipe`). Recebimentos não tem
- * entrada no menu do dono e fica aqui, além do atalho do Dashboard. */
+ * entrada no menu do dono e fica aqui, além do atalho da Visão geral. */
 export const SECOES_CONFIGURACOES: readonly SecaoDeConfiguracoes[] = [
   {
     href: ROTA_CONFIG_ESTABELECIMENTO,

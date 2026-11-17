@@ -109,7 +109,7 @@ test.describe("entrada e navegação do piloto", () => {
     await expect(page.getByTestId("usuario-conectado")).toContainText("Dona Navegação");
     const nav = navegacaoDaConta(page);
     expect(await nav.getByRole("link").allTextContents()).toEqual([
-      "Dashboard",
+      "Visão geral",
       "Agenda",
       "Profissionais",
       "Serviços",
@@ -118,7 +118,7 @@ test.describe("entrada e navegação do piloto", () => {
       "Comissões",
       "Configurações",
     ]);
-    await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Visão geral" })).toHaveAttribute("aria-current", "page");
     // Nenhum link da área real aponta para a demonstração.
     const hrefs = await nav
       .getByRole("link")
@@ -178,7 +178,7 @@ test.describe("entrada e navegação do piloto", () => {
       ["Equipe e acessos", /\/conta\/configuracoes\/equipe$/],
       ["Comissões", /\/conta\/comissoes$/],
       ["Configurações", /\/conta\/configuracoes$/],
-      ["Dashboard", /\/conta\/visao-geral$/],
+      ["Visão geral", /\/conta\/visao-geral$/],
     ] as const) {
       await nav.getByRole("link", { name: rotulo }).click();
       await expect(page).toHaveURL(caminho);
@@ -215,7 +215,7 @@ test.describe("entrada e navegação do piloto", () => {
       "/conta/configuracoes/perfil",
     ]) {
       await page.goto(caminho);
-      for (const rotulo of ["Dashboard", "Agenda", "Clientes", "Configurações"]) {
+      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Configurações"]) {
         const link = nav.getByRole("link", { name: rotulo });
         await expect(link).toBeInViewport();
         const caixa = await link.boundingBox();

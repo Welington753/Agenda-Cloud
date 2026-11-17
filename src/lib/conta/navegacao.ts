@@ -51,12 +51,14 @@ export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenan
  * - "Comissões" só entra quando o servidor lista a área `COMISSOES_VER`, que
  *   ele só dá com o recurso no plano e sem restrição ao dono. Sem a lista de
  *   áreas (API anterior), não entra: a tela não presume o plano.
- * - Na barra do celular ficam quatro (Dashboard, Agenda, Clientes e
+ * - Na barra do celular ficam quatro (Visão geral, Agenda, Clientes e
  *   Configurações); as outras aparecem no menu da conta.
+ * - No tema "Azul e branco" os mesmos itens aparecem em grupos
+ *   (`gruposDaNavegacao`).
  */
 export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoConta[] {
   const itens: ItemNavegacaoConta[] = [
-    { href: ROTA_INICIO, rotulo: "Dashboard", noCelular: "barra" },
+    { href: ROTA_INICIO, rotulo: "Visão geral", noCelular: "barra" },
     { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
     { href: ROTA_PROFISSIONAIS, rotulo: rotuloDosProfissionais(contexto?.tenantCategory), noCelular: "menu" },
     { href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "menu" },
@@ -118,6 +120,39 @@ export function itensDaNavegacao({
   if (perfil === "funcionario") return ITENS_NAVEGACAO_FUNCIONARIO;
   if (perfil === "sem-area") return [ITEM_CONFIGURACOES];
   return itensDoDono(contexto);
+}
+
+export interface GrupoNavegacaoConta {
+  /** `null`: item de entrada (Visão geral), sem título. */
+  titulo: string | null;
+  itens: ItemNavegacaoConta[];
+}
+
+/** Grupos do tema "Azul e branco", na ordem em que aparecem; dentro de cada
+ * grupo, a ordem dos endereços abaixo. Endereço fora da lista fica no grupo
+ * de entrada, sem título. */
+const GRUPOS_AZUL: readonly { titulo: string; hrefs: readonly string[] }[] = [
+  { titulo: "Atendimento", hrefs: [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES] },
+  { titulo: "Gestão do negócio", hrefs: [ROTA_PROFISSIONAIS, ROTA_SERVICOS, ROTA_COMISSOES, ROTA_RECEBIMENTOS] },
+  { titulo: "Administração", hrefs: [ROTA_EQUIPE, ROTA_CONFIGURACOES] },
+];
+
+/**
+ * Organiza os itens JÁ liberados (`itensDaNavegacao`) em grupos por assunto,
+ * para o tema "Azul e branco". Não acrescenta nem tira item: permissões,
+ * áreas do plano e termos do segmento continuam vindo da lista recebida.
+ * Grupo sem item não aparece.
+ */
+export function gruposDaNavegacao(itens: readonly ItemNavegacaoConta[]): GrupoNavegacaoConta[] {
+  const agrupados = new Set(GRUPOS_AZUL.flatMap((g) => g.hrefs));
+  const grupos: GrupoNavegacaoConta[] = [{ titulo: null, itens: itens.filter((i) => !agrupados.has(i.href)) }];
+  for (const { titulo, hrefs } of GRUPOS_AZUL) {
+    grupos.push({
+      titulo,
+      itens: hrefs.flatMap((href) => itens.filter((i) => i.href === href)),
+    });
+  }
+  return grupos.filter((g) => g.itens.length > 0);
 }
 
 /**

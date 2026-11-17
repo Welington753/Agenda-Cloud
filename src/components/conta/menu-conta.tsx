@@ -30,7 +30,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { itemAtivo, rotuloDoSino, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
+import { itemAtivo, rotuloDoSino, type GrupoNavegacaoConta, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
 import { ICONE_POR_HREF } from "@/components/conta/link-navegacao";
 import { textoPendentes } from "@/lib/agendamento-publico/solicitacoes";
 import { lerPreferenciaDeSom } from "@/lib/agendamento-publico/som-dos-avisos";
@@ -103,6 +103,7 @@ export function MenuConta({
   tenantId,
   pendentes,
   areasNoMenu = [],
+  gruposNoMenu,
   configuracoes,
   saindo,
   aoSair,
@@ -116,6 +117,8 @@ export function MenuConta({
    * (Serviços e Profissionais, para o dono). Só aparecem aqui no celular: no
    * computador já estão no menu lateral. */
   areasNoMenu?: readonly ItemNavegacaoConta[];
+  /** As mesmas áreas em grupos com título (tema "Azul e branco"). */
+  gruposNoMenu?: readonly GrupoNavegacaoConta[];
   /** Entrada de Configurações (sempre a mesma; parâmetro para o menu não
    * depender do módulo de rotas da área). */
   configuracoes: string;
@@ -127,6 +130,22 @@ export function MenuConta({
   const botaoRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
   const idPainel = useId();
+
+  const linhaDaArea = (area: ItemNavegacaoConta) => {
+    const Icone = ICONE_POR_HREF[area.href] ?? Settings;
+    const atual = itemAtivo(pathname, area.href);
+    return (
+      <Link
+        key={area.href}
+        href={area.href}
+        aria-current={atual ? "page" : undefined}
+        className={clsx(CLASSE_LINHA, atual && "bg-accent-soft")}
+      >
+        <Icone size={18} aria-hidden="true" className="shrink-0 text-accent" />
+        {area.rotulo}
+      </Link>
+    );
+  };
 
   // Navegar fecha o menu.
   useEffect(() => setAberto(false), [pathname]);
@@ -206,21 +225,16 @@ export function MenuConta({
               className="space-y-1 border-t border-border pt-2 md:hidden"
               data-testid="menu-mais-areas"
             >
-              {areasNoMenu.map((area) => {
-                const Icone = ICONE_POR_HREF[area.href] ?? Settings;
-                const atual = itemAtivo(pathname, area.href);
-                return (
-                  <Link
-                    key={area.href}
-                    href={area.href}
-                    aria-current={atual ? "page" : undefined}
-                    className={clsx(CLASSE_LINHA, atual && "bg-accent-soft")}
-                  >
-                    <Icone size={18} aria-hidden="true" className="shrink-0 text-accent" />
-                    {area.rotulo}
-                  </Link>
-                );
-              })}
+              {gruposNoMenu && gruposNoMenu.length > 0
+                ? gruposNoMenu.map((grupo, indice) => (
+                    <div key={grupo.titulo ?? "inicio"} className={clsx("space-y-1", indice > 0 && "pt-2")}>
+                      {grupo.titulo && (
+                        <p className="px-2 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">{grupo.titulo}</p>
+                      )}
+                      {grupo.itens.map(linhaDaArea)}
+                    </div>
+                  ))
+                : areasNoMenu.map(linhaDaArea)}
             </nav>
           )}
 
