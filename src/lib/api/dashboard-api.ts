@@ -26,11 +26,14 @@ export interface PainelDoEstabelecimento {
     expectedClients: number;
     appointmentsByStatus: Record<SituacaoAtendimento, number>;
   };
+  /** Indicadores (adicional "Indicadores avançados"): `null` sem o
+   * adicional. A parte operacional (hoje, solicitações, próximos) não
+   * depende dele. */
   periodSummary: {
     servedClients: number;
     appointmentsByStatus: Record<SituacaoAtendimento, number>;
     appointmentsTotal: number;
-  };
+  } | null;
   pendingRequests: number;
   upcoming: ProximoAtendimentoDoPainel[];
   /** Recebimentos registrados no período. `averageTicketCents` é `null`
@@ -42,10 +45,13 @@ export interface PainelDoEstabelecimento {
     paidAppointments: number;
     paidTotalCents: number;
     averageTicketCents: number | null;
-  };
+  } | null;
+  /** Ausente numa API anterior (indicadores sempre presentes). */
+  indicators?: { contracted: boolean };
   plan: {
     name: string;
-    maxProfessionals: number;
+    /** `null`: sem limite contratual de profissionais. */
+    maxProfessionals: number | null;
     activeProfessionals: number;
     staffSeats: { used: number; pending: number; available: number; limit: number };
   };
@@ -85,7 +91,18 @@ function ehProximo(v: unknown): v is ProximoAtendimentoDoPainel {
   );
 }
 
-/** Confere a forma inteira: um painel pela metade nunca vira número na tela. */
+export type PainelComIndicadores = PainelDoEstabelecimento & {
+  periodSummary: NonNullable<PainelDoEstabelecimento["periodSummary"]>;
+  finance: NonNullable<PainelDoEstabelecimento["finance"]>;
+};
+
+export function temIndicadores(p: PainelDoEstabelecimento): p is PainelComIndicadores {
+  return p.periodSummary !== null && p.finance !== null;
+}
+
+/** Confere a forma inteira: um painel pela metade nunca vira número na tela.
+ * Sem o adicional de indicadores, `periodSummary` e `finance` vêm `null`
+ * (e só então). */
 export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
   if (typeof v !== "object" || v === null) return false;
   const p = v as Record<string, unknown>;
@@ -95,6 +112,12 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
   const plano = p.plan as Record<string, unknown> | undefined;
   const vagas = plano?.staffSeats as Record<string, unknown> | undefined;
   const financeiro = p.finance as Record<string, unknown> | undefined;
+  const indicadores = p.indicators as Record<string, unknown> | undefined;
+  if (indicadores !== undefined && (typeof indicadores !== "object" || indicadores === null || typeof indicadores.contracted !== "boolean")) {
+    return false;
+  }
+  const semIndicadores = indicadores?.contracted === false;
+  if (semIndicadores && (p.periodSummary !== null || p.finance !== null)) return false;
   return (
     texto(p.timezone) &&
     texto(p.today) &&
@@ -105,25 +128,27 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
     !!hoje &&
     numero(hoje.expectedClients) &&
     porSituacao(hoje.appointmentsByStatus) &&
-    !!noPeriodo &&
-    numero(noPeriodo.servedClients) &&
-    numero(noPeriodo.appointmentsTotal) &&
-    porSituacao(noPeriodo.appointmentsByStatus) &&
+    (semIndicadores ||
+      (!!noPeriodo &&
+        numero(noPeriodo.servedClients) &&
+        numero(noPeriodo.appointmentsTotal) &&
+        porSituacao(noPeriodo.appointmentsByStatus))) &&
     numero(p.pendingRequests) &&
     Array.isArray(p.upcoming) &&
     p.upcoming.every(ehProximo) &&
     !!plano &&
     texto(plano.name) &&
-    numero(plano.maxProfessionals) &&
+    (plano.maxProfessionals === null || numero(plano.maxProfessionals)) &&
     numero(plano.activeProfessionals) &&
     !!vagas &&
     numero(vagas.used) &&
     numero(vagas.pending) &&
     numero(vagas.available) &&
     numero(vagas.limit) &&
-    !!financeiro &&
-    ["receivedCents", "refundedCents", "netCents", "paidAppointments", "paidTotalCents"].every((k) => numero(financeiro[k])) &&
-    (financeiro.averageTicketCents === null || numero(financeiro.averageTicketCents))
+    (semIndicadores ||
+      (!!financeiro &&
+        ["receivedCents", "refundedCents", "netCents", "paidAppointments", "paidTotalCents"].every((k) => numero(financeiro[k])) &&
+        (financeiro.averageTicketCents === null || numero(financeiro.averageTicketCents))))
   );
 }
 

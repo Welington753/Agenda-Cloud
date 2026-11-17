@@ -42,8 +42,11 @@ export class Plan {
   @Column({ type: 'varchar' })
   shortDescription!: string;
 
-  @Column({ type: 'int' })
-  maxProfessionals!: number;
+  // NULL só no plano modular (migration ModularSubscription): sem limite
+  // contratual de profissionais. O limite de usuários da equipe é outro
+  // (`tenants.team_user_limit`).
+  @Column({ type: 'int', nullable: true })
+  maxProfessionals!: number | null;
 
   @Column({ type: 'int' })
   maxUnits!: number;

@@ -26,6 +26,7 @@ import { DataSource } from 'typeorm';
 import { hashPassword } from '../src/auth/password-hasher.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { comTodosOsRecursos } from './support/plano-de-teste.js';
+import { garantirPrecoBase } from './support/assinatura.js';
 import * as webAnterior from './support/contrato-web-anterior.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
@@ -185,6 +186,7 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     hash = await hashPassword(SENHA);
 
     const responsavel = await conta('master', 'MASTER_OWNER');
+    await garantirPrecoBase(db, responsavel.userId);
     master = await entrar(responsavel.email);
     await reautenticar(master);
 
@@ -503,14 +505,15 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     expect((await dono.get(`/tenants/${semTeste.tenantId}/consumers/page`).expect(403)).body.code).toBe('ACESSO_VENCIDO');
     expect((await dono.get('/auth/me').expect(200)).body.activeContext.access).toMatchObject({ state: 'MISSING', blocked: true });
 
-    // Criação pela API: estabelecimento e teste na mesma transação.
+    // Criação pela API: estabelecimento, assinatura e teste na mesma transação.
     const criar = (requestKey: string, nome: string) =>
       master.post('/platform/establishments').send({
         requestKey,
         businessName: `${marca} ${nome}`,
         category: 'OTHER',
         timezone: TZ,
-        planId: 'plan_equipe',
+        addons: [],
+        teamUserLimit: 2,
         owner: { name: `Dono ${nome}`, email: `${marca}-${nome}-dono@example.test` },
       });
     const criado = await criar(`chave-${id()}`, 'novo').expect(200);

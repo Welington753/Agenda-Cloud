@@ -32,6 +32,7 @@ import { ProfessionalCommissions1793491200000 } from '../migrations/179349120000
 import { ProfessionalCommissionSettings1793577600000 } from '../migrations/1793577600000-ProfessionalCommissionSettings.js';
 import { TenantTestFlag1793664000000 } from '../migrations/1793664000000-TenantTestFlag.js';
 import { AdminSecondFactor1793750400000 } from '../migrations/1793750400000-AdminSecondFactor.js';
+import { ModularSubscription1793836800000 } from '../migrations/1793836800000-ModularSubscription.js';
 
 const MIGRATION_CLASSES = [
   InitialSchema1788782400000,
@@ -52,6 +53,7 @@ const MIGRATION_CLASSES = [
   ProfessionalCommissionSettings1793577600000,
   TenantTestFlag1793664000000,
   AdminSecondFactor1793750400000,
+  ModularSubscription1793836800000,
 ] as const;
 
 /** Nomes exigidos, na ordem de aplicação. Mesma regra do TypeORM para o nome

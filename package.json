@@ -22,7 +22,7 @@
     "test:browser:availability": "playwright test tests/browser/availability-flow.spec.ts",
     "test:browser:appointments": "playwright test tests/browser/appointments-flow.spec.ts",
     "test:browser:clients": "playwright test tests/browser/clients-flow.spec.ts",
-    "test:browser:administracao": "playwright test tests/browser/administracao-flow.spec.ts",
+    "test:browser:administracao": "playwright test tests/browser/administracao-flow.spec.ts tests/browser/assinatura-modular-flow.spec.ts",
     "test:browser:portal-entrada": "playwright test tests/browser/portal-entrada-flow.spec.ts",
     "test:browser:portal-senha-temporaria": "playwright test tests/browser/portal-senha-temporaria-flow.spec.ts",
     "test:browser:portal-recusas": "playwright test tests/browser/portal-recusas-flow.spec.ts",

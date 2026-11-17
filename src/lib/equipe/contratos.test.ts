@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ehMinhaAgenda, ehVisaoDaEquipe, perguntaDaAcao, textoDasVagas } from "./contratos";
+import { acimaDoLimite, ehMinhaAgenda, ehVisaoDaEquipe, perguntaDaAcao, textoDasVagas } from "./contratos";
 
 const atendimento = {
   id: "a1",
@@ -56,7 +56,12 @@ describe("contratos da equipe", () => {
   });
 
   it("textos com os números do servidor", () => {
-    expect(textoDasVagas(visao.seats)).toBe("2 de 3 em uso (1 ativo, 1 convite pendente)");
+    expect(textoDasVagas(visao.seats)).toBe("2 de 3 acessos utilizados (1 reservado por convite)");
+    expect(textoDasVagas({ used: 3, limit: 5, pendingInvites: 0 })).toBe("3 de 5 acessos utilizados");
+    expect(textoDasVagas({ used: 4, limit: 5, pendingInvites: 2 })).toBe("4 de 5 acessos utilizados (2 reservados por convite)");
+    expect(textoDasVagas({ used: 0, limit: 1, pendingInvites: 0 })).toBe("0 de 1 acesso utilizado");
+    expect(acimaDoLimite({ used: 3, limit: 2 })).toBe(true);
+    expect(acimaDoLimite({ used: 2, limit: 2 })).toBe(false);
     expect(perguntaDaAcao("no-show", atendimento as never)).toContain("Não compareceu");
     expect(perguntaDaAcao("start", atendimento as never)).toBe("Iniciar o atendimento de Maria, 10:00?");
   });

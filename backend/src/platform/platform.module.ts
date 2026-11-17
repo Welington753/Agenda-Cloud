@@ -7,6 +7,7 @@ import { AccessValidityService } from './access-validity.service.js';
 import { AccessCorrectionService } from './access-correction.service.js';
 import { NoExpiryService } from './no-expiry.service.js';
 import { PricingService } from './pricing.service.js';
+import { SubscriptionService } from './subscription.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -18,6 +19,7 @@ import { PricingService } from './pricing.service.js';
     AccessCorrectionService,
     NoExpiryService,
     PricingService,
+    SubscriptionService,
   ],
 })
 export class PlatformModule {}

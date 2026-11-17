@@ -16,6 +16,7 @@ import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma
 import {
   ehVisaoDaEquipe,
   textoDasVagas,
+  acimaDoLimite,
   type AcessoNaLista,
   type MembroDaEquipe,
   type VisaoDaEquipe,
@@ -126,14 +127,23 @@ export default function EquipePage() {
                   <div className="min-w-0">
                     <dt className="text-xs text-ink-soft">Profissionais ativos</dt>
                     <dd className="mt-1 text-sm font-semibold text-ink">
-                      {visao.professionals.active} de {visao.professionals.limit} · plano {visao.plan.name}
+                      {visao.professionals.limit === null
+                        ? `${visao.professionals.active} · ${visao.plan.name}`
+                        : `${visao.professionals.active} de ${visao.professionals.limit} · plano ${visao.plan.name}`}
                     </dd>
                   </div>
                 </dl>
+                {acimaDoLimite(visao.seats) && (
+                  <p role="status" className="rounded-lg border border-border bg-warning-soft p-3 text-sm" data-testid="acima-do-limite">
+                    Acima do limite contratado: ninguém perdeu o acesso, mas novos acessos e reativações só voltam a ser
+                    possíveis quando o uso ficar dentro do limite.
+                  </p>
+                )}
                 <p className="text-xs text-ink-soft">
-                  O plano permite {visao.plan.maxProfessionals} acesso(s) de equipe, entre profissionais e gerentes. Seu
-                  acesso de dono(a) não ocupa vaga. Um gerente sem profissional ocupa vaga de acesso, mas não conta como
-                  profissional. Suspender ou remover um acesso libera a vaga.
+                  O limite contratado é de {visao.seats.limit} usuário(s) da equipe com login (profissionais, gerentes e
+                  outros acessos). Seu acesso de dono(a) não ocupa vaga, e profissional sem login também não. Convite
+                  pendente reserva vaga até ser aceito, revogado ou vencer. Suspender ou remover um acesso libera a vaga.
+                  Para aumentar o limite, fale com a administração do TimVix.
                   {visao.seats.suspendedAccesses > 0 &&
                     ` ${visao.seats.suspendedAccesses} acesso(s) suspenso(s) não ocupa(m) vaga agora; reativar depende de haver vaga.`}
                 </p>

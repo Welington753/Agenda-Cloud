@@ -25,6 +25,13 @@ import { BILLING_CYCLES, cyclePricing, type CyclePricing } from '../commercial/p
 import { lifecycleActor, lockEstablishment, writeEstablishment } from './establishment-admin.service.js';
 import { conflito, reais } from './access-validity.service.js';
 import type { CatalogPriceDto, ContractPriceDto, SubscriptionPaymentsQuery } from './platform.dto.js';
+import {
+  CYCLE_NOT_AVAILABLE_CODE,
+  CYCLE_NOT_AVAILABLE_MESSAGE,
+  ensureModularPlan,
+  MODULAR_PLAN_ID,
+  modularRefusal,
+} from '../commercial/modular-plan.js';
 import { subscriptionPaymentWhere } from './platform.queries.js';
 
 export const CICLO = { MONTHLY: 'mensal', QUARTERLY: 'trimestral' } as const;
@@ -211,7 +218,10 @@ export class PricingService {
   catalog(actorId: string) {
     return this.read(actorId, async (manager, actor) => {
       const planos = await manager.query<{ id: string; code: string; name: string; maxProfessionals: number }[]>(
-        `SELECT id, code, name, max_professionals AS "maxProfessionals" FROM plans ORDER BY max_professionals, name, id`,
+        // Sem o plano modular: o preço base fica em `GET platform/addons`, e o
+        // web anterior exige `maxProfessionals` inteiro em todos os planos.
+        `SELECT id, code, name, max_professionals AS "maxProfessionals" FROM plans WHERE id <> '${MODULAR_PLAN_ID}'
+          ORDER BY max_professionals, name, id`,
       );
       const items = [];
       for (const plano of planos) {
@@ -243,6 +253,12 @@ export class PricingService {
         const actor = await lifecycleActor(manager, actorId, sessionId, now);
         const repetida = await this.replayCatalog(manager, actor.id, dto.requestKey, planId, cycle, dto.amountCents);
         if (repetida) return repetida;
+        // Preço base da assinatura modular: só mensal. A linha do plano nasce
+        // aqui ou na primeira assinatura (commercial/modular-plan.ts).
+        if (planId === MODULAR_PLAN_ID) {
+          if (cycle !== 'MONTHLY') throw conflito(CYCLE_NOT_AVAILABLE_CODE, CYCLE_NOT_AVAILABLE_MESSAGE);
+          await ensureModularPlan(manager);
+        }
         const [plano] = await manager.query<{ id: string; name: string }[]>(
           'SELECT id, name FROM plans WHERE id = $1 FOR UPDATE',
           [planId],
@@ -296,6 +312,7 @@ export class PricingService {
         const repetida = await this.replayContract(manager, actor.id, dto.requestKey, tenantId, dto);
         if (repetida) return repetida;
         const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
+        if (atual.plan_id === MODULAR_PLAN_ID) throw modularRefusal();
         if (atual.status === 'ARCHIVED') {
           throw conflito('ESTABELECIMENTO_ARQUIVADO', 'Estabelecimento arquivado: reative antes de mudar o contrato.');
         }

@@ -43,8 +43,17 @@ export function rotaEstabelecimentosFiltrados(filtro: {
 
 /** Ficha de um estabelecimento. Consultá-la nunca troca o estabelecimento
  * ativo da sessão nem cria vínculo: o id só vai para a leitura de plataforma. */
-export function rotaFichaEstabelecimento(id: string): string {
-  return `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}/${encodeURIComponent(id)}`;
+/** Abas da ficha do estabelecimento (`?aba=`). Sem aba: "Dados". */
+export const ABAS_DA_FICHA = ["dados", "plano", "responsaveis", "historico"] as const;
+export type AbaDaFicha = (typeof ABAS_DA_FICHA)[number];
+
+export function abaDaFicha(valor: string | null): AbaDaFicha {
+  return (ABAS_DA_FICHA as readonly string[]).includes(valor ?? "") ? (valor as AbaDaFicha) : "dados";
+}
+
+export function rotaFichaEstabelecimento(id: string, aba: AbaDaFicha = "dados"): string {
+  const base = `${ROTA_ESTABELECIMENTOS_ADMINISTRADOS}/${encodeURIComponent(id)}`;
+  return aba === "dados" ? base : `${base}?aba=${aba}`;
 }
 
 export const ROTA_USUARIOS = `${ROTA_ADMINISTRACAO}/usuarios`;
@@ -119,7 +128,7 @@ export const GRUPOS_SECOES_ADMINISTRACAO: readonly { titulo: string | null; seco
   {
     titulo: "Comercial",
     secoes: [
-      { href: ROTA_PLANOS_E_PRECOS, rotulo: "Planos e preços" },
+      { href: ROTA_PLANOS_E_PRECOS, rotulo: "Planos e adicionais" },
       { href: ROTA_PAGAMENTOS_ASSINATURAS, rotulo: "Pagamentos das assinaturas" },
       { href: ROTA_RELATORIOS, rotulo: "Relatórios" },
     ],

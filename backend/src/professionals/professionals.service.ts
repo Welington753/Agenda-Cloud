@@ -178,6 +178,8 @@ export class ProfessionalsService {
 
   /**
    * Limite de profissionais ATIVOS do plano (`plans.max_professionals`).
+   * NULL (plano modular): sem limite contratual de profissionais; o limite
+   * de usuários da equipe é outro (team/seats.ts).
    * Trava o estabelecimento com o mesmo lock das vagas de acesso
    * (team/seats.ts): duas criações disputando a última vaga ficam em fila, e
    * uma troca de plano em paralelo conta esta. Quem já passou do limite (plano
@@ -189,7 +191,7 @@ export class ProfessionalsService {
     const plano = tenant ? await tx.findOne(Plan, { where: { id: tenant.planId } }) : null;
     if (!tenant || !plano) throw new NotFoundException('Estabelecimento não encontrado.');
     const ativos = await tx.count(Professional, { where: { tenantId, active: true } });
-    if (ativos >= plano.maxProfessionals) {
+    if (plano.maxProfessionals !== null && ativos >= plano.maxProfessionals) {
       throw new ConflictException({
         code: 'LIMITE_DE_PROFISSIONAIS',
         message:

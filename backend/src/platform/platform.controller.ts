@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { z } from 'zod';
 import { SessionGuard } from '../auth/session.guard.js';
 import { PlatformSecondFactorGuard, SemSegundoFator } from '../second-factor/second-factor.guard.js';
 import {
@@ -22,6 +23,12 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   archiveEstablishmentSchema,
+  addonPriceSchema,
+  changeSubscriptionSchema,
+  teamLimitSchema,
+  type AddonPriceDto,
+  type ChangeSubscriptionDto,
+  type TeamLimitDto,
   billingCycleSchema,
   catalogPriceSchema,
   contractPriceSchema,
@@ -66,9 +73,11 @@ import { AccessValidityService } from './access-validity.service.js';
 import { AccessCorrectionService } from './access-correction.service.js';
 import { NoExpiryService } from './no-expiry.service.js';
 import { PricingService } from './pricing.service.js';
+import { SubscriptionService } from './subscription.service.js';
 import type { BillingCycle } from '../commercial/access-periods.js';
 
 const tenantIdPipe = new ZodValidationPipe(establishmentIdSchema);
+const addonCodeParamSchema = z.string().regex(/^[A-Z_]{2,40}$/);
 
 type AuthenticatedRequest = Request & {
   [AUTH_CONTEXT_REQUEST_KEY]: IdentityContext;
@@ -84,6 +93,7 @@ export class PlatformController {
     private readonly correction: AccessCorrectionService,
     private readonly noExpiry: NoExpiryService,
     private readonly pricing: PricingService,
+    private readonly subscriptions: SubscriptionService,
   ) {}
 
   /** Sem o guard do segundo fator: diz à tela o estado dele, e as
@@ -304,6 +314,50 @@ export class PlatformController {
     @Body(new ZodValidationPipe(catalogPriceSchema)) dto: CatalogPriceDto,
   ) {
     return this.pricing.setCatalogPrice(request.auth.userId, request.auth.sessionId, planId, cycle, dto);
+  }
+
+  // ------------------------------------ assinatura modular e limite
+
+  @Get('addons')
+  @Header('Cache-Control', 'private, no-store')
+  addons(@Req() request: AuthenticatedRequest) {
+    return this.subscriptions.catalog(request.auth.userId);
+  }
+
+  @Put('addons/:code/price')
+  @Header('Cache-Control', 'private, no-store')
+  setAddonPrice(
+    @Req() request: AuthenticatedRequest,
+    @Param('code', new ZodValidationPipe(addonCodeParamSchema)) code: string,
+    @Body(new ZodValidationPipe(addonPriceSchema)) dto: AddonPriceDto,
+  ) {
+    return this.subscriptions.setAddonPrice(request.auth.userId, request.auth.sessionId, code, dto);
+  }
+
+  @Get('establishments/:tenantId/subscription')
+  @Header('Cache-Control', 'private, no-store')
+  subscription(@Req() request: AuthenticatedRequest, @Param('tenantId', tenantIdPipe) tenantId: string) {
+    return this.subscriptions.view(request.auth.userId, tenantId);
+  }
+
+  @Put('establishments/:tenantId/subscription')
+  @Header('Cache-Control', 'private, no-store')
+  changeSubscription(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(changeSubscriptionSchema)) dto: ChangeSubscriptionDto,
+  ) {
+    return this.subscriptions.change(request.auth.userId, request.auth.sessionId, tenantId, dto);
+  }
+
+  @Put('establishments/:tenantId/team-limit')
+  @Header('Cache-Control', 'private, no-store')
+  setTeamLimit(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', tenantIdPipe) tenantId: string,
+    @Body(new ZodValidationPipe(teamLimitSchema)) dto: TeamLimitDto,
+  ) {
+    return this.subscriptions.setTeamLimit(request.auth.userId, request.auth.sessionId, tenantId, dto);
   }
 
   /** Pagamentos das assinaturas do TimVix (nunca recebimentos dos

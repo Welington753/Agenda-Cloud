@@ -21,10 +21,10 @@ import type { Request } from 'express';
 import { SessionGuard } from '../auth/session.guard.js';
 import { PlatformSecondFactorGuard, SemSegundoFator } from '../second-factor/second-factor.guard.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
+import { CreateEstablishmentPipe, isOutdatedCreateBody, type OutdatedCreateBody } from './create-establishment.pipe.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   auditQuerySchema,
-  createEstablishmentSchema,
   deniedPermissionsSchema,
   idSchema,
   inviteMemberSchema,
@@ -90,8 +90,10 @@ export class AccountsAdminController {
   @Header('Cache-Control', 'private, no-store')
   createEstablishment(
     @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(createEstablishmentSchema)) dto: CreateEstablishmentDto,
+    @Body(new CreateEstablishmentPipe()) dto: CreateEstablishmentDto | OutdatedCreateBody,
   ) {
+    // Corpo do web anterior: a permissão é conferida antes da recusa.
+    if (isOutdatedCreateBody(dto)) return this.invites.refuseOutdatedCreation(req.auth.userId);
     return this.invites.createEstablishment(req.auth.userId, dto);
   }
 

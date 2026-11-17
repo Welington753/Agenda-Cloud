@@ -29,7 +29,9 @@ import { dataLocalDe, horaLocalDe } from '../availability/time-zone.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { linhasDe } from '../common/linhas-de.js';
-import { activeProfessionals, staffSeatUsage } from '../team/seats.js';
+import { activeProfessionals, EFFECTIVE_TEAM_USER_LIMIT_SQL, staffSeatUsage } from '../team/seats.js';
+import { featureEnabled } from '../commercial/commercial-gate.js';
+import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import { contagemPorSituacao, mesDaData, type PeriodoLocal, type Situacao } from './dashboard-period.js';
 import type { DashboardQueryDto } from './dashboard.dto.js';
 import { resumoFinanceiro } from '../payments/payments.service.js';
@@ -60,18 +62,22 @@ export interface DashboardView {
     expectedClients: number;
     appointmentsByStatus: Record<Situacao, number>;
   };
+  /** Indicadores (adicional INDICADORES, recurso RELATORIOS). Sem o
+   * adicional, `null`: a parte operacional (hoje, solicitações, próximos,
+   * vagas) continua sempre disponível. */
   periodSummary: {
     servedClients: number;
     appointmentsByStatus: Record<Situacao, number>;
     appointmentsTotal: number;
-  };
+  } | null;
   pendingRequests: number;
   upcoming: ProximoAtendimento[];
   /** Recebimentos registrados no período (ver `resumoFinanceiro`). */
-  finance: Awaited<ReturnType<typeof resumoFinanceiro>>;
+  finance: Awaited<ReturnType<typeof resumoFinanceiro>> | null;
+  indicators: { contracted: boolean };
   plan: {
     name: string;
-    maxProfessionals: number;
+    maxProfessionals: number | null;
     activeProfessionals: number;
     staffSeats: { used: number; pending: number; available: number; limit: number };
   };
@@ -97,9 +103,14 @@ export class DashboardService {
       });
       const tenant = authorized.tenantId;
 
-      const [dadosDoTenant] = linhasDe<{ timezone: string; plan_name: string; max_professionals: number }>(
+      const [dadosDoTenant] = linhasDe<{
+        timezone: string;
+        plan_name: string;
+        max_professionals: number | null;
+        team_user_limit: number;
+      }>(
         await manager.query(
-          `SELECT t.timezone, p.name AS plan_name, p.max_professionals
+          `SELECT t.timezone, p.name AS plan_name, p.max_professionals, ${EFFECTIVE_TEAM_USER_LIMIT_SQL} AS team_user_limit
              FROM tenants t JOIN plans p ON p.id = t.plan_id WHERE t.id = $1`,
           [tenant],
         ),
@@ -154,8 +165,9 @@ export class DashboardService {
         ),
       );
 
-      const financeiro = await resumoFinanceiro(manager, tenant, periodo);
-      const vagas = await staffSeatUsage(manager, tenant, dadosDoTenant.max_professionals, now);
+      const indicadores = await featureEnabled(manager, tenant, FeatureKey.RELATORIOS);
+      const financeiro = indicadores ? await resumoFinanceiro(manager, tenant, periodo) : null;
+      const vagas = await staffSeatUsage(manager, tenant, Number(dadosDoTenant.team_user_limit), now);
       const profissionaisAtivos = await activeProfessionals(manager, tenant);
 
       return {
@@ -167,13 +179,16 @@ export class DashboardService {
           expectedClients: previstos.total,
           appointmentsByStatus: porSituacaoHoje,
         },
-        periodSummary: {
-          servedClients: atendidos.total,
-          appointmentsByStatus: porSituacaoNoPeriodo,
-          appointmentsTotal: Object.values(porSituacaoNoPeriodo).reduce((soma, n) => soma + n, 0),
-        },
+        periodSummary: indicadores
+          ? {
+              servedClients: atendidos.total,
+              appointmentsByStatus: porSituacaoNoPeriodo,
+              appointmentsTotal: Object.values(porSituacaoNoPeriodo).reduce((soma, n) => soma + n, 0),
+            }
+          : null,
         pendingRequests: pendentes.total,
         finance: financeiro,
+        indicators: { contracted: indicadores },
         upcoming: proximos.map((linha) => {
           const inicio = new Date(linha.start_at);
           return {

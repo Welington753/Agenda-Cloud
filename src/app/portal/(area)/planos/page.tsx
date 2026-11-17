@@ -13,6 +13,7 @@ import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { EstadoLeitura } from "@/components/administracao/estado-leitura";
+import { CatalogoModular } from "@/components/administracao/catalogo-modular";
 import { useAcaoSensivel } from "@/components/administracao/reautenticacao";
 import { Retorno, useResultado } from "@/components/administracao/resultado-acao";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
@@ -74,9 +75,9 @@ export default function PlanosEPrecosPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Planos e preços</h1>
+          <h1 className="text-2xl font-bold">Planos e adicionais</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-            Preço do catálogo por plano e ciclo. Vale para os próximos pagamentos que seguirem o catálogo; o valor
+            Catálogo da assinatura modular e dos planos anteriores. Nos planos anteriores, preço do catálogo por plano e ciclo. Vale para os próximos pagamentos que seguirem o catálogo; o valor
             contratado de cada cliente (na ficha) vem antes dele. Períodos e pagamentos já registrados não mudam. Preço
             não definido aparece como pendente, nunca como gratuito.
           </p>
@@ -85,6 +86,8 @@ export default function PlanosEPrecosPage() {
           Atualizar
         </Botao>
       </header>
+      <CatalogoModular />
+      <h2 className="text-xl font-bold">Planos anteriores</h2>
       <Retorno mensagem={mensagem} />
       <div className="grid gap-4 md:grid-cols-3" data-testid="catalogo-de-precos">
         {catalogo.items.map((plano) => (

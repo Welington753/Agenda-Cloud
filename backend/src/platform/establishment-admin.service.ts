@@ -27,6 +27,8 @@ import { recordAudit } from '../accounts/audit.js';
 import { requireRecentReauth } from '../accounts/reauth.js';
 import { linhasDe } from '../common/linhas-de.js';
 import { activeProfessionals, isOperational, staffSeatUsage, unitsCount } from '../team/seats.js';
+import { MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
+import { modularRefusal } from '../commercial/modular-plan.js';
 import type {
   ArchiveEstablishmentDto,
   ChangePlanDto,
@@ -71,12 +73,13 @@ export interface PlanExcess {
 export async function planExcess(
   manager: EntityManager,
   tenantId: string,
-  plano: { max_professionals: number; max_units: number },
+  plano: { max_professionals: number | null; max_units: number },
   now: Date,
 ): Promise<PlanExcess[]> {
   const excesso: PlanExcess[] = [];
   const profissionais = await activeProfessionals(manager, tenantId);
-  if (profissionais > plano.max_professionals) {
+  // NULL (plano modular): sem limite contratual de profissionais.
+  if (plano.max_professionals !== null && profissionais > plano.max_professionals) {
     excesso.push({
       kind: 'PROFESSIONALS',
       used: profissionais,
@@ -84,13 +87,20 @@ export async function planExcess(
       action: `Desative ${profissionais - plano.max_professionals} profissional(is) (ativos: ${profissionais}, limite: ${plano.max_professionals}).`,
     });
   }
-  const vagas = await staffSeatUsage(manager, tenantId, plano.max_professionals, now);
-  if (vagas.used > plano.max_professionals) {
+  // Limite de usuários: o próprio do estabelecimento, se houver; senão o do
+  // plano de destino (mesma regra de `EFFECTIVE_TEAM_USER_LIMIT_SQL`).
+  const [proprio] = await manager.query<{ team_user_limit: number | null }[]>(
+    'SELECT team_user_limit FROM tenants WHERE id = $1',
+    [tenantId],
+  );
+  const limiteUsuarios = proprio?.team_user_limit ?? plano.max_professionals ?? 0;
+  const vagas = await staffSeatUsage(manager, tenantId, limiteUsuarios, now);
+  if (vagas.used > limiteUsuarios) {
     excesso.push({
       kind: 'STAFF_ACCESSES',
       used: vagas.used,
-      limit: plano.max_professionals,
-      action: `Revogue convites ou suspenda acessos de funcionário: ${vagas.used - plano.max_professionals} a mais (ativos: ${vagas.activeAccesses}, convites pendentes: ${vagas.pendingInvites}).`,
+      limit: limiteUsuarios,
+      action: `Revogue convites ou suspenda acessos de equipe: ${vagas.used - limiteUsuarios} a mais (ativos: ${vagas.activeAccesses}, convites pendentes: ${vagas.pendingInvites}).`,
     });
   }
   const unidades = await unitsCount(manager, tenantId);
@@ -294,6 +304,9 @@ export class EstablishmentAdminService {
       // profissional novo em paralelo fica em fila e é contado aqui (ou vê o
       // plano novo).
       const atual = await lockEstablishment(manager, tenantId, dto.expectedUpdatedAt);
+      // Assinatura modular: plano, adicionais e valor só mudam numa versão
+      // da assinatura (platform/subscription.service.ts), nunca por aqui.
+      if (atual.plan_id === MODULAR_PLAN_ID || dto.planId === MODULAR_PLAN_ID) throw modularRefusal();
       if (atual.plan_id === dto.planId) return { updatedAt: atual.updated_at, planId: atual.plan_id };
       const [plano] = await manager.query<{ id: string; code: string; name: string; max_professionals: number; max_units: number }[]>(
         'SELECT id, code, name, max_professionals, max_units FROM plans WHERE id = $1',

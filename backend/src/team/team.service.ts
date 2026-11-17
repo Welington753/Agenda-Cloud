@@ -59,6 +59,7 @@ import {
   lockTenantForSeats,
   seatLimitMessage,
   staffSeatUsage,
+  EFFECTIVE_TEAM_USER_LIMIT_SQL,
 } from './seats.js';
 import {
   STAFF_PERMISSIONS,
@@ -115,13 +116,16 @@ export class TeamService {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       await manager.query('SET TRANSACTION READ ONLY');
       const gestor = await resolveTeamManager(manager, userId, tenantId);
-      const [tenant] = await manager.query<{ name: string; slug: string; plan_name: string; max_professionals: number }[]>(
+      const [tenant] = await manager.query<
+        { name: string; slug: string; plan_name: string; max_professionals: number | null; team_user_limit: number }[]
+      >(
         `SELECT COALESCE((SELECT name FROM units WHERE tenant_id = t.id AND is_primary = true ORDER BY created_at, id LIMIT 1),
-                  t.slug::text) AS name, t.slug::text AS slug, p.name AS plan_name, p.max_professionals
+                  t.slug::text) AS name, t.slug::text AS slug, p.name AS plan_name, p.max_professionals,
+                ${EFFECTIVE_TEAM_USER_LIMIT_SQL} AS team_user_limit
            FROM tenants t JOIN plans p ON p.id = t.plan_id WHERE t.id = $1`,
         [gestor.tenantId],
       );
-      const vagas = await staffSeatUsage(manager, gestor.tenantId, tenant.max_professionals, now);
+      const vagas = await staffSeatUsage(manager, gestor.tenantId, Number(tenant.team_user_limit), now);
       const ativos = await activeProfessionals(manager, gestor.tenantId);
       const profissionais = await manager.query<
         { id: string; name: string; active: boolean; future_appointments: number }[]
@@ -341,7 +345,7 @@ export class TeamService {
       if (exigeProfissional && !vinculo.professional_active) {
         throw conflito('PROFISSIONAL_INATIVO', 'O profissional deste acesso está desativado. Reative-o antes.');
       }
-      const vagas = await staffSeatUsage(manager, gestor.tenantId, tenant.plan.maxProfessionals, now);
+      const vagas = await staffSeatUsage(manager, gestor.tenantId, tenant.teamUserLimit, now);
       if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
       await manager.query(
         `UPDATE memberships SET status = 'ACTIVE', status_changed_at = $2, status_changed_by_user_id = $3 WHERE id = $1`,

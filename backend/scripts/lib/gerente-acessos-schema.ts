@@ -294,6 +294,9 @@ export async function lerImpactoDoGerente(client: PgClientLike): Promise<Impacto
               (SELECT count(*) FROM invites i WHERE i.tenant_id = t.id AND i.establishment_role = 'PROFISSIONAL'
                   AND i.status = 'PENDING' AND i.expires_at > now())::text AS convites
          FROM tenants t JOIN plans p ON p.id = t.plan_id
+        -- Plano modular (ModularSubscription, posterior a este levantamento):
+        -- regido pelo limite de usuários próprio; fora da regra anterior.
+        WHERE p.max_professionals IS NOT NULL
         ORDER BY t.created_at, t.id`,
     );
     const [gerentes] = (

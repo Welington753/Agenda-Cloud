@@ -26,6 +26,7 @@ import {
   validateMigrationShowStatus,
 } from './lib/migration-output.js';
 import { EXPECTED_INITIAL_SCHEMA_MIGRATION_NAME } from './lib/baseline-checks.js';
+import { ehPlanos, LISTA_DE_PLANOS_DA_API_ANTERIOR } from '../test/support/contrato-web-anterior-assinatura.js';
 
 const DIRECT_URL = process.env.MIGRATION_E2E_DIRECT_URL;
 
@@ -52,6 +53,7 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'ProfessionalCommissionSettings1793577600000',
   'TenantTestFlag1793664000000',
   'AdminSecondFactor1793750400000',
+  'ModularSubscription1793836800000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -188,16 +190,23 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // 45 até TenantTestFlag (não cria tabela) + user_second_factors,
       // second_factor_enrollments, second_factor_recovery_codes,
       // second_factor_grants e second_factor_attempts (AdminSecondFactor).
-      expect(Number(tables.rows[0]?.n)).toBe(50);
+      // 54 com addon_modules, addon_module_prices, tenant_subscriptions e
+      // tenant_subscription_items (ModularSubscription).
+      expect(Number(tables.rows[0]?.n)).toBe(54);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
       expect(plans.rows).toHaveLength(3);
       expect(plans.rows.every((p) => p.price_cents === null)).toBe(true);
+      // ModularSubscription não cria o plano modular: com a API anterior no
+      // ar, a lista de planos dela continua aceita pelo web anterior.
+      const listaAnterior = await client.query(LISTA_DE_PLANOS_DA_API_ANTERIOR);
+      expect(ehPlanos(listaAnterior.rows)).toBe(true);
       expect(Number(features.rows[0]?.n)).toBe(13);
       // 22 do catálogo inicial + 4 da CommercialAccess (o que o código já usava)
-      // + 1 da ProfessionalCommissions (comissões no Pro).
-      expect(Number(planFeatures.rows[0]?.n)).toBe(27);
+      // + 1 da ProfessionalCommissions (comissões no Pro) + 1 da
+      // ModularSubscription (RELATORIOS no Básico; o Pro já tinha).
+      expect(Number(planFeatures.rows[0]?.n)).toBe(28);
       expect(Number(tenants.rows[0]?.n)).toBe(0);
       expect(Number(users.rows[0]?.n)).toBe(0);
     } finally {
@@ -234,8 +243,8 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       expect(Number(plans.rows[0]?.n)).toBe(3);
       expect(Number(features.rows[0]?.n)).toBe(13);
       // 22 do catálogo inicial + 4 da CommercialAccess + 1 da
-      // ProfessionalCommissions, sem duplicar.
-      expect(Number(planFeatures.rows[0]?.n)).toBe(27);
+      // ProfessionalCommissions + 1 da ModularSubscription, sem duplicar.
+      expect(Number(planFeatures.rows[0]?.n)).toBe(28);
     } finally {
       await client.end();
     }

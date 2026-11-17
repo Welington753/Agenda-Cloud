@@ -5,6 +5,7 @@ import { requestKeySchema } from '../accounts/accounts.dto.js';
 import { MAX_COURTESY_DAYS, MAX_TRIAL_EXTENSION_DAYS } from '../commercial/access-periods.js';
 import { ACCESS_PAYMENT_METHODS } from '../migrations/1793232000000-CommercialAccess.js';
 import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
+import { subscriptionChoiceShape, teamUserLimitSchema } from '../commercial/subscription.dto.js';
 import {
   DEFAULT_ESTABLISHMENT_SCOPE,
   ESTABLISHMENT_FILTERS,
@@ -224,6 +225,38 @@ export const contractPriceSchema = z
   })
   .strict();
 export type ContractPriceDto = z.infer<typeof contractPriceSchema>;
+
+// ------------------------------------------- assinatura modular e limite
+// docs/plans/assinatura-modular-e-limite-equipe.md
+
+export const changeSubscriptionSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    requestKey: accessRequestKeySchema,
+    ...subscriptionChoiceShape,
+    /** Confirma retirar recursos hoje liberados (a revisão mostrou quais). */
+    confirmRemoval: z.boolean().optional(),
+    /** Conversão de contrato trimestral para a assinatura mensal: exigida e
+     * explícita, nunca presumida. */
+    cycleChange: z.object({ from: z.literal('QUARTERLY'), acknowledged: z.literal(true) }).strict().optional(),
+  })
+  .strict();
+export type ChangeSubscriptionDto = z.infer<typeof changeSubscriptionSchema>;
+
+/** Limite de usuários de um estabelecimento ainda no plano anterior. */
+export const teamLimitSchema = z
+  .object({
+    expectedUpdatedAt: expectedUpdatedAtSchema,
+    teamUserLimit: teamUserLimitSchema,
+    reason: z.string().trim().min(3).max(300).optional(),
+  })
+  .strict();
+export type TeamLimitDto = z.infer<typeof teamLimitSchema>;
+
+/** Novo preço mensal de um adicional no catálogo (mesma regra do preço de
+ * plano). */
+export const addonPriceSchema = catalogPriceSchema;
+export type AddonPriceDto = CatalogPriceDto;
 
 /** Situação do registro no extrato: não anulado ou anulado. */
 export const SUBSCRIPTION_PAYMENT_STATUSES = ['RECEIVED', 'CANCELED'] as const;
