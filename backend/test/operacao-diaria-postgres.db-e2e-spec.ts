@@ -276,8 +276,8 @@ describe.skipIf(!url)('operação diária contra PostgreSQL descartável', () =>
       const visao = await dashboard.summary(est.donoId, est.tenantId, { from: '2031-06-01', to: '2031-06-30' });
       expect(visao.period).toEqual({ from: '2031-06-01', to: '2031-06-30' });
       // Ana (3), Bia (1) e Caio (1, no último dia) concluídos: 3 pessoas, 5 atendimentos.
-      expect(visao.periodSummary.servedClients).toBe(3);
-      expect(visao.periodSummary.appointmentsByStatus).toEqual({
+      expect(visao.periodSummary!.servedClients).toBe(3);
+      expect(visao.periodSummary!.appointmentsByStatus).toEqual({
         PENDING: 0,
         CONFIRMED: 0,
         IN_PROGRESS: 0,
@@ -285,7 +285,7 @@ describe.skipIf(!url)('operação diária contra PostgreSQL descartável', () =>
         NO_SHOW: 1,
         CANCELED: 1,
       });
-      expect(visao.periodSummary.appointmentsTotal).toBe(7);
+      expect(visao.periodSummary!.appointmentsTotal).toBe(7);
       expect(visao.plan).toMatchObject({ maxProfessionals: 3, activeProfessionals: 1 });
 
       await expect(

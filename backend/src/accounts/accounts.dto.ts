@@ -6,7 +6,12 @@ import { emailSchema } from '../auth/login.dto.js';
 import { normalizePhone } from '../auth/phone-normalizer.js';
 import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { PlatformRole } from '../entities/enums/platform-role.enum.js';
-import { MAX_PRICE_CENTS } from '../migrations/1793318400000-PlatformPortal.js';
+import { subscriptionChoiceShape } from '../commercial/subscription.dto.js';
+
+/** Campos do corpo da criação anterior à assinatura modular. Um web
+ * desatualizado que os mande recebe `TELA_DESATUALIZADA`, nunca um
+ * estabelecimento sem limite (ver CreateEstablishmentPipe). */
+export const LEGACY_CREATE_ESTABLISHMENT_FIELDS = ['planId', 'billingCycle', 'contractAmountCents'] as const;
 import { UserStatus } from '../entities/enums/user-status.enum.js';
 import { EFFECTIVE_TENANT_PERMISSIONS } from './tenant-effective-access.js';
 import { isValidAccountTokenFormat } from './account-token.js';
@@ -59,22 +64,15 @@ export const createEstablishmentSchema = z
     businessName: nameSchema,
     category: z.enum(BusinessCategory),
     timezone: z.string().refine(fusoValido).default('America/Sao_Paulo'),
-    planId: idSchema,
-    /** Ciclo combinado com o cliente. Escolher plano e preço não registra
-     * pagamento: só o contrato para os próximos registros. */
-    billingCycle: z.enum(['MONTHLY', 'QUARTERLY']).optional(),
-    /** Valor contratado específico para este cliente, em centavos. Ausente:
-     * segue o preço do catálogo (ou fica pendente, se não houver). */
-    contractAmountCents: z.number().int().min(1).max(MAX_PRICE_CENTS).optional(),
+    /** Assinatura modular (Agendamento essencial + adicionais) e limite de
+     * usuários da equipe, obrigatório e explícito. Somente mensal. Escolher
+     * assinatura não registra pagamento: só o contrato dos próximos períodos. */
+    ...subscriptionChoiceShape,
     owner: z
       .object({ name: nameSchema, email: emailSchema, phone: phoneSchema.optional() })
       .strict(),
   })
-  .strict()
-  .refine((dto) => dto.contractAmountCents === undefined || dto.billingCycle !== undefined, {
-    message: 'Escolha o ciclo do valor contratado.',
-    path: ['billingCycle'],
-  });
+  .strict();
 export type CreateEstablishmentDto = z.infer<typeof createEstablishmentSchema>;
 
 /** Só DONO: é o único papel que alguma rota de estabelecimento libera. */

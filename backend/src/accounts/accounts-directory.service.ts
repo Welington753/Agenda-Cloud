@@ -27,6 +27,7 @@ import {
 } from './tenant-effective-access.js';
 import { MAX_INVITE_SENDS } from './account-token.js';
 import { STAFF_PERMISSIONS } from '../team/staff-access.js';
+import { MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
 
 const escaparLike = (texto: string) => `%${texto.replace(/[\\%_]/g, '\\$&')}%`;
 
@@ -195,7 +196,7 @@ export class AccountsDirectoryService {
         `SELECT id, code, name, price_cents AS "catalogPriceCents", max_professionals AS "maxProfessionals",
                 max_units AS "maxUnits",
                 json_build_object('MONTHLY', ${preco('MONTHLY')}, 'QUARTERLY', ${preco('QUARTERLY')}) AS "cyclePrices"
-           FROM plans ORDER BY max_professionals, name, id`,
+           FROM plans WHERE id <> '${MODULAR_PLAN_ID}' ORDER BY max_professionals, name, id`,
       ),
     );
   }

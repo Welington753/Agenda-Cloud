@@ -143,7 +143,7 @@ export class StaffAccountsService {
           }
           profissional = { id: encontrado.id, name: encontrado.name };
         }
-        const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now);
+        const vagas = await staffSeatUsage(manager, tenant.id, tenant.teamUserLimit, now);
         if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
         validarConcessoes(gestor, { role, withProfessional: !!profissional }, dto.permissions);
         const gerente = role === 'GERENTE';

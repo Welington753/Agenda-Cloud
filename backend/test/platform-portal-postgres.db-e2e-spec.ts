@@ -29,6 +29,7 @@ import { DataSource } from 'typeorm';
 import { hashPassword } from '../src/auth/password-hasher.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
 import { comTodosOsRecursos } from './support/plano-de-teste.js';
+import { garantirPrecoBase } from './support/assinatura.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -205,6 +206,8 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     const responsavel = await conta('master', 'MASTER_OWNER');
     master = await entrar(responsavel.email);
     await reautenticar(master);
+    // Preço base da assinatura modular (exemplo): a criação exige preço.
+    await garantirPrecoBase(db, responsavel.userId);
 
     // Planos fictícios: nenhum preço é gravado nos planos reais.
     planoTeste = `${marca}pt`;
@@ -279,7 +282,8 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
           requestKey: `chave-${id()}`,
           businessName: 'Tentativa',
           category: 'OTHER',
-          planId: 'plan_pro',
+          addons: [],
+          teamUserLimit: 1,
           owner: { name: 'Eu', email: `${marca}-tentativa-${id()}@example.test` },
         })
         .expect(403);
@@ -323,7 +327,8 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         requestKey: `chave-${id()}`,
         businessName: `Convite ${marca}`,
         category: 'OTHER',
-        planId: planoTeste,
+        addons: [],
+        teamUserLimit: 1,
         owner: { name: 'Dono convidado', email: `${marca}-del-convidado@example.test` },
       })
       .expect(200);
@@ -410,6 +415,26 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         { expectedUpdatedAt: v, requestKey: chave(), cycle: 'MONTHLY', amountCents: 100, reason: motivo },
       ],
       ['GET /platform/prices', '/platform/prices', 403],
+      ['GET /platform/addons', '/platform/addons', 403],
+      [
+        'PUT /platform/addons/:code/price',
+        '/platform/addons/INDICADORES/price',
+        403,
+        { requestKey: chave(), expectedCurrentCents: null, amountCents: 100 },
+      ],
+      ['GET /platform/establishments/:tenantId/subscription', `/platform/establishments/${t}/subscription`, 403],
+      [
+        'PUT /platform/establishments/:tenantId/subscription',
+        `/platform/establishments/${t}/subscription`,
+        403,
+        { expectedUpdatedAt: v, requestKey: chave(), addons: [], teamUserLimit: 1 },
+      ],
+      [
+        'PUT /platform/establishments/:tenantId/team-limit',
+        `/platform/establishments/${t}/team-limit`,
+        403,
+        { expectedUpdatedAt: v, teamUserLimit: 1 },
+      ],
       [
         'PUT /platform/plans/:planId/prices/:cycle',
         `/platform/plans/${planoTeste}/prices/MONTHLY`,
@@ -426,7 +451,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         'POST /platform/establishments',
         '/platform/establishments',
         403,
-        { requestKey: chave(), businessName: 'Tentativa', category: 'OTHER', planId: planoTeste, owner: { name: 'Eu', email: email() } },
+        { requestKey: chave(), businessName: 'Tentativa', category: 'OTHER', addons: [], teamUserLimit: 1, owner: { name: 'Eu', email: email() } },
       ],
       ['GET /platform/establishments/:tenantId/members', `/platform/establishments/${t}/members`, 403],
       [
@@ -630,20 +655,19 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       (await outroMaster.put(`/platform/plans/${planoTeste}/prices/MONTHLY`).send({ requestKey: `chave-${id()}`, expectedCurrentCents: 4990, amountCents: 100 }).expect(403)).body.code,
     ).toBe('REAUTENTICACAO_NECESSARIA');
 
-    // Criação com plano, ciclo e valor contratado específico: não registra pagamento.
-    const criado = await master
-      .post('/platform/establishments')
-      .send({
-        requestKey: `chave-${id()}`,
-        businessName: `Cliente ${marca}`,
-        category: 'BARBERSHOP',
-        planId: planoTeste,
-        billingCycle: 'MONTHLY',
-        contractAmountCents: 3990,
-        owner: { name: 'Responsável fictício', email: `${marca}-cliente@example.test` },
-      })
+    // Cliente no plano anterior (a criação nova é modular), em teste, com
+    // valor contratado específico: não registra pagamento.
+    const cliente = await estabelecimento('cliente', planoTeste);
+    const tenantId = cliente.tenantId;
+    await q(
+      `INSERT INTO tenant_access_periods (id, tenant_id, kind, plan_id, starts_at, ends_at, recorded_at, recorded_by_user_id)
+       VALUES ($1, $2, 'TRIAL', $3, now() - interval '1 day', now() + interval '13 days', now(), $4)`,
+      [id(), tenantId, planoTeste, cliente.dono.userId],
+    );
+    await master
+      .put(`/platform/establishments/${tenantId}/contract-price`)
+      .send({ expectedUpdatedAt: (await ficha(tenantId)).updatedAt, requestKey: `chave-${id()}`, cycle: 'MONTHLY', amountCents: 3990, reason: 'combinado' })
       .expect(200);
-    const tenantId = criado.body.tenant.id as string;
     let f = await ficha(tenantId);
     expect(f.pricing.preferredCycle).toBe('MONTHLY');
     expect(ciclo(f, 'MONTHLY')).toMatchObject({ catalogCents: 4990, contractCents: 3990, suggestedCents: 3990, source: 'CONTRACT' });
@@ -689,7 +713,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       .expect(200);
     expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods WHERE id = $1 AND canceled_at IS NOT NULL`, [p3.id])).toBe(1);
     // Histórico administrativo das mudanças de preço.
-    expect(await n(`SELECT count(*)::int AS n FROM audit_logs WHERE action = 'CONTRACT_PRICE_CHANGED' AND tenant_id = $1`, [tenantId])).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM audit_logs WHERE action = 'CONTRACT_PRICE_CHANGED' AND tenant_id = $1`, [tenantId])).toBe(2);
     expect(await n(`SELECT count(*)::int AS n FROM audit_logs WHERE action = 'PLAN_PRICE_CHANGED' AND new_data->>'planId' = $1`, [planoTeste])).toBe(2);
     // Pagamentos das assinaturas: só períodos pagos, nunca recebimentos dos atendimentos.
     const lista = (await master.get(`/platform/subscription-payments?tenantId=${tenantId}`).expect(200)).body;
@@ -802,7 +826,7 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
     expect(me.contexts.find((c: { tenantId: string }) => c.tenantId === vencido.tenantId).access.blocked).toBe(true);
   });
 
-  it('criação com ciclo combinado repetida em paralelo: um estabelecimento, um contrato, todas as respostas iguais', async () => {
+  it('criação repetida em paralelo: um estabelecimento, uma assinatura, um contrato, todas as respostas iguais', async () => {
     // Mesmo nome, mesmo endereço: as transações seguintes esperam a primeira
     // no endereço, tentam de novo e esbarram na chave já gravada no contrato.
     // Seis envios tornam a corrida reproduzível (com dois, às vezes o
@@ -811,9 +835,10 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       requestKey: `chave-${id()}`,
       businessName: `Paralelo ${marca}`,
       category: 'BARBERSHOP',
-      planId: planoTeste,
-      billingCycle: 'MONTHLY',
-      contractAmountCents: 2990,
+      addons: [],
+      teamUserLimit: 2,
+      contractedTotalCents: 2500,
+      reason: 'Valor de lançamento',
       owner: { name: 'Responsável fictício', email: `${marca}-paralelo@example.test` },
     };
     const respostas = await Promise.all([1, 2, 3, 4, 5, 6].map(() => master.post('/platform/establishments').send(corpo)));
@@ -827,5 +852,6 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
       ),
     ).toBe(1);
     expect(await n(`SELECT count(*)::int AS n FROM tenant_contract_prices WHERE tenant_id = $1`, [tenantId])).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM tenant_subscriptions WHERE tenant_id = $1`, [tenantId])).toBe(1);
   });
 });

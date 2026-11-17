@@ -66,7 +66,8 @@ import {
 import { resolveTeamManager } from '../team/team-authorization.js';
 import type { StaffInviteDto } from '../team/team.dto.js';
 import { firstTrial } from '../commercial/access-periods.js';
-import { currentCatalogPrice, insertContractPrice } from '../platform/pricing.service.js';
+import { ensureModularPlan, MODULAR_PLAN_CODE, MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
+import { writeSubscriptionVersion } from '../platform/subscription.service.js';
 
 export const LOGIN_IDENTIFIER_IN_USE_MESSAGE =
   'Este e-mail não está disponível para convite. Use outro e-mail.';
@@ -126,11 +127,11 @@ export class InvitesService {
         );
         return await this.finish(issued);
       } catch (error) {
-        // Com ciclo combinado, o contrato é gravado com a mesma chave ANTES do
-        // convite: um envio repetido em paralelo esbarra primeiro nele.
+        // A assinatura é gravada com a mesma chave ANTES do convite: um envio
+        // repetido em paralelo esbarra primeiro nela.
         if (
           isUniqueViolation(error, 'uq_invites_created_by_request_key') ||
-          isUniqueViolation(error, 'uq_tenant_contract_prices_request_key')
+          isUniqueViolation(error, 'uq_tenant_subscriptions_request_key')
         ) {
           const repetido = await this.replay(actorId, dto.requestKey);
           if (repetido) return repetido;
@@ -150,11 +151,9 @@ export class InvitesService {
     const actor = await loadActor(manager, actorId);
     requireCapability(actor, 'manageEstablishments');
 
-    const [plan] = await manager.query<{ id: string; code: string; name: string }[]>(
-      'SELECT id, code, name FROM plans WHERE id = $1',
-      [dto.planId],
-    );
-    if (!plan) throw new NotFoundException('Plano não encontrado no catálogo.');
+    // Estabelecimento novo nasce na assinatura modular, com limite explícito.
+    await ensureModularPlan(manager);
+    const plan = { id: MODULAR_PLAN_ID, code: MODULAR_PLAN_CODE };
 
     const slug = await resolveSlug(slugify(dto.businessName), async (candidate) => {
       const linhas = await manager.query<unknown[]>('SELECT 1 FROM tenants WHERE slug = $1', [candidate]);
@@ -162,9 +161,9 @@ export class InvitesService {
     });
     const tenantId = generateId();
     await manager.query(
-      `INSERT INTO tenants (id, slug, category, timezone, plan_id, status, created_at, updated_at)
-       VALUES ($1, $2, $3::business_category, $4, $5, 'TRIAL', $6, $6)`,
-      [tenantId, slug, dto.category, dto.timezone, plan.id, now],
+      `INSERT INTO tenants (id, slug, category, timezone, plan_id, team_user_limit, status, created_at, updated_at)
+       VALUES ($1, $2, $3::business_category, $4, $5, $6, 'TRIAL', $7, $7)`,
+      [tenantId, slug, dto.category, dto.timezone, plan.id, dto.teamUserLimit, now],
     );
     await manager.query(
       `INSERT INTO units (id, tenant_id, name, address, timezone, is_primary, created_at)
@@ -179,28 +178,16 @@ export class InvitesService {
        VALUES ($1, $2, 'TRIAL', $3, $4, $5, $6, $7)`,
       [generateId(), tenantId, plan.id, teste.startsAt, teste.endsAt, now, actor.id],
     );
-    // Plano e ciclo combinados com o cliente: só o contrato para os próximos
-    // registros. Nenhum pagamento é registrado nem dado por recebido aqui.
-    const contrato = dto.billingCycle
-      ? {
-          cycle: dto.billingCycle,
-          amountCents: dto.contractAmountCents ?? null,
-          catalogCents: await currentCatalogPrice(manager, plan.id, dto.billingCycle),
-        }
-      : null;
-    if (contrato) {
-      await insertContractPrice(manager, {
-        tenantId,
-        planId: plan.id,
-        cycle: contrato.cycle,
-        amountCents: contrato.amountCents,
-        reason: 'Combinado na criação do estabelecimento.',
-        accessPeriodId: null,
-        requestKey: dto.requestKey,
-        actorId: actor.id,
-        now,
-      });
-    }
+    // Versão 1 da assinatura (adicionais, valor mensal e limite): só o
+    // contrato dos próximos períodos. Nenhum pagamento é registrado aqui.
+    const assinatura = await writeSubscriptionVersion(manager, {
+      actor,
+      tenant: { id: tenantId, name: dto.businessName, plan_id: plan.id },
+      choice: dto,
+      requestKey: dto.requestKey,
+      creation: true,
+      now,
+    });
     await recordAudit(
       manager,
       {
@@ -215,9 +202,11 @@ export class InvitesService {
           timezone: dto.timezone,
           status: 'TRIAL',
           trialEndsAt: teste.endsAt.toISOString(),
-          billingCycle: contrato?.cycle ?? null,
-          contractAmountCents: contrato?.amountCents ?? null,
-          catalogPriceCents: contrato?.catalogCents ?? null,
+          billingCycle: 'MONTHLY',
+          addons: assinatura.quote.items.map((i) => i.code),
+          contractAmountCents: assinatura.quote.contractedTotalCents,
+          catalogPriceCents: assinatura.quote.catalogTotalCents,
+          teamUserLimit: dto.teamUserLimit,
           paymentRecorded: false,
         },
       },
@@ -334,7 +323,7 @@ export class InvitesService {
             inviteId: pendente.id,
           });
         }
-        const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now);
+        const vagas = await staffSeatUsage(manager, tenant.id, tenant.teamUserLimit, now);
         if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
         const actor = await loadActor(manager, actorId);
         const [propria] = await manager.query<unknown[]>('SELECT 1 FROM users WHERE id = $1 AND email = $2', [
@@ -918,7 +907,7 @@ export class InvitesService {
       throw conflito('PROFISSIONAL_INATIVO', 'O profissional deste convite está desativado no estabelecimento.');
     }
     await this.assertProfessionalFree(manager, tenant.id, invite.professional_id!);
-    const vagas = await staffSeatUsage(manager, tenant.id, tenant.plan.maxProfessionals, now, invite.id);
+    const vagas = await staffSeatUsage(manager, tenant.id, tenant.teamUserLimit, now, invite.id);
     if (vagas.used >= vagas.limit) throw conflito('LIMITE_DO_PLANO', seatLimitMessage(vagas));
   }
 

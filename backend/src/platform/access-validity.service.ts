@@ -37,6 +37,7 @@ import { amountSource, type AmountSource, type CyclePricing } from '../commercia
 import { insertContractPrice, pricingFor } from './pricing.service.js';
 import { lifecycleActor, lockEstablishment, writeEstablishment, type TenantRow } from './establishment-admin.service.js';
 import type { ExtendTrialDto, GrantCourtesyDto, RecordPaidPeriodDto } from './platform.dto.js';
+import { CYCLE_NOT_AVAILABLE_CODE, CYCLE_NOT_AVAILABLE_MESSAGE, MODULAR_PLAN_ID, modularRefusal } from '../commercial/modular-plan.js';
 
 export const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
@@ -201,6 +202,12 @@ export class AccessValidityService {
       const minimo = `${limite.year}-${String(limite.month).padStart(2, '0')}-${String(limite.day).padStart(2, '0')}`;
       if (dto.receivedOn < minimo) {
         throw conflito('DATA_ANTIGA', 'A data do recebimento é de mais de um ano atrás. Confira antes de registrar.');
+      }
+      // Assinatura modular: só mensal, e o contrato muda só numa versão da
+      // assinatura. Registrar o pagamento continua permitido.
+      if (atual.plan_id === MODULAR_PLAN_ID) {
+        if (dto.cycle !== 'MONTHLY') throw conflito(CYCLE_NOT_AVAILABLE_CODE, CYCLE_NOT_AVAILABLE_MESSAGE);
+        if (dto.updateContract === true) throw modularRefusal();
       }
       // Valor sugerido no servidor (contrato vigente, senão catálogo): a
       // origem do valor digitado nunca vem do navegador.

@@ -52,7 +52,11 @@ export type AdminAuditAction =
   | 'SECOND_FACTOR_GRANT_ISSUED'
   | 'SECOND_FACTOR_GRANT_USED'
   | 'RECOVERY_CODE_USED'
-  | 'RECOVERY_CODES_REGENERATED';
+  | 'RECOVERY_CODES_REGENERATED'
+  // Assinatura modular e limite de usuários (migration ModularSubscription).
+  | 'SUBSCRIPTION_CHANGED'
+  | 'TEAM_LIMIT_CHANGED'
+  | 'ADDON_PRICE_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

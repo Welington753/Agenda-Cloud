@@ -87,6 +87,12 @@ export class Tenant {
   @Column({ type: 'boolean', default: false })
   isTest!: boolean;
 
+  // Limite de usuários da equipe com login (migration ModularSubscription).
+  // NULL: segue `plans.max_professionals` (planos anteriores). Só a
+  // administração da plataforma grava (platform/subscription.service.ts).
+  @Column({ type: 'int', nullable: true })
+  teamUserLimit!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   createdAt!: Date;
 

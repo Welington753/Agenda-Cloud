@@ -1,4 +1,6 @@
 import type { EstablishmentQuery } from './platform.dto.js';
+import { EFFECTIVE_TEAM_USER_LIMIT_SQL } from '../team/seats.js';
+import { MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
 import { DEFAULT_ESTABLISHMENT_SCOPE, scopeSql, type EstablishmentScope } from './portal-overview.js';
 import { timestampInRangeSql } from './portal-reports.js';
 
@@ -16,6 +18,8 @@ export const ESTABLISHMENT_COLUMNS = `t.id, COALESCE(main_unit.name, t.slug::tex
   json_build_object('id', p.id, 'code', p.code, 'name', p.name,
     'catalogPriceCents', p.price_cents, 'maxProfessionals', p.max_professionals,
     'maxUnits', p.max_units) AS plan,
+  ${EFFECTIVE_TEAM_USER_LIMIT_SQL} AS "teamUserLimit", t.team_user_limit IS NOT NULL AS "ownTeamUserLimit",
+  t.plan_id = '${MODULAR_PLAN_ID}' AS "modular",
   COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name,
     'email', COALESCE(u.email::text, u.username::text), 'phone', u.phone, 'status', u.status) ORDER BY u.name, u.id)
     FROM memberships m JOIN users u ON u.id = m.user_id

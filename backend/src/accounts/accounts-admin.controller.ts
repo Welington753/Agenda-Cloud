@@ -21,10 +21,10 @@ import type { Request } from 'express';
 import { SessionGuard } from '../auth/session.guard.js';
 import { PlatformSecondFactorGuard, SemSegundoFator } from '../second-factor/second-factor.guard.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
+import { CreateEstablishmentPipe } from './create-establishment.pipe.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   auditQuerySchema,
-  createEstablishmentSchema,
   deniedPermissionsSchema,
   idSchema,
   inviteMemberSchema,
@@ -90,7 +90,7 @@ export class AccountsAdminController {
   @Header('Cache-Control', 'private, no-store')
   createEstablishment(
     @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(createEstablishmentSchema)) dto: CreateEstablishmentDto,
+    @Body(new CreateEstablishmentPipe()) dto: CreateEstablishmentDto,
   ) {
     return this.invites.createEstablishment(req.auth.userId, dto);
   }

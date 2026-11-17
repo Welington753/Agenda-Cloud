@@ -20,6 +20,7 @@ import { AccountsDirectoryService } from '../src/accounts/accounts-directory.ser
 import { InvitesService } from '../src/accounts/invites.service.js';
 import { PasswordResetsService } from '../src/accounts/password-resets.service.js';
 import { createEstablishmentSchema } from '../src/accounts/accounts.dto.js';
+import { garantirPrecoBase } from './support/assinatura.js';
 
 const url = process.env.DB_E2E_DIRECT_URL;
 if (url && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -413,11 +414,13 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
 
   it('nova empresa com responsável: conta pendente, e-mail aceito pelo provedor, ativação e entrada', async () => {
     const master = await conta('fluxo-master', { role: 'MASTER_OWNER' });
+    await garantirPrecoBase(db, master.userId);
     const dto = createEstablishmentSchema.parse({
       requestKey: requestKey(),
       businessName: `${marca} Barbearia Nova`,
       category: 'BARBERSHOP',
-      planId,
+      addons: [],
+      teamUserLimit: 2,
       owner: { name: 'Dona Nova', email: email('Fluxo-Dona').toUpperCase() },
     });
     const criado = await invites.createEstablishment(master.userId, dto);
@@ -468,7 +471,10 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
       `SELECT action::text, actor_user_id, target_user_id, tenant_id FROM audit_logs WHERE tenant_id = $1 ORDER BY occurred_at`,
       [criado.tenant!.id],
     );
-    expect(historico.map((h: { action: string }) => h.action)).toEqual(['TENANT_CREATED', 'USER_INVITED', 'INVITE_ACCEPTED']);
+    // A criação grava também a versão 1 da assinatura (mesmo instante).
+    expect(historico.map((h: { action: string }) => h.action).sort()).toEqual(
+      ['INVITE_ACCEPTED', 'SUBSCRIPTION_CHANGED', 'TENANT_CREATED', 'USER_INVITED'],
+    );
     expect(JSON.stringify(historico)).not.toContain(token);
   });
 
@@ -773,6 +779,7 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
     ).toEqual([{ total: 1 }]);
 
     // Falha DEPOIS de criar o estabelecimento (responsável bloqueado): nada fica.
+    await garantirPrecoBase(db, master.userId);
     const bloqueada = await conta('conf-bloqueada', { status: 'SUSPENDED' });
     const nome = `${marca} Rollback`;
     await expect(
@@ -782,7 +789,8 @@ describe.skipIf(!url)('gestão de contas contra PostgreSQL descartável', () => 
           requestKey: requestKey(),
           businessName: nome,
           category: 'OTHER',
-          planId,
+          addons: [],
+          teamUserLimit: 1,
           owner: { name: 'Bloqueada', email: email('conf-bloqueada') },
         }),
       ),

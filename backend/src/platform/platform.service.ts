@@ -22,6 +22,7 @@ import { loadAccessFlags, loadAccessPeriods } from '../commercial/commercial-gat
 import { correctionPreview } from './access-correction.service.js';
 import { listNoExpiryGrants, noExpiryRevokePreview } from './no-expiry.service.js';
 import { tenantPricing } from './pricing.service.js';
+import { MODULAR_PLAN_ID } from '../commercial/modular-plan.js';
 import {
   ESTABLISHMENT_COLUMNS,
   ESTABLISHMENT_FROM,
@@ -86,9 +87,12 @@ export interface EstablishmentRow {
     code: string;
     name: string;
     catalogPriceCents: number | null;
-    maxProfessionals: number;
+    maxProfessionals: number | null;
     maxUnits: number;
   };
+  teamUserLimit: number;
+  ownTeamUserLimit: boolean;
+  modular: boolean;
   owners: {
     id: string;
     name: string;
@@ -372,7 +376,7 @@ export class PlatformService {
          (SELECT count(*)::int FROM units WHERE tenant_id = $1) AS units`,
         [tenantId],
       );
-      const staffSeats = await staffSeatUsage(manager, tenantId, establishment.plan.maxProfessionals, now);
+      const staffSeats = await staffSeatUsage(manager, tenantId, Number(establishment.teamUserLimit), now);
       const [extra] = await manager.query<
         { updatedAt: Date; restoreStatus: string | null; suspensionReason: string | null; taxDocument: string | null }[]
       >(
@@ -386,7 +390,9 @@ export class PlatformService {
       const catalogo = await manager.query<
         { id: string; code: string; name: string; catalogPriceCents: number | null; max_professionals: number; max_units: number }[]
       >(
-        `SELECT id, code, name, price_cents AS "catalogPriceCents", max_professionals, max_units FROM plans ORDER BY max_professionals, name, id`,
+        // O plano modular não entra na troca de plano: só pela assinatura.
+        `SELECT id, code, name, price_cents AS "catalogPriceCents", max_professionals, max_units FROM plans
+          WHERE id <> '${MODULAR_PLAN_ID}' ORDER BY max_professionals, name, id`,
       );
       const planOptions = [];
       for (const plano of catalogo) {
