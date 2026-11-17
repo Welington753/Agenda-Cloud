@@ -8,6 +8,8 @@ Este documento nunca contém credencial, chave, URL de banco ou Endpoint ID.
 
 > **Atualização de 16/11/2026, depois do merge do PR #117.** O alvo da etapa 3 deixou de ser `b5b2704` e passou a ser `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`, o merge do PR #117, para a API e para o web. A diferença entre os dois commits é a correção da recuperação após hibernação no proxy do web (`src/lib/api/proxy.ts`), os testes dela e documentação. **O código de `backend/` é idêntico** (`git diff b5b2704 9de722d -- backend` vazio). As etapas 0, 1 e 2 mantêm os alvos. O nome deste arquivo continua o mesmo para não quebrar os links dos roteiros.
 
+> **Atualização de 17/11/2026, PR #120 (tema "Azul e branco" em todos os ambientes e menu agrupado do dono).** Por decisão do responsável, o alvo da etapa 3 passa a ser **o merge commit do PR #120**, para a API e para o web. Ele contém `9de722d`, o PR #118 (só documentação), o PR #119 (tema na Visão geral do portal) e o PR #120 (tema em todas as áreas adaptáveis, menu agrupado em `/conta` e o rótulo "Visão geral" no lugar de "Dashboard", sem mudar URL). **O `backend/` continua idêntico ao de `9de722d` e `b5b2704`** (`git diff 9de722d <head do #120> -- backend` vazio): migrations (18), variáveis (`PLATFORM_*`), conferência de inicialização e tudo o que este plano diz sobre a API da etapa 3 valem sem mudança. Onde o texto abaixo diz `9de722d` como alvo da etapa 3, leia o merge commit do PR #120; o SHA completo é o desse merge, com árvore igual à do head aprovado pelo CI. As etapas 0, 1 e 2 mantêm os alvos. O passo 3.11 passa a conferir também: o tema "Azul e branco" escolhido em Aparência, o menu agrupado do dono (Visão geral, Atendimento, Gestão do negócio, Administração) e a navegação entre as áreas.
+
 ## 1. Ponto de partida
 
 Leitura do Render em 16/11/2026, por volta de 12:15 UTC, e confirmação do responsável na mesma data ([`recuperacao-login-piloto-rollback.md`](../runbooks/recuperacao-login-piloto-rollback.md), seção 8).
@@ -38,6 +40,19 @@ Só leitura do Render (lista de serviços e de deploys), depois do merge do PR #
 Entre `438e598` e `b5b2704` só entrou o PR #115 (conferência de migrations na inicialização da API e `GET /health`); `git diff 438e598 b5b2704 -- src` é vazio, então o que a seção 4.3 diz sobre as telas do web vale para os dois.
 
 **Esta leitura tem de ser refeita antes da execução** (passo 0.0). Um estado diferente deste exige reavaliar a etapa 0 antes de qualquer deploy.
+
+### 1.2 Releitura de 17/11/2026, por volta de 14:30 UTC
+
+Só leitura do Render (serviços, deploys e log de inicialização da API). O banco não foi lido.
+
+| Item | Estado |
+|---|---|
+| API live | `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o mesmo deploy (`dep-dbreqklckfvc73e2loag`). Depois da seção 1.1 houve três tentativas manuais que terminaram em `update_failed`: `9de722d` (16/11 17:53 e 18:24 UTC) e `68e5eed` (17/11 13:35 UTC). A de 17/11 caiu em `validateEnv`: `Configuração de ambiente inválida ou incompleta. Campos com problema: PLATFORM_2FA_ENFORCEME...` (as variáveis do passo 3.7 continuam ausentes) |
+| Web live | **`68e5eed`** (`dep-dbu5gep42hec73bku1c0`, manual, desde 17/11 13:35 UTC). Não é mais `b5b2704` |
+| Integração | `68e5eed` (merge do PR #118); o PR #120 está aberto |
+| Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nenhum deploy em andamento |
+
+**O passo 0.0 não confere mais:** o web live é `68e5eed`, não `b5b2704`. Pela regra da seção 4.2, a etapa 0 tem de ser reavaliada pelo responsável antes de qualquer deploy. O alvo continua `8e8577d`; o que muda é o estado de partida e, portanto, o destino do retorno se o passo 0.2 falhar (web `68e5eed`, par sem login confirmado). Entre `b5b2704` e `68e5eed` só entraram no web o PR #117 (proxy) e o PR #119 (tema na Visão geral); `git diff b5b2704 68e5eed -- backend` é vazio.
 
 ## 2. Comprovado e pendente
 
@@ -80,7 +95,7 @@ Entre `438e598` e `b5b2704` só entrou o PR #115 (conferência de migrations na 
 |---|---|---|---|---|
 | 1. Comissões em massa | `5d74556e9e12e55f38e0056d0f19911f3e66f475` | PR #102 | 16 (nenhuma nova) | nenhuma |
 | 2. Migration 17 e o pacote dela | `04c9a4382decea6c175ffdfb28cc722cb8ad6092` (último commit antes do 2FA) | #104 SEO e cabeçalhos, #105 marca de teste e slugs reservados, #106 portal separa clientes de internos, #108 relatórios do portal, #110 manifesto único do portal | 17 | nenhuma |
-| 3. 2FA com os demais lotes | `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2` (merge do PR #117), **na API e no web** | #109 segundo fator, #111 página inicial e nome TimVix, #112 limpeza do login, #113 preços na página inicial, #114 menu do dono, #115 conferência de migrations na inicialização e `GET /health`, #117 recuperação após hibernação quando a hospedagem responde 429 (só web) | 18 | `PLATFORM_TOTP_KEYS`, `PLATFORM_TOTP_KEY_CURRENT`, `PLATFORM_2FA_ENFORCEMENT` |
+| 3. 2FA com os demais lotes | **merge commit do PR #120** (desde 17/11; antes `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`, merge do PR #117), **na API e no web** | #109 segundo fator, #111 página inicial e nome TimVix, #112 limpeza do login, #113 preços na página inicial, #114 menu do dono, #115 conferência de migrations na inicialização e `GET /health`, #117 recuperação após hibernação quando a hospedagem responde 429 (só web) | 18 | `PLATFORM_TOTP_KEYS`, `PLATFORM_TOTP_KEY_CURRENT`, `PLATFORM_2FA_ENFORCEMENT` |
 
 Os SHAs abreviados no resto do documento são estes três. Até 16/11/2026 o alvo da etapa 3 era `b5b27046369b2b36ad339a41d44ff405fcb44c43`; a troca está explicada abaixo.
 
@@ -468,5 +483,6 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 - **Feito depois (16/11/2026):** D2 respondida e etapa 0 corrigida para o estado lido na seção 1.1 (web `b5b2704`, API `8e8577d`). Só o texto do roteiro; nenhum desses deploys foi feito.
 - **Continuidade:** PR #117 integrado em `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`; a correção ainda não está publicada; o PR #118 (esta atualização do plano) aguarda revisão; a execução da fila não começou.
 - **Próximo passo:** a revisão do PR #118 e as informações da seção 8. Depois, a etapa 0 e a etapa 1, com pedido explícito, de preferência na mesma janela em casa, com parada entre elas.
-- **Integração depois deste plano (17/11/2026):** o PR #119 (tema opcional "Azul e branco", só no web do portal) foi integrado em `3da4855b42e495a1ffbeef727f5d5d6f7fc4def7`. **O alvo da etapa 3 continua `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`**; `3da4855` não entra na fila. Incluir o tema numa publicação é decisão separada do responsável.
+- **Integração depois deste plano (17/11/2026):** o PR #119 (tema opcional "Azul e branco", só no web do portal) foi integrado em `3da4855b42e495a1ffbeef727f5d5d6f7fc4def7`. **O alvo da etapa 3 continua `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`**; `3da4855` não entra na fila. Incluir o tema numa publicação é decisão separada do responsável. *(Superado pela atualização de 17/11 logo abaixo.)*
+- **Atualização de 17/11/2026:** por decisão do responsável, o tema e o menu entram no alvo final. O alvo da etapa 3 passa a ser o merge commit do PR #120 (nota no topo), que inclui `3da4855`. A releitura da seção 1.2 encontrou o web em `68e5eed`, então a etapa 0 precisa de reavaliação antes de qualquer deploy. As informações da seção 8 e as decisões D5, D7 e D8 continuam pendentes. Nada foi publicado.
 - **Se o estado mudar antes da etapa 0** (deploy novo no Render, commit novo na integração), releia a seção 1 e ajuste os SHAs antes de qualquer passo. Commit novo na integração não troca sozinho o alvo de nenhuma etapa: a troca exige decisão explícita, como a do PR #117.
