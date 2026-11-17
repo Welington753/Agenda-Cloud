@@ -120,19 +120,24 @@ export function ehFiltroDoDiretorio(valor: string | null): valor is FiltroDoDire
   return !!valor && Object.hasOwn(FILTROS, valor);
 }
 
-/** Alcance da lista e dos indicadores, pela marca "Interno/teste". */
-export const ESCOPOS: Record<EscopoDoDiretorio, { rotulo: string; descricao: string }> = {
+/** Alcance da lista e dos indicadores, pela marca "Interno/teste". `resumo`
+ * é a frase curta do tema "Azul e branco"; a `descricao` completa (com as
+ * ressalvas) fica logo abaixo, em "Sobre este filtro". */
+export const ESCOPOS: Record<EscopoDoDiretorio, { rotulo: string; resumo: string; descricao: string }> = {
   CLIENTS: {
     rotulo: "Clientes",
+    resumo: "Estabelecimentos não marcados como internos/teste.",
     descricao:
       "Somente clientes: estabelecimentos que usam o TimVix, sem os marcados como interno/teste. Um cadastro antigo conta aqui até alguém marcá-lo: estar nesta lista não comprova que ele foi conferido como cliente.",
   },
   INTERNAL: {
     rotulo: "Internos/teste",
+    resumo: "Somente os marcados como internos/teste.",
     descricao: "Somente os marcados como interno/teste: contas da equipe e de teste, fora dos números de clientes.",
   },
   ALL: {
     rotulo: "Todos",
+    resumo: "Clientes e internos/teste juntos.",
     descricao: "Todos os cadastrados: clientes e internos/teste juntos.",
   },
 };

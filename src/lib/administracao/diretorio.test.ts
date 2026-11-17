@@ -214,6 +214,14 @@ describe("alcance: clientes, internos/teste e todos", () => {
     expect(textoAlcance("ALL")).toContain("clientes e internos/teste juntos");
   });
 
+  it("resumo curto do tema azul não contradiz a descrição completa", () => {
+    expect(ESCOPOS.CLIENTS.resumo).toBe("Estabelecimentos não marcados como internos/teste.");
+    expect(ESCOPOS.INTERNAL.resumo).toBe("Somente os marcados como internos/teste.");
+    expect(ESCOPOS.ALL.resumo).toBe("Clientes e internos/teste juntos.");
+    // Nenhum resumo afirma que a lista foi conferida.
+    for (const e of Object.values(ESCOPOS)) expect(e.resumo).not.toMatch(/conferid/);
+  });
+
   it("a URL só aceita os três valores", () => {
     for (const v of ["CLIENTS", "INTERNAL", "ALL"]) expect(ehEscopoDoDiretorio(v)).toBe(true);
     for (const v of [null, "", "clients", "TEST", "toString", "__proto__"]) expect(ehEscopoDoDiretorio(v)).toBe(false);

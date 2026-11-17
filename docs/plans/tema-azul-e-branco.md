@@ -82,9 +82,22 @@ Paleta inicial sugerida, ajustável à referência:
   (computador 1440, celular 390 e 360, persistência, foco, alerta, erro,
   seleção, Claro/Escuro/Seguir aparelho).
 
+**Acabamento (2026-11-17, só local), depois da primeira avaliação:**
+
+- Celular: cabeçalho mais baixo, com Atualizar na linha do título (quebra para
+  baixo quando falta espaço, inclusive com zoom; conferido em 320 px).
+- Alcance: resumo curto (`ESCOPOS[...].resumo`) e a explicação completa em
+  "Sobre este filtro" (`<details>`, toque e teclado). Aviso de alcance não
+  confirmado continua sempre visível.
+- Ordem no HTML = ordem do celular: indicadores, Atenção, Pagamentos,
+  Modalidade, lista. No computador a grade só recoloca a Modalidade (sem
+  links) à esquerda; a ordem do teclado não muda.
+- Cobertura versionada em `tests/browser/portal-visao-geral-flow.spec.ts`
+  (`temaAzulEBranco`): escolher, recarregar, números da API, "Sobre este
+  filtro" pelo teclado, ordem em 390 e 360 px e volta ao Claro. Sem login extra.
+
 **Não feito:** demais telas do portal com arranjo próprio (hoje só recebem as
-cores), entrada do portal (`/portal`, login) e conta do dono. Sem teste de
-navegador versionado para o tema azul.
+cores), entrada do portal (`/portal`, login) e conta do dono.
 
 **Próximo passo:** avaliação visual do dono. Depois, decidir se o tema entra
 na conta do dono e quais telas do portal ganham arranjo próprio.

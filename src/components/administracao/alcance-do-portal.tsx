@@ -3,11 +3,12 @@
 // (`tenants.is_test`), e o texto de alcance só afirma o recorte que a API
 // confirmou (`alcanceConfirmado`).
 //
-// `segmentado` / `destacarAviso`: forma do tema "Azul e branco" (Visão geral):
-// botões juntos numa barra e o alcance não confirmado num quadro de aviso. O
+// `segmentado` / `compacto`: forma do tema "Azul e branco" (Visão geral):
+// botões juntos numa barra, resumo curto do alcance com a explicação completa
+// em "Sobre este filtro", e o alcance não confirmado num quadro de aviso. O
 // comportamento, os rótulos e os `data-testid` são os mesmos.
 import clsx from "clsx";
-import { TriangleAlert } from "lucide-react";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge-base";
 import { Botao } from "@/components/ui/button";
 import { ESCOPOS_DO_DIRETORIO, type EscopoDoDiretorio } from "@/lib/administracao/contratos-diretorio";
@@ -72,12 +73,31 @@ export function SeletorDeAlcance({
 
 export function TextoDeAlcance({
   confirmado,
-  destacarAviso = false,
+  compacto = false,
 }: {
   confirmado: EscopoDoDiretorio | null;
-  destacarAviso?: boolean;
+  /** Forma do tema azul: resumo de uma linha e a explicação completa em
+   * "Sobre este filtro"; o alcance não confirmado fica num quadro de aviso,
+   * sempre visível. */
+  compacto?: boolean;
 }) {
-  if (destacarAviso && !confirmado)
+  if (compacto && confirmado)
+    return (
+      <div className="text-sm text-ink-soft" data-testid="alcance-dos-numeros" data-alcance={confirmado}>
+        <p data-testid="resumo-do-alcance">{ESCOPOS[confirmado].resumo}</p>
+        {/* <details> nativo: abre por toque, Enter e Espaço, sem script. */}
+        <details className="group mt-0.5">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-[var(--radius-control)] font-medium text-[color:var(--color-accent-hover)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+            <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" />
+            Sobre este filtro
+          </summary>
+          <p className="max-w-3xl pb-1" data-testid="descricao-do-alcance">
+            {textoAlcance(confirmado)}
+          </p>
+        </details>
+      </div>
+    );
+  if (compacto)
     return (
       <div
         className="flex items-start gap-3 rounded-[var(--radius-card)] border border-[color:var(--color-warning)]/30 bg-warning-soft px-4 py-3 text-sm text-ink"

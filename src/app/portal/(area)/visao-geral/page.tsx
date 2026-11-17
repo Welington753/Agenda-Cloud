@@ -123,35 +123,39 @@ function VisaoGeralDoPortal() {
 
   if (azul)
     return (
-      <div className="space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-wider text-ink-soft uppercase">Portal da plataforma</p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">Visão geral</h1>
-            <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-              Totais dos estabelecimentos, pagamentos do mês e pendências, todos no alcance escolhido.
-            </p>
+      <div className="space-y-4 sm:space-y-6">
+        {/* Atualizar na linha do título; sem espaço (tela estreita ou zoom),
+            o `flex-wrap` o leva para a linha de baixo, nunca para fora. */}
+        <header>
+          <p className="text-xs font-semibold tracking-wider text-ink-soft uppercase">Portal da plataforma</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Visão geral</h1>
+            <Botao
+              variante="secundaria"
+              onClick={recarregar}
+              disabled={estado.status === "carregando"}
+              className="min-h-11"
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              Atualizar
+            </Botao>
           </div>
-          <Botao
-            variante="secundaria"
-            onClick={recarregar}
-            disabled={estado.status === "carregando"}
-            className="min-h-11"
-          >
-            <RefreshCw size={16} aria-hidden="true" />
-            Atualizar
-          </Botao>
+          <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+            Totais dos estabelecimentos, pagamentos do mês e pendências, todos no alcance escolhido.
+          </p>
         </header>
 
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <SeletorDeAlcance valor={alcance} aoEscolher={escolher} segmentado />
-          {visao && (
-            <p className="text-sm text-ink-soft">
-              Consultado em {dataCadastro(visao.generatedAt)} às {horaBr(visao.generatedAt)}
-            </p>
-          )}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <SeletorDeAlcance valor={alcance} aoEscolher={escolher} segmentado />
+            {visao && (
+              <p className="text-sm text-ink-soft">
+                Consultado em {dataCadastro(visao.generatedAt)} às {horaBr(visao.generatedAt)}
+              </p>
+            )}
+          </div>
+          {visao && <TextoDeAlcance confirmado={alcanceConfirmado(alcance, visao.scope)} compacto />}
         </div>
-        {visao && <TextoDeAlcance confirmado={alcanceConfirmado(alcance, visao.scope)} destacarAviso />}
 
         {corpo}
       </div>

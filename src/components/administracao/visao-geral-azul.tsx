@@ -59,29 +59,13 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
         />
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
-        <Cartao>
-          <CartaoCorpo>
-            <section aria-labelledby="titulo-modalidades">
-              <h2 id="titulo-modalidades" className="text-lg font-semibold">
-                Modalidade do acesso
-              </h2>
-              <p className="mt-1 text-sm text-ink-soft">
-                Validade da assinatura de cada estabelecimento, independente da situação do cadastro.
-              </p>
-              <dl className="mt-3 divide-y divide-border border-t border-border" data-testid="modalidades">
-                {MODALIDADES.map((m) => (
-                  <div key={m} className="flex min-h-11 items-center justify-between gap-3 py-2">
-                    <dt className="text-sm">{textoModalidade(m)}</dt>
-                    <dd className="font-semibold tabular-nums">{e.byState[m]}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          </CartaoCorpo>
-        </Cartao>
-
-        <div className="space-y-4">
+      {/* Ordem no HTML = ordem do celular e do leitor de tela: Atenção,
+          Pagamentos, Modalidade. No computador a grade só recoloca a
+          Modalidade (bloco sem links) na coluna da esquerda; a ordem do
+          teclado continua a mesma. Linha 2 em `1fr`: sobra de altura vai para
+          baixo dos pagamentos, nunca entre os dois cartões da direita. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[auto_1fr] lg:items-start">
+        <div className="lg:col-start-2 lg:row-start-1">
           <Cartao>
             <CartaoCorpo>
               <section aria-labelledby="titulo-resumo-atencao" data-testid="resumo-atencao">
@@ -122,8 +106,30 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
               </section>
             </CartaoCorpo>
           </Cartao>
+        </div>
+        <div className="lg:col-start-2 lg:row-start-2">
           <Pagamentos pagamentos={visao.payments} alcance={alcance} azul />
         </div>
+        <Cartao className="lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <CartaoCorpo>
+            <section aria-labelledby="titulo-modalidades">
+              <h2 id="titulo-modalidades" className="text-lg font-semibold">
+                Modalidade do acesso
+              </h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Validade da assinatura de cada estabelecimento, independente da situação do cadastro.
+              </p>
+              <dl className="mt-3 divide-y divide-border border-t border-border" data-testid="modalidades">
+                {MODALIDADES.map((m) => (
+                  <div key={m} className="flex min-h-11 items-center justify-between gap-3 py-2">
+                    <dt className="text-sm">{textoModalidade(m)}</dt>
+                    <dd className="font-semibold tabular-nums">{e.byState[m]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          </CartaoCorpo>
+        </Cartao>
       </div>
 
       <Cartao>
