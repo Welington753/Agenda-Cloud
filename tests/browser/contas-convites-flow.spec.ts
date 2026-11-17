@@ -117,8 +117,13 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     await page.getByLabel("Nome do estabelecimento").fill(`${marca} Barbearia Nova`);
     await page.getByLabel("Segmento").selectOption("BARBERSHOP");
     await page.getByLabel("Limite de usuários da equipe").fill("3");
-    // Preço do adicional ainda a definir neste banco: não dá para marcar.
-    await expect(page.getByTestId("adicional-INDICADORES").getByRole("checkbox")).toBeDisabled();
+    // O banco é compartilhado com a suíte de assinatura, que pode já ter
+    // definido o preço: sem preço o adicional não se marca; com preço, nasce
+    // desmarcado. Este fluxo cria só com o essencial.
+    const indicadores = page.getByTestId("adicional-INDICADORES");
+    const caixa = indicadores.getByRole("checkbox");
+    await expect(caixa).not.toBeChecked();
+    if ((await indicadores.textContent())?.includes("Preço a definir")) await expect(caixa).toBeDisabled();
     await expect(page.getByTestId("futuro-ESTOQUE").getByRole("checkbox")).toBeDisabled();
     await page.getByLabel("Nome", { exact: true }).fill("Dona Nova");
     await page.getByLabel("E-mail").fill(`${marca}-DONA@example.test`);
