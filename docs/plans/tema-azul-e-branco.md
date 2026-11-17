@@ -85,7 +85,7 @@ Paleta inicial sugerida, ajustável à referência:
 **Acabamento (2026-11-17, só local), depois da primeira avaliação:**
 
 - Celular: cabeçalho mais baixo, com Atualizar na linha do título (quebra para
-  baixo quando falta espaço, inclusive com zoom; conferido em 320 px).
+  baixo quando falta espaço).
 - Alcance: resumo curto (`ESCOPOS[...].resumo`) e a explicação completa em
   "Sobre este filtro" (`<details>`, toque e teclado). Aviso de alcance não
   confirmado continua sempre visível.
@@ -95,6 +95,20 @@ Paleta inicial sugerida, ajustável à referência:
 - Cobertura versionada em `tests/browser/portal-visao-geral-flow.spec.ts`
   (`temaAzulEBranco`): escolher, recarregar, números da API, "Sobre este
   filtro" pelo teclado, ordem em 390 e 360 px e volta ao Claro. Sem login extra.
+
+**Validação executada (local, banco descartável, dados fictícios):**
+
+- `tsc` e ESLint dos arquivos alterados sem erros; Vitest de aparência,
+  diretório e rotas: 29 testes verdes.
+- Suíte `portal-visao-geral` (com o trecho do tema azul em 390 e 360 px): a
+  primeira rodada, num banco reaproveitado, falhou em `relatoriosPorPeriodo`
+  porque os dados fixos de 2002 da rodada anterior estavam duplicados (total
+  dobrado); o trecho do tema azul, que roda antes, passou. Rodada completa em
+  banco limpo: verde.
+- Roteiro local de capturas (fora do Git): viewports de 1440, 390, 360 e
+  320 px. O de 320 px é só uma tela estreita (em 320 px, "Todos" do seletor de
+  alcance desce para a segunda linha, sem rolagem lateral); **não** é um teste
+  de zoom real de 200% do navegador, que não foi executado.
 
 **Não feito:** demais telas do portal com arranjo próprio (hoje só recebem as
 cores), entrada do portal (`/portal`, login) e conta do dono.
