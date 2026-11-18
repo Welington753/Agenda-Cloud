@@ -230,6 +230,8 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
     ]);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/conta/minha-agenda");
+    // Espera o menu montar: `allTextContents` não espera nada.
+    await expect(navConta(page).getByRole("link")).toHaveCount(2);
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual(["Minha agenda", "Configurações"]);
     await db.query("UPDATE memberships SET role = 'DONO', professional_id = NULL WHERE tenant_id = $1 AND user_id = $2", [
       tenantId,
