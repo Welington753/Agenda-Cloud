@@ -38,7 +38,8 @@ Branch `feat/assinatura-modular-limite-equipe`, a partir da integration em
 | Controle de estoque, Gestão financeira, Marketing e fidelização | Planejado | — |
 
 A disponibilidade só muda por migration, ou seja, com o código liberado e
-validado. O preço muda pelo portal ("Planos e adicionais"). Mudar um preço
+validado. Nome, descrição e preço mudam pelo portal, só em "Planos e adicionais"
+(ver `docs/plans/edicao-catalogo-modular.md`). Mudar um preço
 não reajusta nenhuma assinatura existente: cada versão guarda o preço da
 data.
 
