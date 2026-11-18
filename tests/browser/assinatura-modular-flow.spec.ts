@@ -70,7 +70,7 @@ test("assinatura modular: catálogo, criação com limite, revisão e histórico
     await expect(page.getByRole("button", { name: "Revisar e criar" })).toBeDisabled();
     await page.getByLabel("Limite de usuários da equipe").fill("2");
     await page.getByTestId("adicional-INDICADORES").getByRole("checkbox").check();
-    await expect(page.getByTestId("futuro-ESTOQUE").getByRole("checkbox")).toBeDisabled();
+    await expect(page.getByTestId("futuro-WHATSAPP").getByRole("checkbox")).toBeDisabled();
     await page.getByLabel("Nome", { exact: true }).fill("Dona Aurora");
     await page.getByLabel("E-mail").fill(`${marca}-dona@example.test`);
     await expect(page.getByTestId("resumo-assinatura")).toContainText("Indicadores avançados");

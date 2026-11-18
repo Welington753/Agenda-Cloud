@@ -757,6 +757,24 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/layout-temas
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:layout-temas
 
+      # Estoque v1 (adicional ESTOQUE): contratação em "Plano e adicionais",
+      # operação do dono (categorias, produtos, movimentações, estorno,
+      # conferência), gerente só com "Ver estoque", funcionário pelo endereço,
+      # retirada e recontratação preservando dados, menu no celular.
+      # Invocação própria (1 aceite de convite, 1 login).
+      - name: Run stock flow (contract in the portal, owner, manager, staff; 1 login)
+        id: browser_estoque
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/estoque
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:estoque
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -920,6 +938,17 @@ jobs:
           path: |
             test-results/layout-temas/**/portal-*.png
             test-results/layout-temas/**/conta-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # Capturas do estoque: categorias, produto, movimentações, contagem,
+      # revisão (1280 e 390 px) e o menu no celular (390 e 360 px).
+      - name: Upload stock screenshots
+        if: always() && steps.browser_estoque.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: estoque-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/estoque/**/estoque-*.png
           if-no-files-found: error
           retention-days: 7
 
@@ -1115,6 +1144,7 @@ jobs:
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||
             steps.browser_layout_temas.outcome == 'failure' ||
+            steps.browser_estoque.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
