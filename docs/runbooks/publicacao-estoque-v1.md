@@ -111,7 +111,10 @@ SELECT
     1. Com a API nova, contratar ESTOQUE, conceder as duas permissões a um gerente e criar categoria, produto e movimentação.
     2. Voltar API e web para `208d7ee`.
     3. Verificar: login do dono e do gerente, "Equipe e acessos" (abrir e salvar), portal "Plano e adicionais" (abrir e salvar sem alterar o ESTOQUE) e agendamento.
-  - Resultado do ensaio: *(preencher)*.
+  - Resultado do ensaio (18/11/2026, cópia restaurada de `pre-mig21-20-backup-2026-11-18T20-46-56Z`): **passou, com ressalva**.
+    - Com API e web `208d7ee` sobre a cópia já usada, funcionaram: login do dono e do gerente, "Equipe e acessos" (abrir e salvar), portal "Plano e adicionais" (salvar sem mexer no ESTOQUE, que continua contratado) e agendamento público. Nenhum erro de tela.
+    - **Ressalva:** a versão antiga não conhece as permissões de estoque. Salvar o acesso de um gerente na tela antiga **apaga** as concessões "Ver estoque" e "Operar estoque" dele. Contratação, categorias, produtos e movimentações ficam intactos.
+    - Consequência: o retorno é possível, mas depois de voltar para a versão nova o dono confere e, se preciso, concede de novo o estoque aos gerentes.
     - Se passar: o retorno é possível, com o estoque indisponível e os dados preservados, e contratar pelo portal antigo continua proibido.
     - Se falhar: **somente correção para frente** a partir da primeira contratação ou concessão.
 - Em nenhum caso há `down` das migrations no piloto.

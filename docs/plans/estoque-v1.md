@@ -105,6 +105,34 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 
 Atualizado a cada checkpoint (abaixo).
 
+**18/11/2026, noite: publicado e liberado.**
+
+- **Merge:** PR #127 como `0dedc35`. CI verde no head `21759b4`, com a mesma árvore.
+- **Backups:**
+  - `pre-mig21-20-backup-2026-11-18T20-46-56Z`, usado nos ensaios;
+  - `pre-mig21-20-backup-2026-11-18T21-28-01Z`, feito logo antes das migrations.
+  - Os dois foram restaurados no PostgreSQL 17 local com TLS, com hash igual nas 54 tabelas.
+- **Ensaios na cópia:**
+  - migrations 21 e 22 aplicadas uma por vez (`aplicarSomenteAPendente`);
+  - janelas 1a, 1b, 2 e 3 do H0 verdes, com as suítes gerente, equipe, agendamento público, administração e agenda (e estoque na janela 3);
+  - únicas falhas esperadas: o teste antigo que afirma o ESTOQUE como "futuro", e o limite de aceites (429) quando várias suítes usaram a mesma API, resolvido reiniciando a API;
+  - H3 passou com ressalva (runbook, seção H3).
+- **Piloto:**
+  - 21 aplicada às 21:28 UTC e 22 às 21:29 UTC;
+  - API `dep-dbv1hf15efls73cv9080` e web `dep-dbv1io6k1f9s73b4speg`, os dois em `0dedc35`;
+  - log "22 de 22".
+- **H2:**
+  - 22 migrations, e o ESTOQUE `AVAILABLE` com nome, descrição e preço ("a definir") iguais aos do backup;
+  - `0 | 0 | 0 | 0`;
+  - `/health` 200; estoque sem sessão 401; `/conta/estoque/produtos` e `/login` 200; agendamento público 200 em dois estabelecimentos.
+  - Um terceiro estabelecimento, ativo e sem serviços nem profissionais, responde 404, como antes. A release não toca o agendamento público.
+- **Limite do retorno:** seguro enquanto a última consulta da H2 der `0 | 0 | 0 | 0`. Depois da primeira contratação ou concessão, o retorno é possível com a ressalva do H3.
+- **Próximo passo:** o roteiro curto de teste do runbook, a começar pelo preço do Controle de estoque, que está "a definir".
+- **Só neste computador:**
+  - os backups e as capturas em `%USERPROFILE%\AgendaCloud-operacoes`;
+  - os clusters descartáveis (pastas temporárias das sessões);
+  - a cópia do trabalho visual anterior à retomada (`C:/wt/_backups/estoque-visual-wip-20261118T195755Z`).
+
 **18/11/2026 (fim da tarde, depois da queda de energia):**
 
 - **Feito:**
