@@ -45,6 +45,9 @@ export interface PermissaoDeGerenteNoCatalogo {
   requires: PermissaoGerente[];
   /** Este dono pode conceder (ele próprio pode fazer). */
   grantable: boolean;
+  /** A área depende de um adicional não contratado (ex.: Estoque). Ausente
+   * numa API anterior. */
+  addonMissing?: boolean;
 }
 
 export type SituacaoNaEquipe =
@@ -204,7 +207,8 @@ function ehPermissaoDoCatalogo(v: unknown): v is PermissaoDeGerenteNoCatalogo {
     objeto(v) &&
     [v.permission, v.area, v.areaLabel, v.label, v.detail].every(texto) &&
     lista(v.requires) &&
-    typeof v.grantable === "boolean"
+    typeof v.grantable === "boolean" &&
+    (v.addonMissing === undefined || typeof v.addonMissing === "boolean")
   );
 }
 

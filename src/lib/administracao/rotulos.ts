@@ -57,6 +57,8 @@ export const PERMISSOES_ESTABELECIMENTO: Record<string, string> = {
   PROFISSIONAIS_GERENCIAR: "Gerenciar profissionais e horários",
   CONFIGURACOES_GERENCIAR: "Configurar o agendamento online",
   EQUIPE_GERENCIAR: "Gerenciar equipe e acessos",
+  ESTOQUE_VISUALIZAR: "Ver estoque",
+  ESTOQUE_GERENCIAR: "Operar estoque",
 };
 
 export const ACOES_HISTORICO: Record<string, string> = {
@@ -94,6 +96,8 @@ export const ACOES_HISTORICO: Record<string, string> = {
   ACCESS_NO_EXPIRY_GRANTED: "Acesso sem vencimento concedido",
   ACCESS_NO_EXPIRY_REVOKED: "Acesso sem vencimento retirado",
   CATALOG_ITEM_CHANGED: "Catálogo modular alterado",
+  STOCK_CATEGORY_CHANGED: "Categoria de estoque alterada",
+  STOCK_PRODUCT_CHANGED: "Produto de estoque alterado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

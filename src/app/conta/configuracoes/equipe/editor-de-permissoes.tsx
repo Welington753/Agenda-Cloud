@@ -104,7 +104,7 @@ export function EditorDePermissoes({
                   <p id={idDetalhe} className="-mt-2 pl-8 text-xs text-ink-soft">
                     {item.detail}
                     {inclui.length > 0 && ` Inclui: ${inclui.join("; ")}.`}
-                    {!marcada && !item.grantable && " Você não pode liberar o que não pode fazer."}
+                    {!marcada && !item.grantable && (item.addonMissing ? ` Disponível com o adicional ${grupo.rotulo}.` : " Você não pode liberar o que não pode fazer.")}
                     {quemExige.length > 0 && ` Necessária para: ${quemExige.map((c) => c.label.toLowerCase()).join("; ")}.`}
                   </p>
                 </div>

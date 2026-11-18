@@ -24,6 +24,7 @@ import {
   type EstadoAutenticacaoReal,
 } from "./real-session-state";
 import { lerPreferenciaTenant, salvarPreferenciaTenant } from "./tenant-preference";
+import { apagarTodosOsRascunhos } from "@/lib/estoque/rascunho-conferencia";
 
 export interface ResultadoLogout {
   /** `true` só quando o backend confirmou a revogação (204). `false` numa
@@ -236,6 +237,8 @@ export function RealAuthProvider({ children }: { children: ReactNode }) {
     sessaoDecididaRef.current = true;
     geracaoRef.current += 1;
     salvarPreferenciaTenant(null);
+    // Nenhum rascunho de conferência fica para a próxima pessoa no aparelho.
+    apagarTodosOsRascunhos();
     setEstado({ status: "nao_autenticado" });
 
     const resultado = await authApi.logout();
