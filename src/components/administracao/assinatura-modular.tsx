@@ -8,7 +8,7 @@
 import { BarChart3, CalendarDays, Coins, MessageCircle, Megaphone, Package, Store, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge-base";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { ROTULO_DISPONIBILIDADE, type Adicional, type Escolha } from "@/lib/administracao/assinatura";
+import { ROTULO_DISPONIBILIDADE, type Adicional, type Escolha, type ItemEssencial } from "@/lib/administracao/assinatura";
 import { reais } from "@/lib/administracao/validade";
 
 const ICONES: Record<string, LucideIcon> = {
@@ -34,7 +34,9 @@ function Icone({ code }: { code: string }) {
   );
 }
 
-export function EssencialIncluido({ basePriceCents }: { basePriceCents: number | null }) {
+/** Nome, descrição e preço atuais do essencial (só leitura aqui: o catálogo
+ * só é editado em Planos e adicionais). */
+export function EssencialIncluido({ essencial }: { essencial: Pick<ItemEssencial, "name" | "description" | "priceCents"> }) {
   return (
     <Cartao>
       <CartaoCorpo className="flex flex-wrap items-center gap-4" data-testid="essencial">
@@ -43,13 +45,11 @@ export function EssencialIncluido({ basePriceCents }: { basePriceCents: number |
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2 font-semibold">
-            Agendamento essencial <Badge cor="sucesso">Sempre incluído</Badge>
+            <span className="min-w-0 break-words">{essencial.name}</span> <Badge cor="sucesso">Sempre incluído</Badge>
           </p>
-          <p className="mt-1 text-sm text-ink-soft">
-            Agenda, link de agendamento, profissionais, serviços, clientes, equipe e recebimentos.
-          </p>
+          <p className="mt-1 break-words text-sm text-ink-soft">{essencial.description}</p>
         </div>
-        <p className="w-full text-right text-base font-bold sm:w-auto">{preco(basePriceCents)}</p>
+        <p className="w-full text-right text-base font-bold sm:w-auto">{preco(essencial.priceCents)}</p>
       </CartaoCorpo>
     </Cartao>
   );
@@ -184,12 +184,15 @@ export function CampoLimite({
 
 export function ResumoDaAssinatura({
   nome,
+  nomeEssencial,
   basePriceCents,
   escolha,
   limite,
   children,
 }: {
   nome: string;
+  /** Nome atual do essencial no catálogo. */
+  nomeEssencial: string;
   basePriceCents: number | null;
   escolha: Escolha;
   limite: string;
@@ -205,7 +208,7 @@ export function ResumoDaAssinatura({
         </p>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between gap-3">
-            <dt>Agendamento essencial</dt>
+            <dt>{nomeEssencial}</dt>
             <dd>{basePriceCents === null ? "a definir" : reais(basePriceCents)}</dd>
           </div>
           {escolha.itens.map((i) => (

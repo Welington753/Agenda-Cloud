@@ -52,12 +52,11 @@ test("assinatura modular: catálogo, criação com limite, revisão e histórico
 
     // Catálogo: define o preço de Indicadores (se ainda não houver).
     await page.goto("/portal/planos");
-    const indicadores = page.getByTestId("catalogo-modular").getByRole("listitem").filter({ hasText: "Indicadores avançados" });
     await expect(page.getByTestId("catalogo-modular")).toContainText("Planejado");
-    if (await indicadores.getByRole("button", { name: "Definir preço mensal" }).isVisible()) {
-      await indicadores.getByRole("button", { name: "Definir preço mensal" }).click();
-      await page.getByRole("dialog").getByLabel("Novo preço mensal (R$)").fill("9,90");
-      await page.getByRole("dialog").getByRole("button", { name: "Salvar preço" }).click();
+    if (await page.getByTestId("preco-modular-INDICADORES").getByText("A definir").isVisible()) {
+      await page.getByTestId("editar-INDICADORES").click();
+      await page.getByRole("dialog").getByLabel("Preço mensal padrão (R$)").fill("9,90");
+      await page.getByRole("dialog").getByRole("button", { name: "Salvar", exact: true }).click();
       await confirmarSenhaSePedir(page);
     }
     await expect(page.getByTestId("preco-modular-INDICADORES")).not.toContainText("A definir");

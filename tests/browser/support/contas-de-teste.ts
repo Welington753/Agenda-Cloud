@@ -155,7 +155,9 @@ export async function criarContaDeTeste(api: APIRequestContext, dados: DadosDeCo
 export async function garantirPrecoBaseModular(db: Client, gravadoPor: string, centavos = 2990): Promise<void> {
   await db.query(
     `INSERT INTO plans (id, code, name, price_cents, short_description, max_professionals, max_units)
-     VALUES ('plan_modular', 'modular', 'Agendamento essencial', NULL, '', NULL, 1) ON CONFLICT (id) DO NOTHING`,
+     VALUES ('plan_modular', 'modular', 'Agendamento essencial', NULL,
+             'Agenda, link de agendamento, profissionais, serviços, clientes, equipe e recebimentos.', NULL, 1)
+     ON CONFLICT (id) DO NOTHING`,
   );
   await db.query(
     `INSERT INTO plan_features (id, plan_id, feature_id)

@@ -172,7 +172,7 @@ export default function InicioPage() {
           <Hoje painel={painel} aoAtualizar={recarregar} atualizando={estado.status === "carregando"} />
 
           {!temIndicadores(painel) ? (
-            <IndicadoresNaoContratados />
+            <IndicadoresNaoContratados nomeDoAdicional={painel.indicators?.addonName} />
           ) : (
           <section aria-labelledby="titulo-periodo" className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
