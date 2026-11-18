@@ -252,6 +252,8 @@ export class TeamService {
           detail: MANAGER_PERMISSION_META[p].detail,
           requires: MANAGER_PERMISSION_REQUIRES[p],
           grantable: gestor.grantableManager.includes(p),
+          /** Depende de um adicional que o estabelecimento não contratou. */
+          addonMissing: gestor.managerWithoutFeature.includes(p),
         })),
         maxInviteSends: MAX_INVITE_SENDS,
         /** Todos os acessos que não são do dono, com ou sem profissional. */

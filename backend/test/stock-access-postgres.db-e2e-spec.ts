@@ -229,14 +229,14 @@ describe.skipIf(!url)('estoque contra PostgreSQL descartável: acesso, isolament
     const catalogo = async () =>
       (await equipe.overview(est.dono.userId, est.tenantId)).managerPermissions!.filter((p) => p.area === 'ESTOQUE');
     expect(await catalogo()).toEqual([
-      expect.objectContaining({ permission: 'ESTOQUE_VISUALIZAR', grantable: false, areaLabel: 'Estoque' }),
-      expect.objectContaining({ permission: 'ESTOQUE_GERENCIAR', grantable: false, requires: ['ESTOQUE_VISUALIZAR'] }),
+      expect.objectContaining({ permission: 'ESTOQUE_VISUALIZAR', grantable: false, addonMissing: true, areaLabel: 'Estoque' }),
+      expect.objectContaining({ permission: 'ESTOQUE_GERENCIAR', grantable: false, addonMissing: true, requires: ['ESTOQUE_VISUALIZAR'] }),
     ]);
     const conceder = (granted: string[], expectedGranted: string[]) =>
       equipe.setPermissions(est.dono.userId, est.dono.sessionId, est.tenantId, gerente.membershipId, { expectedGranted, granted } as never);
     expect(await codigoDe(conceder(['CONSUMIDORES_VISUALIZAR', 'ESTOQUE_VISUALIZAR'], ['CONSUMIDORES_VISUALIZAR']))).toBe('RECURSO_NAO_CONTRATADO');
     await dados.ligarEstoque(est.tenantId);
-    expect((await catalogo()).every((p) => p.grantable)).toBe(true);
+    expect((await catalogo()).every((p) => p.grantable && !p.addonMissing)).toBe(true);
     expect(await codigoDe(conceder(['CONSUMIDORES_VISUALIZAR', 'ESTOQUE_GERENCIAR'], ['CONSUMIDORES_VISUALIZAR']))).toBe('PERMISSOES_INCOMPLETAS');
     await conceder(['CONSUMIDORES_VISUALIZAR', 'ESTOQUE_GERENCIAR', 'ESTOQUE_VISUALIZAR'], ['CONSUMIDORES_VISUALIZAR']);
     const categoria = await categorias.create(gerente.userId, est.tenantId, { name: 'Do gerente' });
