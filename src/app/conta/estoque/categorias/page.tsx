@@ -1,9 +1,10 @@
 "use client";
 
-// Categorias e subcategorias do estoque (um nível de subcategoria). Cada
-// estabelecimento tem as suas; nada é apagado, só arquivado. Quem só consulta
-// (gerente com "Ver estoque") vê a lista sem os botões.
-import { useRef, useState } from "react";
+// Categorias e subcategorias do estoque (um nível de subcategoria, opcional).
+// À esquerda a árvore; à direita o detalhe da categoria escolhida, com as
+// subcategorias e os produtos dela. Nada é apagado, só arquivado. Quem só
+// consulta (gerente com "Ver estoque") vê tudo sem os botões.
+import { useEffect, useRef, useState } from "react";
 import { FolderTree, Plus } from "lucide-react";
 import {
   criarCategoria,
@@ -14,6 +15,7 @@ import {
   situacaoDaSubcategoria,
   type CategoriaEstoque,
   type ResultadoEstoque,
+  type SubcategoriaEstoque,
 } from "@/lib/api/estoque-api";
 import { mensagemDaFalha } from "@/lib/estoque/mensagens";
 import { useCategorias } from "@/lib/estoque/use-categorias";
@@ -24,10 +26,25 @@ import { EstadoVazio } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { PaginaConta } from "@/components/conta/pagina-conta";
-import { AvisoDeFalha, CLASSE_CAMPO, ErroDoFormulario, SemEstabelecimento } from "@/components/estoque/comum";
-import { CartaoCategoria, type AcoesDaCategoria } from "./cartao-categoria";
+import { AvisoDeFalha, JanelaDeNome, SemEstabelecimento, trilhaDoEstoque } from "@/components/estoque/comum";
+import { ArvoreDeCategorias, type Selecao } from "./arvore-categorias";
+import { DetalheDaCategoria, type ErroDaCategoria } from "./detalhe-categoria";
 
-const TITULO = "Categorias";
+const TITULO = "Categorias e subcategorias";
+
+type Janela =
+  | { tipo: "fechada" }
+  | { tipo: "nova-categoria" }
+  | { tipo: "renomear-categoria"; categoria: CategoriaEstoque }
+  | { tipo: "nova-subcategoria"; categoria: CategoriaEstoque }
+  | { tipo: "renomear-subcategoria"; sub: SubcategoriaEstoque };
+
+const TEXTOS_DA_JANELA = {
+  "nova-categoria": { titulo: "Nova categoria", rotulo: "Nome da nova categoria", botao: "Criar categoria" },
+  "renomear-categoria": { titulo: "Editar categoria", rotulo: "Nome da categoria", botao: "Salvar" },
+  "nova-subcategoria": { titulo: "Nova subcategoria", rotulo: "Nome da nova subcategoria", botao: "Salvar" },
+  "renomear-subcategoria": { titulo: "Renomear subcategoria", rotulo: "Nome da subcategoria", botao: "Salvar" },
+} as const;
 
 export default function CategoriasDoEstoquePage() {
   const ctx = useContextoEstoque();
@@ -35,92 +52,182 @@ export default function CategoriasDoEstoquePage() {
   const { notificar } = useToast();
   const [gravando, setGravando] = useState(false);
   const travado = useRef(false);
-  const [nova, setNova] = useState("");
-  const [erroNova, setErroNova] = useState<string | null>(null);
+  const [selecao, setSelecao] = useState<Selecao | null>(null);
+  const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
+  const [janela, setJanela] = useState<Janela>({ tipo: "fechada" });
+  const [erroJanela, setErroJanela] = useState<string | null>(null);
+  const [erro, setErro] = useState<ErroDaCategoria | null>(null);
+
+  useEffect(() => {
+    setSelecao(null);
+    setJanela({ tipo: "fechada" });
+    setErro(null);
+  }, [ctx.tenantId]);
 
   if (!ctx.pronto) return null;
   if (!ctx.tenantId) return <SemEstabelecimento titulo={TITULO} />;
   const tenantId = ctx.tenantId;
 
+  // Sem escolha (ou escolha que sumiu da lista visível): a primeira categoria.
+  const categorias = estado.status === "carregada" ? estado.categorias : [];
+  const visiveis = categorias.filter((c) => mostrarArquivadas || !c.archived);
+  const escolhida = visiveis.find((c) => c.id === selecao?.categoriaId) ?? visiveis[0] ?? null;
+  const subEscolhida = escolhida && selecao?.categoriaId === escolhida.id ? selecao.subcategoriaId : null;
+
   /** Uma gravação por vez; a categoria devolvida substitui a da lista. */
-  async function gravar(acao: () => Promise<ResultadoEstoque<CategoriaEstoque>>): Promise<boolean> {
-    if (travado.current) return false;
+  async function gravar(acao: () => Promise<ResultadoEstoque<CategoriaEstoque>>): Promise<ResultadoEstoque<CategoriaEstoque> | null> {
+    if (travado.current) return null;
     travado.current = true;
     setGravando(true);
     try {
       const r = await acao();
       if (r.ok) substituir(r.dados);
-      return r.ok;
+      return r;
     } finally {
       travado.current = false;
       setGravando(false);
     }
   }
 
-  const acoes: AcoesDaCategoria = {
-    renomear: (id, nome) => renomearCategoria(tenantId, id, nome),
-    situacao: (id, acao) => situacaoDaCategoria(tenantId, id, acao),
-    criarSub: (id, nome) => criarSubcategoria(tenantId, id, nome),
-    renomearSub: (id, nome) => renomearSubcategoria(tenantId, id, nome),
-    situacaoSub: (id, acao) => situacaoDaSubcategoria(tenantId, id, acao),
-  };
-
-  async function aoCriar(e: React.FormEvent) {
-    e.preventDefault();
-    setErroNova(null);
-    const nome = nova.trim();
-    if (!nome) return;
-    const ok = await gravar(async () => {
-      const r = await criarCategoria(tenantId, nome);
-      if (!r.ok) setErroNova(mensagemDaFalha(r.falha));
-      return r;
+  async function aoSalvarJanela(nome: string) {
+    if (janela.tipo === "fechada") return;
+    setErroJanela(null);
+    const atual = janela;
+    const r = await gravar(() => {
+      switch (atual.tipo) {
+        case "nova-categoria":
+          return criarCategoria(tenantId, nome);
+        case "renomear-categoria":
+          return renomearCategoria(tenantId, atual.categoria.id, nome);
+        case "nova-subcategoria":
+          return criarSubcategoria(tenantId, atual.categoria.id, nome);
+        case "renomear-subcategoria":
+          return renomearSubcategoria(tenantId, atual.sub.id, nome);
+      }
     });
-    if (ok) {
-      setNova("");
+    if (!r) return;
+    if (!r.ok) {
+      setErroJanela(mensagemDaFalha(r.falha));
+      return;
+    }
+    setJanela({ tipo: "fechada" });
+    setErro(null);
+    if (atual.tipo === "nova-categoria") {
+      setSelecao({ categoriaId: r.dados.id, subcategoriaId: null });
       notificar("Categoria criada.", "sucesso");
+    } else if (atual.tipo === "nova-subcategoria") {
+      notificar("Subcategoria criada.", "sucesso");
+    } else {
+      notificar("Nome atualizado.", "sucesso");
     }
   }
 
-  return (
-    <PaginaConta titulo={TITULO} descricao="Organize os produtos por categoria e, se quiser, por uma subcategoria dentro dela.">
-      {ctx.podeOperar && estado.status === "carregada" && (
-        <Cartao>
-          <CartaoCorpo>
-            <form className="flex flex-col gap-2 sm:flex-row sm:items-start" onSubmit={(e) => void aoCriar(e)}>
-              <div className="flex-1">
-                <label htmlFor="nova-categoria" className="sr-only">
-                  Nome da nova categoria
-                </label>
-                <input id="nova-categoria" className={CLASSE_CAMPO} placeholder="Nova categoria (ex.: Cabelo)" value={nova} maxLength={60} onChange={(e) => setNova(e.target.value)} />
-              </div>
-              <Botao type="submit" disabled={gravando || !nova.trim()}>
-                <Plus size={16} aria-hidden="true" /> Criar categoria
-              </Botao>
-            </form>
-            <div className="mt-2">
-              <ErroDoFormulario mensagem={erroNova} />
-            </div>
-          </CartaoCorpo>
-        </Cartao>
-      )}
+  async function mudarSituacao(executar: () => Promise<ResultadoEstoque<CategoriaEstoque>>, sucesso: string) {
+    setErro(null);
+    const r = await gravar(executar);
+    if (!r) return;
+    if (!r.ok) {
+      const comProdutos = r.falha.tipo === "conflito" && r.falha.code === "CATEGORIA_COM_PRODUTOS";
+      setErro({ mensagem: mensagemDaFalha(r.falha), comProdutos });
+      return;
+    }
+    notificar(sucesso, "sucesso");
+  }
 
+  const abrir = (j: Janela) => {
+    setErroJanela(null);
+    setJanela(j);
+  };
+  const textos = janela.tipo === "fechada" ? null : TEXTOS_DA_JANELA[janela.tipo];
+  const inicial = janela.tipo === "renomear-categoria" ? janela.categoria.name : janela.tipo === "renomear-subcategoria" ? janela.sub.name : "";
+
+  return (
+    <PaginaConta
+      trilha={trilhaDoEstoque("Categorias")}
+      titulo={TITULO}
+      descricao="Agrupe os produtos do seu jeito. Subcategorias são opcionais."
+      acoes={
+        ctx.podeOperar &&
+        estado.status === "carregada" && (
+          <Botao onClick={() => abrir({ tipo: "nova-categoria" })} disabled={gravando}>
+            <Plus size={16} aria-hidden="true" /> Nova categoria
+          </Botao>
+        )
+      }
+    >
       {estado.status === "carregando" && (
-        <div className="space-y-3" aria-busy="true" aria-label="Carregando categorias">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
+        <div className="grid gap-4 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]" aria-busy="true" aria-label="Carregando categorias">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
         </div>
       )}
       {estado.status === "falha" && <AvisoDeFalha falha={estado.falha} aoTentarDeNovo={() => void recarregar()} />}
-      {estado.status === "carregada" && estado.categorias.length === 0 && (
-        <EstadoVazio icone={FolderTree} titulo="Nenhuma categoria ainda" descricao="Crie a primeira categoria para começar a cadastrar produtos." />
+      {estado.status === "carregada" && categorias.length === 0 && (
+        <Cartao>
+          <CartaoCorpo>
+            <EstadoVazio icone={FolderTree} titulo="Nenhuma categoria ainda" descricao="Crie a primeira categoria para começar a cadastrar produtos." />
+          </CartaoCorpo>
+        </Cartao>
       )}
-      {estado.status === "carregada" && estado.categorias.length > 0 && (
-        <div className="space-y-3">
-          {estado.categorias.map((categoria) => (
-            <CartaoCategoria key={categoria.id} categoria={categoria} podeOperar={ctx.podeOperar} acoes={acoes} gravando={gravando} gravar={gravar} />
-          ))}
+      {estado.status === "carregada" && categorias.length > 0 && (
+        <div className="grid items-start gap-4 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+          <ArvoreDeCategorias
+            categorias={categorias}
+            selecao={escolhida ? { categoriaId: escolhida.id, subcategoriaId: subEscolhida } : null}
+            mostrarArquivadas={mostrarArquivadas}
+            aoMostrarArquivadas={setMostrarArquivadas}
+            aoEscolher={(s) => {
+              setErro(null);
+              setSelecao(s);
+            }}
+          />
+          {escolhida ? (
+            <DetalheDaCategoria
+              key={escolhida.id}
+              tenantId={tenantId}
+              categoria={escolhida}
+              subcategoriaId={subEscolhida}
+              podeOperar={ctx.podeOperar}
+              gravando={gravando}
+              erro={erro}
+              aoEditar={() => abrir({ tipo: "renomear-categoria", categoria: escolhida })}
+              aoMudarSituacao={() =>
+                void mudarSituacao(
+                  () => situacaoDaCategoria(tenantId, escolhida.id, escolhida.archived ? "reactivate" : "archive"),
+                  escolhida.archived ? "Categoria reativada." : "Categoria arquivada.",
+                )
+              }
+              aoNovaSubcategoria={() => abrir({ tipo: "nova-subcategoria", categoria: escolhida })}
+              aoRenomearSubcategoria={(sub) => abrir({ tipo: "renomear-subcategoria", sub })}
+              aoMudarSituacaoSub={(sub) =>
+                void mudarSituacao(
+                  () => situacaoDaSubcategoria(tenantId, sub.id, sub.archived ? "reactivate" : "archive"),
+                  sub.archived ? "Subcategoria reativada." : "Subcategoria arquivada.",
+                )
+              }
+              aoEscolherSubcategoria={(subId) => setSelecao({ categoriaId: escolhida.id, subcategoriaId: subId })}
+            />
+          ) : (
+            <Cartao>
+              <CartaoCorpo>
+                <EstadoVazio icone={FolderTree} titulo="Todas as categorias estão arquivadas" descricao="Marque “Mostrar arquivadas” para vê-las." />
+              </CartaoCorpo>
+            </Cartao>
+          )}
         </div>
       )}
+
+      <JanelaDeNome
+        aberta={textos !== null}
+        titulo={textos?.titulo ?? ""}
+        rotulo={textos?.rotulo ?? ""}
+        botao={textos?.botao ?? "Salvar"}
+        inicial={inicial}
+        gravando={gravando}
+        erro={erroJanela}
+        aoSalvar={(nome) => void aoSalvarJanela(nome)}
+        aoFechar={() => setJanela({ tipo: "fechada" })}
+      />
     </PaginaConta>
   );
 }

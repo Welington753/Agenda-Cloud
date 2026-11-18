@@ -9,6 +9,7 @@
 // lançamento original, sem duplicar). Nada é reenviado sozinho.
 import { useRef, useState } from "react";
 import { novaChaveDeEnvio, registrarMovimentacao, type MovimentacaoEstoque, type ProdutoEstoque } from "@/lib/api/estoque-api";
+import { saldoDepoisDaMovimentacao } from "@/lib/estoque/apresentacao";
 import { formatarQuantidade, lerQuantidade } from "@/lib/estoque/quantidade";
 import { motivoObrigatorio, ROTULO_TIPO, tiposPermitidos, type TipoManual } from "@/lib/estoque/rotulos";
 import { mensagemDaFalha } from "@/lib/estoque/mensagens";
@@ -41,6 +42,8 @@ export function FormularioMovimentacao({
   const produto = produtos.find((p) => p.id === produtoId) ?? null;
   const tipos = produto ? tiposPermitidos(produto.purpose) : (["ENTRADA_COMPRA", "SAIDA_PERDA"] as TipoManual[]);
   const tipoValido = tipos.includes(tipo) ? tipo : tipos[0];
+  const previa = produto && quantidade.trim() ? lerQuantidade(quantidade, produto.unit) : null;
+  const depois = produto && previa?.ok ? saldoDepoisDaMovimentacao(tipoValido, produto.balanceMilli, previa.milli) : null;
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -106,6 +109,20 @@ export function FormularioMovimentacao({
       <Campo rotulo={produto ? `Quantidade (${produto.unit})` : "Quantidade"} htmlFor="mov-quantidade" erro={erros.quantidade}>
         <input id="mov-quantidade" className={CLASSE_CAMPO} inputMode="decimal" value={quantidade} disabled={incerto} onChange={(e) => setQuantidade(e.target.value)} />
       </Campo>
+      {produto && (
+        <div className="grid grid-cols-2 gap-3 rounded-[var(--radius-control)] bg-paper-muted p-3 text-sm" data-testid="previa-saldo" aria-live="polite">
+          <div>
+            <p className="text-xs text-ink-soft">Saldo atual</p>
+            <p className="font-semibold text-ink tabular-nums">{formatarQuantidade(produto.balanceMilli, produto.unit)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-ink-soft">Saldo depois</p>
+            <p className={`font-semibold tabular-nums ${depois !== null && depois < 0 ? "text-[color:var(--color-danger)]" : "text-ink"}`}>
+              {depois === null ? "—" : depois < 0 ? "Saldo insuficiente" : formatarQuantidade(depois, produto.unit)}
+            </p>
+          </div>
+        </div>
+      )}
       <Campo rotulo={motivoObrigatorio(tipoValido) ? "Motivo" : "Observação (opcional)"} htmlFor="mov-motivo" erro={erros.motivo}>
         <input id="mov-motivo" className={CLASSE_CAMPO} maxLength={300} value={motivo} disabled={incerto} onChange={(e) => setMotivo(e.target.value)} />
       </Campo>
