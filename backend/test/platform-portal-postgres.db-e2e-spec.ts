@@ -422,6 +422,8 @@ describe.skipIf(!url)('portal da plataforma pela API contra PostgreSQL descartá
         403,
         { requestKey: chave(), expectedCurrentCents: null, amountCents: 100 },
       ],
+      ['PUT /platform/catalog/essential', '/platform/catalog/essential', 403, { requestKey: chave(), expected: { name: 'A', description: 'B', priceCents: null }, name: 'Tentativa', description: 'Tentativa de edição', priceCents: 100 }],
+      ['PUT /platform/catalog/addons/:code', '/platform/catalog/addons/COMISSOES', 403, { requestKey: chave(), expected: { name: 'A', description: 'B', priceCents: null }, name: 'Tentativa', description: 'Tentativa de edição', priceCents: 100 }],
       ['GET /platform/establishments/:tenantId/subscription', `/platform/establishments/${t}/subscription`, 403],
       [
         'PUT /platform/establishments/:tenantId/subscription',
