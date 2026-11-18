@@ -59,7 +59,13 @@ export default function NovoEstabelecimentoPage() {
 
   const centavos = ajustando && form.valor.trim() ? centavosDe(form.valor) : null;
   const valorInvalido = ajustando && form.valor.trim() !== "" && centavos === null;
-  const escolha = calcularEscolha(dados.basePriceCents, dados.addons, adicionais, { centavos, motivo: form.motivo });
+  const escolha = calcularEscolha(
+    dados.basePriceCents,
+    dados.addons,
+    adicionais,
+    { centavos, motivo: form.motivo },
+    dados.essential.name,
+  );
   const limite = validarLimite(form.limite, null);
   const mostrarErroDoLimite = form.limite.trim() !== "";
   const revisao = revisarAssinatura({
@@ -70,6 +76,7 @@ export default function NovoEstabelecimentoPage() {
     limite: limite.valor ?? 0,
     limiteAtual: null,
     conversao: null,
+    nomeEssencial: dados.essential.name,
   });
   const pronto = !valorInvalido && limite.valor !== null && escolha.pendencias.length === 0;
 
@@ -137,7 +144,7 @@ export default function NovoEstabelecimentoPage() {
                 />
               </CartaoCorpo>
             </Cartao>
-            <EssencialIncluido basePriceCents={dados.basePriceCents} />
+            <EssencialIncluido essencial={dados.essential} />
             <EscolhaDeAdicionais adicionais={dados.addons} selecionados={adicionais} aoAlternar={alternar} />
             <Cartao>
               <CartaoCorpo className="grid gap-4 sm:grid-cols-2">
@@ -158,7 +165,10 @@ export default function NovoEstabelecimentoPage() {
             </Cartao>
           </div>
           <div className="min-w-0 space-y-4">
-            <ResumoDaAssinatura nome={form.businessName} basePriceCents={dados.basePriceCents} escolha={escolha} limite={form.limite}>
+            <ResumoDaAssinatura
+              nome={form.businessName}
+              nomeEssencial={dados.essential.name}
+              basePriceCents={dados.basePriceCents} escolha={escolha} limite={form.limite}>
               {ajustando && (
                 <CampoValorNegociado
                   valor={form.valor}

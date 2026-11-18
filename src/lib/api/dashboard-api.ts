@@ -46,8 +46,9 @@ export interface PainelDoEstabelecimento {
     paidTotalCents: number;
     averageTicketCents: number | null;
   } | null;
-  /** Ausente numa API anterior (indicadores sempre presentes). */
-  indicators?: { contracted: boolean };
+  /** Ausente numa API anterior (indicadores sempre presentes). `addonName`:
+   * nome atual do adicional no catálogo (ausente numa API anterior). */
+  indicators?: { contracted: boolean; addonName?: string | null };
   plan: {
     name: string;
     /** `null`: sem limite contratual de profissionais. */
@@ -114,6 +115,9 @@ export function ehPainel(v: unknown): v is PainelDoEstabelecimento {
   const financeiro = p.finance as Record<string, unknown> | undefined;
   const indicadores = p.indicators as Record<string, unknown> | undefined;
   if (indicadores !== undefined && (typeof indicadores !== "object" || indicadores === null || typeof indicadores.contracted !== "boolean")) {
+    return false;
+  }
+  if (indicadores?.addonName !== undefined && indicadores.addonName !== null && typeof indicadores.addonName !== "string") {
     return false;
   }
   const semIndicadores = indicadores?.contracted === false;

@@ -56,7 +56,9 @@ export type AdminAuditAction =
   // Assinatura modular e limite de usuários (migration ModularSubscription).
   | 'SUBSCRIPTION_CHANGED'
   | 'TEAM_LIMIT_CHANGED'
-  | 'ADDON_PRICE_CHANGED';
+  | 'ADDON_PRICE_CHANGED'
+  // Edição do catálogo modular (migration CatalogItemEdit).
+  | 'CATALOG_ITEM_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

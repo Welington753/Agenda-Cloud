@@ -32,6 +32,7 @@ import {
   currentBasePrice,
   ensureModularPlan,
   loadAddonCatalog,
+  loadEssential,
   MODULAR_PLAN_ID,
   modularRefusal,
   type AddonModule,
@@ -198,9 +199,10 @@ export async function writeSubscriptionVersion(
   const { actor, tenant, choice, now } = input;
   await ensureModularPlan(manager);
   const catalog = await loadAddonCatalog(manager);
+  const essencial = await loadEssential(manager);
   let quote: SubscriptionQuote;
   try {
-    quote = quoteSubscription(await currentBasePrice(manager), catalog, choice);
+    quote = quoteSubscription(essencial.priceCents, catalog, choice, essencial.name);
     assertLimitCoversUsage(choice.teamUserLimit, await staffSeatUsage(manager, tenant.id, choice.teamUserLimit, now));
   } catch (erro) {
     return regra(erro);
@@ -329,7 +331,7 @@ export async function writeSubscriptionVersion(
       summary:
         `Assinatura de ${tenant.name}, versão ${versao}` +
         (input.creation ? ' (criação)' : convertendo ? ' (conversão do plano anterior)' : '') +
-        `: Agendamento essencial${nomes.length ? ` + ${nomes.join(', ')}` : ''}, ` +
+        `: ${essencial.name}${nomes.length ? ` + ${nomes.join(', ')}` : ''}, ` +
         `${reais(quote.contractedTotalCents)}/mês` +
         (quote.negotiated ? ` (catálogo ${reais(quote.catalogTotalCents)}; motivo: ${quote.reason})` : '') +
         `, limite de ${quote.teamUserLimit} usuário(s) da equipe. ` +
@@ -381,6 +383,8 @@ export class SubscriptionService {
     return this.read(actorId, async (manager, actor) => ({
       basePriceCents: await currentBasePrice(manager),
       basePlanId: MODULAR_PLAN_ID,
+      // Nome, descrição e preço atuais do essencial (editáveis aqui).
+      essential: await loadEssential(manager),
       addons: await loadAddonCatalog(manager),
       history: (
         await manager.query<
@@ -430,7 +434,7 @@ export class SubscriptionService {
         enabledAddons: await enabledAddons(manager, tenantId, catalog),
         current: await currentVersion(manager, tenantId),
         history: await listSubscriptionVersions(manager, tenantId),
-        catalog: { basePriceCents: await currentBasePrice(manager), addons: catalog },
+        catalog: { basePriceCents: await currentBasePrice(manager), essential: await loadEssential(manager), addons: catalog },
         conversion: contrato ? { previousContract: contrato, requiresCycleChange: isQuarterly(contrato) } : null,
         canManage: actor.caps.manageEstablishmentLifecycle,
       };

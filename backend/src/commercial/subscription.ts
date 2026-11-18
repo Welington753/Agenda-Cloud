@@ -9,7 +9,7 @@
 // - Valor contratado diferente do catálogo exige motivo.
 // - Vigência imediata, sem cobrança retroativa nem proporcional: a versão só
 //   define o valor recorrente dos PRÓXIMOS períodos registrados.
-import type { AddonModule } from './modular-plan.js';
+import { MODULAR_PLAN_NAME, type AddonModule } from './modular-plan.js';
 
 export class SubscriptionRuleError extends Error {
   constructor(
@@ -43,11 +43,13 @@ export function quoteSubscription(
   baseCents: number | null,
   catalog: readonly AddonModule[],
   choice: SubscriptionChoice,
+  /** Nome atual do essencial no catálogo (só para a mensagem). */
+  baseName: string = MODULAR_PLAN_NAME,
 ): SubscriptionQuote {
   if (baseCents === null) {
     throw new SubscriptionRuleError(
       'PRECO_BASE_PENDENTE',
-      'O preço do Agendamento essencial ainda não foi definido. Defina em Planos e adicionais antes de contratar.',
+      `O preço de ${baseName} ainda não foi definido. Defina em Planos e adicionais antes de contratar.`,
     );
   }
   const codigos = [...new Set(choice.addons)].sort();

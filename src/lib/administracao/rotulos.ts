@@ -93,6 +93,7 @@ export const ACOES_HISTORICO: Record<string, string> = {
   CONTRACT_PRICE_CHANGED: "Valor contratado alterado",
   ACCESS_NO_EXPIRY_GRANTED: "Acesso sem vencimento concedido",
   ACCESS_NO_EXPIRY_REVOKED: "Acesso sem vencimento retirado",
+  CATALOG_ITEM_CHANGED: "Catálogo modular alterado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

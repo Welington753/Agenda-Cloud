@@ -24,6 +24,8 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   archiveEstablishmentSchema,
   addonPriceSchema,
+  catalogItemSchema,
+  type CatalogItemDto,
   changeSubscriptionSchema,
   teamLimitSchema,
   type AddonPriceDto,
@@ -74,6 +76,7 @@ import { AccessCorrectionService } from './access-correction.service.js';
 import { NoExpiryService } from './no-expiry.service.js';
 import { PricingService } from './pricing.service.js';
 import { SubscriptionService } from './subscription.service.js';
+import { ModularCatalogService } from './modular-catalog.service.js';
 import type { BillingCycle } from '../commercial/access-periods.js';
 
 const tenantIdPipe = new ZodValidationPipe(establishmentIdSchema);
@@ -94,6 +97,7 @@ export class PlatformController {
     private readonly noExpiry: NoExpiryService,
     private readonly pricing: PricingService,
     private readonly subscriptions: SubscriptionService,
+    private readonly catalog: ModularCatalogService,
   ) {}
 
   /** Sem o guard do segundo fator: diz à tela o estado dele, e as
@@ -332,6 +336,28 @@ export class PlatformController {
     @Body(new ZodValidationPipe(addonPriceSchema)) dto: AddonPriceDto,
   ) {
     return this.subscriptions.setAddonPrice(request.auth.userId, request.auth.sessionId, code, dto);
+  }
+
+  /** Edição do catálogo modular (só em Planos e adicionais): nome, descrição
+   * e preço mensal padrão do essencial ou de um adicional. Não reajusta
+   * assinatura, pagamento nem período. */
+  @Put('catalog/essential')
+  @Header('Cache-Control', 'private, no-store')
+  editEssential(
+    @Req() request: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(catalogItemSchema)) dto: CatalogItemDto,
+  ) {
+    return this.catalog.editEssential(request.auth.userId, request.auth.sessionId, dto);
+  }
+
+  @Put('catalog/addons/:code')
+  @Header('Cache-Control', 'private, no-store')
+  editAddon(
+    @Req() request: AuthenticatedRequest,
+    @Param('code', new ZodValidationPipe(addonCodeParamSchema)) code: string,
+    @Body(new ZodValidationPipe(catalogItemSchema)) dto: CatalogItemDto,
+  ) {
+    return this.catalog.editAddon(request.auth.userId, request.auth.sessionId, code, dto);
   }
 
   @Get('establishments/:tenantId/subscription')

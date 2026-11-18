@@ -33,7 +33,11 @@ export function modularRefusal(): ConflictException {
 }
 
 export const MODULAR_PLAN_CODE = 'modular';
+/** Nome e descrição com que a linha do plano nasce. Depois, os atuais vêm
+ * de `plans` (editáveis em Planos e adicionais; ver `loadEssential`). */
 export const MODULAR_PLAN_NAME = 'Agendamento essencial';
+export const MODULAR_PLAN_DESCRIPTION =
+  'Agenda, link de agendamento, profissionais, serviços, clientes, equipe e recebimentos.';
 
 /** O que o essencial libera sozinho: agenda, link público, profissionais,
  * clientes, equipe (controlada pelo limite de usuários) e recebimentos
@@ -60,7 +64,7 @@ export async function ensureModularPlan(manager: EntityManager): Promise<void> {
       MODULAR_PLAN_ID,
       MODULAR_PLAN_CODE,
       MODULAR_PLAN_NAME,
-      'Agenda, link de agendamento, profissionais, serviços, clientes, equipe e recebimentos.',
+      MODULAR_PLAN_DESCRIPTION,
     ],
   );
   for (const key of MODULAR_BASE_FEATURES) {
@@ -103,4 +107,28 @@ export async function currentBasePrice(manager: EntityManager): Promise<number |
     [MODULAR_PLAN_ID],
   );
   return linha ? Number(linha.amount_cents) : null;
+}
+
+export interface EssentialItem {
+  planId: string;
+  name: string;
+  description: string;
+  /** Preço mensal padrão em vigor; `null`: pendente. */
+  priceCents: number | null;
+}
+
+/** Agendamento essencial como o catálogo o mostra hoje: nome e descrição
+ * atuais da linha do plano (ou os de nascimento, se ela ainda não existe) e
+ * o preço padrão em vigor. */
+export async function loadEssential(manager: EntityManager): Promise<EssentialItem> {
+  const [plano] = await manager.query<{ name: string; short_description: string }[]>(
+    'SELECT name, short_description FROM plans WHERE id = $1',
+    [MODULAR_PLAN_ID],
+  );
+  return {
+    planId: MODULAR_PLAN_ID,
+    name: plano?.name ?? MODULAR_PLAN_NAME,
+    description: plano?.short_description ?? MODULAR_PLAN_DESCRIPTION,
+    priceCents: await currentBasePrice(manager),
+  };
 }

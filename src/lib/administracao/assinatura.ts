@@ -24,9 +24,23 @@ export interface Adicional {
   priceCents: number | null;
 }
 
+/** Nome com que o essencial nasce; a tela usa sempre o atual, vindo da API. */
+export const NOME_ESSENCIAL_PADRAO = "Agendamento essencial";
+
+/** Agendamento essencial como está no catálogo agora (editável só em Planos e
+ * adicionais). */
+export interface ItemEssencial {
+  planId: string;
+  name: string;
+  description: string;
+  /** Preço mensal padrão em vigor; `null`: a definir (pendente). */
+  priceCents: number | null;
+}
+
 export interface CatalogoAssinatura {
   basePriceCents: number | null;
   basePlanId: string;
+  essential: ItemEssencial;
   addons: Adicional[];
   history: {
     id: string;
@@ -85,7 +99,7 @@ export interface VisaoAssinatura {
   enabledAddons: string[];
   current: VersaoAssinatura | null;
   history: VersaoAssinatura[];
-  catalog: { basePriceCents: number | null; addons: Adicional[] };
+  catalog: { basePriceCents: number | null; essential: ItemEssencial; addons: Adicional[] };
   conversion: { previousContract: ContratoAnterior; requiresCycleChange: boolean } | null;
   canManage: boolean;
 }
@@ -106,6 +120,10 @@ function ehAdicional(v: unknown): v is Adicional {
     DISPONIBILIDADES.includes(v.availability as string) &&
     talvez(inteiro)(v.priceCents)
   );
+}
+
+function ehEssencial(v: unknown): v is ItemEssencial {
+  return objeto(v) && texto(v.planId) && texto(v.name) && texto(v.description) && talvez(inteiro)(v.priceCents);
 }
 
 function ehVersao(v: unknown): v is VersaoAssinatura {
@@ -136,6 +154,7 @@ export function ehCatalogoAssinatura(v: unknown): v is CatalogoAssinatura {
     objeto(v) &&
     talvez(inteiro)(v.basePriceCents) &&
     texto(v.basePlanId) &&
+    ehEssencial(v.essential) &&
     Array.isArray(v.addons) &&
     v.addons.every(ehAdicional) &&
     Array.isArray(v.history) &&
@@ -161,6 +180,7 @@ export function ehVisaoAssinatura(v: unknown): v is VisaoAssinatura {
     v.history.every(ehVersao) &&
     objeto(v.catalog) &&
     talvez(inteiro)(v.catalog.basePriceCents) &&
+    ehEssencial(v.catalog.essential) &&
     Array.isArray(v.catalog.addons) &&
     v.catalog.addons.every(ehAdicional) &&
     (v.conversion === null || (objeto(v.conversion) && typeof v.conversion.requiresCycleChange === "boolean")) &&
@@ -189,9 +209,10 @@ export function calcularEscolha(
   adicionais: readonly Adicional[],
   selecionados: readonly string[],
   combinado: { centavos: number | null; motivo: string } = { centavos: null, motivo: "" },
+  nomeEssencial: string = NOME_ESSENCIAL_PADRAO,
 ): Escolha {
   const pendencias: string[] = [];
-  if (baseCents === null) pendencias.push("O preço do Agendamento essencial ainda não foi definido em Planos e adicionais.");
+  if (baseCents === null) pendencias.push(`O preço de ${nomeEssencial} ainda não foi definido em Planos e adicionais.`);
   const itens: Escolha["itens"] = [];
   for (const code of selecionados) {
     const a = adicionais.find((x) => x.code === code);
@@ -244,11 +265,13 @@ export function revisarAssinatura(entrada: {
   limite: number;
   limiteAtual: number | null;
   conversao: VisaoAssinatura["conversion"];
+  /** Nome atual do essencial no catálogo. */
+  nomeEssencial?: string;
 }): Revisao {
   const { escolha } = entrada;
   const linhas: string[] = [];
   const nomes = escolha.itens.map((i) => i.name);
-  linhas.push(`Agendamento essencial${nomes.length ? ` + ${nomes.join(", ")}` : " (sem adicionais)"}.`);
+  linhas.push(`${entrada.nomeEssencial ?? NOME_ESSENCIAL_PADRAO}${nomes.length ? ` + ${nomes.join(", ")}` : " (sem adicionais)"}.`);
   if (escolha.totalContratadoCents !== null) {
     linhas.push(`Novo valor recorrente: ${reais(escolha.totalContratadoCents)}/mês.`);
     if (escolha.negociado && escolha.totalCatalogoCents !== null) {

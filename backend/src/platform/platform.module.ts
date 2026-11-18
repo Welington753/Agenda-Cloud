@@ -8,6 +8,7 @@ import { AccessCorrectionService } from './access-correction.service.js';
 import { NoExpiryService } from './no-expiry.service.js';
 import { PricingService } from './pricing.service.js';
 import { SubscriptionService } from './subscription.service.js';
+import { ModularCatalogService } from './modular-catalog.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -20,6 +21,7 @@ import { SubscriptionService } from './subscription.service.js';
     NoExpiryService,
     PricingService,
     SubscriptionService,
+    ModularCatalogService,
   ],
 })
 export class PlatformModule {}

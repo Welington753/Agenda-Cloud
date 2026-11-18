@@ -74,7 +74,9 @@ export interface DashboardView {
   upcoming: ProximoAtendimento[];
   /** Recebimentos registrados no período (ver `resumoFinanceiro`). */
   finance: Awaited<ReturnType<typeof resumoFinanceiro>> | null;
-  indicators: { contracted: boolean };
+  /** `addonName`: nome atual, no catálogo, do adicional que libera os
+   * indicadores (editável em Planos e adicionais); `null` se não houver. */
+  indicators: { contracted: boolean; addonName: string | null };
   plan: {
     name: string;
     maxProfessionals: number | null;
@@ -166,6 +168,9 @@ export class DashboardService {
       );
 
       const indicadores = await featureEnabled(manager, tenant, FeatureKey.RELATORIOS);
+      const [adicionalDosIndicadores] = await manager.query<{ name: string }[]>(
+        `SELECT name FROM addon_modules WHERE feature_key = 'RELATORIOS'`,
+      );
       const financeiro = indicadores ? await resumoFinanceiro(manager, tenant, periodo) : null;
       const vagas = await staffSeatUsage(manager, tenant, Number(dadosDoTenant.team_user_limit), now);
       const profissionaisAtivos = await activeProfessionals(manager, tenant);
@@ -188,7 +193,7 @@ export class DashboardService {
           : null,
         pendingRequests: pendentes.total,
         finance: financeiro,
-        indicators: { contracted: indicadores },
+        indicators: { contracted: indicadores, addonName: adicionalDosIndicadores?.name ?? null },
         upcoming: proximos.map((linha) => {
           const inicio = new Date(linha.start_at);
           return {

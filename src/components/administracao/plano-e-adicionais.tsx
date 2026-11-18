@@ -156,10 +156,13 @@ function Editor({
 
   const centavos = ajustando && valor.trim() ? centavosDe(valor) : null;
   const valorInvalido = ajustando && valor.trim() !== "" && centavos === null;
-  const escolha = calcularEscolha(visao.catalog.basePriceCents, visao.catalog.addons, selecionados, {
-    centavos,
-    motivo,
-  });
+  const escolha = calcularEscolha(
+    visao.catalog.basePriceCents,
+    visao.catalog.addons,
+    selecionados,
+    { centavos, motivo },
+    visao.catalog.essential.name,
+  );
   const validacao = validarLimite(limite, visao.seats);
   const conversao = visao.modular ? null : visao.conversion;
   const revisao = revisarAssinatura({
@@ -170,6 +173,7 @@ function Editor({
     limite: validacao.valor ?? 0,
     limiteAtual: visao.teamUserLimit.value,
     conversao,
+    nomeEssencial: visao.catalog.essential.name,
   });
   const exigeCiclo = conversao?.requiresCycleChange === true;
   const podeRevisar = visao.canManage && !valorInvalido && validacao.valor !== null && escolha.pendencias.length === 0;
@@ -202,7 +206,7 @@ function Editor({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
       <div className="min-w-0 space-y-6">
-        <EssencialIncluido basePriceCents={visao.catalog.basePriceCents} />
+        <EssencialIncluido essencial={visao.catalog.essential} />
         <EscolhaDeAdicionais
           adicionais={visao.catalog.addons}
           selecionados={selecionados}
@@ -217,7 +221,7 @@ function Editor({
         </Cartao>
       </div>
       <div className="min-w-0 space-y-4">
-        <ResumoDaAssinatura nome={nome} basePriceCents={visao.catalog.basePriceCents} escolha={escolha} limite={limite}>
+        <ResumoDaAssinatura nome={nome} nomeEssencial={visao.catalog.essential.name} basePriceCents={visao.catalog.basePriceCents} escolha={escolha} limite={limite}>
           {ajustando && (
             <CampoValorNegociado
               valor={valor}

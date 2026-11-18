@@ -43,7 +43,7 @@ function Historico({ visao }: { visao: VisaoAssinatura }) {
                 Versão {v.version} · desde {new Date(v.effectiveAt).toLocaleString("pt-BR")}
               </p>
               <p>
-                Agendamento essencial{v.items.length ? ` + ${v.items.map((i) => i.name).join(", ")}` : ""} ·{" "}
+                {visao.catalog.essential.name}{v.items.length ? ` + ${v.items.map((i) => i.name).join(", ")}` : ""} ·{" "}
                 {reais(v.contractedTotalCents)}/mês
                 {v.negotiated ? ` (catálogo ${reais(v.catalogTotalCents)}; motivo: ${v.reason ?? "—"})` : ""} · limite{" "}
                 {v.teamUserLimit}

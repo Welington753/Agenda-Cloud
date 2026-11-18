@@ -32,6 +32,10 @@ describe("calcularEscolha", () => {
   it("preço pendente e motivo faltando impedem salvar", () => {
     expect(calcularEscolha(null, adicionais, []).pendencias[0]).toMatch(/Agendamento essencial/);
     expect(calcularEscolha(2990, adicionais, ["COMISSOES"]).pendencias[0]).toMatch(/Comissões/);
+    // Com o nome atual do essencial, renomeado no catálogo.
+    expect(calcularEscolha(null, adicionais, [], undefined, "Agenda base").pendencias[0]).toBe(
+      "O preço de Agenda base ainda não foi definido em Planos e adicionais.",
+    );
     const negociado = calcularEscolha(2990, adicionais, ["INDICADORES"], { centavos: 3500, motivo: "" });
     expect(negociado).toMatchObject({ negociado: true, totalContratadoCents: 3500 });
     expect(negociado.pendencias).toContain("Informe o motivo do valor negociado.");
@@ -60,6 +64,8 @@ describe("revisarAssinatura", () => {
   it("mostra o novo valor recorrente, o limite e que não há cobrança retroativa nem proporcional", () => {
     const r = revisarAssinatura({ ...base, escolha: calcularEscolha(2990, adicionais, ["INDICADORES"]), limite: 5 });
     expect(r.linhas).toContain("Agendamento essencial + Indicadores avançados.");
+    const renomeado = revisarAssinatura({ ...base, escolha: calcularEscolha(2990, adicionais, ["INDICADORES"]), limite: 5, nomeEssencial: "Agenda base" });
+    expect(renomeado.linhas).toContain("Agenda base + Indicadores avançados.");
     expect(r.linhas.join(" ")).toMatch(/Novo valor recorrente: R\$\s?39,80\/mês/);
     expect(r.linhas.join(" ")).toMatch(/Limite de usuários da equipe: 5\. O limite não muda a mensalidade/);
     expect(r.avisos[0]).toMatch(/sem cobrança retroativa nem proporcional|Não há cobrança retroativa nem proporcional/);
@@ -100,7 +106,10 @@ describe("revisarAssinatura", () => {
 
 describe("contratos", () => {
   it("aceita catálogo e visão válidos e recusa forma incompleta", () => {
-    expect(ehCatalogoAssinatura({ basePriceCents: null, basePlanId: "plan_modular", addons: adicionais, history: [], canManage: true })).toBe(true);
+    const essential = { planId: "plan_modular", name: "Agendamento essencial", description: "Agenda e equipe.", priceCents: null };
+    expect(ehCatalogoAssinatura({ basePriceCents: null, basePlanId: "plan_modular", essential, addons: adicionais, history: [], canManage: true })).toBe(true);
+    // Sem o essencial (API anterior a esta tela), a forma é recusada.
+    expect(ehCatalogoAssinatura({ basePriceCents: null, basePlanId: "plan_modular", addons: adicionais, history: [], canManage: true })).toBe(false);
     expect(ehCatalogoAssinatura({ basePriceCents: -1, basePlanId: "x", addons: [], history: [], canManage: true })).toBe(false);
     const visao = {
       tenantId: "t1", updatedAt: "2026-11-17T00:00:00.000Z", status: "ACTIVE", modular: false,
@@ -108,9 +117,10 @@ describe("contratos", () => {
       teamUserLimit: { value: 5, source: "PLAN" },
       seats: { limit: 5, activeAccesses: 2, pendingInvites: 1, suspendedAccesses: 0, used: 3, available: 2 },
       enabledAddons: ["INDICADORES"], current: null, history: [],
-      catalog: { basePriceCents: 2990, addons: adicionais }, conversion: null, canManage: true,
+      catalog: { basePriceCents: 2990, essential: { ...essential, priceCents: 2990 }, addons: adicionais }, conversion: null, canManage: true,
     };
     expect(ehVisaoAssinatura(visao)).toBe(true);
     expect(ehVisaoAssinatura({ ...visao, seats: { limit: 5 } })).toBe(false);
+    expect(ehVisaoAssinatura({ ...visao, catalog: { basePriceCents: 2990, addons: adicionais } })).toBe(false);
   });
 });

@@ -188,6 +188,7 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
     // O tema não libera nem esconde área: o menu do dono é o mesmo no fim.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/conta/visao-geral");
+    await expect(navConta(page).getByRole("link")).toHaveCount(menuDoDono.length);
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual(menuDoDono);
 
     // Gerente: só as áreas concedidas, nos mesmos grupos.
@@ -213,6 +214,7 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
     ]);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/conta/clientes");
+    await expect(navConta(page).getByRole("link")).toHaveCount(menuDoGerente.length);
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual(menuDoGerente);
 
     // Funcionário: lista curta (Minha agenda e Configurações), sem grupos.
@@ -224,12 +226,15 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
     await page.goto("/conta/minha-agenda");
     await expect(page.getByRole("heading", { name: "Minha agenda" })).toBeVisible();
     await expect(navConta(page).getByText("Atendimento", { exact: true })).toHaveCount(0);
+    await expect(navConta(page).getByRole("link")).toHaveCount(2);
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual(["Minha agenda", "Configurações"]);
     await conferirLocais(page, "conta", "conta-funcionario", [
       { nome: "minha-agenda", abrir: abrirInicio("/conta/minha-agenda", /\/conta\/minha-agenda$/) },
     ]);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/conta/minha-agenda");
+    // Espera o menu montar: `allTextContents` não espera nada.
+    await expect(navConta(page).getByRole("link")).toHaveCount(2);
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual(["Minha agenda", "Configurações"]);
     await db.query("UPDATE memberships SET role = 'DONO', professional_id = NULL WHERE tenant_id = $1 AND user_id = $2", [
       tenantId,

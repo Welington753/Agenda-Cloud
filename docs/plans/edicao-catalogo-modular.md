@@ -1,0 +1,112 @@
+# Edição do catálogo modular em "Planos e adicionais"
+
+O proprietário da plataforma edita, **só na página "Planos e adicionais" do portal**:
+
+- o nome, a descrição e o preço mensal padrão do **Agendamento essencial**;
+- o nome, a descrição e o preço mensal padrão de cada **adicional**, inclusive os em desenvolvimento e os planejados.
+
+Branch `feat/portal-catalogo-modular-edicao`, a partir da integration em `ac67d06`.
+
+## 1. Decisões do responsável (18/11/2026)
+
+- **Onde se edita:** cada cartão da página tem a ação "Editar". Na criação e na ficha do estabelecimento, nome e descrição são só leitura, sem campo, atalho ou ação para mudar o catálogo.
+- **O que continua igual na ficha:** a escolha de adicionais, o limite de usuários e o valor contratado por estabelecimento seguem as regras existentes. Esses ajustes não mudam o catálogo.
+- **Quem pode:** só os proprietários da plataforma (papel `MASTER_OWNER`), conferido pela API. O código não tem nome, e-mail nem id fixo, e nenhum papel de conta foi mudado.
+- **Adicionais em desenvolvimento ou planejados:** são editáveis, mantêm a disponibilidade e continuam sem poder ser contratados.
+- **Preço padrão:** mudar não reajusta contrato, pagamento nem período pago.
+- **Renomear:** não muda o código, o recurso, as permissões, os vínculos nem a disponibilidade. O essencial continua sendo a base obrigatória, mesmo renomeado.
+- **Preços:** os já cadastrados são preservados. Nenhum valor de exemplo é gravado.
+- **Planos antigos:** ficam como estão. Não são editados, apagados nem convertidos.
+- **Histórico administrativo:** registra quem mudou, quando, e os valores anteriores e novos.
+
+## 2. Como funciona
+
+- **Rotas novas:**
+  - `PUT /platform/catalog/essential`
+  - `PUT /platform/catalog/addons/:code`
+
+  As duas recebem `requestKey`, `expected` (nome, descrição e preço que a tela leu), `name`, `description`, `priceCents` e `reason` opcional. O corpo é estrito: disponibilidade, código, recurso e estabelecimento são recusados com 400.
+
+  Serviço: `backend/src/platform/modular-catalog.service.ts`. Regras puras: `backend/src/commercial/catalog-edit.ts`.
+
+- **Permissão:**
+  - Usa `lifecycleActor`: `MASTER_OWNER` ativo, com senha confirmada há pouco nesta sessão. É a mesma regra das rotas de preço que já existiam (`PUT /platform/plans/:planId/prices/:cycle` e `PUT /platform/addons/:code/price`), que continuam iguais.
+  - Outro papel recebe 403. Sem a confirmação de senha, a resposta é `REAUTENTICACAO_NECESSARIA`.
+  - Toda rota `/platform` também passa pelo guard do segundo fator.
+
+- **Onde cada dado fica:**
+  - Nome e descrição: na própria linha (`plans` do `plan_modular` ou `addon_modules`).
+  - Preço: continua sendo uma linha **nova** em `plan_prices` (mensal) ou `addon_module_prices`. O histórico de preços fica inteiro.
+  - Nunca são tocados: `feature_key`, `availability`, `sort_order`, `plan_features`, `tenant_feature_overrides`, `tenant_subscriptions` e itens, `tenant_contract_prices` e `tenant_access_periods`.
+
+- **Trava:** a edição trava a linha do essencial e depois todas as linhas de adicionais, na mesma ordem das rotas de preço.
+
+- **Recusas e repetição:**
+
+  | Situação | Resposta |
+  |---|---|
+  | Pedido repetido com o estado já igual ao pedido (rede caiu, envio duplo) | `changed: false`, sem gravar de novo |
+  | Leitura desatualizada | 409 `ALTERADO_POR_OUTRA_TELA` |
+  | Nome igual ao de outro item, sem diferença de maiúsculas, acentos ou espaços | 409 `NOME_REPETIDO` |
+  | Preço definido voltando a pendente | 409 `PRECO_OBRIGATORIO` |
+  | Mesma chave já usada num preço com outro conteúdo | 409 `CHAVE_REPETIDA` |
+
+- **Histórico administrativo:** a ação nova `CATALOG_ITEM_CHANGED` ("Catálogo modular alterado") guarda:
+  - em `previous_data` e `new_data`: item, nome, descrição e preço;
+  - também: quem fez e quando;
+  - o resumo, que diz que assinaturas, pagamentos e períodos não mudam.
+
+  Mudança e registro entram na mesma transação.
+
+- **Linha do essencial:** se `plan_modular` ainda não existir, a edição do essencial a cria, como já fazia o primeiro preço base (`ensureModularPlan`).
+
+- **Nomes atuais nas telas:**
+  - `GET /platform/addons` e a aba "Plano e adicionais" trazem `essential` (nome, descrição e preço atuais, via `loadEssential`).
+  - A criação, a aba, a revisão, o resumo e o histórico de versões usam esse nome. Os adicionais já vinham de `addon_modules`.
+  - A Visão geral do dono sem o adicional de indicadores mostra o nome atual dele (`indicators.addonName`).
+  - Versões antigas guardam código e preço da data. O nome exibido é o atual, porque o código não muda.
+  - Os resumos antigos do histórico administrativo ficam com o texto da época.
+
+## 3. Migration 20: `CatalogItemEdit1793923200000`
+
+- **O que faz:** só `ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'CATALOG_ITEM_CHANGED'`. Nenhuma tabela, coluna ou linha muda.
+- **Down:** vazio, porque o PostgreSQL não remove valor de enum.
+- **API anterior (`ac67d06`) num banco com 20:** sobe. A checagem de inicialização exige as migrations do manifesto dela e não recusa uma a mais. A API anterior nunca grava esse valor.
+- **Web anterior com a API nova:** os validadores do web anterior aceitam campos a mais. As rotas novas só são chamadas pelo web novo.
+- **Ordem de publicação:** migration (backup novo, restauração conferida, ensaio na cópia) → API → web, no mesmo SHA.
+
+## 4. Testes
+
+- **Unitários:**
+  - backend: `commercial/catalog-edit.spec.ts` e spec da migration;
+  - web: `src/lib/administracao/catalogo-modular.test.ts` e `assinatura.test.ts` (validadores com `essential` e nome atual na revisão).
+- **HTTP** (`backend/test/catalogo-modular.e2e-spec.ts`):
+  - corpo estrito nas rotas novas;
+  - 401 sem sessão, e o 403 do serviço chega à resposta;
+  - a aba da ficha e a criação recusam nome, descrição ou preço do catálogo, inclusive por chamada direta.
+- **db-e2e** (`backend/test/catalogo-modular-postgres.db-e2e-spec.ts`):
+  - persistência e histórico (quem, quando, antes e depois);
+  - essencial renomeado nas telas;
+  - planejado editável e não contratável;
+  - preço padrão sem reajuste de versão, contrato, pagamento ou período;
+  - renomear sem mudar código, recurso, liberação nem vínculos;
+  - permissões nas rotas novas e nas rotas de preço antigas (`MASTER_ADMIN`, `MASTER_SUPPORT`, conta comum, sem confirmação de senha);
+  - repetição em paralelo, leitura desatualizada, nome repetido, preço pendente e chave reaproveitada;
+  - criação e alteração da assinatura sem mudar o catálogo.
+
+  A lista de rotas do portal em `platform-portal-postgres` ganhou as duas rotas novas: 403 para todo papel que não é proprietário.
+- **Navegador** (`tests/browser/catalogo-modular-flow.spec.ts`, em `test:browser:administracao`):
+  - "Editar" em cada cartão, Cancelar, validação, nome repetido;
+  - planejado editável e não contratável;
+  - criação e ficha com os nomes atuais e sem edição;
+  - os quatro temas, a 1280 e a 390 px, sem rolagem horizontal.
+
+  `assinatura-modular-flow` passou a usar o "Editar".
+
+## 5. Estado e retomada
+
+**Feito:** API, migration, web, testes e documentação, na branch acima.
+
+**Não feito:** ver o fim desta seção, atualizado a cada checkpoint.
+
+**Só neste computador:** o PostgreSQL descartável dos testes, na pasta temporária da sessão. Nada a recuperar.
