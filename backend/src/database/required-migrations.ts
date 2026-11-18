@@ -34,6 +34,8 @@ import { TenantTestFlag1793664000000 } from '../migrations/1793664000000-TenantT
 import { AdminSecondFactor1793750400000 } from '../migrations/1793750400000-AdminSecondFactor.js';
 import { ModularSubscription1793836800000 } from '../migrations/1793836800000-ModularSubscription.js';
 import { CatalogItemEdit1793923200000 } from '../migrations/1793923200000-CatalogItemEdit.js';
+import { StockEnumValues1794009600000 } from '../migrations/1794009600000-StockEnumValues.js';
+import { StockModule1794096000000 } from '../migrations/1794096000000-StockModule.js';
 
 const MIGRATION_CLASSES = [
   InitialSchema1788782400000,
@@ -56,6 +58,8 @@ const MIGRATION_CLASSES = [
   AdminSecondFactor1793750400000,
   ModularSubscription1793836800000,
   CatalogItemEdit1793923200000,
+  StockEnumValues1794009600000,
+  StockModule1794096000000,
 ] as const;
 
 /** Nomes exigidos, na ordem de aplicação. Mesma regra do TypeORM para o nome

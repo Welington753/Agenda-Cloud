@@ -367,9 +367,9 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
     expect(visao.enabledAddons).toEqual(['INDICADORES']);
     expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods WHERE tenant_id = $1 AND kind = 'PAID'`, [tenantId])).toBe(0);
     expect(await pricingFor(db.manager, tenantId, MODULAR_PLAN_ID, 'MONTHLY')).toMatchObject({ suggestedCents: base + 990, source: 'CONTRACT' });
-    // Módulo planejado não entra, nem com preço.
+    // Módulo ainda não disponível (WhatsApp, em desenvolvimento) não entra.
     const recusa = await erroDe(
-      invites.createEstablishment(master.userId, createEstablishmentSchema.parse({ ...dto, requestKey: chave(), addons: ['ESTOQUE'] })),
+      invites.createEstablishment(master.userId, createEstablishmentSchema.parse({ ...dto, requestKey: chave(), addons: ['WHATSAPP'] })),
     );
     expect(recusa.getResponse?.()?.code).toBe('MODULO_INDISPONIVEL');
   });
