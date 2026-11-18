@@ -104,8 +104,8 @@ describe("tokens do tema 'Azul e branco' (globals.css)", () => {
     const fimMedia = css.indexOf('/* Tema opcional "Azul e branco"');
     expect(fimMedia).toBeGreaterThan(inicioMedia);
     expect(css.slice(inicioMedia, fimMedia)).not.toContain("azul");
-    // A variante `azul:` usa a mesma condição do bloco.
-    expect(css).toContain(`@custom-variant azul (&:where(${seletor} *));`);
+    // Sem variante `azul:`: o tema troca só tokens, nunca classes de layout.
+    expect(css).not.toContain("@custom-variant azul");
   });
 
   it("define os mesmos tokens de cor do tema escuro", () => {

@@ -3,10 +3,11 @@
 // (`tenants.is_test`), e o texto de alcance só afirma o recorte que a API
 // confirmou (`alcanceConfirmado`).
 //
-// `segmentado` / `compacto`: forma do tema "Azul e branco" (Visão geral):
+// `segmentado` / `compacto`: forma da Visão geral, em todos os temas:
 // botões juntos numa barra, resumo curto do alcance com a explicação completa
-// em "Sobre este filtro", e o alcance não confirmado num quadro de aviso. O
-// comportamento, os rótulos e os `data-testid` são os mesmos.
+// em "Sobre este filtro", e o alcance não confirmado num quadro de aviso. A
+// lista de estabelecimentos usa a forma de botões. O comportamento, os
+// rótulos e os `data-testid` são os mesmos.
 import clsx from "clsx";
 import { ChevronRight, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge-base";
@@ -76,7 +77,7 @@ export function TextoDeAlcance({
   compacto = false,
 }: {
   confirmado: EscopoDoDiretorio | null;
-  /** Forma do tema azul: resumo de uma linha e a explicação completa em
+  /** Forma da Visão geral: resumo de uma linha e a explicação completa em
    * "Sobre este filtro"; o alcance não confirmado fica num quadro de aviso,
    * sempre visível. */
   compacto?: boolean;

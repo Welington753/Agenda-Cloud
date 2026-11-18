@@ -107,15 +107,17 @@ test.describe("entrada e navegação do piloto", () => {
     // Estrutura comum: estabelecimento ativo, usuário e página atual marcada.
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(estabelecimento);
     await expect(page.getByTestId("usuario-conectado")).toContainText("Dona Navegação");
+    // Menu agrupado por assunto (Atendimento, Gestão do negócio,
+    // Administração) em qualquer tema.
     const nav = navegacaoDaConta(page);
     expect(await nav.getByRole("link").allTextContents()).toEqual([
       "Visão geral",
       "Agenda",
+      "Clientes",
       "Profissionais",
       "Serviços",
-      "Clientes",
-      "Equipe e acessos",
       "Comissões",
+      "Equipe e acessos",
       "Configurações",
     ]);
     await expect(nav.getByRole("link", { name: "Visão geral", exact: true })).toHaveAttribute("aria-current", "page");

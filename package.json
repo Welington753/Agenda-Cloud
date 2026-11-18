@@ -43,6 +43,7 @@
     "test:browser:push": "playwright test tests/browser/web-push-flow.spec.ts",
     "test:browser:servicos-publicos": "playwright test tests/browser/servicos-publicos-flow.spec.ts",
     "test:browser:aparencia": "playwright test tests/browser/aparencia-e-notificacoes-flow.spec.ts",
+    "test:browser:layout-temas": "playwright test tests/browser/layout-por-tema-flow.spec.ts",
     "test:browser:recuperacao": "playwright test tests/browser/recuperacao-hibernacao-flow.spec.ts",
     "test:browser:agenda-view": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/agenda-view-flow.spec.ts",
     "test:browser:visao-geral": "playwright test --config playwright.relogio-de-teste.config.ts tests/browser/visao-geral-flow.spec.ts",

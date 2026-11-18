@@ -61,11 +61,12 @@ export function ShellPlataforma({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* `azul:`: o menu claro do tema "Azul e branco" precisa de uma borda
-          para se separar do fundo; os temas escuros não a recebem. */}
-      <aside className="sticky top-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 bg-chrome px-4 py-3 text-chrome-ink azul:border-b azul:border-chrome-border md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col md:items-stretch md:gap-0 md:p-0 md:azul:border-r md:azul:border-b-0">
+      {/* Borda do menu em todos os temas, na cor `chrome-border` de cada um:
+          separa o menu claro do fundo no Azul e branco e quase some no menu
+          escuro dos outros. */}
+      <aside className="sticky top-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 bg-chrome px-4 py-3 text-chrome-ink border-b border-chrome-border md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col md:items-stretch md:gap-0 md:p-0 md:border-r md:border-b-0">
         <div className="col-start-1 row-start-1 min-w-0 md:px-5 md:py-6">
-          <Link href={ROTA_ADMINISTRACAO} className={`inline-flex rounded-[var(--radius-control)] azul:[&_svg]:text-accent ${FOCO}`}>
+          <Link href={ROTA_ADMINISTRACAO} className={`inline-flex rounded-[var(--radius-control)] [&_svg]:text-chrome-brand ${FOCO}`}>
             <MarcaTimVix />
           </Link>
           <p

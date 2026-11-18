@@ -738,6 +738,25 @@ jobs:
           eval "$(node backend/scripts/generate-vapid-keys.mjs | sed 's/^/export /')"
           bash .github/scripts/playwright-na-imagem.sh npm run test:browser:aparencia
 
+      # Layout único em todos os temas: portal (menu agrupado, Visão geral,
+      # ficha em abas, Contas e acessos, Planos e adicionais) e /conta (dono,
+      # gerente e funcionário) com a mesma estrutura e as mesmas posições em
+      # Claro, Escuro, Seguir aparelho e Azul e branco, no computador e no
+      # celular, trocando o tema pelo seletor e navegando. Invocação própria
+      # (2 aceites de convite, 1 login).
+      - name: Run single layout across themes (portal and account, desktop and phone; 1 login)
+        id: browser_layout_temas
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/layout-temas
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:layout-temas
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -888,6 +907,19 @@ jobs:
             test-results/aparencia/**/aparencia-*.png
             test-results/aparencia/**/menu-conta-*.png
             test-results/aparencia/**/login-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # Capturas do layout único: cada local do portal e de /conta em cada
+      # tema (claro, escuro, sistema, azul), 1280 e 390 px.
+      - name: Upload single-layout theme screenshots
+        if: always() && steps.browser_layout_temas.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: layout-temas-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/layout-temas/**/portal-*.png
+            test-results/layout-temas/**/conta-*.png
           if-no-files-found: error
           retention-days: 7
 
@@ -1082,6 +1114,7 @@ jobs:
             steps.browser_agenda_view.outcome == 'failure' ||
             steps.browser_agenda_profissional.outcome == 'failure' ||
             steps.browser_visao_geral.outcome == 'failure' ||
+            steps.browser_layout_temas.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -165,7 +165,7 @@ describe("rotuloDoSino", () => {
   });
 });
 
-describe("gruposDaNavegacao (tema Azul e branco)", () => {
+describe("gruposDaNavegacao (menu lateral de dono e gerente, todos os temas)", () => {
   const resumo = (itens: Parameters<typeof gruposDaNavegacao>[0]) =>
     gruposDaNavegacao(itens).map((g) => [g.titulo, g.itens.map((i) => i.rotulo)]);
 

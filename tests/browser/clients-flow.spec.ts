@@ -402,14 +402,15 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("estabelecimento-ativo")).toHaveText(a.businessName);
 
     // ------------------------------------------------ navegação: computador
+    // Menu agrupado por assunto em qualquer tema.
     expect(await nav(page).getByRole("link").allTextContents()).toEqual([
       "Visão geral",
       "Agenda",
+      "Clientes",
       "Profissionais",
       "Serviços",
-      "Clientes",
-      "Equipe e acessos",
       "Comissões",
+      "Equipe e acessos",
       "Configurações",
     ]);
     await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);

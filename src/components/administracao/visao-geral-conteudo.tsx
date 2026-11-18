@@ -1,7 +1,7 @@
-// Visão geral do portal no tema "Azul e branco": mesmos dados, números,
-// links e `data-testid` do arranjo de sempre (page.tsx), em outra
-// organização — três indicadores no topo, "Modalidade do acesso" ao lado de
-// "Atenção" e dos pagamentos, e a lista de estabelecimentos por último.
+// Conteúdo da Visão geral do portal (page.tsx), igual em todos os temas: três
+// indicadores no topo, "Modalidade do acesso" ao lado de "Atenção" e dos
+// pagamentos, e a lista de estabelecimentos por último. O tema escolhido muda
+// só as cores (tokens de globals.css), nunca esta organização.
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
@@ -23,7 +23,7 @@ import {
   rotuloDoTotal,
 } from "./visao-geral-pecas";
 
-export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: EscopoDoDiretorio }) {
+export function ConteudoDaVisaoGeral({ visao, alcance }: { visao: VisaoGeral; alcance: EscopoDoDiretorio }) {
   const e = visao.establishments;
   const rota = (filtro: { filtro?: string; situacao?: string }) => rotaEstabelecimentosFiltrados({ ...filtro, alcance });
   const { attention } = visao;
@@ -31,7 +31,6 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
     <>
       <section aria-label="Estabelecimentos" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Indicador
-          azul
           destaque
           href={rota({})}
           icone={Building2}
@@ -40,7 +39,6 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
           testId="indicador-total"
         />
         <Indicador
-          azul
           href={rota({ filtro: "ACCESS_ALLOWED" })}
           icone={CircleCheck}
           rotulo="Com acesso liberado"
@@ -49,7 +47,6 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
           testId="indicador-liberados"
         />
         <Indicador
-          azul
           href={rota({ filtro: "ACCESS_BLOCKED" })}
           icone={Ban}
           rotulo="Com acesso bloqueado"
@@ -108,7 +105,7 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
           </Cartao>
         </div>
         <div className="lg:col-start-2 lg:row-start-2">
-          <Pagamentos pagamentos={visao.payments} alcance={alcance} azul />
+          <Pagamentos pagamentos={visao.payments} alcance={alcance} />
         </div>
         <Cartao className="lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <CartaoCorpo>
@@ -143,7 +140,7 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
                 Só estabelecimentos em operação com a validade vencida, ausente ou terminando em até 7 dias.
               </p>
             </div>
-            <ItensDeAtencao visao={visao} azul />
+            <ItensDeAtencao visao={visao} />
             {attention.total > attention.items.length && (
               <p className="text-sm text-ink-soft">
                 Mostrando {attention.items.length} de {attention.total}. Os demais estão nas linhas de Atenção acima.
@@ -156,7 +153,7 @@ export function ConteudoAzul({ visao, alcance }: { visao: VisaoGeral; alcance: E
   );
 }
 
-/** Linha do cartão "Atenção" (tema azul): leva à lista filtrada. Número acima
+/** Linha do cartão "Atenção": leva à lista filtrada. Número acima
  * de zero ganha a cor de aviso (ou de erro, quando o acesso já parou). */
 function LinhaDeAtencao({
   href,

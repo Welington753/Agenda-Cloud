@@ -24,6 +24,11 @@
 // escolha manual e sempre clara, também no agendamento público deste
 // navegador (ver globals.css). Nunca é aplicado sozinho: só quem o escolhe no
 // seletor passa a vê-lo; o padrão continua "sistema".
+//
+// TEMA É SÓ PALETA: todos os temas trocam apenas os tokens de cor de
+// globals.css. Estrutura, menus, grupos, abas e o que aparece são os mesmos
+// em qualquer escolha; nenhum componente lê o tema para decidir layout
+// (guarda em layout-independente-do-tema.test.ts).
 
 export type PreferenciaAparencia = "claro" | "escuro" | "sistema" | "azul";
 
