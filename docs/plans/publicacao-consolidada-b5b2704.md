@@ -107,6 +107,27 @@ Só leitura do Render (serviços, deploys e log de inicialização da API). O ba
 
 **Senha do banco do piloto exposta.** Em 18/11/2026 a senha do usuário do banco do piloto apareceu acidentalmente numa captura de tela. Ela é tratada como exposta, e a **rotação ainda não foi feita**. Usam essa senha: `DATABASE_URL` e `DIRECT_URL` no serviço da API do Render e a cópia cifrada da URL direta no PC de operação. Nenhum arquivo do repositório e nenhum segredo do GitHub a usam. Neon, as duas variáveis da API e a cópia de operação precisam ficar sincronizados (procedimento em "Estado e retomada").
 
+### 1.4 Sessão de 18/11/2026 no PC do trabalho, entre 11:00 e 12:00 UTC
+
+**Deploys inesperados, autoria não confirmada.** Às 03:01 UTC, três minutos depois do checkpoint `6c0876c`, alguém disparou deploys manuais de `4585af0` nos dois serviços pelo painel do Render. Eles não estão neste plano e a autoria não foi confirmada.
+
+| Serviço | Deploy | Resultado |
+|---|---|---|
+| API | `dep-dbuha8c9v7es738ini2g` | `update_failed` em `validateEnv` (`Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS`). A API continuou em `8e8577d` (`dep-dbreqklckfvc73e2loag`). Nenhuma migration foi aplicada |
+| Web | `dep-dbuha9g8v5cc7393tn0g` | ficou live. De 03:04 a 11:17 UTC o piloto rodou o par **web `4585af0` com API `8e8577d`**, não validado |
+
+**Correção, autorizada pelo responsável:**
+
+| Item | Resultado |
+|---|---|
+| Releitura antes do deploy | API `8e8577d`, web `4585af0`, Auto-Deploy desligado nos dois, nada em fila |
+| Deploy | web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit (`dep-dbuohgk9v7es7396tnp0`), criado 11:15:14 UTC, live 11:17:41 UTC. API e Auto-Deploy sem mudança |
+| Verificações HTTP sem login | as mesmas da etapa 0, com os mesmos resultados (API `GET /` 200, `/health` 404, web `/login` 200, `auth/me` sem cookie 401, logout com origem estranha 403, manifest do portal 200). **Não comprovam login autenticado** |
+| Destino das variáveis do banco na API (sem ler credencial) | `DATABASE_URL` (pooler) e `DIRECT_URL` (direta) apontam para o endpoint do piloto, com o mesmo usuário e `sslmode=verify-full`. Nenhuma aponta para o endpoint proibido |
+| `pilot:check-database` com `PILOT_EXPECT=after-commission-settings` (11:2x UTC e de novo depois da decisão abaixo) | `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`; endpoint do piloto, diferente do proibido, TLS verificado |
+
+**Rotação da senha adiada por decisão do responsável (18/11/2026).** A troca chegou a ser preparada, mas nada foi alterado: a senha no Neon, `DATABASE_URL`, `DIRECT_URL` e a cópia cifrada no PC de casa continuam as mesmas e sincronizadas. A senha continua tratada como exposta. A pendência e as condições para fazê-la depois estão em "Estado e retomada".
+
 ## 2. Comprovado e pendente
 
 ### Comprovado
@@ -543,13 +564,18 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 
 ### Pendências para retomar (18/11/2026)
 
-1. **Rotação da senha exposta do banco do piloto.** Nenhuma migration nem etapa com banco antes dela.
-2. **Terceira conta `MASTER_OWNER` ativa**, não citada pelo responsável e com e-mail não verificado (o endereço está na mensagem da sessão e no banco, não neste repositório público). O responsável precisa dizer se a reconhece. Sem isso, o passo 3.1 manda parar a etapa 3. Ninguém altera essa conta.
+1. **Rotação da senha exposta do banco do piloto: adiada por decisão do responsável (18/11/2026).** Não foi feita; a senha continua exposta e válida. Ela deixou de ser pré-requisito da etapa 1 por essa decisão. Condições para quando for feita:
+   - numa janela própria, **entre duas etapas**, nunca no meio de uma etapa, junto com uma migration ou junto com o deploy de outro SHA;
+   - com `pilot:check-database` antes e depois, e o deploy da API **no SHA que estiver live naquele momento**, nunca "latest";
+   - a cópia cifrada da URL direta no PC de operação atualizada na mesma janela, porque backups e conferências dependem dela; enquanto ela estiver desatualizada, nenhuma etapa com backup começa;
+   - um backup feito antes da rotação continua restaurável (a restauração é num PostgreSQL descartável, sem a senha do piloto).
+2. **Terceira conta `MASTER_OWNER` ativa**, não citada pelo responsável e com e-mail não verificado (o endereço está na mensagem da sessão e no banco, não neste repositório público). **Reconhecimento pendente:** o responsável ainda não disse se a reconhece. Sem isso, o passo 3.1 manda parar a etapa 3. Ninguém altera essa conta.
 3. **Classificação dos três estabelecimentos** (passo 2.8): a lista de quais são teste é do responsável. A marcação é feita pelo portal depois da etapa 2. Ninguém altera os estabelecimentos antes disso.
 4. **Login autenticado** dos pares intermediários e do estado final, pelo responsável, no fim.
 5. **Segunda cópia da chave TOTP** (passo 3.2): pendente por decisão do responsável. A chave ainda nem foi gerada; quando for, terá uma cópia só, no PC de operação.
 6. **Preços** do Agendamento essencial e dos adicionais: o responsável preenche pelo portal depois da etapa do #122. Até lá, a criação modular mostra a pendência.
 7. D5, D7 e D8 seguem como na seção 8; nenhuma bloqueia a etapa 1.
+8. **Autoria dos deploys de `4585af0` de 18/11 03:01 UTC** (seção 1.4): não confirmada. Enquanto não for esclarecida, qualquer deploy fora do plano continua parando o passo 0 de cada etapa, e o responsável decide se a etapa 1 pode começar antes do esclarecimento.
 
 ### Backups: estado comprovado
 
@@ -561,15 +587,15 @@ Backups mais antigos continuam em `%USERPROFILE%\AgendaCloud-operacoes` e `%USER
 
 ### Próxima ação exata para retomar
 
-1. **Passo 0, só leitura:** Render com API e web live em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o web no deploy `dep-dbuh1skipgvc738tcfvg`, a API no `dep-dbreqklckfvc73e2loag`, Auto-Deploy desligado e nada em fila. Qualquer outro estado: pare e reavalie.
-2. **Rotação da senha**, nesta ordem:
+1. **Passo 0, só leitura:** Render com API e web live em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o web no deploy `dep-dbuohgk9v7es7396tnp0` (desde 18/11 11:17 UTC; o `dep-dbuh1skipgvc738tcfvg` foi substituído pelos deploys da seção 1.4), a API no `dep-dbreqklckfvc73e2loag`, Auto-Deploy desligado e nada em fila. Qualquer outro estado: pare e reavalie.
+2. **Rotação da senha: adiada** (pendência 1). Quando o responsável decidir fazê-la, o procedimento é este, nesta ordem, numa janela entre etapas:
    1. No Neon, **projeto do piloto** (não o projeto proibido; os dois têm uma branch chamada `production`, então diferencie pelo projeto e pelo endpoint), troque a senha do usuário do banco com "Reset password".
    2. No serviço da **API** do Render, troque **só a senha** em `DATABASE_URL` e em `DIRECT_URL`, mantendo host, pooler e parâmetros. Salve **sem** disparar deploy. Se um deploy começar sozinho, espere terminar e releia o passo 1.
-   3. Faça o deploy da API por commit **no SHA que estiver live** (`8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`), nunca "latest", para não subir uma versão incompatível com o banco 16.
+   3. Faça o deploy da API por commit **no SHA que estiver live** (hoje `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`), nunca "latest", para não subir uma versão incompatível com o banco.
    4. Confira: API `GET /` 200; web `/agenda_api/auth/me` sem cookie 401; log da API sem erro de conexão.
    5. Atualize a cópia cifrada da URL direta no PC de operação. Ela é usada pelos backups e pelas conferências.
-   6. Rode `pilot:check-database` com `PILOT_EXPECT=after-commission-settings`. Esperado: `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`.
-3. **Etapa 1** (seção 5), com API e depois web em `5d74556e9e12e55f38e0056d0f19911f3e66f475`. Ponto de recuperação: um backup novo com restauração conferida (ou a branch do Neon do passo 1.1).
+   6. Rode `pilot:check-database` com a expectativa do estado do banco naquele momento (no estado 16, `PILOT_EXPECT=after-commission-settings`: `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`; no estado 18 ou 19, as consultas de conferência da etapa correspondente).
+3. **Etapa 1** (seção 5), com API e depois web em `5d74556e9e12e55f38e0056d0f19911f3e66f475`. Antes de começar: o responsável decide sobre a pendência 8 (autoria dos deploys de 03:01). Ponto de recuperação: um backup novo com restauração conferida (ou a branch do Neon do passo 1.1); o backup inicial de 18/11 não substitui esse. A etapa 1 não muda schema nem variável, e a senha atual é a que o backup e a conferência usam.
 4. Depois, na ordem e sem pular:
    - **Etapa 2:** backup novo conferido e migration 17 de uma cópia limpa em `04c9a43`; API e web em `04c9a4382decea6c175ffdfb28cc722cb8ad6092`.
    - **Etapa 3:** chave TOTP, backup novo conferido, migration 18 de uma cópia limpa em `becc923`, as sete consultas do estado 18 e as três `PLATFORM_*` com `optional`; API e web em `becc923f12165f7085e3de5a12b019b10e9b4bb0`.
