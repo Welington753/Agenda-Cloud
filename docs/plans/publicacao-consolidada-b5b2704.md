@@ -10,6 +10,8 @@ Este documento nunca contém credencial, chave, URL de banco ou Endpoint ID.
 
 > **Atualização de 17/11/2026, PR #120 (tema "Azul e branco" em todos os ambientes e menu agrupado do dono).** Por decisão do responsável, o alvo da etapa 3 passa a ser **o merge commit do PR #120**, para a API e para o web. Ele contém `9de722d`, o PR #118 (só documentação), o PR #119 (tema na Visão geral do portal) e o PR #120 (tema em todas as áreas adaptáveis, menu agrupado em `/conta` e o rótulo "Visão geral" no lugar de "Dashboard", sem mudar URL). **O `backend/` continua idêntico ao de `9de722d` e `b5b2704`** (`git diff 9de722d <head do #120> -- backend` vazio): migrations (18), variáveis (`PLATFORM_*`), conferência de inicialização e tudo o que este plano diz sobre a API da etapa 3 valem sem mudança. Onde o texto abaixo diz `9de722d` como alvo da etapa 3, leia o merge commit do PR #120; o SHA completo é o desse merge, com árvore igual à do head aprovado pelo CI. As etapas 0, 1 e 2 mantêm os alvos. O passo 3.11 passa a conferir também: o tema "Azul e branco" escolhido em Aparência, o menu agrupado do dono (Visão geral, Atendimento, Gestão do negócio, Administração) e a navegação entre as áreas.
 
+> **Execução iniciada em 18/11/2026 (sessão em casa).** O responsável autorizou publicar até o merge do PR #122, `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, passando por todas as etapas: 0, 1, 2 (migration 17), 3 (migration 18, merge do PR #120 `becc923f12165f7085e3de5a12b019b10e9b4bb0`), a etapa do #121 (`df535a19ffbf70355007171bec8f962937397f85`, sem migration) e a etapa do #122 (migration 19). **Só a etapa 0 foi feita.** O estado, os pendentes e a próxima ação estão na seção 1.3 e no fim de "Estado e retomada".
+
 ## 1. Ponto de partida
 
 Leitura do Render em 16/11/2026, por volta de 12:15 UTC, e confirmação do responsável na mesma data ([`recuperacao-login-piloto-rollback.md`](../runbooks/recuperacao-login-piloto-rollback.md), seção 8).
@@ -53,6 +55,57 @@ Só leitura do Render (serviços, deploys e log de inicialização da API). O ba
 | Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nenhum deploy em andamento |
 
 **O passo 0.0 não confere mais:** o web live é `68e5eed`, não `b5b2704`. Pela regra da seção 4.2, a etapa 0 tem de ser reavaliada pelo responsável antes de qualquer deploy. O alvo continua `8e8577d`; o que muda é o estado de partida e, portanto, o destino do retorno se o passo 0.2 falhar (web `68e5eed`, par sem login confirmado). Entre `b5b2704` e `68e5eed` só entraram no web o PR #117 (proxy) e o PR #119 (tema na Visão geral); `git diff b5b2704 68e5eed -- backend` é vazio.
+
+### 1.3 Execução de 18/11/2026, entre 02:30 e 02:50 UTC
+
+**Decisões do responsável registradas para esta execução (17/11/2026):**
+
+- Publicar até `4585af0`, seguindo os roteiros e as verificações de cada etapa, com backup e migrations autorizados.
+- Ainda não há clientes usando o sistema. Os registros existentes são preservados; isso não autoriza limpar o banco.
+- Nenhum preço é cadastrado em produção. O responsável preenche os preços pelo portal depois; preço pendente continua impedindo a contratação e a criação modular (`PRECO_BASE_PENDENTE`).
+- A chave TOTP da etapa 3 terá **temporariamente uma cópia só**, protegida no PC de casa. A segunda cópia (pendrive) fica pendente por decisão do responsável. **O requisito de duas cópias do passo 3.2 não está cumprido**; é uma exceção registrada, não uma conclusão.
+- Os proprietários reais foram informados pelo responsável (fora deste repositório). Contas e papéis são conferidos pelo fluxo existente; nenhum e-mail é fixado no código e ninguém é dado como já cadastrado no 2FA.
+- **O teste de login autenticado fica para o final**, feito pelo responsável. Os portões humanos intermediários (passos 0.2, 1.3 e 1.5, e o login dos passos 2.5 e 3.9) foram adiados por essa decisão. As verificações HTTP sem login (200, 401, 403) não comprovam login.
+
+**Leitura do Render (só leitura), 02:43 UTC**, depois da manutenção programada do Render (02:00 a 03:00 UTC; status "All Systems Operational" às 02:43):
+
+| Item | Estado |
+|---|---|
+| API live | `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` (`dep-dbreqklckfvc73e2loag`, desde 13/11). As tentativas posteriores estão todas em `update_failed`, a última em `68e5eed` (17/11 13:35 UTC) |
+| Web live antes da etapa 0 | `becc923f12165f7085e3de5a12b019b10e9b4bb0` (`dep-dbu74he8bjmc73ah7c1g`, desde 17/11 15:29 UTC). Não era mais `68e5eed` (seção 1.2) |
+| Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nada em andamento |
+| `healthCheckPath` | API `/`, web `/login` (mantidos) |
+| Variáveis da API (só nomes) | nenhuma `PLATFORM_*` (as três do passo 3.7 ainda precisam ser criadas). `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_FROM_NAME` e `EMAIL_API_KEY` definidas. A conexão com o banco está em duas variáveis: `DATABASE_URL` (com pooler) e `DIRECT_URL` (direta), com o mesmo usuário |
+| Variáveis do web (só nomes) | `API_PROXY_SECRET`, `API_PROXY_TARGET`, `CLIENT_IP_SOURCE`, `NEXT_PUBLIC_API_URL`. Nenhuma conexão com o banco |
+
+**Leitura do banco do piloto (só leitura), 02:35 UTC:**
+
+| Item | Estado |
+|---|---|
+| Servidor | PostgreSQL **17.12**. Isto resolve o limite citado na conferência do estado 18 (ensaio em PostgreSQL 18): as consultas foram ensaiadas também em PostgreSQL 17 (abaixo) |
+| `pilot:check-database` com `PILOT_EXPECT=before-tenant-test-flag` | `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 0/2`, `ESTABELECIMENTOS: 3`, `MARCADOS_COMO_TESTE: coluna ainda não existe`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`. Destino conferido: endpoint do piloto, diferente do proibido, TLS verificado |
+| Histórico | 16 migrations, a última `ProfessionalCommissionSettings1793577600000` |
+| Contas `MASTER_OWNER` ativas | **três**. Duas conferem com os proprietários informados pelo responsável, ambas com e-mail verificado. **A terceira não foi citada pelo responsável e está com e-mail não verificado**; o reconhecimento dela está pendente ("Estado e retomada"). Nenhuma conta foi alterada |
+| Estabelecimentos | três, nenhum marcado como teste (a coluna ainda não existe). A classificação está pendente ("Estado e retomada"). Nenhum foi alterado |
+
+**Backup inicial, com restauração conferida:**
+
+- `pg_dump -Fc` no snapshot de uma transação `REPEATABLE READ READ ONLY`, com contagem e md5 de cada tabela no mesmo snapshot (manifesto). Ponto de recuperação: 18/11/2026 02:37:12 UTC, estado 16.
+- Pasta: `%USERPROFILE%\AgendaCloud-operacoes\inicial-16-backup-2026-11-18T02-36-44Z`, **só no PC de casa**. Nunca vai para o Git.
+- Restauração num PostgreSQL 17.11 descartável local, com TLS: sha256 confere com o manifesto, `pg_restore` completo numa transação, 45 tabelas, **contagens e md5 iguais**. O servidor descartável foi apagado no fim.
+- **Ensaio das migrations na cópia restaurada** (PostgreSQL descartável, nunca o piloto): 17 a partir de uma cópia limpa em `04c9a43`, 18 a partir de `becc923` e 19 a partir de `4585af0`. Cada uma aplicou uma migration, sem erro, de 16 para 19. A conferência do estado 18 (as sete consultas do passo 3.6) e a do estado 19 saíram como esperado, com a migration 19 sem criar o plano modular e sem preços.
+- **`seatTransitionReport` no ensaio:** três estabelecimentos, nenhum acima do limite e nenhum com ocupação diferente entre a regra anterior e a nova. **Isto não substitui o relatório exigido antes da migration 19**, que é rodado na restauração de um backup feito logo antes dela.
+
+**Etapa 0 concluída (18/11/2026):**
+
+| Item | Resultado |
+|---|---|
+| Deploy | web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit (`dep-dbuh1skipgvc738tcfvg`), criado 02:44:02 UTC, live 02:47:03 UTC |
+| Estado ao final | **API e web em `8e8577d`**, banco 16 |
+| Verificações HTTP sem login, depois do live | API `GET /` 200 (`Hello World!`); API `GET /health` 404 (esperado nesta API); web `/login` 200, com o nome anterior do produto (esperado até a etapa 3, seção 4.3); web `/agenda_api/auth/me` sem cookie 401; `POST /agenda_api/auth/logout` com `Origin: https://exemplo.invalid` 403; `/portal/manifest.webmanifest` 200 |
+| **Login autenticado** | **não testado.** O passo 0.2 (entrar, recarregar, sair e entrar, abrir as telas e a tela de comissões de um profissional) fica para o teste final do responsável |
+
+**Senha do banco do piloto exposta.** Em 18/11/2026 a senha do usuário do banco do piloto apareceu acidentalmente numa captura de tela. Ela é tratada como exposta, e a **rotação ainda não foi feita**. Usam essa senha: `DATABASE_URL` e `DIRECT_URL` no serviço da API do Render e a cópia cifrada da URL direta no PC de operação. Nenhum arquivo do repositório e nenhum segredo do GitHub a usam. Neon, as duas variáveis da API e a cópia de operação precisam ficar sincronizados (procedimento em "Estado e retomada").
 
 ## 2. Comprovado e pendente
 
@@ -486,3 +539,43 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 - **Integração depois deste plano (17/11/2026):** o PR #119 (tema opcional "Azul e branco", só no web do portal) foi integrado em `3da4855b42e495a1ffbeef727f5d5d6f7fc4def7`. **O alvo da etapa 3 continua `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`**; `3da4855` não entra na fila. Incluir o tema numa publicação é decisão separada do responsável. *(Superado pela atualização de 17/11 logo abaixo.)*
 - **Atualização de 17/11/2026:** por decisão do responsável, o tema e o menu entram no alvo final. O alvo da etapa 3 passa a ser o merge commit do PR #120 (nota no topo), que inclui `3da4855`. A releitura da seção 1.2 encontrou o web em `68e5eed`, então a etapa 0 precisa de reavaliação antes de qualquer deploy. As informações da seção 8 e as decisões D5, D7 e D8 continuam pendentes. Nada foi publicado.
 - **Se o estado mudar antes da etapa 0** (deploy novo no Render, commit novo na integração), releia a seção 1 e ajuste os SHAs antes de qualquer passo. Commit novo na integração não troca sozinho o alvo de nenhuma etapa: a troca exige decisão explícita, como a do PR #117.
+- **Execução de 18/11/2026 (seção 1.3):** etapa 0 concluída, com **API e web em `8e8577d`** e o web no deploy `dep-dbuh1skipgvc738tcfvg`. Verificações HTTP sem login aprovadas; **o login autenticado não foi testado**. Backup inicial do estado 16 feito e restaurado com contagens e md5 iguais, e ensaio de 16 para 19 aprovado numa cópia restaurada. Nenhuma migration aplicada no piloto, nenhuma variável alterada e nenhum outro deploy. **O alvo final continua pendente: `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`.** A sessão foi encerrada pelo responsável antes da etapa 1.
+
+### Pendências para retomar (18/11/2026)
+
+1. **Rotação da senha exposta do banco do piloto.** Nenhuma migration nem etapa com banco antes dela.
+2. **Terceira conta `MASTER_OWNER` ativa**, não citada pelo responsável e com e-mail não verificado (o endereço está na mensagem da sessão e no banco, não neste repositório público). O responsável precisa dizer se a reconhece. Sem isso, o passo 3.1 manda parar a etapa 3. Ninguém altera essa conta.
+3. **Classificação dos três estabelecimentos** (passo 2.8): a lista de quais são teste é do responsável. A marcação é feita pelo portal depois da etapa 2. Ninguém altera os estabelecimentos antes disso.
+4. **Login autenticado** dos pares intermediários e do estado final, pelo responsável, no fim.
+5. **Segunda cópia da chave TOTP** (passo 3.2): pendente por decisão do responsável. A chave ainda nem foi gerada; quando for, terá uma cópia só, no PC de operação.
+6. **Preços** do Agendamento essencial e dos adicionais: o responsável preenche pelo portal depois da etapa do #122. Até lá, a criação modular mostra a pendência.
+7. D5, D7 e D8 seguem como na seção 8; nenhuma bloqueia a etapa 1.
+
+### Backups: estado comprovado
+
+| Backup | Onde | Estado | Uso |
+|---|---|---|---|
+| `inicial-16-backup-2026-11-18T02-36-44Z` | PC de casa, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens e md5 iguais); estado 16, 18/11 02:37 UTC | recuperação de dados numa cópia. **Não serve como o backup do passo 2.1 nem do 3.3**: cada migration exige um `pg_dump` novo, com restauração validada, feito logo antes dela |
+
+Backups mais antigos continuam em `%USERPROFILE%\AgendaCloud-operacoes` e `%USERPROFILE%\AgendaCloud-backups` no PC de casa, sem alteração. Nenhum backup é restaurado por cima do piloto.
+
+### Próxima ação exata para retomar
+
+1. **Passo 0, só leitura:** Render com API e web live em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o web no deploy `dep-dbuh1skipgvc738tcfvg`, a API no `dep-dbreqklckfvc73e2loag`, Auto-Deploy desligado e nada em fila. Qualquer outro estado: pare e reavalie.
+2. **Rotação da senha**, nesta ordem:
+   1. No Neon, **projeto do piloto** (não o projeto proibido; os dois têm uma branch chamada `production`, então diferencie pelo projeto e pelo endpoint), troque a senha do usuário do banco com "Reset password".
+   2. No serviço da **API** do Render, troque **só a senha** em `DATABASE_URL` e em `DIRECT_URL`, mantendo host, pooler e parâmetros. Salve **sem** disparar deploy. Se um deploy começar sozinho, espere terminar e releia o passo 1.
+   3. Faça o deploy da API por commit **no SHA que estiver live** (`8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`), nunca "latest", para não subir uma versão incompatível com o banco 16.
+   4. Confira: API `GET /` 200; web `/agenda_api/auth/me` sem cookie 401; log da API sem erro de conexão.
+   5. Atualize a cópia cifrada da URL direta no PC de operação. Ela é usada pelos backups e pelas conferências.
+   6. Rode `pilot:check-database` com `PILOT_EXPECT=after-commission-settings`. Esperado: `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`.
+3. **Etapa 1** (seção 5), com API e depois web em `5d74556e9e12e55f38e0056d0f19911f3e66f475`. Ponto de recuperação: um backup novo com restauração conferida (ou a branch do Neon do passo 1.1).
+4. Depois, na ordem e sem pular:
+   - **Etapa 2:** backup novo conferido e migration 17 de uma cópia limpa em `04c9a43`; API e web em `04c9a4382decea6c175ffdfb28cc722cb8ad6092`.
+   - **Etapa 3:** chave TOTP, backup novo conferido, migration 18 de uma cópia limpa em `becc923`, as sete consultas do estado 18 e as três `PLATFORM_*` com `optional`; API e web em `becc923f12165f7085e3de5a12b019b10e9b4bb0`.
+   - **Etapa do #121:** API e web em `df535a19ffbf70355007171bec8f962937397f85`.
+   - **Etapa do #122:** backup novo conferido e `seatTransitionReport` na restauração dele; migration 19 de uma cópia limpa em `4585af0`; API e web em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`.
+
+**Limites de retorno:** não voltar a API a um SHA sem 2FA depois que um proprietário cadastrar o fator, nem a API para antes do #122 depois da primeira assinatura modular.
+
+**Ferramentas de operação:** os scripts auxiliares usados nesta sessão (cliente da API do Render, backup, conferências) e o cofre cifrado ficam só no PC de casa, fora do Git. Em outro computador, siga os roteiros citados em cada etapa. As credenciais precisam ser providenciadas lá sem passar por chat, Git ou log.
