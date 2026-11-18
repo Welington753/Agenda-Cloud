@@ -10,6 +10,10 @@ Este documento nunca contém credencial, chave, URL de banco ou Endpoint ID.
 
 > **Atualização de 17/11/2026, PR #120 (tema "Azul e branco" em todos os ambientes e menu agrupado do dono).** Por decisão do responsável, o alvo da etapa 3 passa a ser **o merge commit do PR #120**, para a API e para o web. Ele contém `9de722d`, o PR #118 (só documentação), o PR #119 (tema na Visão geral do portal) e o PR #120 (tema em todas as áreas adaptáveis, menu agrupado em `/conta` e o rótulo "Visão geral" no lugar de "Dashboard", sem mudar URL). **O `backend/` continua idêntico ao de `9de722d` e `b5b2704`** (`git diff 9de722d <head do #120> -- backend` vazio): migrations (18), variáveis (`PLATFORM_*`), conferência de inicialização e tudo o que este plano diz sobre a API da etapa 3 valem sem mudança. Onde o texto abaixo diz `9de722d` como alvo da etapa 3, leia o merge commit do PR #120; o SHA completo é o desse merge, com árvore igual à do head aprovado pelo CI. As etapas 0, 1 e 2 mantêm os alvos. O passo 3.11 passa a conferir também: o tema "Azul e branco" escolhido em Aparência, o menu agrupado do dono (Visão geral, Atendimento, Gestão do negócio, Administração) e a navegação entre as áreas.
 
+> **Execução iniciada em 18/11/2026 (sessão em casa).** O responsável autorizou publicar até o merge do PR #122, `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, passando por todas as etapas: 0, 1, 2 (migration 17), 3 (migration 18, merge do PR #120 `becc923f12165f7085e3de5a12b019b10e9b4bb0`), a etapa do #121 (`df535a19ffbf70355007171bec8f962937397f85`, sem migration) e a etapa do #122 (migration 19). A etapa 0 foi feita em casa (seção 1.3). **As demais foram concluídas no PC do trabalho na mesma data (seção 1.5): API e web em `4585af0`, banco com 19 migrations.** Depois disso, o PR #123 foi publicado (seção 1.6): **API e web em `ac67d06`**, banco ainda com 19.
+
+> **Exceção de 17/11/2026: publicação somente do web em `becc923f12165f7085e3de5a12b019b10e9b4bb0`.** Autorizada pelo responsável para concluir a entrega do tema, com a exigência de API e web no mesmo SHA dispensada só para esta entrega, condicionada à compatibilidade comprovada. **Compatibilidade:** o diff `68e5eed..becc923` em `src/` muda só apresentação (tema "Azul e branco" em todas as áreas adaptáveis, menu agrupado do dono derivado da lista de itens que já existia, rótulo "Visão geral"). Não acrescenta chamada à API, campo de resposta obrigatório, variável de ambiente nem configuração; o resto do diff é CI, testes e documentação. **Estado antes:** web `68e5eed` (`dep-dbu5gep42hec73bku1c0`, deploy manual de 17/11 13:38 UTC), API `8e8577d` (`dep-dbreqklckfvc73e2loag`), Auto-Deploy desligado nos dois; web `/login` e API `/` respondendo 200. **Retorno:** se houver regressão, o web volta a `68e5eed`. **Não muda:** API, banco, migrations e variáveis ficam como estão; a sequência de etapas 0 a 3 continua valendo para a API. Na etapa 3 o web já estará no alvo, e a reavaliação da etapa 0 deve partir do web `becc923`.
+
 ## 1. Ponto de partida
 
 Leitura do Render em 16/11/2026, por volta de 12:15 UTC, e confirmação do responsável na mesma data ([`recuperacao-login-piloto-rollback.md`](../runbooks/recuperacao-login-piloto-rollback.md), seção 8).
@@ -53,6 +57,149 @@ Só leitura do Render (serviços, deploys e log de inicialização da API). O ba
 | Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nenhum deploy em andamento |
 
 **O passo 0.0 não confere mais:** o web live é `68e5eed`, não `b5b2704`. Pela regra da seção 4.2, a etapa 0 tem de ser reavaliada pelo responsável antes de qualquer deploy. O alvo continua `8e8577d`; o que muda é o estado de partida e, portanto, o destino do retorno se o passo 0.2 falhar (web `68e5eed`, par sem login confirmado). Entre `b5b2704` e `68e5eed` só entraram no web o PR #117 (proxy) e o PR #119 (tema na Visão geral); `git diff b5b2704 68e5eed -- backend` é vazio.
+
+### 1.3 Execução de 18/11/2026, entre 02:30 e 02:50 UTC
+
+**Decisões do responsável registradas para esta execução (17/11/2026):**
+
+- Publicar até `4585af0`, seguindo os roteiros e as verificações de cada etapa, com backup e migrations autorizados.
+- Ainda não há clientes usando o sistema. Os registros existentes são preservados; isso não autoriza limpar o banco.
+- Nenhum preço é cadastrado em produção. O responsável preenche os preços pelo portal depois; preço pendente continua impedindo a contratação e a criação modular (`PRECO_BASE_PENDENTE`).
+- A chave TOTP da etapa 3 terá **temporariamente uma cópia só**, protegida no PC de casa. A segunda cópia (pendrive) fica pendente por decisão do responsável. **O requisito de duas cópias do passo 3.2 não está cumprido**; é uma exceção registrada, não uma conclusão.
+- Os proprietários reais foram informados pelo responsável (fora deste repositório). Contas e papéis são conferidos pelo fluxo existente; nenhum e-mail é fixado no código e ninguém é dado como já cadastrado no 2FA.
+- **O teste de login autenticado fica para o final**, feito pelo responsável. Os portões humanos intermediários (passos 0.2, 1.3 e 1.5, e o login dos passos 2.5 e 3.9) foram adiados por essa decisão. As verificações HTTP sem login (200, 401, 403) não comprovam login.
+
+**Leitura do Render (só leitura), 02:43 UTC**, depois da manutenção programada do Render (02:00 a 03:00 UTC; status "All Systems Operational" às 02:43):
+
+| Item | Estado |
+|---|---|
+| API live | `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2` (`dep-dbreqklckfvc73e2loag`, desde 13/11). As tentativas posteriores estão todas em `update_failed`, a última em `68e5eed` (17/11 13:35 UTC) |
+| Web live antes da etapa 0 | `becc923f12165f7085e3de5a12b019b10e9b4bb0` (`dep-dbu74he8bjmc73ah7c1g`, desde 17/11 15:29 UTC). Não era mais `68e5eed` (seção 1.2) |
+| Auto-Deploy | desligado nos dois serviços (`autoDeploy: no`, `autoDeployTrigger: off`); nada em andamento |
+| `healthCheckPath` | API `/`, web `/login` (mantidos) |
+| Variáveis da API (só nomes) | nenhuma `PLATFORM_*` (as três do passo 3.7 ainda precisam ser criadas). `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_FROM_NAME` e `EMAIL_API_KEY` definidas. A conexão com o banco está em duas variáveis: `DATABASE_URL` (com pooler) e `DIRECT_URL` (direta), com o mesmo usuário |
+| Variáveis do web (só nomes) | `API_PROXY_SECRET`, `API_PROXY_TARGET`, `CLIENT_IP_SOURCE`, `NEXT_PUBLIC_API_URL`. Nenhuma conexão com o banco |
+
+**Leitura do banco do piloto (só leitura), 02:35 UTC:**
+
+| Item | Estado |
+|---|---|
+| Servidor | PostgreSQL **17.12**. Isto resolve o limite citado na conferência do estado 18 (ensaio em PostgreSQL 18): as consultas foram ensaiadas também em PostgreSQL 17 (abaixo) |
+| `pilot:check-database` com `PILOT_EXPECT=before-tenant-test-flag` | `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 0/2`, `ESTABELECIMENTOS: 3`, `MARCADOS_COMO_TESTE: coluna ainda não existe`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`. Destino conferido: endpoint do piloto, diferente do proibido, TLS verificado |
+| Histórico | 16 migrations, a última `ProfessionalCommissionSettings1793577600000` |
+| Contas `MASTER_OWNER` ativas | **três**. Duas conferem com os proprietários informados pelo responsável, ambas com e-mail verificado. **A terceira não foi citada pelo responsável e está com e-mail não verificado**; o reconhecimento dela está pendente ("Estado e retomada"). Nenhuma conta foi alterada |
+| Estabelecimentos | três, nenhum marcado como teste (a coluna ainda não existe). A classificação está pendente ("Estado e retomada"). Nenhum foi alterado |
+
+**Backup inicial, com restauração conferida:**
+
+- `pg_dump -Fc` no snapshot de uma transação `REPEATABLE READ READ ONLY`, com contagem e md5 de cada tabela no mesmo snapshot (manifesto). Ponto de recuperação: 18/11/2026 02:37:12 UTC, estado 16.
+- Pasta: `%USERPROFILE%\AgendaCloud-operacoes\inicial-16-backup-2026-11-18T02-36-44Z`, **só no PC de casa**. Nunca vai para o Git.
+- Restauração num PostgreSQL 17.11 descartável local, com TLS: sha256 confere com o manifesto, `pg_restore` completo numa transação, 45 tabelas, **contagens e md5 iguais**. O servidor descartável foi apagado no fim.
+- **Ensaio das migrations na cópia restaurada** (PostgreSQL descartável, nunca o piloto): 17 a partir de uma cópia limpa em `04c9a43`, 18 a partir de `becc923` e 19 a partir de `4585af0`. Cada uma aplicou uma migration, sem erro, de 16 para 19. A conferência do estado 18 (as sete consultas do passo 3.6) e a do estado 19 saíram como esperado, com a migration 19 sem criar o plano modular e sem preços.
+- **`seatTransitionReport` no ensaio:** três estabelecimentos, nenhum acima do limite e nenhum com ocupação diferente entre a regra anterior e a nova. **Isto não substitui o relatório exigido antes da migration 19**, que é rodado na restauração de um backup feito logo antes dela.
+
+**Etapa 0 concluída (18/11/2026):**
+
+| Item | Resultado |
+|---|---|
+| Deploy | web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit (`dep-dbuh1skipgvc738tcfvg`), criado 02:44:02 UTC, live 02:47:03 UTC |
+| Estado ao final | **API e web em `8e8577d`**, banco 16 |
+| Verificações HTTP sem login, depois do live | API `GET /` 200 (`Hello World!`); API `GET /health` 404 (esperado nesta API); web `/login` 200, com o nome anterior do produto (esperado até a etapa 3, seção 4.3); web `/agenda_api/auth/me` sem cookie 401; `POST /agenda_api/auth/logout` com `Origin: https://exemplo.invalid` 403; `/portal/manifest.webmanifest` 200 |
+| **Login autenticado** | **não testado.** O passo 0.2 (entrar, recarregar, sair e entrar, abrir as telas e a tela de comissões de um profissional) fica para o teste final do responsável |
+
+**Senha do banco do piloto exposta.** Em 18/11/2026 a senha do usuário do banco do piloto apareceu acidentalmente numa captura de tela. Ela é tratada como exposta, e a **rotação ainda não foi feita**. Usam essa senha: `DATABASE_URL` e `DIRECT_URL` no serviço da API do Render e a cópia cifrada da URL direta no PC de operação. Nenhum arquivo do repositório e nenhum segredo do GitHub a usam. Neon, as duas variáveis da API e a cópia de operação precisam ficar sincronizados (procedimento em "Estado e retomada").
+
+### 1.4 Sessão de 18/11/2026 no PC do trabalho, entre 11:00 e 12:00 UTC
+
+**Deploys inesperados, autoria não confirmada.** Às 03:01 UTC, três minutos depois do checkpoint `6c0876c`, alguém disparou deploys manuais de `4585af0` nos dois serviços pelo painel do Render. Eles não estão neste plano e a autoria não foi confirmada.
+
+| Serviço | Deploy | Resultado |
+|---|---|---|
+| API | `dep-dbuha8c9v7es738ini2g` | `update_failed` em `validateEnv` (`Campos com problema: PLATFORM_2FA_ENFORCEMENT, PLATFORM_TOTP_KEYS`). A API continuou em `8e8577d` (`dep-dbreqklckfvc73e2loag`). Nenhuma migration foi aplicada |
+| Web | `dep-dbuha9g8v5cc7393tn0g` | ficou live. De 03:04 a 11:17 UTC o piloto rodou o par **web `4585af0` com API `8e8577d`**, não validado |
+
+**Correção, autorizada pelo responsável:**
+
+| Item | Resultado |
+|---|---|
+| Releitura antes do deploy | API `8e8577d`, web `4585af0`, Auto-Deploy desligado nos dois, nada em fila |
+| Deploy | web em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, por commit (`dep-dbuohgk9v7es7396tnp0`), criado 11:15:14 UTC, live 11:17:41 UTC. API e Auto-Deploy sem mudança |
+| Verificações HTTP sem login | as mesmas da etapa 0, com os mesmos resultados (API `GET /` 200, `/health` 404, web `/login` 200, `auth/me` sem cookie 401, logout com origem estranha 403, manifest do portal 200). **Não comprovam login autenticado** |
+| Destino das variáveis do banco na API (sem ler credencial) | `DATABASE_URL` (pooler) e `DIRECT_URL` (direta) apontam para o endpoint do piloto, com o mesmo usuário e `sslmode=verify-full`. Nenhuma aponta para o endpoint proibido |
+| `pilot:check-database` com `PILOT_EXPECT=after-commission-settings` (11:2x UTC e de novo depois da decisão abaixo) | `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`; endpoint do piloto, diferente do proibido, TLS verificado |
+
+**Rotação da senha adiada por decisão do responsável (18/11/2026).** A troca chegou a ser preparada, mas nada foi alterado: a senha no Neon, `DATABASE_URL`, `DIRECT_URL` e a cópia cifrada no PC de casa continuam as mesmas e sincronizadas. A senha continua tratada como exposta. A pendência e as condições para fazê-la depois estão em "Estado e retomada".
+
+### 1.5 Execução no PC do trabalho, 18/11/2026, a partir de 11:40 UTC
+
+**Decisões do responsável para esta execução (18/11/2026):** backups e restaurações neste PC; a terceira conta `MASTER_OWNER` é reconhecida por ele (preservada, sem consolidar nem excluir contas); os três estabelecimentos atuais são de teste, classificados pelo passo 2.8 depois da etapa 2; rotação da senha e segunda cópia da chave TOTP continuam pendentes; nenhum preço de exemplo; seguir apesar da autoria desconhecida dos deploys de 03:01 UTC (seção 1.4), desde que a releitura confirme o estado esperado. A autoria continua não atribuída.
+
+**Ferramentas locais:** PostgreSQL 17.12 (binários EDB, só `bin`, `lib` e `share`) em `%USERPROFILE%\AgendaCloud-ferramentas\pg17x`; PostgreSQL descartável local com TLS (certificado autoassinado), apagado ao fim. A URL direta do piloto é lida da variável `DIRECT_URL` do serviço da API pela API do Render e só existe no ambiente do processo filho; nenhum script imprime credencial. Cópias limpas por SHA, sem alteração local: `C:\wt\mig17` (`04c9a43`), `C:\wt\mig18` (`becc923`), `C:\wt\mig19` (`4585af0`), com `npm ci` em `backend/`.
+
+**Método dos backups:** `pg_dump -Fc` (17.12) no snapshot exportado de uma transação `REPEATABLE READ READ ONLY`, com contagem e md5 de cada tabela no mesmo snapshot (manifesto). A restauração confere o sha256, roda `pg_restore --single-transaction --exit-on-error` no descartável e compara contagens, md5 e a lista de migrations. Cada pasta tem `piloto.dump`, `manifest.json`, `piloto.dump.sha256` e `restauracao-conferida.json`. Ficam em `%USERPROFILE%\AgendaCloud-operacoes` **no PC do trabalho**; nunca vão para o Git.
+
+| Momento (UTC) | Passo | Resultado |
+|---|---|---|
+| ~11:43 | Passo 0, só leitura | API `dep-dbreqklckfvc73e2loag` e web `dep-dbuohgk9v7es7396tnp0` em `8e8577d`; Auto-Deploy desligado nos dois; nada em fila. `pilot:check-database` (`after-commission-settings`): 16, 7/7, `BASELINE_FAILURES: none`, `SUCCESS`; endpoint do piloto, diferente do proibido, TLS verificado |
+| 11:53 | Backup antes da etapa 1 | `pre-etapa1-16-backup-2026-11-18T11-53-30Z`: 45 tabelas, 16 migrations; restauração com sha256, contagens, md5 e migrations iguais |
+| 11:55 | 1.3 API `5d74556e9e12e55f38e0056d0f19911f3e66f475` | `dep-dbup43lg1s2s73chb1l0` live 11:55:58; `Nest application successfully started`; `GET /` 200; `auth/me` sem cookie 401; `POST .../commissions/bulk-settings/preview` sem sessão 401 (rota nova presente); log sem erro |
+| 11:59 | 1.4 web `5d74556` | `dep-dbup57s9v7es7398g0ug` live 11:59:32; `/login` 200; `auth/me` 401; logout com origem estranha 403; manifest do portal 200; `pilot:check-database` de novo: 16, 7/7, `SUCCESS` |
+| 12:00 | 2.1 backup antes da 17 | `pre-mig17-16-backup-2026-11-18T12-00-47Z`: restauração igual (45 tabelas, 16 migrations) |
+| 12:01 | 2.2 conferência antes | `before-tenant-test-flag`: 16, `SCHEMA_OBJECTS_OK: 0/2`, `ESTABELECIMENTOS: 3`, coluna ainda não existe, `SUCCESS` |
+| 12:01 | Ensaio | a 17, da cópia limpa `04c9a43`, aplicada na restauração do backup das 12:00: uma migration, `TenantTestFlag1793664000000` |
+| 12:02 | 2.3 migration 17 no piloto | da cópia limpa `04c9a43`: `16 migrations are already loaded`, `1 migrations are new`, `TenantTestFlag1793664000000 has been executed successfully` |
+| 12:02 | 2.4 conferência depois | `after-tenant-test-flag`: 17, 2/2, `MARCADOS_COMO_TESTE: 0`, `BASELINE_FAILURES: none`, `SUCCESS` |
+| 12:03 | 2.5 | API e web `5d74556` no schema 17: verificações HTTP iguais, log sem erro |
+| 12:03 | 2.6 API `04c9a4382decea6c175ffdfb28cc722cb8ad6092` | `dep-dbup7suk1f9s73av9ep0` live 12:03:59; log sem erro; `GET /public/<slug>` dos dois estabelecimentos com agendamento online ligado: `"indexable": true`. O terceiro responde 404 porque o agendamento online dele nunca foi ligado (sem linha em `public_booking_settings`), estado anterior à etapa |
+| 12:07 | 2.7 web `04c9a43` | `dep-dbup8ooae00c73f7hrn0` live 12:07:01; `/agendar/<slug>` dos dois: 200, sem `x-robots-tag`, com `canonical`; `/conta` com `x-robots-tag: noindex, nofollow`; demais verificações HTTP iguais |
+| 12:10 | 2.9 colisões, só leitura | `pilot:check-reserved-slugs`: `COLISOES: 0` |
+| 12:10 | 3.1, só leitura | três `MASTER_OWNER` ativos, todos reconhecidos pelo responsável; um com e-mail não verificado (a conta reconhecida nesta data). `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_FROM_NAME`, `EMAIL_API_KEY` definidas; chegada de e-mail não conferida. Nenhuma `PLATFORM_*` |
+| 12:12 | 3.2 chave TOTP | gerada neste PC (32 bytes) e guardada cifrada com DPAPI do usuário Windows em `%USERPROFILE%\AgendaCloud-operacoes\cofre-totp` (fora do Git e de pasta temporária), com um LEIA-ME. **Uma cópia só** (exceção do responsável); transferência segura para o PC de casa e segunda cópia pendentes |
+| ~12:15 | 2.8 | o responsável marcou os três estabelecimentos como teste pelo portal. `after-tenant-test-flag`: 17, 2/2, `MARCADOS_COMO_TESTE: 3`, `SUCCESS`; `/agendar/<slug>` dos dois com agendamento online: 200 com `x-robots-tag: noindex, nofollow` e `<meta name="robots" content="noindex, nofollow">` |
+| 12:22 | 3.3 backup antes da 18 | `pre-mig18-17-backup-2026-11-18T12-22-04Z`: 45 tabelas, 17 migrations; restauração com sha256, contagens, md5 e migrations iguais |
+| 12:23 | Ensaio | a 18, da cópia limpa `becc923`, aplicada na restauração: uma migration, `AdminSecondFactor1793750400000`; as sete consultas do estado 18 exatamente como na tabela da seção 5 |
+| 12:24 | 3.4 conferência antes | Render sem mudança; `after-tenant-test-flag`: 17, 2/2, `MARCADOS_COMO_TESTE: 3`, `SUCCESS` |
+| 12:24 | 3.5 migration 18 no piloto | da cópia limpa `becc923`: só `AdminSecondFactor1793750400000 has been executed successfully` |
+| 12:24 | 3.6 conferência do estado 18 | as sete consultas, só leitura, idênticas ao ensaio e à tabela esperada: 18 nomes na ordem, cinco tabelas, quatro colunas, restrições, quatro índices, sete ações de auditoria, sete zeros |
+| 12:25 | 3.7 variáveis | `PLATFORM_TOTP_KEYS` (versão 1, impressão digital da chave conferida contra o cofre), `PLATFORM_TOTP_KEY_CURRENT=1`, `PLATFORM_2FA_ENFORCEMENT=optional`, gravadas pela API do Render só no serviço da API; o web sem nenhuma `PLATFORM_*`; nenhum deploy disparado |
+| 12:26 | 3.8 API `becc923f12165f7085e3de5a12b019b10e9b4bb0` | `dep-dbupi8kipgvc739kp0d0` live 12:26:10; `18 de 18 registradas no banco`; `Nest application successfully started`; `GET /` 200; `GET /health` 200 |
+| 12:29 | 3.9 web `becc923` | `dep-dbupj3gm7kps73d4hd3g` live 12:29:11; `/login` 200 (título com o nome TimVix); `auth/me` 401; logout com origem estranha 403; manifest do portal 200 |
+| 12:30 | API `df535a19ffbf70355007171bec8f962937397f85` (#121) | sem migration e sem mudança de configuração entre `becc923` e `df535a1` (`git diff` de migrations, `database` e `config` vazio); `dep-dbupkc08v5cc739qodpg` live 12:30:29; `18 de 18`; iniciada |
+| 12:33 | web `df535a1` | `dep-dbupl5gm7kps73d4m2a0` live 12:33:38; verificações HTTP iguais; `/portal` 200 |
+| 12:34 | Backup antes da 19 | `pre-mig19-18-backup-2026-11-18T12-34-27Z`: 50 tabelas, 18 migrations; restauração com sha256, contagens, md5 e migrations iguais |
+| 12:35 | Ensaio e `seatTransitionReport` | a 19, da cópia limpa `4585af0`, aplicada na restauração: só `ModularSubscription1793836800000`. Relatório compilado de `4585af0`, numa transação só de leitura na cópia: três estabelecimentos, **nenhum acima do limite, nenhum com ocupação diferente** entre a regra anterior e a nova (ocupação 1 de 5, 0 de 20, 0 de 20; limite do plano nos três) |
+| 12:36 | Conferência antes da 19 | Render sem mudança; consultas 1 a 6 do estado 18 no piloto idênticas ao ensaio |
+| 12:36 | Migration 19 no piloto | da cópia limpa `4585af0`: só `ModularSubscription1793836800000 has been executed successfully` |
+| 12:36 | Conferência do estado 19 | doze consultas só de leitura, escritas a partir do código da migration e idênticas entre a cópia ensaiada e o piloto: 19 migrations distintas, a última `ModularSubscription1793836800000`; as quatro tabelas novas com restrições e índices; `tenants.team_user_limit` e `plans.max_professionals` aceitando NULL, com as duas restrições novas; gatilho `trg_tenants_modular_subscription` adiado; três ações de auditoria; seis adicionais semeados (dois disponíveis, um em desenvolvimento, três planejados); planos com 2/5/20 e RELATORIOS nos três; zero preço de adicional, assinatura, item, limite próprio e plano modular; estabelecimentos com plano e situação sem mudança |
+| 12:37 | API `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3` (#122) | `dep-dbupnnsipgvc739l81dg` live 12:37:39; `19 de 19 registradas no banco`; `Nest application successfully started`; nenhum erro no log depois do deploy |
+| 12:40 | web `4585af0` | `dep-dbupo9ec6qcc73b267ag` live 12:40:06; `/`, `/login`, `/cadastro`, `/conta` e `/portal` 200; `auth/me` 401; logout com origem estranha 403; `platform/addons`, `platform/prices`, `platform/establishments` e `platform/overview` sem sessão 401; cadastro do segundo fator sem sessão 401; as duas páginas públicas com `noindex` |
+
+**Login autenticado:** não testado pelo operador em nenhum par (só verificações HTTP sem sessão, que não comprovam login). O teste com sessão fica com o responsável e o sócio, no estado final.
+
+**Parada no passo 2.8 (resolvida):** "Marcar como teste" é uma ação do portal com sessão de conta de plataforma. O operador não usou a senha do responsável nem gravou a marca direto no banco: o responsável marcou os três pelo portal e a etapa 3 seguiu depois da conferência.
+
+**Passo 3.10 (cadastro do segundo fator):** não feito; com `optional`, as contas de plataforma sem fator continuam entrando no portal só com a senha. Os passos 3.11 e 3.12 ficam para o teste do responsável.
+
+### 1.6 Publicação do PR #123 (layout único em todos os temas), 18/11/2026, PC do trabalho
+
+**Pedido do responsável:** o arranjo do tema "Azul e branco" passa a ser o único em todos os temas. Tema muda só a paleta. Publicação autorizada depois das verificações, API primeiro e web depois, sem repetir migration.
+
+**O que entrou:** o PR #123 (`fix/layout-unico-todos-temas`), com CI aprovado no head `157d74c`, integrado como `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`. A mudança é só no web: menu agrupado do portal (Gestão, Comercial, Administração), Visão geral em cartões e menu agrupado de `/conta` para dono e gerente em qualquer tema. O funcionário mantém o menu curto. Sem mudança em `backend/`, migrations, variáveis, permissões, preços, limites ou contratos da API.
+
+| Momento (UTC) | Passo | Resultado |
+|---|---|---|
+| antes do deploy | Passo 0, só leitura | API `dep-dbupnnsipgvc739l81dg` e web `dep-dbupo9ec6qcc73b267ag` live em `4585af0`; Auto-Deploy desligado; nada em fila. `git diff 4585af0 ac67d06 -- backend render.yaml` vazio |
+| 13:55 | API `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1` | `dep-dbuqs2c9v7es739cvnmg` live; log com `19 de 19 registradas no banco`, sem erro. Nenhuma migration aplicada |
+| 13:57 | web `ac67d06` | `dep-dbuqsiu7bikc73aojkeg` live |
+| depois | Verificações sem sessão no piloto | API `/` 200; web `/login`, `/portal` e `/conta` 200; `auth/me` e `platform/overview` sem sessão 401; logout com origem estranha 403; o CSS publicado contém os tokens novos (`--color-chrome-brand`, `--color-chrome-ink-active`) |
+
+**Estado ao final:** API e web em `ac67d06`, banco com **19** migrations (o mesmo de `4585af0`), `PLATFORM_2FA_ENFORCEMENT=optional`.
+
+**Testes autenticados, só locais.** Feitos antes do merge, num PostgreSQL descartável com TLS e dados fictícios, nunca no piloto: lint, checagem de tipos, Vitest (com a guarda nova `layout-independente-do-tema.test.ts`) e 11 suítes de navegador com login real, entre elas a nova `test:browser:layout-temas`. Essa suíte troca os quatro temas e exige o mesmo arranjo no portal e em `/conta` (dono, gerente e funcionário), a 1280 e a 390 px. O CI do PR roda a mesma bateria.
+
+**No piloto, só verificações sem sessão.** O operador não entrou com sessão no piloto. As respostas 200, 401 e 403 acima não comprovam login nem a troca de tema com dados reais. As capturas comparativas dos quatro temas vêm do ambiente local e ficam fora do Git, em `%USERPROFILE%\AgendaCloud-operacoes\capturas-layout-temas-2026-11-18` no PC do trabalho.
+
+**Retorno compatível:** API e web de volta a `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3` (API `dep-dbupnnsipgvc739l81dg`, web `dep-dbupo9ec6qcc73b267ag`). Os dois commits têm o mesmo `backend/` e o mesmo schema 19, então o retorno é só de código, sem tocar no banco. Manter API e web no mesmo SHA.
 
 ## 2. Comprovado e pendente
 
@@ -486,3 +633,66 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 - **Integração depois deste plano (17/11/2026):** o PR #119 (tema opcional "Azul e branco", só no web do portal) foi integrado em `3da4855b42e495a1ffbeef727f5d5d6f7fc4def7`. **O alvo da etapa 3 continua `9de722d1380fa55b6c588b63d01dea1a4ebdc1f2`**; `3da4855` não entra na fila. Incluir o tema numa publicação é decisão separada do responsável. *(Superado pela atualização de 17/11 logo abaixo.)*
 - **Atualização de 17/11/2026:** por decisão do responsável, o tema e o menu entram no alvo final. O alvo da etapa 3 passa a ser o merge commit do PR #120 (nota no topo), que inclui `3da4855`. A releitura da seção 1.2 encontrou o web em `68e5eed`, então a etapa 0 precisa de reavaliação antes de qualquer deploy. As informações da seção 8 e as decisões D5, D7 e D8 continuam pendentes. Nada foi publicado.
 - **Se o estado mudar antes da etapa 0** (deploy novo no Render, commit novo na integração), releia a seção 1 e ajuste os SHAs antes de qualquer passo. Commit novo na integração não troca sozinho o alvo de nenhuma etapa: a troca exige decisão explícita, como a do PR #117.
+- **Execução de 18/11/2026 (seção 1.3):** etapa 0 concluída, com **API e web em `8e8577d`** e o web no deploy `dep-dbuh1skipgvc738tcfvg`. Verificações HTTP sem login aprovadas; **o login autenticado não foi testado**. Backup inicial do estado 16 feito e restaurado com contagens e md5 iguais, e ensaio de 16 para 19 aprovado numa cópia restaurada. Nenhuma migration aplicada no piloto, nenhuma variável alterada e nenhum outro deploy. **O alvo final continua pendente: `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`.** A sessão foi encerrada pelo responsável antes da etapa 1.
+
+- **Execução concluída em 18/11/2026, PC do trabalho (seção 1.5):** etapas 1, 2, 3, #121 e #122 publicadas. **API (`dep-dbupnnsipgvc739l81dg`) e web (`dep-dbupo9ec6qcc73b267ag`) em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`**, banco com **19** migrations, `PLATFORM_2FA_ENFORCEMENT=optional`, três estabelecimentos marcados como teste. Quatro backups novos, todos com restauração conferida. Login autenticado ainda não testado.
+
+- **Publicação do PR #123 em 18/11/2026 (seção 1.6):** **API (`dep-dbuqs2c9v7es739cvnmg`) e web (`dep-dbuqsiu7bikc73aojkeg`) em `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`**, banco com as mesmas **19** migrations, nenhuma migration nova. No piloto, só verificações sem sessão; os testes com login foram locais, em banco descartável. Retorno compatível: `4585af0`, só código. Pendências novas: 9 e 10 abaixo.
+
+### Pendências para retomar (18/11/2026)
+
+> Atualizado ao fim da execução: os itens 2 e 3 estão resolvidos (conta reconhecida pelo responsável; três estabelecimentos marcados como teste). O item 5 agora vale para a chave gerada e já no Render. O item 8 deixou de bloquear: a fila terminou sem deploy fora do plano depois da releitura de 11:43.
+
+1. **Rotação da senha exposta do banco do piloto: adiada por decisão do responsável (18/11/2026).** Não foi feita; a senha continua exposta e válida. Ela deixou de ser pré-requisito da etapa 1 por essa decisão. Condições para quando for feita:
+   - numa janela própria, **entre duas etapas**, nunca no meio de uma etapa, junto com uma migration ou junto com o deploy de outro SHA;
+   - com `pilot:check-database` antes e depois, e o deploy da API **no SHA que estiver live naquele momento**, nunca "latest";
+   - a cópia cifrada da URL direta no PC de operação atualizada na mesma janela, porque backups e conferências dependem dela; enquanto ela estiver desatualizada, nenhuma etapa com backup começa;
+   - um backup feito antes da rotação continua restaurável (a restauração é num PostgreSQL descartável, sem a senha do piloto).
+2. **Terceira conta `MASTER_OWNER` ativa**, não citada pelo responsável e com e-mail não verificado (o endereço está na mensagem da sessão e no banco, não neste repositório público). **Reconhecimento pendente:** o responsável ainda não disse se a reconhece. Sem isso, o passo 3.1 manda parar a etapa 3. Ninguém altera essa conta.
+3. **Classificação dos três estabelecimentos** (passo 2.8): a lista de quais são teste é do responsável. A marcação é feita pelo portal depois da etapa 2. Ninguém altera os estabelecimentos antes disso.
+4. **Login autenticado** dos pares intermediários e do estado final, pelo responsável, no fim.
+5. **Segunda cópia da chave TOTP** (passo 3.2): pendente por decisão do responsável. A chave ainda nem foi gerada; quando for, terá uma cópia só, no PC de operação.
+6. **Preços** do Agendamento essencial e dos adicionais: o responsável preenche pelo portal depois da etapa do #122. Até lá, a criação modular mostra a pendência.
+7. D5, D7 e D8 seguem como na seção 8; nenhuma bloqueia a etapa 1.
+8. **Autoria dos deploys de `4585af0` de 18/11 03:01 UTC** (seção 1.4): não confirmada. Enquanto não for esclarecida, qualquer deploy fora do plano continua parando o passo 0 de cada etapa, e o responsável decide se a etapa 1 pode começar antes do esclarecimento.
+9. **Teste manual do layout único no piloto (PR #123, seção 1.6):** o responsável ou o sócio entram com sessão e trocam o tema (Claro, Escuro, Seguir aparelho, Azul e branco) no portal e em `/conta`, no computador e no celular. Pendente.
+10. **Contraste do tema Claro:** o laranja de destaque fica em cerca de 4,3:1 e o texto de aviso em 3,3:1, abaixo do mínimo de 4,5:1. Os valores já existiam antes do PR #123 e não foram alterados para preservar a paleta. Ajustar escurece levemente o laranja e o amarelo do Claro em toda a interface; a decisão é do responsável.
+
+### Backups: estado comprovado
+
+| Backup | Onde | Estado | Uso |
+|---|---|---|---|
+| `inicial-16-backup-2026-11-18T02-36-44Z` | PC de casa, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens e md5 iguais); estado 16, 18/11 02:37 UTC | recuperação de dados numa cópia. **Não serve como o backup do passo 2.1 nem do 3.3**: cada migration exige um `pg_dump` novo, com restauração validada, feito logo antes dela |
+| `pre-etapa1-16-backup-2026-11-18T11-53-30Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens, md5 e migrations iguais); estado 16 | ponto de recuperação da etapa 1 |
+| `pre-mig17-16-backup-2026-11-18T12-00-47Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens, md5 e migrations iguais); estado 16 | ponto de recuperação da etapa 2 (passo 2.1) |
+| `pre-mig18-17-backup-2026-11-18T12-22-04Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens, md5 e migrations iguais); estado 17, três estabelecimentos marcados como teste | ponto de recuperação da etapa 3 (passo 3.3), junto com a chave TOTP |
+| `pre-mig19-18-backup-2026-11-18T12-34-27Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (50 tabelas, contagens, md5 e migrations iguais); estado 18 | ponto de recuperação da etapa do #122 |
+
+Backups mais antigos continuam em `%USERPROFILE%\AgendaCloud-operacoes` e `%USERPROFILE%\AgendaCloud-backups` no PC de casa, sem alteração. Nenhum backup é restaurado por cima do piloto.
+
+### Próxima ação exata para retomar
+
+> **Estado de 18/11/2026, 13:57 UTC (seção 1.6):** API e web em `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`, banco com 19 migrations, 2FA `optional`. Não há publicação pendente. As próximas ações do parágrafo abaixo continuam valendo, agora no SHA `ac67d06`, somadas às pendências 9 (teste manual dos temas no piloto) e 10 (contraste do Claro). Retorno, se preciso: API e web juntos em `4585af0`.
+
+> **Estado final de 18/11/2026, 12:40 UTC (seção 1.5):** fila concluída. API e web em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, banco com 19 migrations, 2FA `optional`. Não há etapa de publicação pendente. Próximas ações, nenhuma delas é deploy: (1) o responsável e o sócio testam com sessão (login, Contas e acessos, Planos e adicionais, limite de funcionários); (2) o responsável preenche os preços reais em "Planos e adicionais" antes de criar estabelecimento no plano modular; (3) cadastro do segundo fator de cada proprietário (passo 3.10) e só depois, com data própria, `required`; (4) segunda cópia da chave TOTP e transferência segura para o PC de casa; (5) rotação da senha (pendência 1), agora no SHA `4585af0` e com as consultas do estado 19 no lugar do `pilot:check-database`. Se algo falhar no teste, a regra é correção para a frente: não voltar a API a um SHA sem 2FA depois de um cadastro de fator, nem para antes do #122 depois da primeira assinatura modular. O texto abaixo é histórico.
+>
+> **Atualização de 18/11/2026, PC do trabalho (seção 1.5):** etapas 1 e 2 feitas. **API e web em `04c9a4382decea6c175ffdfb28cc722cb8ad6092`** (API `dep-dbup7suk1f9s73av9ep0`, web `dep-dbup8ooae00c73f7hrn0`), banco com **17** migrations, `MARCADOS_COMO_TESTE: 0`. Chave TOTP gerada e guardada (uma cópia, PC do trabalho), ainda fora do Render. Parado no **passo 2.8**: o responsável marca os três estabelecimentos como teste no portal (Busca na internet → Marcar como teste). Depois: conferência (`MARCADOS_COMO_TESTE: 3`, `noindex` nos marcados) e a etapa 3 a partir do passo 3.3. Os itens 1 e 3 abaixo ficaram superados por esta atualização; o item 4 continua valendo a partir da etapa 3.
+
+1. **Passo 0, só leitura:** Render com API e web live em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o web no deploy `dep-dbuohgk9v7es7396tnp0` (desde 18/11 11:17 UTC; o `dep-dbuh1skipgvc738tcfvg` foi substituído pelos deploys da seção 1.4), a API no `dep-dbreqklckfvc73e2loag`, Auto-Deploy desligado e nada em fila. Qualquer outro estado: pare e reavalie.
+2. **Rotação da senha: adiada** (pendência 1). Quando o responsável decidir fazê-la, o procedimento é este, nesta ordem, numa janela entre etapas:
+   1. No Neon, **projeto do piloto** (não o projeto proibido; os dois têm uma branch chamada `production`, então diferencie pelo projeto e pelo endpoint), troque a senha do usuário do banco com "Reset password".
+   2. No serviço da **API** do Render, troque **só a senha** em `DATABASE_URL` e em `DIRECT_URL`, mantendo host, pooler e parâmetros. Salve **sem** disparar deploy. Se um deploy começar sozinho, espere terminar e releia o passo 1.
+   3. Faça o deploy da API por commit **no SHA que estiver live** (hoje `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`), nunca "latest", para não subir uma versão incompatível com o banco.
+   4. Confira: API `GET /` 200; web `/agenda_api/auth/me` sem cookie 401; log da API sem erro de conexão.
+   5. Atualize a cópia cifrada da URL direta no PC de operação. Ela é usada pelos backups e pelas conferências.
+   6. Rode `pilot:check-database` com a expectativa do estado do banco naquele momento (no estado 16, `PILOT_EXPECT=after-commission-settings`: `MIGRATIONS_APPLIED: 16`, `SCHEMA_OBJECTS_OK: 7/7`, `BASELINE_FAILURES: none`, `RESULT: SUCCESS`; no estado 18 ou 19, as consultas de conferência da etapa correspondente).
+3. **Etapa 1** (seção 5), com API e depois web em `5d74556e9e12e55f38e0056d0f19911f3e66f475`. Antes de começar: o responsável decide sobre a pendência 8 (autoria dos deploys de 03:01). Ponto de recuperação: um backup novo com restauração conferida (ou a branch do Neon do passo 1.1); o backup inicial de 18/11 não substitui esse. A etapa 1 não muda schema nem variável, e a senha atual é a que o backup e a conferência usam.
+4. Depois, na ordem e sem pular:
+   - **Etapa 2:** backup novo conferido e migration 17 de uma cópia limpa em `04c9a43`; API e web em `04c9a4382decea6c175ffdfb28cc722cb8ad6092`.
+   - **Etapa 3:** chave TOTP, backup novo conferido, migration 18 de uma cópia limpa em `becc923`, as sete consultas do estado 18 e as três `PLATFORM_*` com `optional`; API e web em `becc923f12165f7085e3de5a12b019b10e9b4bb0`.
+   - **Etapa do #121:** API e web em `df535a19ffbf70355007171bec8f962937397f85`.
+   - **Etapa do #122:** backup novo conferido e `seatTransitionReport` na restauração dele; migration 19 de uma cópia limpa em `4585af0`; API e web em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`.
+
+**Limites de retorno:** não voltar a API a um SHA sem 2FA depois que um proprietário cadastrar o fator, nem a API para antes do #122 depois da primeira assinatura modular.
+
+**Ferramentas de operação:** os scripts auxiliares da sessão de casa e o cofre cifrado da URL ficam só no PC de casa, fora do Git. Os da sessão de 18/11 no trabalho ficaram na pasta temporária da sessão (descartáveis); os backups e a chave TOTP cifrada ficam em `%USERPROFILE%\AgendaCloud-operacoes` no PC do trabalho. Em outro computador, siga os roteiros citados em cada etapa. As credenciais precisam ser providenciadas lá sem passar por chat, Git ou log.
