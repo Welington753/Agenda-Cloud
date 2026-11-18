@@ -15,6 +15,15 @@ Branch `feat/estoque-v1` (worktree `C:/wt/estoque`), a partir de `208d7ee`. Plan
 - O adicional ESTOQUE é o que já existia no catálogo. Nome, descrição e preço são preservados, e nenhum estabelecimento é ligado automaticamente.
 - O adicional fica contratável na mesma publicação. O estoque só é considerado liberado depois de API e web confirmados e das verificações finais (runbook, seção H2).
 - Fora do escopo: PDV, recebimentos, comissão sobre produto, nota fiscal e integração financeira. "Saída por venda" é só estoque.
+- Visual (18/11/2026): seguir as três referências originais (Produtos, Categorias e Conferência), com Movimentações na mesma linguagem. O responsável descartou depois uma versão simplificada. As telas:
+  - **Produtos:** trilha "Estoque / Produtos", cartões de resumo, busca e filtros de categoria e subcategoria, abas Ativos e Arquivados, "Somente estoque baixo" e uma tabela com saldo, mínimo e situação. O estoque baixo destaca a linha, e as ações ficam no menu "…".
+  - **Categorias:** árvore com busca e "Mostrar arquivadas" ao lado do detalhe da categoria escolhida, que mostra as subcategorias (opcionais) e os produtos dela com o saldo.
+  - **Movimentações:** tabela com tipo, quantidade com sinal e saldo antes → depois. O formulário mostra o saldo atual e o saldo depois, e o estorno abre numa janela com o motivo.
+  - **Conferência:** etapas Contar, Revisar e Confirmar. A tela diz em cada etapa que nenhum saldo muda antes da confirmação, e a etapa Confirmar lista o saldo antes e depois de cada ajuste.
+  - **Diferenças em relação às referências:**
+    - o motivo dos ajustes continua opcional, como na API;
+    - os cartões reutilizam o componente de indicador existente;
+    - o menu lateral e as cores são os de cada tema.
 
 ## 2. Regras
 
@@ -96,12 +105,15 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 
 Atualizado a cada checkpoint (abaixo).
 
-**18/11/2026:**
+**18/11/2026 (fim da tarde, depois da queda de energia):**
 
-- **Feito:** backend, migrations, web, testes, documentação e CI local.
+- **Feito:**
+  - PR #127 aberto; CI verde em `e2b6f4f` (os dois workflows);
+  - ajuste visual das quatro telas pelas três referências originais (seção 1, "Visual"). Validado localmente com `test:browser:estoque`, `test:browser:layout-temas`, a suíte web inteira, lint e build. Capturas com dados fictícios nos quatro temas, em computador e celular: `%USERPROFILE%\AgendaCloud-operacoes\capturas-estoque-2026-11-18` (só neste computador).
+- **Piloto e Render** (conferido só por leitura): API e web em `208d7ee`, banco com 20 migrations pelo registro de operações. A publicação do estoque não começou, e não há backup `pre-mig21`.
 - **Ainda não feito:**
-  - PR e CI no GitHub;
+  - CI verde no commit final;
   - merge;
-  - publicação: backup, ensaio e janelas H0, migrations no piloto, API e web, liberação.
-- **Próximo passo:** abrir o PR para `integration/nestjs-typeorm-frontend` e acompanhar os dois workflows.
-- **Só neste computador:** o PostgreSQL descartável da sessão (pasta temporária) e as capturas locais. Nada a recuperar.
+  - publicação pelo runbook: backup, restauração, ensaios das janelas H0 e do H3, migrations 21 e 22 no piloto, API e web no mesmo SHA, liberação.
+- **Próximo passo:** acompanhar os dois workflows no head do PR. Com CI verde, merge e depois a seção H do runbook.
+- **Só neste computador:** o PostgreSQL descartável (pasta temporária da sessão), as capturas e a cópia do trabalho visual feita antes da retomada (`C:/wt/_backups/estoque-visual-wip-20261118T195755Z`).
