@@ -38,10 +38,19 @@ export const MANAGER_PERMISSIONS = [
   'RECEBIMENTOS_VISUALIZAR',
   'RECEBIMENTOS_REGISTRAR',
   'RECEBIMENTOS_ESTORNAR',
+  'ESTOQUE_VISUALIZAR',
+  'ESTOQUE_GERENCIAR',
 ] as const;
 export type ManagerPermission = (typeof MANAGER_PERMISSIONS)[number];
 
-export type ManagerArea = 'AGENDA' | 'SOLICITACOES' | 'CLIENTES' | 'SERVICOS' | 'PROFISSIONAIS' | 'RECEBIMENTOS';
+export type ManagerArea =
+  | 'AGENDA'
+  | 'SOLICITACOES'
+  | 'CLIENTES'
+  | 'SERVICOS'
+  | 'PROFISSIONAIS'
+  | 'RECEBIMENTOS'
+  | 'ESTOQUE';
 
 export const MANAGER_AREA_LABELS: Readonly<Record<ManagerArea, string>> = {
   AGENDA: 'Agenda do estabelecimento',
@@ -50,6 +59,7 @@ export const MANAGER_AREA_LABELS: Readonly<Record<ManagerArea, string>> = {
   SERVICOS: 'Serviços',
   PROFISSIONAIS: 'Profissionais',
   RECEBIMENTOS: 'Recebimentos',
+  ESTOQUE: 'Estoque',
 };
 
 export const MANAGER_PERMISSION_META: Readonly<
@@ -135,6 +145,16 @@ export const MANAGER_PERMISSION_META: Readonly<
     label: 'Estornar recebimentos',
     detail: 'Estorna um recebimento já registrado, com motivo.',
   },
+  ESTOQUE_VISUALIZAR: {
+    area: 'ESTOQUE',
+    label: 'Ver estoque',
+    detail: 'Vê produtos, categorias, saldos, movimentações e conferências. Depende do adicional Estoque.',
+  },
+  ESTOQUE_GERENCIAR: {
+    area: 'ESTOQUE',
+    label: 'Operar estoque',
+    detail: 'Cadastra produtos e categorias, registra movimentações e confirma conferências. Inclui ver estoque.',
+  },
 };
 
 /** O que cada permissão exige junto (fechamento já calculado: a lista de
@@ -158,6 +178,18 @@ export const MANAGER_PERMISSION_REQUIRES: Readonly<Record<ManagerPermission, rea
   RECEBIMENTOS_VISUALIZAR: ['AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'],
   RECEBIMENTOS_REGISTRAR: ['RECEBIMENTOS_VISUALIZAR', 'AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'],
   RECEBIMENTOS_ESTORNAR: ['RECEBIMENTOS_VISUALIZAR', 'AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR'],
+  // Operar estoque inclui ver estoque.
+  ESTOQUE_VISUALIZAR: [],
+  ESTOQUE_GERENCIAR: ['ESTOQUE_VISUALIZAR'],
+};
+
+/** Concessões que só valem com o adicional contratado: sem o recurso, o
+ * catálogo as mostra como não concedíveis e o servidor recusa a concessão
+ * (`RECURSO_NAO_CONTRATADO`). Uma concessão gravada antes da retirada fica
+ * guardada, sem efeito, até a recontratação (o gate comercial vem antes). */
+export const MANAGER_PERMISSION_FEATURE: Readonly<Partial<Record<ManagerPermission, 'ESTOQUE'>>> = {
+  ESTOQUE_VISUALIZAR: 'ESTOQUE',
+  ESTOQUE_GERENCIAR: 'ESTOQUE',
 };
 
 export function isManagerPermission(valor: string): valor is ManagerPermission {

@@ -13,7 +13,7 @@ import {
   OWN_COMMISSIONS_PERMISSION,
   type StaffPermission,
 } from './staff-access.js';
-import type { ManagerPermission } from '../common/manager-permissions.js';
+import { MANAGER_PERMISSION_FEATURE, type ManagerPermission } from '../common/manager-permissions.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import { featureEnabled } from '../commercial/commercial-gate.js';
 
@@ -22,6 +22,9 @@ export interface TeamManager extends AuthorizedTenant {
   grantable: StaffPermission[];
   /** As áreas que este dono pode conceder a um gerente. */
   grantableManager: ManagerPermission[];
+  /** Áreas que dependem de um adicional que o estabelecimento não tem: não
+   * entram em `grantableManager`, e conceder recebe `RECURSO_NAO_CONTRATADO`. */
+  managerWithoutFeature: ManagerPermission[];
 }
 
 export async function resolveTeamManager(manager: EntityManager, userId: string, tenantId: string): Promise<TeamManager> {
@@ -37,11 +40,21 @@ export async function resolveTeamManager(manager: EntityManager, userId: string,
   // não é oferecida (retirar continua possível: validarConcessoes confere só
   // o que entra).
   const comissoes = await featureEnabled(manager, authorized.tenantId, FeatureKey.COMISSOES);
+  // As áreas que dependem de adicional (estoque) só são concedíveis com ele.
+  const semRecurso: ManagerPermission[] = [];
+  const recursosConferidos = new Map<string, boolean>();
+  for (const [permissao, recurso] of Object.entries(MANAGER_PERMISSION_FEATURE) as [ManagerPermission, FeatureKey][]) {
+    if (!recursosConferidos.has(recurso)) {
+      recursosConferidos.set(recurso, await featureEnabled(manager, authorized.tenantId, recurso));
+    }
+    if (!recursosConferidos.get(recurso)) semRecurso.push(permissao);
+  }
   return {
     ...authorized,
     grantable: grantableStaffPermissions(authorized.role, overrides).filter(
       (p) => p !== OWN_COMMISSIONS_PERMISSION || comissoes,
     ),
-    grantableManager: grantableManagerPermissions(authorized.role, overrides),
+    grantableManager: grantableManagerPermissions(authorized.role, overrides).filter((p) => !semRecurso.includes(p)),
+    managerWithoutFeature: semRecurso,
   };
 }

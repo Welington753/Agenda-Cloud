@@ -3,13 +3,17 @@
 // classes de item ativo e inativo.
 import Link from "next/link";
 import {
+  ArrowLeftRight,
   CalendarCheck,
   CalendarDays,
+  ClipboardCheck,
   ClipboardList,
   Contact,
+  FolderTree,
   HandCoins,
   KeyRound,
   LayoutDashboard,
+  Package,
   Settings,
   Users,
   type LucideIcon,
@@ -22,6 +26,10 @@ import {
   ROTA_COMISSOES,
   ROTA_CONFIGURACOES,
   ROTA_EQUIPE,
+  ROTA_ESTOQUE_CATEGORIAS,
+  ROTA_ESTOQUE_CONFERENCIA,
+  ROTA_ESTOQUE_MOVIMENTACOES,
+  ROTA_ESTOQUE_PRODUTOS,
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
@@ -38,6 +46,10 @@ export const ICONE_POR_HREF: Record<string, LucideIcon> = {
   [ROTA_COMISSOES]: HandCoins,
   [ROTA_CONFIGURACOES]: Settings,
   [ROTA_MINHA_AGENDA]: CalendarCheck,
+  [ROTA_ESTOQUE_PRODUTOS]: Package,
+  [ROTA_ESTOQUE_CATEGORIAS]: FolderTree,
+  [ROTA_ESTOQUE_MOVIMENTACOES]: ArrowLeftRight,
+  [ROTA_ESTOQUE_CONFERENCIA]: ClipboardCheck,
 };
 
 /** Colunas da barra inferior do celular: uma por área da barra.

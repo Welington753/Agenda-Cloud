@@ -35,12 +35,14 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as vinte migrations no dist (nunca specs)', () => {
+  it('descobre as vinte e duas migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(20);
+    expect(migrationJsFiles).toHaveLength(22);
     expect(migrationJsFiles.some((f) => f.includes('ModularSubscription'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('CatalogItemEdit'))).toBe(true);
+    expect(migrationJsFiles.some((f) => f.includes('StockEnumValues'))).toBe(true);
+    expect(migrationJsFiles.some((f) => f.includes('StockModule'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('TenantTestFlag'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ProfessionalCommissionSettings'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ProfessionalCommissions'))).toBe(true);
@@ -59,9 +61,9 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(migrationJsFiles.some((f) => f.includes('AppointmentPayments'))).toBe(true);
     // As três mais recentes, na ordem do carimbo (a ordem de aplicação).
     expect([...migrationJsFiles].sort().slice(-3)).toEqual([
-      '1793750400000-AdminSecondFactor.js',
-      '1793836800000-ModularSubscription.js',
       '1793923200000-CatalogItemEdit.js',
+      '1794009600000-StockEnumValues.js',
+      '1794096000000-StockModule.js',
     ]);
     // Nenhum `.spec.js` deve escapar para o dist — só código de migration real.
     expect(files.some((f) => f.includes('.spec.'))).toBe(false);

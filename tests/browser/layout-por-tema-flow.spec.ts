@@ -152,6 +152,12 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
       password: SENHA,
     });
     const tenantId = dono.tenant.id;
+    // Adicional Estoque ligado como a assinatura liga (override do recurso):
+    // o dono percorre também as quatro páginas da seção Estoque.
+    await db.query(
+      `INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled) VALUES ($1, $2, 'feat_estoque', true)`,
+      [id(), tenantId],
+    );
     const profissional = await page.request.post(`${API_DE_TESTE}/tenants/${tenantId}/professionals`, {
       data: { name: "Profissional Fictícia", serviceIds: [] },
     });
@@ -183,6 +189,10 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
       { nome: "visao-geral", abrir: abrirInicio("/conta/visao-geral", /\/conta\/visao-geral$/) },
       { nome: "agenda", abrir: navegarPeloMenu("Agenda", /\/conta\/agendamentos$/) },
       { nome: "equipe", abrir: navegarPeloMenu("Equipe e acessos", /\/conta\/configuracoes\/equipe$/) },
+      { nome: "estoque-produtos", abrir: navegarPeloMenu("Produtos", /\/conta\/estoque\/produtos$/) },
+      { nome: "estoque-categorias", abrir: navegarPeloMenu("Categorias", /\/conta\/estoque\/categorias$/) },
+      { nome: "estoque-movimentacoes", abrir: navegarPeloMenu("Movimentações", /\/conta\/estoque\/movimentacoes$/) },
+      { nome: "estoque-conferencia", abrir: navegarPeloMenu("Conferência de estoque", /\/conta\/estoque\/conferencia$/) },
       { nome: "configuracoes", abrir: navegarPeloMenu("Configurações", /\/conta\/configuracoes$/) },
     ]);
     // O tema não libera nem esconde área: o menu do dono é o mesmo no fim.

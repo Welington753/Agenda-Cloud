@@ -19,6 +19,7 @@ export function areaFeature(area: string): FeatureKey | null {
   if (area.startsWith('PROFISSIONAIS_')) return FeatureKey.PROFISSIONAIS;
   if (area === 'AGENDAMENTO_ONLINE') return FeatureKey.AGENDAMENTO_PUBLICO;
   if (area === 'EQUIPE') return FeatureKey.EQUIPE;
+  if (area.startsWith('ESTOQUE_')) return FeatureKey.ESTOQUE;
   return null;
 }
 

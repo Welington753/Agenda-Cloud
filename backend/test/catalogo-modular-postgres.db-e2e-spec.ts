@@ -313,10 +313,10 @@ describe.skipIf(!url)('edição do catálogo modular contra PostgreSQL descartá
     });
     expect(await codigo(criarModular('planejado', ['MARKETING']))).toBe('MODULO_INDISPONIVEL');
     // Só o nome, mantendo o preço pendente de outro planejado.
-    await lembrar('ESTOQUE');
-    if ((await lido('ESTOQUE')).priceCents === null) {
-      expect(await editar('ESTOQUE', { name: 'Estoque de produtos' })).toMatchObject({ changed: true, item: { priceCents: null } });
-      expect(await n(`SELECT count(*)::int AS n FROM addon_module_prices WHERE module_code = 'ESTOQUE'`)).toBe(0);
+    await lembrar('GESTAO_FINANCEIRA');
+    if ((await lido('GESTAO_FINANCEIRA')).priceCents === null) {
+      expect(await editar('GESTAO_FINANCEIRA', { name: 'Financeiro do negócio' })).toMatchObject({ changed: true, item: { priceCents: null } });
+      expect(await n(`SELECT count(*)::int AS n FROM addon_module_prices WHERE module_code = 'GESTAO_FINANCEIRA'`)).toBe(0);
     }
   });
 

@@ -23,6 +23,7 @@ const DIRETORIOS_ALVO = [
   "src/components/conta",
   "src/components/auth",
   "src/components/administracao",
+  "src/components/estoque",
   "src/lib/api",
   "src/lib/conta",
   "src/lib/equipe",
@@ -32,6 +33,7 @@ const DIRETORIOS_ALVO = [
   "src/lib/clientes",
   "src/lib/agendamento-publico",
   "src/lib/administracao",
+  "src/lib/estoque",
 ];
 
 function listarArquivos(diretorio: string): string[] {

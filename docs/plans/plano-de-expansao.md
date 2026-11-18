@@ -184,8 +184,14 @@ página de preços não mostra data de atualização):
 
 ## 4. Frente B — Estoque
 
-Ainda não existe nada (`mensagens-e-proximos-lotes.md`, D1–D4). Mantém
-aquela sequência, com estas regras fixadas:
+**B1 implementado em 18/11/2026** como adicional ESTOQUE (`docs/plans/estoque-v1.md`):
+movimentações manuais, categorias com um nível de subcategoria, conferência,
+quantidades em milésimos (UN, CX, PCT, FR, G e ML inteiras; KG e L com 3
+casas), saldo negativo bloqueado, dono e gerente com concessão. As regras
+abaixo eram o rascunho anterior; onde divergem, vale o plano do lote. B2 e B3
+continuam dependendo de vendas (C1) e do consumo por serviço.
+
+Rascunho anterior (`mensagens-e-proximos-lotes.md`, D1–D4):
 
 - **Produto ou material:** nome, tipo (`VENDA`, `CONSUMO` ou ambos),
   unidade (`UN`, `ML`, `G`, `KG`, `L`), quantidade mínima e custo
@@ -375,8 +381,12 @@ Fonte: [Maps URLs](https://developers.google.com/maps/documentation/urls/get-sta
    número, custo mensal estimado por categoria e quem aprova os modelos
    (A4).
 6. **Permissões:** quais áreas novas (estoque, relatórios, despesas) o dono
-   pode conceder ao gerente.
+   pode conceder ao gerente. *Estoque respondido em 18/11/2026: o dono
+   concede "Ver estoque" e "Operar estoque" (operar inclui ver), só com o
+   adicional contratado.*
 7. **Estoque:** o saldo pode ficar negativo? Quais unidades de medida?
+   *Respondido em 18/11/2026: saldo negativo bloqueado; unidades fixas sem
+   conversão (ver `docs/plans/estoque-v1.md`).*
 8. **Retenção:** prazo de guarda de sessões, entregas e auditoria (O3).
 
 ## 8. Ordem proposta

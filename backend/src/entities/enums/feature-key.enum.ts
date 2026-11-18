@@ -1,5 +1,7 @@
-// Idêntico ao enum `FeatureKey` do schema.prisma original — 13 valores,
-// espelhando `Feature` (13 itens) em src/lib/types.ts.
+// Os 13 valores do enum `FeatureKey` do schema.prisma original (espelhando
+// `Feature` em src/lib/types.ts) e `ESTOQUE`, acrescentado ao tipo
+// `feature_key` pela migration StockEnumValues1794009600000 (adicional de
+// estoque, docs/plans/estoque-v1.md).
 export enum FeatureKey {
   AGENDA = 'AGENDA',
   AGENDAMENTO_PUBLICO = 'AGENDAMENTO_PUBLICO',
@@ -14,4 +16,5 @@ export enum FeatureKey {
   COMISSOES = 'COMISSOES',
   PAGAMENTOS = 'PAGAMENTOS',
   ASSINATURAS = 'ASSINATURAS',
+  ESTOQUE = 'ESTOQUE',
 }

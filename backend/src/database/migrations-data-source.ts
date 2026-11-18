@@ -48,6 +48,13 @@ export function buildMigrationsDataSourceOptions(
     // independente, ver docs/plans/migracao-nestjs-typeorm-neon.md, seção
     // 8.6).
     migrationsTableName: 'typeorm_migrations',
+    // Uma transação por migration (CLI sem `-t`; ver MigrationRunCommand do
+    // TypeORM 1.x). Necessário porque `StockModule1794096000000` usa valores
+    // de enum criados por `StockEnumValues1794009600000`, e o PostgreSQL só
+    // deixa usar um valor novo depois que a transação que o criou confirmou.
+    // Cada migration continua atômica; uma falha deixa as anteriores
+    // aplicadas e registradas, e a retomada aplica só o que falta.
+    migrationsTransactionMode: 'each',
   };
 }
 

@@ -28,6 +28,11 @@ describe('buildMigrationsDataSourceOptions', () => {
     expect(buildMigrationsDataSourceOptions(FAKE_URL).logger).toBeUndefined();
   });
 
+  it("roda cada migration na própria transação ('each'): a 22 usa enums criados pela 21", () => {
+    expect(buildMigrationsDataSourceOptions(FAKE_URL).migrationsTransactionMode).toBe('each');
+    expect(MigrationsDataSource.options.migrationsTransactionMode).toBe('each');
+  });
+
   it('usa nome explícito e estável para a tabela de controle de migrations', () => {
     expect(buildMigrationsDataSourceOptions(FAKE_URL).migrationsTableName).toBe(
       'typeorm_migrations',

@@ -18,6 +18,7 @@ import {
   ROTA_AGENDA,
   ROTA_CLIENTES,
   ROTA_CONFIGURACOES,
+  ROTA_ESTOQUE,
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
@@ -61,7 +62,9 @@ export type AreaDoEstabelecimento =
   | "AGENDA_PROPRIA_INICIAR"
   | "AGENDA_PROPRIA_CONCLUIR"
   | "AGENDA_PROPRIA_FALTA"
-  | "AGENDA_PROPRIA_COMISSOES";
+  | "AGENDA_PROPRIA_COMISSOES"
+  | "ESTOQUE_VER"
+  | "ESTOQUE_GERENCIAR";
 
 export function perfilDoPapel(papel: PapelEstabelecimentoReal | null | undefined): PerfilDaArea {
   if (papel === "DONO") return "dono";
@@ -93,8 +96,20 @@ const PAGINAS_DO_GERENTE: readonly { href: string; area: AreaDoEstabelecimento }
   { href: ROTA_RECEBIMENTOS, area: "RECEBIMENTOS_VER" },
   { href: ROTA_SERVICOS, area: "SERVICOS_VER" },
   { href: ROTA_PROFISSIONAIS, area: "PROFISSIONAIS_VER" },
+  // Todo o estoque (produtos, categorias, movimentações e conferência) com a
+  // mesma área: a página esconde o que precisa de ESTOQUE_GERENCIAR.
+  { href: ROTA_ESTOQUE, area: "ESTOQUE_VER" },
 ];
-const ORDEM_DE_INICIO_DO_GERENTE = [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES, ROTA_RECEBIMENTOS, ROTA_SERVICOS, ROTA_PROFISSIONAIS];
+const ORDEM_DE_INICIO_DO_GERENTE = [
+  ROTA_AGENDA,
+  ROTA_SOLICITACOES,
+  ROTA_MINHA_AGENDA,
+  ROTA_CLIENTES,
+  ROTA_RECEBIMENTOS,
+  ROTA_SERVICOS,
+  ROTA_PROFISSIONAIS,
+  ROTA_ESTOQUE,
+];
 
 /** Onde cada perfil começa (depois de entrar ou trocar de estabelecimento).
  * Quem administra a plataforma sem estabelecimento é levado à administração

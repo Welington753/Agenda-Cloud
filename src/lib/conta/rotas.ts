@@ -31,6 +31,13 @@ export const ROTA_COMISSOES = "/conta/comissoes";
 /** As próprias comissões (funcionário, quando o dono libera). */
 export const ROTA_MINHAS_COMISSOES = "/conta/minha-agenda/comissoes";
 
+/** Estoque (adicional ESTOQUE; dono e gerente com a concessão). */
+export const ROTA_ESTOQUE = "/conta/estoque";
+export const ROTA_ESTOQUE_PRODUTOS = `${ROTA_ESTOQUE}/produtos`;
+export const ROTA_ESTOQUE_CATEGORIAS = `${ROTA_ESTOQUE}/categorias`;
+export const ROTA_ESTOQUE_MOVIMENTACOES = `${ROTA_ESTOQUE}/movimentacoes`;
+export const ROTA_ESTOQUE_CONFERENCIA = `${ROTA_ESTOQUE}/conferencia`;
+
 export const ROTA_CONFIGURACOES = "/conta/configuracoes";
 export const ROTA_CONFIG_ESTABELECIMENTO = `${ROTA_CONFIGURACOES}/estabelecimento`;
 export const ROTA_SERVICOS = `${ROTA_CONFIGURACOES}/servicos`;

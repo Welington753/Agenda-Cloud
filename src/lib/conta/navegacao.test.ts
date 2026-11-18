@@ -197,3 +197,48 @@ describe("gruposDaNavegacao (menu lateral de dono e gerente, todos os temas)", (
     expect(gruposDaNavegacao(dono).flatMap((g) => g.itens).map((i) => i.href).sort()).toEqual(dono.map((i) => i.href).sort());
   });
 });
+
+describe("seção Estoque (adicional ESTOQUE)", () => {
+  const ESTOQUE = ["Produtos", "Categorias", "Movimentações", "Conferência de estoque"];
+  const resumo = (itens: Parameters<typeof gruposDaNavegacao>[0]) =>
+    gruposDaNavegacao(itens).map((g) => [g.titulo, g.itens.map((i) => i.rotulo)]);
+
+  it("dono com a área ESTOQUE_VER: grupo Estoque entre Gestão do negócio e Administração, no menu da conta no celular", () => {
+    const itens = itensDoDono({ ...DONO_COM_COMISSOES, areas: [...DONO_COM_COMISSOES.areas, "ESTOQUE_VER", "ESTOQUE_GERENCIAR"] });
+    expect(resumo(itens)).toEqual([
+      [null, ["Visão geral"]],
+      ["Atendimento", ["Agenda", "Clientes"]],
+      ["Gestão do negócio", ["Profissionais", "Serviços", "Comissões"]],
+      ["Estoque", ESTOQUE],
+      ["Administração", ["Equipe e acessos", "Configurações"]],
+    ]);
+    expect(itens.filter((i) => ESTOQUE.includes(i.rotulo)).every((i) => i.noCelular === "menu")).toBe(true);
+    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual(["Visão geral", "Agenda", "Clientes", "Configurações"]);
+    expect(itens.filter((i) => ESTOQUE.includes(i.rotulo)).map((i) => i.href)).toEqual([
+      "/conta/estoque/produtos",
+      "/conta/estoque/categorias",
+      "/conta/estoque/movimentacoes",
+      "/conta/estoque/conferencia",
+    ]);
+  });
+
+  it("sem a área (sem adicional, restrito ou API anterior), nada de Estoque", () => {
+    expect(itensDoDono(DONO_COM_COMISSOES).map((i) => i.rotulo)).not.toContain("Produtos");
+    expect(itensDoDono({ role: "DONO" }).map((i) => i.rotulo)).not.toContain("Produtos");
+    expect(itensDoDono({ role: "DONO", areas: ["ESTOQUE_GERENCIAR"] }).map((i) => i.rotulo)).not.toContain("Produtos");
+  });
+
+  it("gerente: só com a área concedida; funcionário nunca", () => {
+    const comEstoque = itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: { role: "GERENTE", areas: ["CLIENTES_VER", "ESTOQUE_VER"] } });
+    expect(comEstoque.map((i) => i.rotulo)).toEqual(["Clientes", ...ESTOQUE, "Configurações"]);
+    const semEstoque = itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: { role: "GERENTE", areas: ["CLIENTES_VER"] } });
+    expect(semEstoque.map((i) => i.rotulo)).not.toContain("Produtos");
+    const funcionario = itensDaNavegacao({ comEstabelecimento: true, perfil: "funcionario", contexto: { role: "PROFISSIONAL", areas: ["ESTOQUE_VER"] } });
+    expect(funcionario.map((i) => i.rotulo)).not.toContain("Produtos");
+  });
+
+  it("item ativo nas subpáginas do estoque", () => {
+    expect(itemAtivo("/conta/estoque/produtos", "/conta/estoque/produtos")).toBe(true);
+    expect(itemAtivo("/conta/estoque/produtos", "/conta/estoque/categorias")).toBe(false);
+  });
+});

@@ -254,7 +254,8 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
       [planoDois, 2],
     ] as const) {
       await q(
-        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $1, $2, '', $3, 1)`),
+        // Como os planos reais: o Controle de estoque só existe como adicional.
+        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $1, $2, '', $3, 1)`, ['feat_estoque']),
         [plano, `Plano de teste ${max}`, max],
       );
     }
@@ -367,9 +368,9 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
     expect(visao.enabledAddons).toEqual(['INDICADORES']);
     expect(await n(`SELECT count(*)::int AS n FROM tenant_access_periods WHERE tenant_id = $1 AND kind = 'PAID'`, [tenantId])).toBe(0);
     expect(await pricingFor(db.manager, tenantId, MODULAR_PLAN_ID, 'MONTHLY')).toMatchObject({ suggestedCents: base + 990, source: 'CONTRACT' });
-    // Módulo planejado não entra, nem com preço.
+    // Módulo ainda não disponível (WhatsApp, em desenvolvimento) não entra.
     const recusa = await erroDe(
-      invites.createEstablishment(master.userId, createEstablishmentSchema.parse({ ...dto, requestKey: chave(), addons: ['ESTOQUE'] })),
+      invites.createEstablishment(master.userId, createEstablishmentSchema.parse({ ...dto, requestKey: chave(), addons: ['WHATSAPP'] })),
     );
     expect(recusa.getResponse?.()?.code).toBe('MODULO_INDISPONIVEL');
   });

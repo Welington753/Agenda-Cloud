@@ -124,7 +124,7 @@ test("convites, ativação, conta existente, revogação, falha de envio e bloqu
     const caixa = indicadores.getByRole("checkbox");
     await expect(caixa).not.toBeChecked();
     if ((await indicadores.textContent())?.includes("Preço a definir")) await expect(caixa).toBeDisabled();
-    await expect(page.getByTestId("futuro-ESTOQUE").getByRole("checkbox")).toBeDisabled();
+    await expect(page.getByTestId("futuro-WHATSAPP").getByRole("checkbox")).toBeDisabled();
     await page.getByLabel("Nome", { exact: true }).fill("Dona Nova");
     await page.getByLabel("E-mail").fill(`${marca}-DONA@example.test`);
     await capturar(page, "novo-estabelecimento");

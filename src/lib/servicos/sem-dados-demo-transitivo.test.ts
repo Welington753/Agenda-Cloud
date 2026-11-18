@@ -28,6 +28,7 @@ const PONTOS_DE_ENTRADA = [
   "src/components/conta",
   "src/components/auth",
   "src/components/administracao",
+  "src/components/estoque",
   "src/lib/api",
   "src/lib/clientes",
   "src/lib/conta",
@@ -37,6 +38,7 @@ const PONTOS_DE_ENTRADA = [
   "src/lib/servicos",
   "src/lib/agendamento-publico",
   "src/lib/administracao",
+  "src/lib/estoque",
 ];
 
 /** Domínio da demonstração: sessão simulada, dados locais e o acesso deles. */

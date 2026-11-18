@@ -55,6 +55,8 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'AdminSecondFactor1793750400000',
   'ModularSubscription1793836800000',
   'CatalogItemEdit1793923200000',
+  'StockEnumValues1794009600000',
+  'StockModule1794096000000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -154,8 +156,13 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
     expect(status.pendingNames).toHaveLength(PENDENTES_APOS_O_BASELINE.length);
   });
 
-  it('migration:run:compiled -- -t all via process-runner real: aplica todas as pendentes', async () => {
-    const result = await processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'all'], {
+  // `-t each`: a migration 22 (StockModule) usa valores de enum criados pela
+  // 21, que só valem depois do COMMIT da 21 (PostgreSQL 55P04). Com `-t all`
+  // a 22 falha e tudo é desfeito (test/stock-migrations.db-e2e-spec.ts). O
+  // orquestrador do 6B.2 (`-t all`) nunca chega lá: o guarda dele recusa
+  // antes qualquer migration posterior ao lote dele (`unexpected_names`).
+  it('migration:run:compiled -- -t each via process-runner real: aplica todas as pendentes', async () => {
+    const result = await processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'each'], {
       env: guardedEnv,
     });
 
@@ -193,7 +200,9 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // second_factor_grants e second_factor_attempts (AdminSecondFactor).
       // 54 com addon_modules, addon_module_prices, tenant_subscriptions e
       // tenant_subscription_items (ModularSubscription).
-      expect(Number(tables.rows[0]?.n)).toBe(54);
+      // 60 com stock_categories, stock_subcategories, stock_products,
+      // stock_counts, stock_movements e stock_count_items (StockModule).
+      expect(Number(tables.rows[0]?.n)).toBe(60);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
@@ -203,7 +212,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // ar, a lista de planos dela continua aceita pelo web anterior.
       const listaAnterior = await client.query(LISTA_DE_PLANOS_DA_API_ANTERIOR);
       expect(ehPlanos(listaAnterior.rows)).toBe(true);
-      expect(Number(features.rows[0]?.n)).toBe(13);
+      expect(Number(features.rows[0]?.n)).toBe(14); // + feat_estoque (StockModule)
       // 22 do catálogo inicial + 4 da CommercialAccess (o que o código já usava)
       // + 1 da ProfessionalCommissions (comissões no Pro) + 1 da
       // ModularSubscription (RELATORIOS no Básico; o Pro já tinha).
@@ -227,7 +236,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
   });
 
   it('idempotência: repetir migration:run:compiled não duplica dados nem migrations', async () => {
-    const result = await processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'all'], {
+    const result = await processRunner.run('npm', ['run', 'migration:run:compiled', '--', '-t', 'each'], {
       env: guardedEnv,
     });
     expect(result.code).toBe(0);
@@ -242,7 +251,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
 
       expect(Number(migrations.rows[0]?.n)).toBe(TODAS_AS_MIGRATIONS.length);
       expect(Number(plans.rows[0]?.n)).toBe(3);
-      expect(Number(features.rows[0]?.n)).toBe(13);
+      expect(Number(features.rows[0]?.n)).toBe(14); // + feat_estoque (StockModule)
       // 22 do catálogo inicial + 4 da CommercialAccess + 1 da
       // ProfessionalCommissions + 1 da ModularSubscription, sem duplicar.
       expect(Number(planFeatures.rows[0]?.n)).toBe(28);

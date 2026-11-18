@@ -14,13 +14,39 @@ interface PaginaContaProps {
   acoes?: ReactNode;
   /** Link de volta, para subpáginas (ex.: Horários de um profissional). */
   voltar?: { href: string; rotulo: string };
+  /** Trilha acima do título (ex.: Estoque / Produtos); o último item é a
+   * página atual e não tem link. */
+  trilha?: readonly { rotulo: string; href?: string }[];
   children: ReactNode;
 }
 
-export function PaginaConta({ titulo, descricao, acoes, voltar, children }: PaginaContaProps) {
+export function PaginaConta({ titulo, descricao, acoes, voltar, trilha, children }: PaginaContaProps) {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <div className="space-y-2">
+        {trilha && trilha.length > 0 && (
+          <nav aria-label="Trilha" className="text-sm">
+            <ol className="flex flex-wrap items-center gap-1.5 text-ink-soft">
+              {trilha.map((item, i) => {
+                const ultimo = i === trilha.length - 1;
+                return (
+                  <li key={`${item.rotulo}-${i}`} className="flex items-center gap-1.5">
+                    {item.href && !ultimo ? (
+                      <Link href={item.href} className="hover:text-ink hover:underline">
+                        {item.rotulo}
+                      </Link>
+                    ) : (
+                      <span className={ultimo ? "font-semibold text-ink" : undefined} aria-current={ultimo ? "page" : undefined}>
+                        {item.rotulo}
+                      </span>
+                    )}
+                    {!ultimo && <span aria-hidden="true">/</span>}
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+        )}
         {voltar && (
           <Link
             href={voltar.href}

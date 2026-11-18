@@ -139,3 +139,19 @@ describe("acesso do estabelecimento vencido", () => {
     }
   });
 });
+
+describe("estoque: acesso pelo endereço", () => {
+  it("gerente com ESTOQUE_VER fica; sem a área, vai para o começo dele; o funcionário vai para a própria agenda", () => {
+    const comEstoque = { role: "GERENTE" as const, areas: ["CLIENTES_VER", "ESTOQUE_VER"] };
+    const semEstoque = { role: "GERENTE" as const, areas: ["CLIENTES_VER"] };
+    for (const caminho of ["/conta/estoque/produtos", "/conta/estoque/conferencia"]) {
+      expect(redirecionamentoDoPerfil("gerente", caminho, comEstoque), caminho).toBeNull();
+      expect(redirecionamentoDoPerfil("gerente", caminho, semEstoque), caminho).toBe("/conta/clientes");
+      expect(redirecionamentoDoPerfil("funcionario", caminho), caminho).toBe("/conta/minha-agenda");
+    }
+  });
+
+  it("gerente só com estoque começa por ele", () => {
+    expect(inicioDoPerfil("gerente", { role: "GERENTE", areas: ["ESTOQUE_VER"] })).toBe("/conta/estoque");
+  });
+});

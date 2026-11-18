@@ -27,7 +27,7 @@ export function isStaffPermission(valor: string): valor is StaffPermission {
 }
 
 export function validarConcessoes(
-  gestor: Pick<TeamManager, 'grantable' | 'grantableManager'>,
+  gestor: Pick<TeamManager, 'grantable' | 'grantableManager'> & Partial<Pick<TeamManager, 'managerWithoutFeature'>>,
   alvo: { role: TeamRole; withProfessional: boolean },
   conjunto: readonly TeamPermission[],
   novas: readonly TeamPermission[] = conjunto,
@@ -42,6 +42,13 @@ export function validarConcessoes(
   }
   if (areas.length && alvo.role !== 'GERENTE') {
     throw conflito('PERMISSAO_NAO_SE_APLICA', 'As áreas do estabelecimento só podem ser concedidas ao perfil Gerente.');
+  }
+  const semAdicional = novas.filter((p) => gestor.managerWithoutFeature?.includes(p as ManagerPermission));
+  if (semAdicional.length) {
+    throw conflito(
+      'RECURSO_NAO_CONTRATADO',
+      'Esta área depende de um adicional que o estabelecimento não contratou (ex.: Estoque).',
+    );
   }
   const indevidas = novas.filter((p) =>
     isStaffPermission(p) ? !gestor.grantable.includes(p) : !gestor.grantableManager.includes(p as ManagerPermission),

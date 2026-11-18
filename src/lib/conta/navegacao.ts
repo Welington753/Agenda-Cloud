@@ -13,6 +13,10 @@ import {
   ROTA_COMISSOES,
   ROTA_CONFIGURACOES,
   ROTA_EQUIPE,
+  ROTA_ESTOQUE_CATEGORIAS,
+  ROTA_ESTOQUE_CONFERENCIA,
+  ROTA_ESTOQUE_MOVIMENTACOES,
+  ROTA_ESTOQUE_PRODUTOS,
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
@@ -37,6 +41,15 @@ export interface ItemNavegacaoConta {
 
 const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" };
 
+/** Seção Estoque (adicional ESTOQUE): fora da barra do celular, no menu da
+ * conta; no computador, no grupo "Estoque" do menu lateral. */
+const ITENS_DO_ESTOQUE: readonly ItemNavegacaoConta[] = [
+  { href: ROTA_ESTOQUE_PRODUTOS, rotulo: "Produtos", noCelular: "menu" },
+  { href: ROTA_ESTOQUE_CATEGORIAS, rotulo: "Categorias", noCelular: "menu" },
+  { href: ROTA_ESTOQUE_MOVIMENTACOES, rotulo: "Movimentações", noCelular: "menu" },
+  { href: ROTA_ESTOQUE_CONFERENCIA, rotulo: "Conferência de estoque", noCelular: "menu" },
+];
+
 /** O que o menu lê do contexto ativo: o papel, as áreas que o servidor
  * liberou e o segmento do estabelecimento (ausente numa API anterior). */
 export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenantCategory?: string };
@@ -51,6 +64,8 @@ export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenan
  * - "Comissões" só entra quando o servidor lista a área `COMISSOES_VER`, que
  *   ele só dá com o recurso no plano e sem restrição ao dono. Sem a lista de
  *   áreas (API anterior), não entra: a tela não presume o plano.
+ * - O Estoque (Produtos, Categorias, Movimentações e Conferência) segue a
+ *   mesma regra, com a área `ESTOQUE_VER` (adicional contratado).
  * - Na barra do celular ficam quatro (Visão geral, Agenda, Clientes e
  *   Configurações); as outras aparecem no menu da conta.
  * - No menu lateral os mesmos itens aparecem em grupos por assunto
@@ -68,6 +83,7 @@ export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoCont
   if (contexto?.areas?.includes("COMISSOES_VER")) {
     itens.push({ href: ROTA_COMISSOES, rotulo: "Comissões", noCelular: "menu" });
   }
+  if (contexto?.areas?.includes("ESTOQUE_VER")) itens.push(...ITENS_DO_ESTOQUE);
   return [...itens, ITEM_CONFIGURACOES];
 }
 
@@ -92,6 +108,8 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
   if (tem("SERVICOS_VER")) candidatos.push({ href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "barra" });
   if (tem("PROFISSIONAIS_VER")) candidatos.push({ href: ROTA_PROFISSIONAIS, rotulo: "Profissionais", noCelular: "barra" });
   const itens = candidatos.map((item, i) => ({ ...item, noCelular: i < 3 ? ("barra" as const) : ("menu" as const) }));
+  // O estoque vem depois das áreas do dia a dia, sempre no menu da conta.
+  if (tem("ESTOQUE_VER")) itens.push(...ITENS_DO_ESTOQUE);
   return [...itens, ITEM_CONFIGURACOES];
 }
 
@@ -134,6 +152,7 @@ export interface GrupoNavegacaoConta {
 const GRUPOS: readonly { titulo: string; hrefs: readonly string[] }[] = [
   { titulo: "Atendimento", hrefs: [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES] },
   { titulo: "Gestão do negócio", hrefs: [ROTA_PROFISSIONAIS, ROTA_SERVICOS, ROTA_COMISSOES, ROTA_RECEBIMENTOS] },
+  { titulo: "Estoque", hrefs: ITENS_DO_ESTOQUE.map((i) => i.href) },
   { titulo: "Administração", hrefs: [ROTA_EQUIPE, ROTA_CONFIGURACOES] },
 ];
 
