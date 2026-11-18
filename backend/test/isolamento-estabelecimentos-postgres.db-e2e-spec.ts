@@ -138,7 +138,8 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
 
   /** Estabelecimento com dono, serviço, profissionais, cliente, reservas em
    * cada situação, funcionário com a própria agenda, convite pendente,
-   * recebimento e aparelho inscrito. O que tem rota é criado pela rota. */
+   * recebimento, aparelho inscrito e estoque (categorias, produtos,
+   * movimentação e conferência). O que tem rota é criado pela rota. */
   async function estabelecimento(letra: 'A' | 'B') {
     const tenantId = id();
     const unitId = id();
@@ -191,6 +192,67 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         receivedOn: dia(-1),
       }).expect(ok)
     ).body.payment.id as string;
+
+    // Estoque (o plano de teste tem todos os recursos, inclusive o estoque):
+    // categoria e subcategoria com produto, outra categoria e outra
+    // subcategoria vazias (arquivar e reativar), um produto extra (arquivar e
+    // reativar), uma entrada (estorno) e uma conferência.
+    type Categoria = { id: string; subcategories: { id: string; name: string }[] };
+    const categoria = (await chamar(dono, 'post', `${t}/stock/categories`, { name: `Revenda ${letra}` }).expect(ok)).body as Categoria;
+    await chamar(dono, 'post', `${t}/stock/categories/${categoria.id}/subcategories`, { name: `Cabelo ${letra}` }).expect(ok);
+    const comSubs = (await chamar(dono, 'post', `${t}/stock/categories/${categoria.id}/subcategories`, { name: `Vazia ${letra}` }).expect(ok))
+      .body as Categoria;
+    const subcategoria = (nome: string) => comSubs.subcategories.find((s) => s.name === nome)!.id;
+    const categoriaVazia = (await chamar(dono, 'post', `${t}/stock/categories`, { name: `Sem uso ${letra}` }).expect(ok)).body as Categoria;
+    const nomeDoProduto = `Pomada ${letra} ${marca}`;
+    const productId = (
+      await chamar(dono, 'post', `${t}/stock/products`, {
+        requestKey: `chave-${id()}`,
+        name: nomeDoProduto,
+        categoryId: categoria.id,
+        subcategoryId: subcategoria(`Cabelo ${letra}`),
+        purpose: 'AMBOS',
+        unit: 'UN',
+        minQuantityMilli: 2000,
+        initialQuantityMilli: 50000,
+      }).expect(ok)
+    ).body.product.id as string;
+    const produtoExtra = (
+      await chamar(dono, 'post', `${t}/stock/products`, {
+        requestKey: `chave-${id()}`,
+        name: `Luva ${letra}`,
+        categoryId: categoria.id,
+        purpose: 'CONSUMO_INTERNO',
+        unit: 'UN',
+        minQuantityMilli: 0,
+      }).expect(ok)
+    ).body.product.id as string;
+    const movementId = (
+      await chamar(dono, 'post', `${t}/stock/movements`, {
+        requestKey: `chave-${id()}`,
+        productId,
+        kind: 'ENTRADA_COMPRA',
+        quantityMilli: 10000,
+        expectedUnit: 'UN',
+      }).expect(ok)
+    ).body.movement.id as string;
+    const countId = (
+      await chamar(dono, 'post', `${t}/stock/counts`, {
+        requestKey: `chave-${id()}`,
+        items: [{ productId, expectedBalanceVersion: 2, expectedUnit: 'UN', countedMilli: 60000 }],
+      }).expect(ok)
+    ).body.count.id as string;
+    const estoque = {
+      categoryId: categoria.id,
+      subcategoryId: subcategoria(`Cabelo ${letra}`),
+      subVazia: subcategoria(`Vazia ${letra}`),
+      categoriaVazia: categoriaVazia.id,
+      productId,
+      produtoExtra,
+      nomeDoProduto,
+      movementId,
+      countId,
+    };
 
     // Funcionário com login próprio e a própria agenda.
     const daEquipe = await profissional(tenantId, `Bia ${letra}`);
@@ -260,6 +322,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       reservas,
       proprias,
       paymentId,
+      estoque,
       membershipId: staff.membershipId,
       inviteId,
       endpoint,
@@ -498,6 +561,144 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         true,
       ],
       ['POST /tenants/:tenantId/commissions/bulk-settings', 'dono', (t) => `${p(t)}/commissions/bulk-settings`, emMassaComImpressao, 200, true],
+      ['GET /tenants/:tenantId/stock/categories', 'dono', (t) => `${p(t)}/stock/categories`, null, 200, false],
+      ['POST /tenants/:tenantId/stock/categories', 'dono', (t) => `${p(t)}/stock/categories`, () => ({ name: 'Embalagens' }), 200, false],
+      [
+        'PATCH /tenants/:tenantId/stock/categories/:categoryId',
+        'dono',
+        (t, r) => `${p(t)}/stock/categories/${r.estoque.categoryId}`,
+        () => ({ name: 'Revenda renomeada' }),
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/categories/:categoryId/subcategories',
+        'dono',
+        (t, r) => `${p(t)}/stock/categories/${r.estoque.categoryId}/subcategories`,
+        () => ({ name: 'Barba' }),
+        200,
+        true,
+      ],
+      [
+        'PATCH /tenants/:tenantId/stock/subcategories/:subcategoryId',
+        'dono',
+        (t, r) => `${p(t)}/stock/subcategories/${r.estoque.subcategoryId}`,
+        () => ({ name: 'Cabelo renomeado' }),
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/subcategories/:subcategoryId/archive',
+        'dono',
+        (t, r) => `${p(t)}/stock/subcategories/${r.estoque.subVazia}/archive`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/subcategories/:subcategoryId/reactivate',
+        'dono',
+        (t, r) => `${p(t)}/stock/subcategories/${r.estoque.subVazia}/reactivate`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/categories/:categoryId/archive',
+        'dono',
+        (t, r) => `${p(t)}/stock/categories/${r.estoque.categoriaVazia}/archive`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/categories/:categoryId/reactivate',
+        'dono',
+        (t, r) => `${p(t)}/stock/categories/${r.estoque.categoriaVazia}/reactivate`,
+        null,
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/stock/products', 'dono', (t, r) => `${p(t)}/stock/products?categoryId=${r.estoque.categoryId}`, null, 200, true],
+      [
+        'POST /tenants/:tenantId/stock/products',
+        'dono',
+        (t) => `${p(t)}/stock/products`,
+        (_t, r) => ({ requestKey: chave(), name: 'Cera', categoryId: r.estoque.categoryId, purpose: 'VENDA', unit: 'UN', minQuantityMilli: 0 }),
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/stock/products/:productId', 'dono', (t, r) => `${p(t)}/stock/products/${r.estoque.productId}`, null, 200, true],
+      [
+        'PATCH /tenants/:tenantId/stock/products/:productId',
+        'dono',
+        (t, r) => `${p(t)}/stock/products/${r.estoque.productId}`,
+        async (_t, r) => ({
+          name: r.estoque.nomeDoProduto,
+          categoryId: r.estoque.categoryId,
+          subcategoryId: r.estoque.subcategoryId,
+          purpose: 'AMBOS',
+          unit: 'UN',
+          minQuantityMilli: 5000,
+          expectedUpdatedAt: (await q<{ updated_at: Date }>(`SELECT updated_at FROM stock_products WHERE id = $1`, [r.estoque.productId]))[0].updated_at.toISOString(),
+        }),
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/products/:productId/archive',
+        'dono',
+        (t, r) => `${p(t)}/stock/products/${r.estoque.produtoExtra}/archive`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/products/:productId/reactivate',
+        'dono',
+        (t, r) => `${p(t)}/stock/products/${r.estoque.produtoExtra}/reactivate`,
+        null,
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/stock/movements', 'dono', (t, r) => `${p(t)}/stock/movements?productId=${r.estoque.productId}`, null, 200, true],
+      [
+        'POST /tenants/:tenantId/stock/movements',
+        'dono',
+        (t) => `${p(t)}/stock/movements`,
+        (_t, r) => ({ requestKey: chave(), productId: r.estoque.productId, kind: 'SAIDA_VENDA', quantityMilli: 1000, expectedUnit: 'UN' }),
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/stock/movements/:movementId/reversal',
+        'dono',
+        (t, r) => `${p(t)}/stock/movements/${r.estoque.movementId}/reversal`,
+        () => ({ requestKey: chave(), reason: 'Lançada em duplicidade' }),
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/stock/counts', 'dono', (t) => `${p(t)}/stock/counts`, null, 200, false],
+      [
+        'POST /tenants/:tenantId/stock/counts',
+        'dono',
+        (t) => `${p(t)}/stock/counts`,
+        async (_t, r) => {
+          const [atual] = await q<{ balance_milli: string; balance_version: number }>(
+            `SELECT balance_milli::text AS balance_milli, balance_version FROM stock_products WHERE id = $1`,
+            [r.estoque.productId],
+          );
+          return {
+            requestKey: chave(),
+            items: [
+              { productId: r.estoque.productId, expectedBalanceVersion: Number(atual.balance_version), expectedUnit: 'UN', countedMilli: Number(atual.balance_milli) },
+            ],
+          };
+        },
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/stock/counts/:countId', 'dono', (t, r) => `${p(t)}/stock/counts/${r.estoque.countId}`, null, 200, true],
       ['GET /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, null, 200, false],
       ['PUT /tenants/:tenantId/public-booking', 'dono', (t) => `${p(t)}/public-booking`, () => ({ enabled: true }), 200, false],
       ['GET /tenants/:tenantId/booking-requests', 'dono', (t) => `${p(t)}/booking-requests`, null, 200, false],
@@ -674,6 +875,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       b.membershipId,
       b.inviteId,
       b.endpoint,
+      ...Object.values(b.estoque),
       ...Object.values(b.reservas),
       ...Object.values(b.proprias),
     ];
@@ -774,6 +976,11 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       'GET /tenants/:tenantId/appointments': 200,
       'GET /tenants/:tenantId/appointments/range': 200,
       'POST /tenants/:tenantId/professionals': 400,
+      // Listas do estoque filtradas por id de B respondem vazias; o produto
+      // com categoria de B é recusado sem gravar (categoria não encontrada).
+      'GET /tenants/:tenantId/stock/movements': 200,
+      'GET /tenants/:tenantId/stock/products': 200,
+      'POST /tenants/:tenantId/stock/products': 409,
     });
     expect(await retrato()).toEqual(antes);
 

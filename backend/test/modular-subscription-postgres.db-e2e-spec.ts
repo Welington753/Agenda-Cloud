@@ -254,7 +254,8 @@ describe.skipIf(!url)('assinatura modular e limite de usuários contra PostgreSQ
       [planoDois, 2],
     ] as const) {
       await q(
-        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $1, $2, '', $3, 1)`),
+        // Como os planos reais: o Controle de estoque só existe como adicional.
+        comTodosOsRecursos(`INSERT INTO plans (id, code, name, short_description, max_professionals, max_units) VALUES ($1, $1, $2, '', $3, 1)`, ['feat_estoque']),
         [plano, `Plano de teste ${max}`, max],
       );
     }
