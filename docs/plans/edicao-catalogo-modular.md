@@ -105,8 +105,48 @@ Branch `feat/portal-catalogo-modular-edicao`, a partir da integration em `ac67d0
 
 ## 5. Estado e retomada
 
-**Feito:** API, migration, web, testes e documentação, na branch acima.
+**Feito e publicado em 18/11/2026 (PC do trabalho):**
 
-**Não feito:** ver o fim desta seção, atualizado a cada checkpoint.
+- **PR #125:** CI verde nos dois workflows no head final `179949d`. Mesclado como `208d7eebd380e2b0a0539c7dd35cc6668d3d7ccc`.
+  - O primeiro head (`109886b`) falhou só na suíte de temas: a leitura do menu de `/conta` vinha logo depois de `goto`, sem espera, e dava corrida. As três leituras passaram a esperar o menu (`c0b6c82`, `179949d`), e a suíte passou local e no CI.
+- **Antes da migration:**
+  - piloto com API e web em `ac67d06` e banco com 19;
+  - backup `pre-mig20-19-backup-2026-11-18T16-14-25Z` em `%USERPROFILE%\AgendaCloud-operacoes`, no PC do trabalho, com `pg_dump` 17.12 em snapshot `REPEATABLE READ READ ONLY` e conexão `verify-full`;
+  - restauração conferida num PostgreSQL 17.12 descartável: sha256, 54 tabelas com contagem e md5 iguais, e a mesma lista de 19 migrations.
+- **Ensaio na cópia restaurada:**
+  - partiu da cópia limpa `C:/wt/mig20` (`208d7ee`) e aplicou só `CatalogItemEdit1793923200000`, chegando a 20;
+  - a conferência de inicialização da API anterior (`ac67d06`, mesmo `backend/` de `4585af0`) nesse banco deu "19 de 19", com aviso da migration a mais, sem bloquear.
+- **Piloto:**
+  - migration aplicada às 16:15 UTC; conferência depois: 20 migrations e o valor `CATALOG_ITEM_CHANGED` no enum;
+  - API `dep-dbusuj68bjmc739r0fn0` live às 16:17 UTC, com log "20 de 20";
+  - web `dep-dbusvbec6qcc73ba5190` live às 16:19 UTC;
+  - os dois em `208d7ee`.
+- **Dados preservados:** 2 preços de adicional, 8 preços de plano, 1 versão de assinatura e 3 estabelecimentos. Nenhuma edição de catálogo foi feita pela operação: `CATALOG_ITEM_CHANGED` = 0.
+- **Verificações sem sessão no piloto:**
+  - 200: API `/`, web `/login`, `/portal`, `/portal/planos` e `/conta`;
+  - 401: `auth/me`, `GET platform/addons`, `PUT platform/catalog/essential`, `PUT platform/catalog/addons/COMISSOES` e `PUT platform/addons/COMISSOES/price`.
+- **Testes com login:** só locais, num PostgreSQL descartável com TLS e dados fictícios. Ver a seção 4.
 
-**Só neste computador:** o PostgreSQL descartável dos testes, na pasta temporária da sessão. Nada a recuperar.
+**Pendente:**
+
+- Teste manual com sessão no piloto, pelo proprietário. Ninguém entrou no piloto nesta operação.
+- Um backup incompleto ficou de uma tentativa que falhou por certificado (`pre-mig20-19-backup-2026-11-18T16-12-12Z`, `piloto.dump` vazio). Há também um backup completo de 16:13 (`pre-mig20-19-backup-2026-11-18T16-13-22Z`), mas a restauração dele não confere, porque o md5 do manifesto foi calculado com o fuso da sessão. Os dois foram preservados. O ponto de recuperação é o de 16:14.
+
+**Retorno compatível:**
+
+- API e web juntos para `ac67d06` (API `dep-dbuqs2c9v7es739cvnmg`, web `dep-dbuqsiu7bikc73aojkeg`).
+- O banco fica com 20, porque o valor do enum não sai, e a API anterior sobe assim, como ensaiado.
+- Edições já feitas permanecem: nomes, descrições e preços continuam valendo na API anterior. Ela só não tem a tela de edição.
+
+**Como testar no piloto (com sessão de proprietário):**
+
+1. Abra Portal → Planos e adicionais. Cada cartão da "Assinatura modular", inclusive os planejados, tem "Editar".
+2. Edite um item (por exemplo, o nome de um planejado) e salve. Confirme a senha se pedida. O cartão mostra o novo nome, e o planejado continua "Planejado".
+3. Em Histórico administrativo, aparece "Catálogo modular alterado", com os valores antes e depois.
+4. Em Estabelecimentos → Novo estabelecimento e na aba "Plano e adicionais" de uma ficha, os nomes são os atuais e não há campo nem botão para editar o catálogo.
+5. Para voltar ao nome anterior, edite de novo. A volta também fica no histórico.
+
+**Só neste computador:**
+
+- os backups acima;
+- os PostgreSQL descartáveis e o script de operação, na pasta temporária da sessão (descartáveis).
