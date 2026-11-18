@@ -128,6 +128,36 @@ Só leitura do Render (serviços, deploys e log de inicialização da API). O ba
 
 **Rotação da senha adiada por decisão do responsável (18/11/2026).** A troca chegou a ser preparada, mas nada foi alterado: a senha no Neon, `DATABASE_URL`, `DIRECT_URL` e a cópia cifrada no PC de casa continuam as mesmas e sincronizadas. A senha continua tratada como exposta. A pendência e as condições para fazê-la depois estão em "Estado e retomada".
 
+### 1.5 Execução no PC do trabalho, 18/11/2026, a partir de 11:40 UTC
+
+**Decisões do responsável para esta execução (18/11/2026):** backups e restaurações neste PC; a terceira conta `MASTER_OWNER` é reconhecida por ele (preservada, sem consolidar nem excluir contas); os três estabelecimentos atuais são de teste, classificados pelo passo 2.8 depois da etapa 2; rotação da senha e segunda cópia da chave TOTP continuam pendentes; nenhum preço de exemplo; seguir apesar da autoria desconhecida dos deploys de 03:01 UTC (seção 1.4), desde que a releitura confirme o estado esperado. A autoria continua não atribuída.
+
+**Ferramentas locais:** PostgreSQL 17.12 (binários EDB, só `bin`, `lib` e `share`) em `%USERPROFILE%\AgendaCloud-ferramentas\pg17x`; PostgreSQL descartável local com TLS (certificado autoassinado), apagado ao fim. A URL direta do piloto é lida da variável `DIRECT_URL` do serviço da API pela API do Render e só existe no ambiente do processo filho; nenhum script imprime credencial. Cópias limpas por SHA, sem alteração local: `C:\wt\mig17` (`04c9a43`), `C:\wt\mig18` (`becc923`), `C:\wt\mig19` (`4585af0`), com `npm ci` em `backend/`.
+
+**Método dos backups:** `pg_dump -Fc` (17.12) no snapshot exportado de uma transação `REPEATABLE READ READ ONLY`, com contagem e md5 de cada tabela no mesmo snapshot (manifesto). A restauração confere o sha256, roda `pg_restore --single-transaction --exit-on-error` no descartável e compara contagens, md5 e a lista de migrations. Cada pasta tem `piloto.dump`, `manifest.json`, `piloto.dump.sha256` e `restauracao-conferida.json`. Ficam em `%USERPROFILE%\AgendaCloud-operacoes` **no PC do trabalho**; nunca vão para o Git.
+
+| Momento (UTC) | Passo | Resultado |
+|---|---|---|
+| ~11:43 | Passo 0, só leitura | API `dep-dbreqklckfvc73e2loag` e web `dep-dbuohgk9v7es7396tnp0` em `8e8577d`; Auto-Deploy desligado nos dois; nada em fila. `pilot:check-database` (`after-commission-settings`): 16, 7/7, `BASELINE_FAILURES: none`, `SUCCESS`; endpoint do piloto, diferente do proibido, TLS verificado |
+| 11:53 | Backup antes da etapa 1 | `pre-etapa1-16-backup-2026-11-18T11-53-30Z`: 45 tabelas, 16 migrations; restauração com sha256, contagens, md5 e migrations iguais |
+| 11:55 | 1.3 API `5d74556e9e12e55f38e0056d0f19911f3e66f475` | `dep-dbup43lg1s2s73chb1l0` live 11:55:58; `Nest application successfully started`; `GET /` 200; `auth/me` sem cookie 401; `POST .../commissions/bulk-settings/preview` sem sessão 401 (rota nova presente); log sem erro |
+| 11:59 | 1.4 web `5d74556` | `dep-dbup57s9v7es7398g0ug` live 11:59:32; `/login` 200; `auth/me` 401; logout com origem estranha 403; manifest do portal 200; `pilot:check-database` de novo: 16, 7/7, `SUCCESS` |
+| 12:00 | 2.1 backup antes da 17 | `pre-mig17-16-backup-2026-11-18T12-00-47Z`: restauração igual (45 tabelas, 16 migrations) |
+| 12:01 | 2.2 conferência antes | `before-tenant-test-flag`: 16, `SCHEMA_OBJECTS_OK: 0/2`, `ESTABELECIMENTOS: 3`, coluna ainda não existe, `SUCCESS` |
+| 12:01 | Ensaio | a 17, da cópia limpa `04c9a43`, aplicada na restauração do backup das 12:00: uma migration, `TenantTestFlag1793664000000` |
+| 12:02 | 2.3 migration 17 no piloto | da cópia limpa `04c9a43`: `16 migrations are already loaded`, `1 migrations are new`, `TenantTestFlag1793664000000 has been executed successfully` |
+| 12:02 | 2.4 conferência depois | `after-tenant-test-flag`: 17, 2/2, `MARCADOS_COMO_TESTE: 0`, `BASELINE_FAILURES: none`, `SUCCESS` |
+| 12:03 | 2.5 | API e web `5d74556` no schema 17: verificações HTTP iguais, log sem erro |
+| 12:03 | 2.6 API `04c9a4382decea6c175ffdfb28cc722cb8ad6092` | `dep-dbup7suk1f9s73av9ep0` live 12:03:59; log sem erro; `GET /public/<slug>` dos dois estabelecimentos com agendamento online ligado: `"indexable": true`. O terceiro responde 404 porque o agendamento online dele nunca foi ligado (sem linha em `public_booking_settings`), estado anterior à etapa |
+| 12:07 | 2.7 web `04c9a43` | `dep-dbup8ooae00c73f7hrn0` live 12:07:01; `/agendar/<slug>` dos dois: 200, sem `x-robots-tag`, com `canonical`; `/conta` com `x-robots-tag: noindex, nofollow`; demais verificações HTTP iguais |
+| 12:10 | 2.9 colisões, só leitura | `pilot:check-reserved-slugs`: `COLISOES: 0` |
+| 12:10 | 3.1, só leitura | três `MASTER_OWNER` ativos, todos reconhecidos pelo responsável; um com e-mail não verificado (a conta reconhecida nesta data). `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_FROM_NAME`, `EMAIL_API_KEY` definidas; chegada de e-mail não conferida. Nenhuma `PLATFORM_*` |
+| 12:12 | 3.2 chave TOTP | gerada neste PC (32 bytes) e guardada cifrada com DPAPI do usuário Windows em `%USERPROFILE%\AgendaCloud-operacoes\cofre-totp` (fora do Git e de pasta temporária), com um LEIA-ME. **Uma cópia só** (exceção do responsável); transferência segura para o PC de casa e segunda cópia pendentes. Ainda não colada no Render |
+
+**Login autenticado:** não testado em nenhum par (só verificações HTTP sem sessão, que não comprovam login).
+
+**Parada no passo 2.8:** "Marcar como teste" é uma ação do portal com sessão de conta de plataforma. O operador não tem nem usa a senha do responsável, e um `UPDATE` direto fugiria do fluxo e do histórico administrativo. A etapa 3 não começa antes de o responsável marcar os três estabelecimentos no portal (passo 3.4 exige `MARCADOS_COMO_TESTE: 3`).
+
 ## 2. Comprovado e pendente
 
 ### Comprovado
@@ -582,10 +612,14 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 | Backup | Onde | Estado | Uso |
 |---|---|---|---|
 | `inicial-16-backup-2026-11-18T02-36-44Z` | PC de casa, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens e md5 iguais); estado 16, 18/11 02:37 UTC | recuperação de dados numa cópia. **Não serve como o backup do passo 2.1 nem do 3.3**: cada migration exige um `pg_dump` novo, com restauração validada, feito logo antes dela |
+| `pre-etapa1-16-backup-2026-11-18T11-53-30Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens, md5 e migrations iguais); estado 16 | ponto de recuperação da etapa 1 |
+| `pre-mig17-16-backup-2026-11-18T12-00-47Z` | PC do trabalho, `%USERPROFILE%\AgendaCloud-operacoes` | restauração conferida (45 tabelas, contagens, md5 e migrations iguais); estado 16 | ponto de recuperação da etapa 2 (passo 2.1) |
 
 Backups mais antigos continuam em `%USERPROFILE%\AgendaCloud-operacoes` e `%USERPROFILE%\AgendaCloud-backups` no PC de casa, sem alteração. Nenhum backup é restaurado por cima do piloto.
 
 ### Próxima ação exata para retomar
+
+> **Atualização de 18/11/2026, PC do trabalho (seção 1.5):** etapas 1 e 2 feitas. **API e web em `04c9a4382decea6c175ffdfb28cc722cb8ad6092`** (API `dep-dbup7suk1f9s73av9ep0`, web `dep-dbup8ooae00c73f7hrn0`), banco com **17** migrations, `MARCADOS_COMO_TESTE: 0`. Chave TOTP gerada e guardada (uma cópia, PC do trabalho), ainda fora do Render. Parado no **passo 2.8**: o responsável marca os três estabelecimentos como teste no portal (Busca na internet → Marcar como teste). Depois: conferência (`MARCADOS_COMO_TESTE: 3`, `noindex` nos marcados) e a etapa 3 a partir do passo 3.3. Os itens 1 e 3 abaixo ficaram superados por esta atualização; o item 4 continua valendo a partir da etapa 3.
 
 1. **Passo 0, só leitura:** Render com API e web live em `8e8577d698fd3d2b9eb2a42b6945fbd3cb3205d2`, o web no deploy `dep-dbuohgk9v7es7396tnp0` (desde 18/11 11:17 UTC; o `dep-dbuh1skipgvc738tcfvg` foi substituído pelos deploys da seção 1.4), a API no `dep-dbreqklckfvc73e2loag`, Auto-Deploy desligado e nada em fila. Qualquer outro estado: pare e reavalie.
 2. **Rotação da senha: adiada** (pendência 1). Quando o responsável decidir fazê-la, o procedimento é este, nesta ordem, numa janela entre etapas:
