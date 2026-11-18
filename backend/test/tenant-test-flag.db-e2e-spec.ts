@@ -373,7 +373,7 @@ describe.skipIf(!url)('estabelecimento de teste e slugs reservados contra Postgr
     // compartilhado; o baseline das comissões conta só o catálogo.
     // Migrations criadas depois deste kit: o kit as recusa de propósito (só
     // serve no commit dele); o teste as conhece por nome e as tira daqui.
-    const POSTERIORES_AO_KIT = ['AdminSecondFactor1793750400000', 'ModularSubscription1793836800000'];
+    const POSTERIORES_AO_KIT = ['AdminSecondFactor1793750400000', 'ModularSubscription1793836800000', 'CatalogItemEdit1793923200000'];
     const soCatalogo = {
       ...estado,
       migrationNames: estado.migrationNames.slice(0, MIGRATIONS_ATE_TENANT_TESTE.length),

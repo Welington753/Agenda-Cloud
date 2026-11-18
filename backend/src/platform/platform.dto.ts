@@ -258,6 +258,38 @@ export type TeamLimitDto = z.infer<typeof teamLimitSchema>;
 export const addonPriceSchema = catalogPriceSchema;
 export type AddonPriceDto = CatalogPriceDto;
 
+/** Edição de um item do catálogo modular (Agendamento essencial ou
+ * adicional) em Planos e adicionais: nome, descrição e preço mensal padrão
+ * juntos. `expected` é o que a tela leu; se outra tela mudou antes, 409.
+ * `priceCents: null` só mantém um preço ainda pendente (nunca apaga um
+ * preço definido). Disponibilidade, código e recurso não entram aqui. */
+const catalogTextSchema = (min: number, max: number) =>
+  z
+    .string()
+    .trim()
+    .min(min)
+    .max(max)
+    .refine((v) => !/\p{Cc}/u.test(v), { message: 'Sem quebras de linha nem caracteres de controle.' });
+export const CATALOG_NAME_MAX = 80;
+export const CATALOG_DESCRIPTION_MAX = 300;
+export const catalogItemSchema = z
+  .object({
+    requestKey: accessRequestKeySchema,
+    expected: z
+      .object({
+        name: z.string().max(200),
+        description: z.string().max(1000),
+        priceCents: priceCentsSchema.nullable(),
+      })
+      .strict(),
+    name: catalogTextSchema(2, CATALOG_NAME_MAX),
+    description: catalogTextSchema(3, CATALOG_DESCRIPTION_MAX),
+    priceCents: priceCentsSchema.nullable(),
+    reason: reasonSchema.optional(),
+  })
+  .strict();
+export type CatalogItemDto = z.infer<typeof catalogItemSchema>;
+
 /** Situação do registro no extrato: não anulado ou anulado. */
 export const SUBSCRIPTION_PAYMENT_STATUSES = ['RECEIVED', 'CANCELED'] as const;
 export type SubscriptionPaymentStatus = (typeof SUBSCRIPTION_PAYMENT_STATUSES)[number];
