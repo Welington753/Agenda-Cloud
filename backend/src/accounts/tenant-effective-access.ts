@@ -32,6 +32,7 @@ import { canManagePublicBooking } from '../public-booking/public-booking-access.
 import { canManageServices, canViewServices } from '../services/service-access.js';
 import { canManageTeam, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
 import { canManageCommissionRules, canViewCommissions } from '../commissions/commission-access.js';
+import { canManageStock, canViewStock } from '../stock/stock-access.js';
 
 export interface OverrideLike {
   permission: Permission;
@@ -65,6 +66,8 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
   { key: 'SERVICOS_GERENCIAR', label: 'Gerenciar serviços', policy: canManageServices },
   { key: 'PROFISSIONAIS_VER', label: 'Ver profissionais', policy: canViewProfessionals },
   { key: 'PROFISSIONAIS_GERENCIAR', label: 'Gerenciar profissionais e horários', policy: canManageProfessionals },
+  { key: 'ESTOQUE_VER', label: 'Ver o estoque', policy: canViewStock },
+  { key: 'ESTOQUE_GERENCIAR', label: 'Operar o estoque', policy: canManageStock },
   { key: 'AGENDAMENTO_ONLINE', label: 'Configurar o agendamento online', policy: canManagePublicBooking },
   { key: 'EQUIPE', label: 'Gerenciar equipe e acessos', policy: canManageTeam },
   { key: 'AGENDA_PROPRIA_VER', label: 'Ver a própria agenda (funcionário)', policy: (role) => canViewOwnAgenda(role) },
@@ -118,6 +121,8 @@ export const EFFECTIVE_TENANT_PERMISSIONS: readonly Permission[] = [
   Permission.EQUIPE_GERENCIAR,
   Permission.COMISSOES_VISUALIZAR,
   Permission.COMISSOES_GERENCIAR,
+  Permission.ESTOQUE_VISUALIZAR,
+  Permission.ESTOQUE_GERENCIAR,
 ];
 
 export interface AreaAccess {

@@ -41,6 +41,7 @@ import { canManageProfessionals, canViewProfessionals } from '../professionals/p
 import { canManageServices, canViewServices } from '../services/service-access.js';
 import { canViewPayments } from '../payments/payment-access.js';
 import { canViewCommissions } from '../commissions/commission-access.js';
+import { canManageStock, canViewStock } from '../stock/stock-access.js';
 import { MANAGER_PERMISSIONS, type ManagerPermission } from '../common/manager-permissions.js';
 
 /** Valores novos do enum `permission` (migrations TeamAccess1792886400000 e
@@ -158,6 +159,8 @@ const POLITICA_DO_DONO: Readonly<Record<ManagerPermission, PoliticaDoDono>> = {
   RECEBIMENTOS_VISUALIZAR: canViewPayments,
   RECEBIMENTOS_REGISTRAR: canViewPayments,
   RECEBIMENTOS_ESTORNAR: canViewPayments,
+  ESTOQUE_VISUALIZAR: canViewStock,
+  ESTOQUE_GERENCIAR: canManageStock,
 };
 
 /** Concessões de gerente que ESTE dono pode dar. */

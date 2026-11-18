@@ -58,7 +58,10 @@ export type AdminAuditAction =
   | 'TEAM_LIMIT_CHANGED'
   | 'ADDON_PRICE_CHANGED'
   // Edição do catálogo modular (migration CatalogItemEdit).
-  | 'CATALOG_ITEM_CHANGED';
+  | 'CATALOG_ITEM_CHANGED'
+  // Cadastro do estoque (migration StockEnumValues).
+  | 'STOCK_CATEGORY_CHANGED'
+  | 'STOCK_PRODUCT_CHANGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;
