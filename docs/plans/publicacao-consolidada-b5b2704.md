@@ -10,7 +10,7 @@ Este documento nunca contém credencial, chave, URL de banco ou Endpoint ID.
 
 > **Atualização de 17/11/2026, PR #120 (tema "Azul e branco" em todos os ambientes e menu agrupado do dono).** Por decisão do responsável, o alvo da etapa 3 passa a ser **o merge commit do PR #120**, para a API e para o web. Ele contém `9de722d`, o PR #118 (só documentação), o PR #119 (tema na Visão geral do portal) e o PR #120 (tema em todas as áreas adaptáveis, menu agrupado em `/conta` e o rótulo "Visão geral" no lugar de "Dashboard", sem mudar URL). **O `backend/` continua idêntico ao de `9de722d` e `b5b2704`** (`git diff 9de722d <head do #120> -- backend` vazio): migrations (18), variáveis (`PLATFORM_*`), conferência de inicialização e tudo o que este plano diz sobre a API da etapa 3 valem sem mudança. Onde o texto abaixo diz `9de722d` como alvo da etapa 3, leia o merge commit do PR #120; o SHA completo é o desse merge, com árvore igual à do head aprovado pelo CI. As etapas 0, 1 e 2 mantêm os alvos. O passo 3.11 passa a conferir também: o tema "Azul e branco" escolhido em Aparência, o menu agrupado do dono (Visão geral, Atendimento, Gestão do negócio, Administração) e a navegação entre as áreas.
 
-> **Execução iniciada em 18/11/2026 (sessão em casa).** O responsável autorizou publicar até o merge do PR #122, `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, passando por todas as etapas: 0, 1, 2 (migration 17), 3 (migration 18, merge do PR #120 `becc923f12165f7085e3de5a12b019b10e9b4bb0`), a etapa do #121 (`df535a19ffbf70355007171bec8f962937397f85`, sem migration) e a etapa do #122 (migration 19). A etapa 0 foi feita em casa (seção 1.3). **As demais foram concluídas no PC do trabalho na mesma data (seção 1.5): API e web em `4585af0`, banco com 19 migrations.**
+> **Execução iniciada em 18/11/2026 (sessão em casa).** O responsável autorizou publicar até o merge do PR #122, `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, passando por todas as etapas: 0, 1, 2 (migration 17), 3 (migration 18, merge do PR #120 `becc923f12165f7085e3de5a12b019b10e9b4bb0`), a etapa do #121 (`df535a19ffbf70355007171bec8f962937397f85`, sem migration) e a etapa do #122 (migration 19). A etapa 0 foi feita em casa (seção 1.3). **As demais foram concluídas no PC do trabalho na mesma data (seção 1.5): API e web em `4585af0`, banco com 19 migrations.** Depois disso, o PR #123 foi publicado (seção 1.6): **API e web em `ac67d06`**, banco ainda com 19.
 
 > **Exceção de 17/11/2026: publicação somente do web em `becc923f12165f7085e3de5a12b019b10e9b4bb0`.** Autorizada pelo responsável para concluir a entrega do tema, com a exigência de API e web no mesmo SHA dispensada só para esta entrega, condicionada à compatibilidade comprovada. **Compatibilidade:** o diff `68e5eed..becc923` em `src/` muda só apresentação (tema "Azul e branco" em todas as áreas adaptáveis, menu agrupado do dono derivado da lista de itens que já existia, rótulo "Visão geral"). Não acrescenta chamada à API, campo de resposta obrigatório, variável de ambiente nem configuração; o resto do diff é CI, testes e documentação. **Estado antes:** web `68e5eed` (`dep-dbu5gep42hec73bku1c0`, deploy manual de 17/11 13:38 UTC), API `8e8577d` (`dep-dbreqklckfvc73e2loag`), Auto-Deploy desligado nos dois; web `/login` e API `/` respondendo 200. **Retorno:** se houver regressão, o web volta a `68e5eed`. **Não muda:** API, banco, migrations e variáveis ficam como estão; a sequência de etapas 0 a 3 continua valendo para a API. Na etapa 3 o web já estará no alvo, e a reavaliação da etapa 0 deve partir do web `becc923`.
 
@@ -179,6 +179,27 @@ Só leitura do Render (serviços, deploys e log de inicialização da API). O ba
 **Parada no passo 2.8 (resolvida):** "Marcar como teste" é uma ação do portal com sessão de conta de plataforma. O operador não usou a senha do responsável nem gravou a marca direto no banco: o responsável marcou os três pelo portal e a etapa 3 seguiu depois da conferência.
 
 **Passo 3.10 (cadastro do segundo fator):** não feito; com `optional`, as contas de plataforma sem fator continuam entrando no portal só com a senha. Os passos 3.11 e 3.12 ficam para o teste do responsável.
+
+### 1.6 Publicação do PR #123 (layout único em todos os temas), 18/11/2026, PC do trabalho
+
+**Pedido do responsável:** o arranjo do tema "Azul e branco" passa a ser o único em todos os temas. Tema muda só a paleta. Publicação autorizada depois das verificações, API primeiro e web depois, sem repetir migration.
+
+**O que entrou:** o PR #123 (`fix/layout-unico-todos-temas`), com CI aprovado no head `157d74c`, integrado como `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`. A mudança é só no web: menu agrupado do portal (Gestão, Comercial, Administração), Visão geral em cartões e menu agrupado de `/conta` para dono e gerente em qualquer tema. O funcionário mantém o menu curto. Sem mudança em `backend/`, migrations, variáveis, permissões, preços, limites ou contratos da API.
+
+| Momento (UTC) | Passo | Resultado |
+|---|---|---|
+| antes do deploy | Passo 0, só leitura | API `dep-dbupnnsipgvc739l81dg` e web `dep-dbupo9ec6qcc73b267ag` live em `4585af0`; Auto-Deploy desligado; nada em fila. `git diff 4585af0 ac67d06 -- backend render.yaml` vazio |
+| 13:55 | API `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1` | `dep-dbuqs2c9v7es739cvnmg` live; log com `19 de 19 registradas no banco`, sem erro. Nenhuma migration aplicada |
+| 13:57 | web `ac67d06` | `dep-dbuqsiu7bikc73aojkeg` live |
+| depois | Verificações sem sessão no piloto | API `/` 200; web `/login`, `/portal` e `/conta` 200; `auth/me` e `platform/overview` sem sessão 401; logout com origem estranha 403; o CSS publicado contém os tokens novos (`--color-chrome-brand`, `--color-chrome-ink-active`) |
+
+**Estado ao final:** API e web em `ac67d06`, banco com **19** migrations (o mesmo de `4585af0`), `PLATFORM_2FA_ENFORCEMENT=optional`.
+
+**Testes autenticados, só locais.** Feitos antes do merge, num PostgreSQL descartável com TLS e dados fictícios, nunca no piloto: lint, checagem de tipos, Vitest (com a guarda nova `layout-independente-do-tema.test.ts`) e 11 suítes de navegador com login real, entre elas a nova `test:browser:layout-temas`. Essa suíte troca os quatro temas e exige o mesmo arranjo no portal e em `/conta` (dono, gerente e funcionário), a 1280 e a 390 px. O CI do PR roda a mesma bateria.
+
+**No piloto, só verificações sem sessão.** O operador não entrou com sessão no piloto. As respostas 200, 401 e 403 acima não comprovam login nem a troca de tema com dados reais. As capturas comparativas dos quatro temas vêm do ambiente local e ficam fora do Git, em `%USERPROFILE%\AgendaCloud-operacoes\capturas-layout-temas-2026-11-18` no PC do trabalho.
+
+**Retorno compatível:** API e web de volta a `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3` (API `dep-dbupnnsipgvc739l81dg`, web `dep-dbupo9ec6qcc73b267ag`). Os dois commits têm o mesmo `backend/` e o mesmo schema 19, então o retorno é só de código, sem tocar no banco. Manter API e web no mesmo SHA.
 
 ## 2. Comprovado e pendente
 
@@ -616,6 +637,8 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 
 - **Execução concluída em 18/11/2026, PC do trabalho (seção 1.5):** etapas 1, 2, 3, #121 e #122 publicadas. **API (`dep-dbupnnsipgvc739l81dg`) e web (`dep-dbupo9ec6qcc73b267ag`) em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`**, banco com **19** migrations, `PLATFORM_2FA_ENFORCEMENT=optional`, três estabelecimentos marcados como teste. Quatro backups novos, todos com restauração conferida. Login autenticado ainda não testado.
 
+- **Publicação do PR #123 em 18/11/2026 (seção 1.6):** **API (`dep-dbuqs2c9v7es739cvnmg`) e web (`dep-dbuqsiu7bikc73aojkeg`) em `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`**, banco com as mesmas **19** migrations, nenhuma migration nova. No piloto, só verificações sem sessão; os testes com login foram locais, em banco descartável. Retorno compatível: `4585af0`, só código. Pendências novas: 9 e 10 abaixo.
+
 ### Pendências para retomar (18/11/2026)
 
 > Atualizado ao fim da execução: os itens 2 e 3 estão resolvidos (conta reconhecida pelo responsável; três estabelecimentos marcados como teste). O item 5 agora vale para a chave gerada e já no Render. O item 8 deixou de bloquear: a fila terminou sem deploy fora do plano depois da releitura de 11:43.
@@ -632,6 +655,8 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 6. **Preços** do Agendamento essencial e dos adicionais: o responsável preenche pelo portal depois da etapa do #122. Até lá, a criação modular mostra a pendência.
 7. D5, D7 e D8 seguem como na seção 8; nenhuma bloqueia a etapa 1.
 8. **Autoria dos deploys de `4585af0` de 18/11 03:01 UTC** (seção 1.4): não confirmada. Enquanto não for esclarecida, qualquer deploy fora do plano continua parando o passo 0 de cada etapa, e o responsável decide se a etapa 1 pode começar antes do esclarecimento.
+9. **Teste manual do layout único no piloto (PR #123, seção 1.6):** o responsável ou o sócio entram com sessão e trocam o tema (Claro, Escuro, Seguir aparelho, Azul e branco) no portal e em `/conta`, no computador e no celular. Pendente.
+10. **Contraste do tema Claro:** o laranja de destaque fica em cerca de 4,3:1 e o texto de aviso em 3,3:1, abaixo do mínimo de 4,5:1. Os valores já existiam antes do PR #123 e não foram alterados para preservar a paleta. Ajustar escurece levemente o laranja e o amarelo do Claro em toda a interface; a decisão é do responsável.
 
 ### Backups: estado comprovado
 
@@ -646,6 +671,8 @@ Enquanto a API puder voltar a um commit sem a rota (`04c9a43` ou anterior), a tr
 Backups mais antigos continuam em `%USERPROFILE%\AgendaCloud-operacoes` e `%USERPROFILE%\AgendaCloud-backups` no PC de casa, sem alteração. Nenhum backup é restaurado por cima do piloto.
 
 ### Próxima ação exata para retomar
+
+> **Estado de 18/11/2026, 13:57 UTC (seção 1.6):** API e web em `ac67d06d876e0ef26370e5ddf64c07be2bfd66c1`, banco com 19 migrations, 2FA `optional`. Não há publicação pendente. As próximas ações do parágrafo abaixo continuam valendo, agora no SHA `ac67d06`, somadas às pendências 9 (teste manual dos temas no piloto) e 10 (contraste do Claro). Retorno, se preciso: API e web juntos em `4585af0`.
 
 > **Estado final de 18/11/2026, 12:40 UTC (seção 1.5):** fila concluída. API e web em `4585af099dafe4c0f6ad0232b6a2d4445b60c5e3`, banco com 19 migrations, 2FA `optional`. Não há etapa de publicação pendente. Próximas ações, nenhuma delas é deploy: (1) o responsável e o sócio testam com sessão (login, Contas e acessos, Planos e adicionais, limite de funcionários); (2) o responsável preenche os preços reais em "Planos e adicionais" antes de criar estabelecimento no plano modular; (3) cadastro do segundo fator de cada proprietário (passo 3.10) e só depois, com data própria, `required`; (4) segunda cópia da chave TOTP e transferência segura para o PC de casa; (5) rotação da senha (pendência 1), agora no SHA `4585af0` e com as consultas do estado 19 no lugar do `pilot:check-database`. Se algo falhar no teste, a regra é correção para a frente: não voltar a API a um SHA sem 2FA depois de um cadastro de fator, nem para antes do #122 depois da primeira assinatura modular. O texto abaixo é histórico.
 >
