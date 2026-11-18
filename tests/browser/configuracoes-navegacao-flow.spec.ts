@@ -296,13 +296,14 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
       await celular.getByRole("link", { name: "Voltar para Configurações" }).tap();
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
 
-      // O que não cabe na barra, pelo menu da conta, na ordem do menu.
+      // O que não cabe na barra, pelo menu da conta, na ordem do menu
+      // agrupado (Gestão do negócio, depois Administração).
       await celular.getByTestId("abrir-menu-conta").tap();
       await expect(celular.getByTestId("menu-mais-areas").getByRole("link")).toHaveText([
         "Profissionais",
         "Serviços",
-        "Equipe e acessos",
         "Comissões",
+        "Equipe e acessos",
       ]);
       // O menu inteiro cabe entre as duas barras: "Sair", o último item,
       // fica à vista e recebe o toque mesmo num celular baixo.

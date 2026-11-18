@@ -62,10 +62,3 @@ export function useAparencia() {
 
   return { preferencia, escolher };
 }
-
-/** O tema "Azul e branco" está escolhido? Só a Visão geral do portal muda a
- * organização por isto; as outras telas só trocam as cores. No
- * servidor e na hidratação é sempre `false`, como o padrão. */
-export function useTemaAzul(): boolean {
-  return useAparencia().preferencia === "azul";
-}

@@ -112,9 +112,8 @@ export function rotaContasEAcessos(aba: "estabelecimentos" | "administradores" =
 
 type Secao = { href: string; rotulo: string };
 
-/** Seções do portal agrupadas por assunto, na ordem do menu. O título do
- * grupo só aparece no tema "Azul e branco"; nos outros temas o menu continua
- * uma coluna única, na mesma ordem. */
+/** Seções do portal agrupadas por assunto, na ordem do menu, com o título do
+ * grupo em todos os temas. */
 export const GRUPOS_SECOES_ADMINISTRACAO: readonly { titulo: string | null; secoes: readonly Secao[] }[] = [
   { titulo: null, secoes: [{ href: ROTA_VISAO_GERAL, rotulo: "Visão geral" }] },
   {

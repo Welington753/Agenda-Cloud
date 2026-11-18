@@ -46,7 +46,6 @@ import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { identificacaoDaConta } from "@/lib/api/auth-api";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { gruposDaNavegacao, itensDaNavegacao, itemAtivo, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
-import { useTemaAzul } from "@/lib/aparencia/use-aparencia";
 import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
 import { ItemConfiguracoes } from "@/components/conta/item-configuracoes";
 import { MarcaTimVix } from "@/components/marca/marca";
@@ -73,7 +72,6 @@ export function ShellConta({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { saindo, sair } = useSair();
-  const temaAzul = useTemaAzul();
 
   useEffect(() => {
     document.documentElement.classList.add(CLASSE_SHELL_ATIVO);
@@ -134,9 +132,9 @@ export function ShellConta({ children }: { children: ReactNode }) {
       });
   const naBarra = itens.filter((item) => item.noCelular === "barra");
   const colunasNoCelular = naBarra.length;
-  // Grupos só no tema "Azul e branco" e só para quem tem várias áreas (dono e
-  // gerente); nos outros temas, a lista de antes.
-  const grupos = temaAzul && (perfil === "dono" || perfil === "gerente") ? gruposDaNavegacao(itens) : null;
+  // Grupos por assunto para quem tem várias áreas (dono e gerente), em todos
+  // os temas; o funcionário segue com a lista curta. O tema muda só as cores.
+  const grupos = perfil === "dono" || perfil === "gerente" ? gruposDaNavegacao(itens) : null;
   const naOrdemDoMenu = grupos ? grupos.flatMap((g) => g.itens) : itens;
 
   const itemDoMenu = (item: ItemNavegacaoConta) =>
@@ -160,7 +158,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-chrome-ink azul:border-b azul:border-chrome-border md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0 md:azul:border-r md:azul:border-b-0">
+      <aside className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-chrome px-4 py-3 text-chrome-ink border-b border-chrome-border md:fixed md:inset-y-0 md:left-0 md:w-64 md:flex-col md:items-stretch md:justify-start md:gap-0 md:p-0 md:border-r md:border-b-0">
         {/* Marca, estabelecimento ativo e o sino "Notificações" */}
         <div className="flex min-w-0 flex-1 items-start justify-between gap-2 md:flex-none md:px-5 md:py-6">
           <div className="min-w-0">
@@ -200,7 +198,7 @@ export function ShellConta({ children }: { children: ReactNode }) {
             className="fixed inset-x-0 bottom-0 z-40 border-t border-chrome-border bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:min-h-0 md:flex-1 md:overflow-y-auto md:border-0 md:px-3 md:pb-0 md:[scrollbar-width:thin]"
           >
             {grupos ? (
-              // Tema "Azul e branco": os mesmos itens em grupos com título e
+              // Dono e gerente: os mesmos itens em grupos com título e
               // divisor no computador. No celular grupos e listas somem do
               // layout (`contents`) e os itens da barra seguem na mesma grade.
               <div className={clsx("grid md:flex md:flex-col md:gap-3", COLUNAS_NO_CELULAR[colunasNoCelular])}>

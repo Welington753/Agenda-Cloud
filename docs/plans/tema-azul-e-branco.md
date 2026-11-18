@@ -1,6 +1,13 @@
 # Tema opcional "Azul e branco"
 
-**Estado:** registrado em 2026-11-17. Primeira versão LOCAL feita em
+**Estado (2026-11-18):** o layout novo (menu agrupado do portal e de
+`/conta`, Visão geral do portal em cartões e painéis, bordas dos menus) passou
+a ser o ÚNICO layout, em todos os temas. A escolha de aparência muda só a
+paleta (tokens de `globals.css`); ver "Layout único em todos os temas" no fim
+do arquivo. O histórico abaixo descreve a fase em que o arranjo dependia do
+tema.
+
+**Registro original:** registrado em 2026-11-17. Primeira versão LOCAL feita em
 2026-11-17 na branch `feat/tema-azul-e-branco-portal` (ver "Estado e
 retomada"), aguardando a avaliação visual do dono. Nada publicado. Esta tarefa
 não altera a fila operacional já planejada (publicação em etapas,
@@ -131,3 +138,31 @@ cores), entrada do portal (`/portal`, login) e conta do dono.
 
 **Próximo passo:** avaliação visual do dono. Depois, decidir se o tema entra
 na conta do dono e quais telas do portal ganham arranjo próprio.
+
+**Layout único em todos os temas (2026-11-18, branch `fix/layout-unico-todos-temas`):**
+
+- Problema: com Claro, Escuro ou Seguir aparelho, o portal e `/conta` voltavam
+  ao arranjo antigo (seis cartões soltos na Visão geral, menus sem grupos e
+  sem os ícones de Relatórios e Segurança).
+- Causa: três mecanismos prendiam a estrutura ao tema: o hook `useTemaAzul`
+  (Visão geral do portal e grupos do menu de `/conta`), a variante Tailwind
+  `azul:` (títulos e linhas do menu do portal, bordas dos menus) e as props de
+  arranjo `azul` das peças da Visão geral.
+- Correção: o arranjo do azul virou o único. `visao-geral-azul.tsx` virou
+  `visao-geral-conteudo.tsx`; o arranjo antigo e `useTemaAzul` saíram; a
+  variante `azul:` saiu do CSS. Menus agrupados para dono e gerente em
+  qualquer tema (funcionário segue com a lista curta). Os dois ajustes que
+  eram só de cor viraram tokens por tema: `--color-chrome-brand` (marca no
+  menu do portal) e `--color-chrome-ink-active` (texto do item ativo). Nos
+  temas Claro e Escuro esses tokens repetem a cor do texto do menu, então a
+  paleta deles não mudou.
+- Guardas: `src/lib/aparencia/layout-independente-do-tema.test.ts` reprova
+  variante de classe por tema, leitura da preferência fora da aparência e
+  grupo de menu condicionado; `tests/browser/layout-por-tema-flow.spec.ts`
+  (`npm run test:browser:layout-temas`) troca o tema pelo seletor, navega e
+  exige a mesma estrutura e as mesmas posições em todos os temas, no
+  computador e no celular, com capturas de cada local.
+- Contraste: Escuro e Azul e branco passam AA nos pares usados. No Claro, o
+  laranja de destaque sobre branco fica em 4,3:1 e o aviso sobre o fundo de
+  aviso em 3,3:1, os mesmos valores dos botões principais e selos que o Claro
+  já tinha; a paleta não foi alterada.

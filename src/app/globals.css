@@ -40,6 +40,10 @@
   /* Linha de 3 px do item ativo do menu. */
   --color-chrome-marker: #b5651d;
   --color-chrome-focus: #ffffff;
+  /* Marca no menu do portal e texto do item ativo do menu: a mesma cor do
+     texto do menu, salvo no tema que pede destaque (Azul e branco). */
+  --color-chrome-brand: #ffffff;
+  --color-chrome-ink-active: #ffffff;
   --shadow-soft: 0 1px 2px rgba(28, 26, 23, 0.06), 0 4px 12px rgba(28, 26, 23, 0.05);
   --shadow-lift: 0 8px 24px rgba(28, 26, 23, 0.12);
   /* Cantos de 8 px (cartões, menus, modais) e 6 px (botões e campos). */
@@ -96,6 +100,8 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
   --color-chrome-border: #2b2f34;
   --color-chrome-marker: #eceeeb;
   --color-chrome-focus: #bfc5cc;
+  --color-chrome-brand: #eceeeb;
+  --color-chrome-ink-active: #eceeeb;
   --shadow-soft: none;
   --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
@@ -135,6 +141,8 @@ html[data-tema="escuro"]:has([data-aparencia-adaptavel]) {
     --color-chrome-border: #2b2f34;
     --color-chrome-marker: #eceeeb;
     --color-chrome-focus: #bfc5cc;
+    --color-chrome-brand: #eceeeb;
+    --color-chrome-ink-active: #eceeeb;
     --shadow-soft: none;
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
@@ -189,13 +197,12 @@ html[data-tema="azul"]:is(:has([data-aparencia-adaptavel]), :has([data-aparencia
   --color-chrome-border: #d7e3f4;
   --color-chrome-marker: #2563eb;
   --color-chrome-focus: #2563eb;
+  /* Item ativo sobre o azul-claro: o azul escuro mantém 5.7:1. */
+  --color-chrome-brand: #2563eb;
+  --color-chrome-ink-active: #1d4ed8;
   --shadow-soft: 0 1px 2px rgba(23, 43, 77, 0.05), 0 4px 14px rgba(23, 43, 77, 0.06);
   --shadow-lift: 0 10px 28px rgba(23, 43, 77, 0.14);
 }
-
-/* `azul:` — classe que só vale com o tema "Azul e branco" aplicado (mesma
-   condição do bloco acima). Os outros temas nunca a recebem. */
-@custom-variant azul (&:where(html[data-tema="azul"]:is(:has([data-aparencia-adaptavel]), :has([data-aparencia-aparelho])) *));
 
 @theme inline {
   --color-ink: var(--color-ink);
@@ -229,6 +236,8 @@ html[data-tema="azul"]:is(:has([data-aparencia-adaptavel]), :has([data-aparencia
   --color-chrome-border: var(--color-chrome-border);
   --color-chrome-marker: var(--color-chrome-marker);
   --color-chrome-focus: var(--color-chrome-focus);
+  --color-chrome-brand: var(--color-chrome-brand);
+  --color-chrome-ink-active: var(--color-chrome-ink-active);
   --font-sans: var(--font-jakarta);
 }
 

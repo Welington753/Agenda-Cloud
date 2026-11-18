@@ -53,8 +53,8 @@ export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenan
  *   áreas (API anterior), não entra: a tela não presume o plano.
  * - Na barra do celular ficam quatro (Visão geral, Agenda, Clientes e
  *   Configurações); as outras aparecem no menu da conta.
- * - No tema "Azul e branco" os mesmos itens aparecem em grupos
- *   (`gruposDaNavegacao`).
+ * - No menu lateral os mesmos itens aparecem em grupos por assunto
+ *   (`gruposDaNavegacao`), em todos os temas.
  */
 export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoConta[] {
   const itens: ItemNavegacaoConta[] = [
@@ -128,10 +128,10 @@ export interface GrupoNavegacaoConta {
   itens: ItemNavegacaoConta[];
 }
 
-/** Grupos do tema "Azul e branco", na ordem em que aparecem; dentro de cada
+/** Grupos do menu lateral (dono e gerente), na ordem em que aparecem; dentro de cada
  * grupo, a ordem dos endereços abaixo. Endereço fora da lista fica no grupo
  * de entrada, sem título. */
-const GRUPOS_AZUL: readonly { titulo: string; hrefs: readonly string[] }[] = [
+const GRUPOS: readonly { titulo: string; hrefs: readonly string[] }[] = [
   { titulo: "Atendimento", hrefs: [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES] },
   { titulo: "Gestão do negócio", hrefs: [ROTA_PROFISSIONAIS, ROTA_SERVICOS, ROTA_COMISSOES, ROTA_RECEBIMENTOS] },
   { titulo: "Administração", hrefs: [ROTA_EQUIPE, ROTA_CONFIGURACOES] },
@@ -139,14 +139,14 @@ const GRUPOS_AZUL: readonly { titulo: string; hrefs: readonly string[] }[] = [
 
 /**
  * Organiza os itens JÁ liberados (`itensDaNavegacao`) em grupos por assunto,
- * para o tema "Azul e branco". Não acrescenta nem tira item: permissões,
+ * iguais em todos os temas. Não acrescenta nem tira item: permissões,
  * áreas do plano e termos do segmento continuam vindo da lista recebida.
  * Grupo sem item não aparece.
  */
 export function gruposDaNavegacao(itens: readonly ItemNavegacaoConta[]): GrupoNavegacaoConta[] {
-  const agrupados = new Set(GRUPOS_AZUL.flatMap((g) => g.hrefs));
+  const agrupados = new Set(GRUPOS.flatMap((g) => g.hrefs));
   const grupos: GrupoNavegacaoConta[] = [{ titulo: null, itens: itens.filter((i) => !agrupados.has(i.href)) }];
-  for (const { titulo, hrefs } of GRUPOS_AZUL) {
+  for (const { titulo, hrefs } of GRUPOS) {
     grupos.push({
       titulo,
       itens: hrefs.flatMap((href) => itens.filter((i) => i.href === href)),

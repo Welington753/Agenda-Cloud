@@ -117,7 +117,7 @@ export function MenuConta({
    * (Serviços e Profissionais, para o dono). Só aparecem aqui no celular: no
    * computador já estão no menu lateral. */
   areasNoMenu?: readonly ItemNavegacaoConta[];
-  /** As mesmas áreas em grupos com título (tema "Azul e branco"). */
+  /** As mesmas áreas em grupos com título (dono e gerente, todos os temas). */
   gruposNoMenu?: readonly GrupoNavegacaoConta[];
   /** Entrada de Configurações (sempre a mesma; parâmetro para o menu não
    * depender do módulo de rotas da área). */

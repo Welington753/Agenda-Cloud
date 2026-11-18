@@ -121,7 +121,7 @@ export function ehFiltroDoDiretorio(valor: string | null): valor is FiltroDoDire
 }
 
 /** Alcance da lista e dos indicadores, pela marca "Interno/teste". `resumo`
- * é a frase curta do tema "Azul e branco"; a `descricao` completa (com as
+ * é a frase curta da Visão geral; a `descricao` completa (com as
  * ressalvas) fica logo abaixo, em "Sobre este filtro". */
 export const ESCOPOS: Record<EscopoDoDiretorio, { rotulo: string; resumo: string; descricao: string }> = {
   CLIENTS: {

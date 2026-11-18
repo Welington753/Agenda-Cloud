@@ -210,7 +210,7 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     // portal continua abrindo pelo próprio endereço.
     await page.goto("/conta/visao-geral");
     await page.setViewportSize({ width: 360, height: 844 });
-    await expect(navConta(page).locator(":scope > ul > li:visible")).toHaveCount(4);
+    await expect(navConta(page).getByRole("link").filter({ visible: true })).toHaveCount(4);
     await page.getByTestId("abrir-menu-conta").click();
     await expect(page.getByTestId("menu-perfil")).toBeVisible();
     await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);

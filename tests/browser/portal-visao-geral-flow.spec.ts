@@ -13,9 +13,10 @@
 // - Celular: seções recolhidas, aparência no menu do usuário, sem rolagem
 //   lateral. Sessão expirada volta à entrada do portal e à Visão geral.
 // - A operação continua sem atalho para o portal.
-// - Tema opcional "Azul e branco": escolher, recarregar (persiste), mesmos
-//   números, resumo do alcance com "Sobre este filtro" pelo teclado, ordem
-//   dos blocos no celular e volta ao Claro com o arranjo de sempre.
+// - Arranjo único em todos os temas: Escuro, "Azul e branco" e Claro, com
+//   recarga (persiste), mostram o mesmo arranjo (menu agrupado, cartão
+//   Atenção, Modalidade ao lado), os mesmos números, o resumo do alcance com
+//   "Sobre este filtro" pelo teclado e a mesma ordem dos blocos no celular.
 //
 // Invocação própria (`npm run test:browser:portal-visao-geral`): 1 aceite de
 // convite e 3 logins (limite de produção: 5 por 15 minutos por IP).
@@ -325,7 +326,7 @@ test("visão geral, listagem comercial, filtros, celular e sessão expirada", as
     await expect(page.getByTestId("abrir-menu-usuario")).toBeFocused();
     await page.setViewportSize({ width: 1280, height: 844 });
 
-    await temaAzulEBranco(page);
+    await mesmoArranjoEmTodosOsTemas(page);
     await relatoriosPorPeriodo(page, db, { loja, plano, userId: conta.user.id, marca });
 
     // Sessão expirada: volta à entrada do portal e, depois, à Visão geral.
@@ -364,42 +365,51 @@ async function topo(page: Page, testId: string) {
 }
 
 /**
- * Tema opcional "Azul e branco" (mesma sessão, sem login novo): só aparece
- * para quem o escolhe, persiste ao recarregar, mostra os mesmos números em
- * outro arranjo e devolve o arranjo de sempre ao voltar para o Claro.
+ * Arranjo único (mesma sessão, sem login novo): o tema muda só as cores. No
+ * Escuro (escolhido antes), no "Azul e branco" e de volta ao Claro, com recarga,
+ * a Visão geral tem o mesmo arranjo e os mesmos números; nenhum tema devolve o
+ * arranjo antigo (seis cartões soltos e menu sem grupos).
  */
-async function temaAzulEBranco(page: Page) {
+async function mesmoArranjoEmTodosOsTemas(page: Page) {
   const html = page.locator("html");
   const escolher = async (rotulo: string) => {
     await page.getByTestId("abrir-menu-usuario").click();
     await page.getByTestId("menu-usuario").getByTestId("seletor-aparencia").getByText(rotulo, { exact: true }).click();
     await page.keyboard.press("Escape");
   };
+  const api = (await (await page.request.get(`${API_DE_TESTE}/platform/overview`)).json()) as Visao;
+  const conferirArranjo = async (tema: string) => {
+    await expect(html).toHaveAttribute("data-tema", tema);
+    await expect(page.getByTestId("resumo-atencao"), tema).toBeVisible();
+    for (const grupo of ["Gestão", "Comercial", "Administração"]) {
+      await expect(navPortal(page).getByText(grupo, { exact: true }), `${tema}: ${grupo}`).toBeVisible();
+    }
+    await expect(page.locator('section[aria-label="Estabelecimentos"] > a'), tema).toHaveCount(3);
+    for (const [testId, chave] of [
+      ["indicador-total", "total"],
+      ["indicador-liberados", "allowed"],
+      ["indicador-bloqueados", "blocked"],
+      ["indicador-vencendo", "expiringSoon"],
+      ["indicador-suspensos", "suspended"],
+      ["indicador-contrato-pendente", "contractPending"],
+      ["atalho-validade-vencida", "validityBlocked"],
+    ] as const) {
+      await expect(page.getByTestId(`${testId}-valor`), `${tema}: ${testId}`).toHaveText(String(api.establishments[chave]));
+    }
+    const x = async (testId: string) => (await page.getByTestId(testId).boundingBox())!.x;
+    expect(await x("modalidades"), tema).toBeLessThan(await x("resumo-atencao"));
+  };
+
+  // Escuro, escolhido no celular acima: já no arranjo único.
   await page.goto(VISAO_GERAL);
   await expect(page.getByTestId("indicador-total")).toBeVisible();
-  await expect(page.getByTestId("resumo-atencao")).toHaveCount(0);
+  await conferirArranjo("escuro");
 
   await escolher("Azul e branco");
-  await expect(html).toHaveAttribute("data-tema", "azul");
   await page.reload();
-  await expect(html).toHaveAttribute("data-tema", "azul");
-  await expect(page.getByTestId("resumo-atencao")).toBeVisible();
-  await expect(navPortal(page).getByText("Gestão", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("indicador-total")).toBeVisible();
+  await conferirArranjo("azul");
   await expect(page.getByTestId("menu-usuario")).toHaveCount(0);
-
-  // Mesmos números da API, no arranjo do tema.
-  const api = (await (await page.request.get(`${API_DE_TESTE}/platform/overview`)).json()) as Visao;
-  for (const [testId, chave] of [
-    ["indicador-total", "total"],
-    ["indicador-liberados", "allowed"],
-    ["indicador-bloqueados", "blocked"],
-    ["indicador-vencendo", "expiringSoon"],
-    ["indicador-suspensos", "suspended"],
-    ["indicador-contrato-pendente", "contractPending"],
-    ["atalho-validade-vencida", "validityBlocked"],
-  ] as const) {
-    await expect(page.getByTestId(`${testId}-valor`)).toHaveText(String(api.establishments[chave]));
-  }
 
   // Alcance: resumo curto; a explicação completa abre pelo teclado.
   await expect(page.getByTestId("alcance-dos-numeros")).toHaveAttribute("data-alcance", "CLIENTS");
@@ -411,9 +421,11 @@ async function temaAzulEBranco(page: Page) {
   await expect(descricao).toBeVisible();
   await expect(descricao).toContainText("não comprova que ele foi conferido como cliente");
 
-  // Computador: Modalidade à esquerda de Atenção.
-  const x = async (testId: string) => (await page.getByTestId(testId).boundingBox())!.x;
-  expect(await x("modalidades")).toBeLessThan(await x("resumo-atencao"));
+  // Claro, com recarga: o mesmo arranjo, nunca o antigo.
+  await escolher("Claro");
+  await page.reload();
+  await expect(page.getByTestId("indicador-total")).toBeVisible();
+  await conferirArranjo("claro");
 
   // Celular: indicadores, Atenção, Pagamentos, Modalidade, lista; sem rolagem lateral.
   for (const width of [390, 360]) {
@@ -427,15 +439,6 @@ async function temaAzulEBranco(page: Page) {
     expect(tops).toEqual([...tops].sort((a, b) => a - b));
   }
   await page.setViewportSize({ width: 1280, height: 844 });
-
-  // Volta a um tema anterior: o arranjo de sempre, também depois de recarregar.
-  await escolher("Claro");
-  await page.reload();
-  await expect(html).toHaveAttribute("data-tema", "claro");
-  await expect(page.getByTestId("indicador-total")).toBeVisible();
-  await expect(page.getByTestId("resumo-atencao")).toHaveCount(0);
-  await expect(page.locator('section[aria-label="Estabelecimentos"] > a')).toHaveCount(6);
-  await expect(navPortal(page).getByText("Gestão", { exact: true })).toBeHidden();
 }
 
 /**
