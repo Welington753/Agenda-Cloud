@@ -80,14 +80,15 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
 
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/conta/visao-geral");
+  // Menu agrupado por assunto em qualquer tema.
   await expect(nav(page).getByRole("link")).toHaveText([
     "Visão geral",
     "Agenda",
+    "Clientes",
     "Profissionais",
     "Serviços",
-    "Clientes",
-    "Equipe e acessos",
     "Comissões",
+    "Equipe e acessos",
     "Configurações",
   ]);
 
