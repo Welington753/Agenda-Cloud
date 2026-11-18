@@ -117,13 +117,15 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(navConta(page).getByText("Estoque", { exact: true })).toBeVisible();
     for (const rotulo of ITENS_DO_ESTOQUE) await expect(navConta(page).getByRole("link", { name: rotulo, exact: true })).toBeVisible();
     await abrirNoMenu(page, "Categorias");
-    await page.getByLabel("Nome da nova categoria").fill("Cabelo");
-    await page.getByRole("button", { name: "Criar categoria" }).click();
-    await expect(page.getByRole("heading", { name: "Cabelo" })).toBeVisible();
+    await page.getByRole("button", { name: "Nova categoria" }).click();
+    await page.getByRole("dialog").getByLabel("Nome da nova categoria").fill("Cabelo");
+    await page.getByRole("dialog").getByRole("button", { name: "Criar categoria" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Cabelo" })).toBeVisible();
     await page.getByRole("button", { name: "Nova subcategoria" }).click();
-    await page.getByLabel("Nome da nova subcategoria").fill("Pomadas");
-    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await page.getByRole("dialog").getByLabel("Nome da nova subcategoria").fill("Pomadas");
+    await page.getByRole("dialog").getByRole("button", { name: "Salvar", exact: true }).click();
     await expect(page.getByRole("list", { name: "Subcategorias de Cabelo" })).toContainText("Pomadas");
+    await expect(page.getByRole("list", { name: "Árvore de categorias" })).toContainText("Pomadas");
     await capturar(page, "categorias");
 
     // ------------------------------------------- produto com saldo inicial
@@ -143,9 +145,9 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
 
     // ------------------------------------------- saída, estorno e perda
     await abrirNoMenu(page, "Movimentações");
-    await expect(page.getByRole("list", { name: "Histórico de movimentações" })).toContainText("Saldo inicial");
-    const registrar = async (tipo: string, quantidade: string, motivo?: string) => {
-      await page.getByRole("button", { name: "Nova movimentação" }).click();
+    await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toContainText("Saldo inicial");
+    const registrar = async (tipo: string, quantidade: string, motivo?: string, depois?: string) => {
+      await page.getByRole("button", { name: "Registrar movimentação" }).click();
       const form = page.getByTestId("painel-movimentacao");
       await form.getByLabel("Produto").selectOption({ label: "Pomada modeladora (10 UN)" }).catch(async () => {
         await form.getByLabel("Produto").selectOption({ index: 1 });
@@ -153,21 +155,25 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
       await form.getByLabel("Tipo").selectOption(tipo);
       await form.getByLabel(/^Quantidade/).fill(quantidade);
       if (motivo) await form.getByLabel(/^Motivo|^Observação/).fill(motivo);
-      await form.getByRole("button", { name: "Registrar" }).click();
+      if (depois) await expect(form.getByTestId("previa-saldo")).toContainText(depois);
+      await form.getByRole("button", { name: "Registrar", exact: true }).click();
       await expect(form).toHaveCount(0);
     };
-    await registrar("SAIDA_VENDA", "3");
-    const historico = page.getByRole("list", { name: "Histórico de movimentações" });
-    await expect(historico.locator("li").first()).toContainText("Saída por venda");
-    await expect(historico.locator("li").first()).toContainText("10 UN → 7 UN");
-    await historico.locator("li").first().getByRole("button", { name: "Estornar" }).click();
-    await historico.locator("li").first().getByLabel("Motivo do estorno").fill("Venda lançada em duplicidade");
-    await historico.locator("li").first().getByRole("button", { name: "Confirmar estorno" }).click();
-    await expect(historico.locator("li").first()).toContainText("Estorno");
-    await expect(historico.locator("li").first()).toContainText("7 UN → 10 UN");
+    await registrar("SAIDA_VENDA", "3", undefined, "7 UN");
+    const historico = page.getByRole("table", { name: "Histórico de movimentações" });
+    const primeira = historico.locator("tbody tr").first();
+    await expect(primeira).toContainText("Saída por venda");
+    await expect(primeira.getByTestId("saldo-antes-depois")).toContainText("10 UN → 7 UN");
+    await primeira.getByRole("button", { name: /^Ações da movimentação/ }).click();
+    await page.getByRole("menuitem", { name: "Estornar" }).click();
+    await page.getByRole("dialog").getByLabel("Motivo do estorno").fill("Venda lançada em duplicidade");
+    await page.getByRole("dialog").getByRole("button", { name: "Confirmar estorno" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(primeira).toContainText("Estorno");
+    await expect(primeira).toContainText("7 UN → 10 UN");
     await expect(historico).toContainText("Estornada");
-    await registrar("SAIDA_PERDA", "1", "Embalagem rasgada");
-    await expect(historico.locator("li").first()).toContainText("Motivo: Embalagem rasgada");
+    await registrar("SAIDA_PERDA", "1", "Embalagem rasgada", "9 UN");
+    await expect(primeira).toContainText("Motivo: Embalagem rasgada");
     await capturar(page, "movimentacoes");
 
     // ------------------------------------------- conferência com diferença; estoque baixo
@@ -179,9 +185,13 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     const chaves = () => page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("timvix:estoque:conferencia:")));
     expect(await chaves()).toEqual([`timvix:estoque:conferencia:v1:${conta.user.id}:${tenantId}`]);
     await page.getByRole("button", { name: "Revisar diferenças" }).click();
-    await expect(page.getByTestId("revisao")).toContainText("9 UN → 2 UN");
-    await expect(page.getByTestId("revisao")).toContainText("(-7 UN)");
+    await expect(page.getByTestId("revisao")).toContainText("9 UN");
+    await expect(page.getByTestId("revisao")).toContainText("-7 UN");
+    await expect(page.getByText("Nenhum saldo será alterado antes da confirmação.")).toBeVisible();
     await capturar(page, "revisao");
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
+    await expect(page.getByTestId("confirmacao")).toContainText("9 UN → 2 UN");
+    await capturar(page, "confirmacao");
     await page.getByRole("button", { name: "Confirmar ajustes" }).click();
     await expect(page.getByText("1 conferidos, 1 com ajuste")).toBeVisible();
     expect(await chaves()).toEqual([]);
@@ -217,13 +227,15 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
 
     // ------------------------------------------- arquivar sem perder o histórico
     await page.goto("/conta/estoque/produtos");
-    await linha.getByRole("button", { name: "Arquivar" }).click();
-    await expect(linha).toContainText("O saldo de 2 UN e o histórico ficam preservados");
-    await linha.getByRole("button", { name: "Arquivar" }).click();
+    await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
+    await page.getByRole("menuitem", { name: "Arquivar" }).click();
+    await expect(page.getByRole("dialog")).toContainText("O saldo de 2 UN e o histórico ficam preservados");
+    await page.getByRole("dialog").getByRole("button", { name: "Arquivar" }).click();
     await expect(linha.getByText("Arquivado")).toBeVisible();
-    await page.getByLabel("Situação").selectOption("ARCHIVED");
+    await page.getByRole("group", { name: "Situação" }).getByRole("button", { name: "Arquivados" }).click();
     await expect(linha).toBeVisible();
-    await linha.getByRole("button", { name: "Reativar" }).click();
+    await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
+    await page.getByRole("menuitem", { name: "Reativar" }).click();
     await expect(linha.getByText("Arquivado")).toHaveCount(0);
 
     // ------------------------------------------- gerente só com "Ver estoque"
@@ -238,9 +250,13 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual([...ITENS_DO_ESTOQUE, "Configurações"]);
     await expect(linha).toBeVisible();
     await expect(page.getByRole("button", { name: "Novo produto" })).toHaveCount(0);
-    await expect(linha.getByRole("button", { name: "Editar" })).toHaveCount(0);
+    await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
+    await expect(page.getByRole("menuitem", { name: "Ver histórico" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Editar" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await page.goto("/conta/estoque/movimentacoes");
-    await expect(page.getByRole("button", { name: "Nova movimentação" })).toHaveCount(0);
+    await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Registrar movimentação" })).toHaveCount(0);
 
     // ------------------------------------------- funcionário: pelo endereço vai para a própria agenda
     const professionalId = id();
@@ -263,7 +279,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await page.goto("/conta/estoque/produtos");
     await expect(linha.getByTestId("saldo")).toHaveText("2 UN");
     await page.goto("/conta/estoque/movimentacoes");
-    await expect(page.getByRole("list", { name: "Histórico de movimentações" })).toContainText("Ajuste de conferência");
+    await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toContainText("Ajuste de conferência");
 
     expect(erros).toEqual([]);
   } finally {
