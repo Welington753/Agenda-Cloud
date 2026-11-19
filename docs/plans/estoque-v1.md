@@ -120,7 +120,12 @@ Atualizado a cada checkpoint (abaixo).
   - resultado incerto: a API grava, mas a resposta se perde. Os campos ficam, e o reenvio fecha a janela sem duplicar produto nem saldo inicial;
   - chaves diferentes para A e B;
   - "Cancelar" não desfaz os já cadastrados.
-- **Próximo passo:** PR, CI e publicação (API e web no mesmo SHA). Depois, registrar a versão aqui.
+- **Publicado (19/11/2026):**
+  - PR #131 mesclado como `3ce06b4`, com CI verde no head `cf2f4db`;
+  - API `dep-dbves55g1s2s73f1i5r0` (live 12:40 UTC, log "22 de 22") e web `dep-dbvess9srm7s73c9be4g` (live 12:43 UTC), os dois em `3ce06b4`;
+  - `/health` 200; estoque sem sessão 401; `/login`, `/conta/estoque/produtos` e `/conta/estoque/conferencia` 200; agendamento público 200 em dois estabelecimentos e 404 no terceiro, ativo e sem serviços, como antes.
+- **Versão atual:** API e web em `3ce06b4`, banco em 22. O retorno continua só para frente.
+- **Próximo passo:** o roteiro curto de teste do runbook com sessão, que agora inclui "Cadastrar e continuar" no passo 5.
 
 **19/11/2026: motivo obrigatório na conferência e retorno só para frente.**
 
