@@ -119,7 +119,12 @@ Atualizado a cada checkpoint (abaixo).
   - lista vazia pela regra `listaVaziaDeProdutos` (`src/lib/estoque/apresentacao.ts`, com testes): sem filtro na aba Ativos, quem opera vê a orientação e "Cadastrar primeiro produto" (`produtos/lista-vazia.tsx`), que abre o mesmo painel; quem só consulta vê só o texto; com filtro ou em Arquivados, só o motivo;
   - se a lista de categorias não tinha carregado, gravar pelo atalho relê a lista, para a opção nova aparecer.
 - **Teste de navegador** (`test:browser:estoque`): zero produtos e zero categorias, abrir pelo cabeçalho e pela lista vazia, envio sem categoria recusado no formulário, Cancelar e erro de rede no atalho sem perder campos, categoria e subcategoria criadas e escolhidas, Cancelar do produto (nada criado), depois zero produtos com categoria existente e cadastro normal; gerente só com "Ver estoque" sem "Cadastrar primeiro produto"; capturas em 1280 e 390 nos quatro temas. Passou localmente com PostgreSQL descartável.
-- **Próximo passo:** PR, CI verde, merge e publicação de API e web no mesmo SHA (sem migration).
+- **Publicado (19/11/2026):**
+  - PR #135 mesclado como `e78c3d1`, com CI verde no head `6a6b801`;
+  - API `dep-dbvh5it9el5s73brug3g` (log "22 de 22" às 15:17 UTC) e web `dep-dbvh67f40ujc739g2o60` (live 15:19 UTC), os dois em `e78c3d1`;
+  - `/health` 200; estoque sem sessão 401; `/login` e `/conta/estoque/produtos` 200; `/agenda_api/auth/me` sem sessão 401.
+- **Versão atual:** API e web em `e78c3d1`, banco em 22. O retorno continua só para frente.
+- **Próximo passo:** o roteiro curto de teste do runbook com sessão; o passo 5 agora inclui o primeiro cadastro com zero categorias.
 
 **19/11/2026, noite: atalhos de categoria, "Duplicar cadastro" e ajudas curtas.**
 
