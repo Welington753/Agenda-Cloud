@@ -14,7 +14,7 @@ import clsx from "clsx";
 import { ClipboardCheck } from "lucide-react";
 import { confirmarConferencia, itensDesatualizados, novaChaveDeEnvio } from "@/lib/api/estoque-api";
 import { caminhoDaCategoria, contar, resumoDaRevisao } from "@/lib/estoque/apresentacao";
-import { anotarContagem, confirmarRevisao, itensMarcados, novoRascunho, reconciliar, revisar, type Rascunho, type Revisao } from "@/lib/estoque/conferencia";
+import { anotarContagem, confirmarRevisao, erroDoMotivo, itensMarcados, novoRascunho, reconciliar, revisar, type Rascunho, type Revisao } from "@/lib/estoque/conferencia";
 import { falhaDeAcesso, mensagemDaFalha } from "@/lib/estoque/mensagens";
 import { formatarQuantidade } from "@/lib/estoque/quantidade";
 import { apagarOutrosContextos, apagarRascunho, armazenamentoDaSessao, gravarRascunho, lerRascunho } from "@/lib/estoque/rascunho-conferencia";
@@ -49,6 +49,7 @@ export default function ConferenciaDoEstoquePage() {
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [nota, setNota] = useState("");
+  const [erroNota, setErroNota] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [versaoHistorico, setVersaoHistorico] = useState(0);
   const chave = useRef(novaChaveDeEnvio());
@@ -110,6 +111,7 @@ export default function ConferenciaDoEstoquePage() {
     if (!r.ok) return setErros(r.erros);
     setErros({});
     setErro(null);
+    setErroNota(null);
     setRevisao(r);
     setNaConfirmacao(false);
   }
@@ -121,8 +123,24 @@ export default function ConferenciaDoEstoquePage() {
     if (productId) setTimeout(() => document.getElementById(`contagem-${productId}`)?.focus(), 0);
   }
 
+  /** Motivo dos ajustes antes de avançar: sem ele, a pessoa fica na revisão
+   * com a mensagem no campo e nada é enviado. */
+  function motivoValido(): boolean {
+    const e = erroDoMotivo(nota, revisao ? revisao.linhas.filter((l) => l.diferencaMilli !== 0).length : 0);
+    setErroNota(e);
+    if (e) {
+      setNaConfirmacao(false);
+      setTimeout(() => document.getElementById("conf-nota")?.focus(), 0);
+    }
+    return !e;
+  }
+
+  function irParaConfirmacao() {
+    if (motivoValido()) setNaConfirmacao(true);
+  }
+
   async function confirmar() {
-    if (!revisao || enviando) return;
+    if (!revisao || enviando || !motivoValido()) return;
     setEnviando(true);
     setErro(null);
     const r = await confirmarConferencia(tenantId!, { requestKey: chave.current, note: nota.trim() || null, items: revisao.envio });
@@ -133,6 +151,7 @@ export default function ConferenciaDoEstoquePage() {
       setRevisao(null);
       setNaConfirmacao(false);
       setNota("");
+      setErroNota(null);
       chave.current = novaChaveDeEnvio();
       setVersaoHistorico((v) => v + 1);
       void recarregar();
@@ -299,10 +318,11 @@ export default function ConferenciaDoEstoquePage() {
           resumo={resumo}
           caminhos={caminhos}
           nota={nota}
-          setNota={setNota}
+          setNota={(v) => { setNota(v); setErroNota(null); }}
+          erroNota={erroNota}
           ajustes={ajustes}
           aoRecontar={voltarParaContagem}
-          aoContinuar={() => setNaConfirmacao(true)}
+          aoContinuar={irParaConfirmacao}
         />
       )}
 

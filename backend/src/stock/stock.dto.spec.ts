@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCountSchema, createMovementSchema, createProductSchema, updateProductSchema } from './stock.dto.js';
+import { createCountSchema, createMovementSchema, createProductSchema, reverseMovementSchema, updateProductSchema } from './stock.dto.js';
 
 const chave = 'chave_de_teste_0001';
 
@@ -42,11 +42,30 @@ describe('corpos do estoque (zod estrito)', () => {
     expect(createMovementSchema.safeParse({ ...base, quantityMilli: 1500 }).success).toBe(false);
     expect(createMovementSchema.safeParse({ ...base, expectedUnit: 'KG', quantityMilli: 1500 }).success).toBe(true);
     expect(createMovementSchema.safeParse({ ...base, kind: 'SAIDA_PERDA' }).success).toBe(false);
+    // Perda: motivo ausente, vazio ou curto é recusado; 3 letras bastam.
+    for (const reason of [undefined, null, '', '   ', 'ab', ' a  ']) {
+      expect(createMovementSchema.safeParse({ ...base, kind: 'SAIDA_PERDA', reason }).success, String(reason)).toBe(false);
+    }
     expect(createMovementSchema.safeParse({ ...base, kind: 'SAIDA_PERDA', reason: 'Quebrou' }).success).toBe(true);
+    expect(createMovementSchema.safeParse({ ...base, kind: 'SAIDA_PERDA', reason: ' abc ' }).data?.reason).toBe('abc');
     // Ajuste, estorno e saldo inicial não entram por aqui.
     for (const kind of ['AJUSTE_CONFERENCIA', 'ESTORNO', 'SALDO_INICIAL']) {
       expect(createMovementSchema.safeParse({ ...base, kind, reason: 'Motivo' }).success, kind).toBe(false);
     }
+  });
+
+  it('estorno: motivo obrigatório, com pelo menos 3 letras', () => {
+    for (const reason of [undefined, null, '', '   ', 'ab']) {
+      expect(reverseMovementSchema.safeParse({ requestKey: chave, reason }).success, String(reason)).toBe(false);
+    }
+    expect(reverseMovementSchema.safeParse({ requestKey: chave, reason: ' Lançado errado ' }).data?.reason).toBe('Lançado errado');
+  });
+
+  it('conferência: motivo chega normalizado ao serviço (vazio vira null), que decide se é obrigatório', () => {
+    const item = { productId: 'p1', expectedBalanceVersion: 0, expectedUnit: 'UN', countedMilli: 0 };
+    expect(createCountSchema.parse({ requestKey: chave, items: [item] }).note).toBeNull();
+    expect(createCountSchema.parse({ requestKey: chave, note: '   ', items: [item] }).note).toBeNull();
+    expect(createCountSchema.parse({ requestKey: chave, note: '  Fechamento   do mês ', items: [item] }).note).toBe('Fechamento do mês');
   });
 
   it('conferência: 1 a 200 itens, sem produto repetido, casas pela unidade esperada', () => {

@@ -1,5 +1,6 @@
 // Regras da conferência na tela: o rascunho da contagem, a revisão das
-// diferenças e o que muda depois de um 409 `CONFERENCIA_DESATUALIZADA`.
+// diferenças, o motivo dos ajustes e o que muda depois de um 409
+// `CONFERENCIA_DESATUALIZADA`.
 //
 // Cada item guarda a unidade e a versão do saldo que a pessoa viu quando
 // contou. A API recusa a confirmação se qualquer um dos dois mudou; aqui a
@@ -153,4 +154,15 @@ export function revisar(rascunho: Rascunho): Revisao {
 
 export function itensMarcados(rascunho: Rascunho): number {
   return rascunho.itens.filter((i) => i.situacao !== "ok").length;
+}
+
+export const MOTIVO_MINIMO = 3;
+
+/** Motivo dos ajustes, a mesma regra da API (400 `MOTIVO_OBRIGATORIO`):
+ * obrigatório quando a confirmação registra ajuste; quando preenchido, com
+ * pelo menos 3 letras depois de tirar os espaços repetidos. */
+export function erroDoMotivo(nota: string, comDiferenca: number): string | null {
+  const limpo = nota.trim().replace(/s+/g, " ");
+  if (limpo === "") return comDiferenca > 0 ? "Informe o motivo dos ajustes (pelo menos 3 letras)." : null;
+  return limpo.length < MOTIVO_MINIMO ? "O motivo precisa ter pelo menos 3 letras." : null;
 }

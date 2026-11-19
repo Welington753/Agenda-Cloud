@@ -10,7 +10,7 @@ import { contar, corDaDiferenca } from "@/lib/estoque/apresentacao";
 import { formatarDiferenca, formatarQuantidade, type UnidadeEstoque } from "@/lib/estoque/quantidade";
 import { Botao } from "@/components/ui/button";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
-import { CLASSE_CAMPO, ErroDoFormulario, NotaInformativa, RotuloNoCelular, TABELA } from "@/components/estoque/comum";
+import { CLASSE_AJUDA, CLASSE_CAMPO, CLASSE_ERRO_CAMPO, ErroDoFormulario, NotaInformativa, RotuloNoCelular, TABELA } from "@/components/estoque/comum";
 
 export const SEM_ALTERACAO = "Nenhum saldo será alterado antes da confirmação.";
 interface Resumo {
@@ -39,6 +39,7 @@ export function RevisaoDasDiferencas({
   caminhos,
   nota,
   setNota,
+  erroNota,
   ajustes,
   aoRecontar,
   aoContinuar,
@@ -48,6 +49,8 @@ export function RevisaoDasDiferencas({
   caminhos: ReadonlyMap<string, string>;
   nota: string;
   setNota: (v: string) => void;
+  /** Motivo ausente ou curto, mostrado ao tentar continuar. */
+  erroNota: string | null;
   ajustes: string;
   aoRecontar: (productId?: string) => void;
   aoContinuar: () => void;
@@ -115,9 +118,29 @@ export function RevisaoDasDiferencas({
         <div className="space-y-3 border-t border-border p-4 sm:p-5">
           <div>
             <label htmlFor="conf-nota" className="block text-sm font-medium text-ink">
-              Motivo dos ajustes (opcional)
+              {resumo.comDiferenca > 0 ? "Motivo dos ajustes" : "Observação (opcional)"}
             </label>
-            <textarea id="conf-nota" rows={2} className={`${CLASSE_CAMPO} mt-1.5`} maxLength={300} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ex.: conferência física de fechamento" />
+            <textarea
+              id="conf-nota"
+              rows={2}
+              className={`${CLASSE_CAMPO} mt-1.5`}
+              maxLength={300}
+              value={nota}
+              required={resumo.comDiferenca > 0}
+              aria-invalid={erroNota ? true : undefined}
+              aria-describedby={erroNota ? "conf-nota-erro" : "conf-nota-ajuda"}
+              onChange={(e) => setNota(e.target.value)}
+              placeholder="Ex.: conferência física de fechamento"
+            />
+            {erroNota ? (
+              <p id="conf-nota-erro" className={CLASSE_ERRO_CAMPO} role="alert">
+                {erroNota}
+              </p>
+            ) : (
+              <p id="conf-nota-ajuda" className={CLASSE_AJUDA}>
+                {resumo.comDiferenca > 0 ? "Obrigatório: fica registrado em cada ajuste do histórico." : "Opcional quando nenhum saldo muda."}
+              </p>
+            )}
           </div>
           <NotaInformativa destaque>
             {resumo.comDiferenca > 0 ? (

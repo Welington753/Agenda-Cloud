@@ -21,7 +21,6 @@ Branch `feat/estoque-v1` (worktree `C:/wt/estoque`), a partir de `208d7ee`. Plan
   - **Movimentações:** tabela com tipo, quantidade com sinal e saldo antes → depois. O formulário mostra o saldo atual e o saldo depois, e o estorno abre numa janela com o motivo.
   - **Conferência:** etapas Contar, Revisar e Confirmar. A tela diz em cada etapa que nenhum saldo muda antes da confirmação, e a etapa Confirmar lista o saldo antes e depois de cada ajuste.
   - **Diferenças em relação às referências:**
-    - o motivo dos ajustes continua opcional, como na API;
     - os cartões reutilizam o componente de indicador existente;
     - o menu lateral e as cores são os de cada tema.
 
@@ -44,7 +43,11 @@ Branch `feat/estoque-v1` (worktree `C:/wt/estoque`), a partir de `208d7ee`. Plan
     - ajuste de conferência;
     - estorno.
   - Venda só para produto de venda; consumo só para consumo interno.
-  - Motivo obrigatório em perda, ajuste e estorno.
+  - Motivo obrigatório em perda, ajuste e estorno, com pelo menos 3 letras depois de tirar os espaços repetidos:
+    - perda e estorno: a validação do corpo recusa com 400;
+    - ajuste: o motivo é o da conferência e vai para cada ajuste que ela registra. Com diferença, sem motivo ou com motivo curto, 400 `MOTIVO_OBRIGATORIO`, e nada é gravado. Sem diferença, o motivo é opcional, mas curto continua recusado;
+    - a constraint `ck_stock_movements_reason` é a garantia final;
+    - a tela recusa antes de enviar, com a mesma regra e uma mensagem no campo.
   - A data é a hora do servidor.
   - O histórico é só de inserção (gatilho no banco).
   - Estorno: uma vez por lançamento, com motivo. Não se aplica a ajuste nem a outro estorno.
@@ -104,6 +107,20 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 ## 6. Estado e retomada
 
 Atualizado a cada checkpoint (abaixo).
+
+**19/11/2026: motivo obrigatório na conferência e retorno só para frente.**
+
+- **Correção:** a primeira versão publicada (`0dedc35`) deixava o motivo dos ajustes opcional e gravava um texto padrão, contra a regra da seção 2. A imagem de referência não muda essa regra. Branch `fix/estoque-motivo-conferencia`:
+  - API: 400 `MOTIVO_OBRIGATORIO` dentro da transação travada, sem gravar nada;
+  - tela: "Motivo dos ajustes" obrigatório quando há diferença, sem avançar para a confirmação até o motivo ser válido;
+  - perda e estorno já exigiam o motivo e foram conferidos de novo.
+- **Testes:** motivo ausente, vazio, curto e válido na conferência, na perda e no estorno:
+  - corpo (`stock.dto.spec.ts`) e HTTP (`stock.e2e-spec.ts`);
+  - banco descartável (`stock-postgres.db-e2e-spec.ts`), conferindo que saldos, movimentações e conferências não mudam;
+  - navegador (`test:browser:estoque`), conferindo o banco antes e depois de cada envio recusado.
+- **Sem migration.** A constraint do banco já exigia o motivo; publicar é API e depois web, no mesmo SHA.
+- **Compatibilidade:** no intervalo com a API nova e o web ainda em `0dedc35`, o web antigo recebe 400 numa conferência com diferença sem motivo. A mensagem da API aparece na tela, e nada é gravado.
+- **Retorno:** o H3 reprovou (runbook). Depois da primeira contratação ou concessão, somente correção para frente. Nenhum rollback foi feito.
 
 **18/11/2026, noite: publicado e liberado.**
 

@@ -3,7 +3,7 @@
 // estoque e o `SessionGuard` substituídos. As regras, contra PostgreSQL real:
 // test/stock-postgres.db-e2e-spec.ts.
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, ForbiddenException, INestApplication, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, INestApplication, NotFoundException } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
@@ -79,6 +79,10 @@ describe('rotas do estoque (e2e)', () => {
     ['ajuste direto', 'post', '/tenants/t/stock/movements', { requestKey: CHAVE, productId: 'p1', kind: 'AJUSTE_CONFERENCIA', quantityMilli: 1000, expectedUnit: 'UN', reason: 'Ajuste' }],
     ['perda sem motivo', 'post', '/tenants/t/stock/movements', { requestKey: CHAVE, productId: 'p1', kind: 'SAIDA_PERDA', quantityMilli: 1000, expectedUnit: 'UN' }],
     ['estorno sem motivo', 'post', '/tenants/t/stock/movements/m1/reversal', { requestKey: CHAVE }],
+    ['perda com motivo vazio', 'post', '/tenants/t/stock/movements', { requestKey: CHAVE, productId: 'p1', kind: 'SAIDA_PERDA', quantityMilli: 1000, expectedUnit: 'UN', reason: '   ' }],
+    ['perda com motivo curto', 'post', '/tenants/t/stock/movements', { requestKey: CHAVE, productId: 'p1', kind: 'SAIDA_PERDA', quantityMilli: 1000, expectedUnit: 'UN', reason: ' ab ' }],
+    ['estorno com motivo vazio', 'post', '/tenants/t/stock/movements/m1/reversal', { requestKey: CHAVE, reason: '' }],
+    ['estorno com motivo curto', 'post', '/tenants/t/stock/movements/m1/reversal', { requestKey: CHAVE, reason: 'ab' }],
     ['conferência vazia', 'post', '/tenants/t/stock/counts', { requestKey: CHAVE, items: [] }],
     ['estabelecimento no corpo', 'post', '/tenants/t/stock/categories', { name: 'Cabelo', tenantId: 'outro' }],
   ] as const)('400 sem chamar o serviço: %s', async (_nome, metodo, caminho, corpo) => {
@@ -117,6 +121,16 @@ describe('rotas do estoque (e2e)', () => {
       .send({ requestKey: CHAVE, items: [{ productId: 'p1', expectedBalanceVersion: 2, expectedUnit: 'UN', countedMilli: 0 }] })
       .expect(409);
     expect(desatualizada.body).toMatchObject({ code: 'CONFERENCIA_DESATUALIZADA', items: [{ productId: 'p1', unit: 'CX' }] });
+
+    // Motivo dos ajustes: a diferença só existe com o saldo travado, então
+    // quem recusa é o serviço, com `code` e mensagem para a tela.
+    conferencias.create.mockRejectedValueOnce(new BadRequestException({ code: 'MOTIVO_OBRIGATORIO', message: 'Informe o motivo dos ajustes, com pelo menos 3 letras.' }));
+    const semMotivo = await servidor()
+      .post('/tenants/t/stock/counts')
+      .send({ requestKey: CHAVE, items: [{ productId: 'p1', expectedBalanceVersion: 2, expectedUnit: 'UN', countedMilli: 0 }] })
+      .expect(400);
+    expect(semMotivo.body).toMatchObject({ code: 'MOTIVO_OBRIGATORIO', message: 'Informe o motivo dos ajustes, com pelo menos 3 letras.' });
+    expect(conferencias.create).toHaveBeenLastCalledWith('user_1', 't', expect.objectContaining({ note: null }));
   });
 
   it('as rotas de categoria, subcategoria, produto e conferência chegam ao serviço certo', async () => {

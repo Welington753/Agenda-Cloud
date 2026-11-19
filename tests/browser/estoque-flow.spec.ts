@@ -6,7 +6,8 @@
 // - portal: preço do ESTOQUE no catálogo (se pendente) e contratação em
 //   "Plano e adicionais" (conversão para a assinatura modular);
 // - dono: categoria e subcategoria, produto com saldo inicial, saída,
-//   estorno, perda com motivo, conferência com diferença e estoque baixo,
+//   estorno, perda com motivo (ausente, vazio e curto recusados sem gravar),
+//   conferência com diferença e motivo obrigatório, e estoque baixo,
 //   arquivamento sem perder o histórico;
 // - rascunho da conferência apagado no logout;
 // - gerente só com "Ver estoque": vê, sem botões de operação; funcionário
@@ -144,6 +145,16 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(linha.getByTestId("saldo")).toHaveText("10 UN");
 
     // ------------------------------------------- saída, estorno e perda
+    // Envio recusado (motivo ausente, vazio ou curto) não muda saldo nem histórico.
+    const retrato = async () =>
+      (
+        await db.query(
+          `SELECT (SELECT COALESCE(sum(balance_milli), 0)::text FROM stock_products WHERE tenant_id = $1) AS saldos,
+                  (SELECT count(*)::int FROM stock_movements WHERE tenant_id = $1) AS movimentos,
+                  (SELECT count(*)::int FROM stock_counts WHERE tenant_id = $1) AS conferencias`,
+          [tenantId],
+        )
+      ).rows[0];
     await abrirNoMenu(page, "Movimentações");
     await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toContainText("Saldo inicial");
     const registrar = async (tipo: string, quantidade: string, motivo?: string, depois?: string) => {
@@ -166,12 +177,33 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(primeira.getByTestId("saldo-antes-depois")).toContainText("10 UN → 7 UN");
     await primeira.getByRole("button", { name: /^Ações da movimentação/ }).click();
     await page.getByRole("menuitem", { name: "Estornar" }).click();
+    let antes = await retrato();
+    for (const motivo of ["", "   ", "ab"]) {
+      await page.getByRole("dialog").getByLabel("Motivo do estorno").fill(motivo);
+      await page.getByRole("dialog").getByRole("button", { name: "Confirmar estorno" }).click();
+      await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("Informe o motivo do estorno (pelo menos 3 letras).");
+    }
+    expect(await retrato()).toEqual(antes);
     await page.getByRole("dialog").getByLabel("Motivo do estorno").fill("Venda lançada em duplicidade");
     await page.getByRole("dialog").getByRole("button", { name: "Confirmar estorno" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(primeira).toContainText("Estorno");
     await expect(primeira).toContainText("7 UN → 10 UN");
     await expect(historico).toContainText("Estornada");
+    await page.getByRole("button", { name: "Registrar movimentação" }).click();
+    const perda = page.getByTestId("painel-movimentacao");
+    await perda.getByLabel("Produto").selectOption({ label: "Pomada modeladora (10 UN)" });
+    await perda.getByLabel("Tipo").selectOption("SAIDA_PERDA");
+    await perda.getByLabel(/^Quantidade/).fill("1");
+    antes = await retrato();
+    for (const motivo of ["", "   ", "ab"]) {
+      await perda.getByLabel("Motivo").fill(motivo);
+      await perda.getByRole("button", { name: "Registrar", exact: true }).click();
+      await expect(perda.getByRole("alert")).toHaveText("Informe o motivo (pelo menos 3 letras).");
+    }
+    expect(await retrato()).toEqual(antes);
+    await page.keyboard.press("Escape");
+    await expect(perda).toHaveCount(0);
     await registrar("SAIDA_PERDA", "1", "Embalagem rasgada", "9 UN");
     await expect(primeira).toContainText("Motivo: Embalagem rasgada");
     await capturar(page, "movimentacoes");
@@ -188,9 +220,26 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(page.getByTestId("revisao")).toContainText("9 UN");
     await expect(page.getByTestId("revisao")).toContainText("-7 UN");
     await expect(page.getByText("Nenhum saldo será alterado antes da confirmação.")).toBeVisible();
+    // Com ajuste, o motivo é obrigatório: sem ele não se chega à confirmação.
+    antes = await retrato();
+    const motivoDosAjustes = page.getByLabel("Motivo dos ajustes");
+    for (const [motivo, mensagem] of [
+      ["", "Informe o motivo dos ajustes (pelo menos 3 letras)."],
+      ["   ", "Informe o motivo dos ajustes (pelo menos 3 letras)."],
+      ["ab", "O motivo precisa ter pelo menos 3 letras."],
+    ]) {
+      await motivoDosAjustes.fill(motivo);
+      await page.getByRole("button", { name: "Continuar", exact: true }).click();
+      await expect(page.getByTestId("revisao").getByRole("alert")).toHaveText(mensagem);
+      await expect(motivoDosAjustes).toBeFocused();
+      await expect(page.getByTestId("confirmacao")).toHaveCount(0);
+    }
+    expect(await retrato()).toEqual(antes);
+    await motivoDosAjustes.fill("Contagem de fechamento");
     await capturar(page, "revisao");
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await expect(page.getByTestId("confirmacao")).toContainText("9 UN → 2 UN");
+    await expect(page.getByTestId("confirmacao")).toContainText("Motivo: Contagem de fechamento");
     await capturar(page, "confirmacao");
     await page.getByRole("button", { name: "Confirmar ajustes" }).click();
     await expect(page.getByText("1 conferidos, 1 com ajuste")).toBeVisible();
@@ -280,6 +329,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(linha.getByTestId("saldo")).toHaveText("2 UN");
     await page.goto("/conta/estoque/movimentacoes");
     await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toContainText("Ajuste de conferência");
+    await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toContainText("Motivo: Contagem de fechamento");
 
     expect(erros).toEqual([]);
   } finally {
