@@ -191,6 +191,19 @@ export class ConsumerIdentity1794268800000 implements MigrationInterface {
       SELECT tenant_id, whatsapp_normalized, 'OPT_OUT', '${LEGACY_CONSENT_SOURCE}', whatsapp_opt_out_at, id
         FROM consumers WHERE whatsapp_opt_out_at IS NOT NULL
     `);
+    // A decisão de envio, numa fonte só: o evento mais recente do NÚMERO
+    // neste estabelecimento vence; no empate de horário, o opt-out. Sem
+    // evento, NULL (não envia).
+    await queryRunner.query(`
+      CREATE FUNCTION whatsapp_consent_current(p_tenant_id varchar, p_whatsapp_normalized varchar) RETURNS varchar
+        LANGUAGE sql STABLE PARALLEL SAFE
+        AS $$
+          SELECT e.kind FROM whatsapp_consent_events e
+           WHERE e.tenant_id = p_tenant_id AND e.whatsapp_normalized = p_whatsapp_normalized
+           ORDER BY e.occurred_at DESC, (e.kind = 'OPT_OUT') DESC, e.id DESC
+           LIMIT 1
+        $$
+    `);
 
     await queryRunner.query(`
       CREATE FUNCTION appointments_consumer_active() RETURNS trigger
@@ -247,7 +260,15 @@ export class ConsumerIdentity1794268800000 implements MigrationInterface {
     const [linha] = (await queryRunner.query(`
       SELECT (SELECT count(*) FROM consumers WHERE merged_into_consumer_id IS NOT NULL)::int AS unificados,
              (SELECT count(*) FROM consumer_create_requests)::int AS pedidos,
-             (SELECT count(*) FROM whatsapp_consent_events WHERE source <> '${LEGACY_CONSENT_SOURCE}')::int AS eventos
+             -- eventos que NÃO vieram do backfill (não batem com as colunas
+             -- antigas do cadastro de origem)
+             (SELECT count(*) FROM whatsapp_consent_events e
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM consumers c
+                  WHERE c.tenant_id = e.tenant_id AND c.id = e.consumer_id
+                    AND ((e.kind = 'OPT_IN' AND c.whatsapp_opt_in_at = e.occurred_at)
+                      OR (e.kind = 'OPT_OUT' AND c.whatsapp_opt_out_at = e.occurred_at))
+               ))::int AS eventos
     `)) as { unificados: number; pedidos: number; eventos: number }[];
     if (linha.unificados > 0 || linha.pedidos > 0 || linha.eventos > 0) {
       throw new Error('ConsumerIdentity: já há dados que só existem neste schema; o retorno é só para frente.');
@@ -255,6 +276,7 @@ export class ConsumerIdentity1794268800000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX idx_appointments_tenant_consumer_start`);
     await queryRunner.query(`DROP TRIGGER trg_appointments_consumer_active ON appointments`);
     await queryRunner.query(`DROP FUNCTION appointments_consumer_active()`);
+    await queryRunner.query(`DROP FUNCTION whatsapp_consent_current(varchar, varchar)`);
     await queryRunner.query(`DROP TABLE whatsapp_consent_events`);
     await queryRunner.query(`DROP TABLE consumer_create_requests`);
     await queryRunner.query(`DROP FUNCTION reject_update_insert_only()`);

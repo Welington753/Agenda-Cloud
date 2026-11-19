@@ -95,6 +95,23 @@ interface LinhaAtiva {
   mesmo_nome: string;
 }
 
+/**
+ * O que o histórico mostra para quem pediu. Preço: a mesma regra das
+ * respostas de agendamento (`recortarParaQuemPediu`): o dono vê; o gerente
+ * só com `RECEBIMENTOS_VISUALIZAR`. Recebimento: a política de recebimentos
+ * (`canViewPayments`) e o recurso contratado.
+ */
+export function oQueOHistoricoMostra(
+  quem: Pick<AuthorizedTenant, 'role' | 'overrides'>,
+  recursoDePagamentos: boolean,
+): { veDinheiro: boolean; veRecebimentos: boolean } {
+  const overrides = quem.overrides ?? [];
+  return {
+    veDinheiro: quem.role !== 'GERENTE' || managerCan(quem.role, overrides, 'RECEBIMENTOS_VISUALIZAR'),
+    veRecebimentos: recursoDePagamentos && canViewPayments(quem.role, overrides),
+  };
+}
+
 function lerCursorDeTexto<T extends unknown[]>(cursor: string, valido: (valor: unknown[]) => boolean): T {
   try {
     const valor: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
@@ -302,10 +319,14 @@ export class ConsumerProfileService {
 
     const nomes = linhasDe<{ nome: string }>(
       await manager.query(
-        `SELECT min(consumer_name_snapshot) AS nome
-           FROM appointments WHERE tenant_id = $1 AND consumer_id = $2
-          GROUP BY consumer_name_key(consumer_name_snapshot)
-          ORDER BY 1`,
+        // Um por nome normalizado, na grafia mais recente; em ordem da chave.
+        `SELECT nome FROM (
+           SELECT DISTINCT ON (consumer_name_key(consumer_name_snapshot))
+                  consumer_name_key(consumer_name_snapshot) AS chave, consumer_name_snapshot AS nome
+             FROM appointments WHERE tenant_id = $1 AND consumer_id = $2
+            ORDER BY consumer_name_key(consumer_name_snapshot), start_at DESC, id DESC
+         ) AS nomes
+         ORDER BY chave`,
         [tenant, consumerId],
       ),
     ).map((linha) => linha.nome);
@@ -385,9 +406,10 @@ export class ConsumerProfileService {
     if (!cliente) throw new NotFoundException(CONSUMER_NOT_FOUND_MESSAGE);
     if (cliente.merged_into_consumer_id) throw clienteUnificado(cliente.merged_into_consumer_id);
 
-    const veDinheiro = quem.role !== 'GERENTE' || managerCan(quem.role, quem.overrides ?? [], 'RECEBIMENTOS_VISUALIZAR');
-    const veRecebimentos =
-      canViewPayments(quem.role, quem.overrides ?? []) && (await featureEnabled(manager, tenant, FeatureKey.PAGAMENTOS));
+    const { veDinheiro, veRecebimentos } = oQueOHistoricoMostra(
+      quem,
+      await featureEnabled(manager, tenant, FeatureKey.PAGAMENTOS),
+    );
 
     const parametros: unknown[] = [consumerId];
     let condicao = 'a.consumer_id = $2';

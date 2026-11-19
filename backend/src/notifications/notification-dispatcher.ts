@@ -173,22 +173,17 @@ export class ExecutorDeNotificacoes {
       const [situacao] = linhasDe<SituacaoDaReserva>(
         await tx.query(
           `SELECT a.status, a.start_at, c.name AS consumer_name, c.whatsapp_normalized,
-                  consent.kind AS consentimento,
+                  -- Preferência do NÚMERO que vai receber, neste
+                  -- estabelecimento (função da migration ConsumerIdentity:
+                  -- evento mais recente; no empate, opt-out; sem evento,
+                  -- não envia). Trocar o telefone do cadastro não leva a
+                  -- autorização do número antigo para o novo.
+                  whatsapp_consent_current(a.tenant_id, c.whatsapp_normalized) AS consentimento,
                   t.timezone, t.status AS tenant_status, u.name AS unit_name
              FROM appointments a
              JOIN consumers c ON c.tenant_id = a.tenant_id AND c.id = a.consumer_id
              JOIN tenants t ON t.id = a.tenant_id
              JOIN units u ON u.tenant_id = a.tenant_id AND u.id = a.unit_id
-             -- Preferência do número que vai receber, neste estabelecimento:
-             -- o evento mais recente vence; no empate, o opt-out. Sem
-             -- evento, não envia. Trocar o telefone do cadastro não leva a
-             -- autorização do número antigo para o novo.
-             LEFT JOIN LATERAL (
-               SELECT e.kind FROM whatsapp_consent_events e
-                WHERE e.tenant_id = a.tenant_id AND e.whatsapp_normalized = c.whatsapp_normalized
-                ORDER BY e.occurred_at DESC, (e.kind = 'OPT_OUT') DESC, e.id DESC
-                LIMIT 1
-             ) consent ON true
             WHERE a.tenant_id = $1 AND a.id = $2
             FOR SHARE OF a`,
           [tarefa.tenant_id, tarefa.appointment_id],
