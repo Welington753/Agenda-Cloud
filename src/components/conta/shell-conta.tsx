@@ -4,14 +4,14 @@
 // (inspirado no da demonstração) e, no celular, barra superior com o
 // estabelecimento, o sino "Notificações" e o menu da conta (aparência,
 // notificações deste aparelho, Configurações e "Sair", ver
-// menu-conta.tsx) mais uma barra inferior com no máximo quatro áreas
-// (Visão geral, Agenda, Clientes e Configurações para o dono). Profissionais,
-// Serviços, Equipe e acessos e Comissões, que não cabem na barra, ficam no
-// menu da conta no celular. Sem rolagem horizontal.
+// menu-conta.tsx) mais uma barra inferior com TODAS as áreas liberadas, que
+// rola na horizontal só dentro dela (faixa-de-areas.tsx). A página não ganha
+// rolagem lateral, e o menu da conta fica só com as ações da conta.
 //
-// No tema "Azul e branco" o menu do dono e do gerente aparece em grupos
-// (Atendimento, Gestão do negócio, Administração; ver gruposDaNavegacao), com
-// os mesmos itens e permissões. Os outros temas ficam com a lista de antes.
+// O menu do dono e do gerente aparece em grupos (Atendimento, Gestão do
+// negócio, Estoque, Administração; ver gruposDaNavegacao), com os mesmos
+// itens e permissões, em todos os temas. No celular os títulos somem e uma
+// linha fina separa os grupos.
 //
 // No computador, "Configurações" abre ao lado um submenu com as seções
 // (item-configuracoes.tsx); o texto continua levando ao índice.
@@ -46,7 +46,8 @@ import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { identificacaoDaConta } from "@/lib/api/auth-api";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
 import { gruposDaNavegacao, itensDaNavegacao, itemAtivo, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
-import { COLUNAS_NO_CELULAR, LinkNavegacao } from "@/components/conta/link-navegacao";
+import { CLASSE_ITEM_DA_FAIXA, LinkNavegacao } from "@/components/conta/link-navegacao";
+import { FaixaDeAreas } from "@/components/conta/faixa-de-areas";
 import { ItemConfiguracoes } from "@/components/conta/item-configuracoes";
 import { MarcaTimVix } from "@/components/marca/marca";
 import {
@@ -130,23 +131,23 @@ export function ShellConta({ children }: { children: ReactNode }) {
         perfil,
         contexto,
       });
-  const naBarra = itens.filter((item) => item.noCelular === "barra");
-  const colunasNoCelular = naBarra.length;
   // Grupos por assunto para quem tem várias áreas (dono e gerente), em todos
   // os temas; o funcionário segue com a lista curta. O tema muda só as cores.
   const grupos = perfil === "dono" || perfil === "gerente" ? gruposDaNavegacao(itens) : null;
-  const naOrdemDoMenu = grupos ? grupos.flatMap((g) => g.itens) : itens;
 
-  const itemDoMenu = (item: ItemNavegacaoConta) =>
+  /** `inicioDeGrupo`: primeiro item de um grupo depois do primeiro (linha
+   * fina à esquerda, só no celular). */
+  const itemDoMenu = (item: ItemNavegacaoConta, inicioDeGrupo = false) =>
     item.href === ROTA_CONFIGURACOES ? (
       <ItemConfiguracoes key={item.href} item={item} ativo={itemAtivo(pathname, item.href, perfil)} />
     ) : (
       <li
         key={item.href}
-        // Itens fora da barra saem do celular com `display: none`
-        // (fora da árvore de acessibilidade): no celular, a cópia
-        // fica no menu da conta.
-        className={clsx("min-w-0", item.noCelular === "menu" && "hidden md:block")}
+        className={clsx(
+          "min-w-0",
+          CLASSE_ITEM_DA_FAIXA,
+          inicioDeGrupo && "shadow-[inset_1px_0_0_var(--color-chrome-border)] md:shadow-none",
+        )}
       >
         <LinkNavegacao
           item={item}
@@ -197,41 +198,43 @@ export function ShellConta({ children }: { children: ReactNode }) {
             // última área e o menu da conta continuam alcançáveis.
             className="fixed inset-x-0 bottom-0 z-40 border-t border-chrome-border bg-chrome pb-[env(safe-area-inset-bottom)] md:static md:min-h-0 md:flex-1 md:overflow-y-auto md:border-0 md:px-3 md:pb-0 md:[scrollbar-width:thin]"
           >
-            {grupos ? (
-              // Dono e gerente: os mesmos itens em grupos com título e
-              // divisor no computador. No celular grupos e listas somem do
-              // layout (`contents`) e os itens da barra seguem na mesma grade.
-              <div className={clsx("grid md:flex md:flex-col md:gap-3", COLUNAS_NO_CELULAR[colunasNoCelular])}>
-                {grupos.map((grupo, indice) => {
-                  const idTitulo = `grupo-conta-${indice}`;
-                  return (
-                    <div
-                      key={grupo.titulo ?? "inicio"}
-                      className={clsx("contents md:block", indice > 0 && "md:border-t md:border-chrome-border md:pt-3")}
-                    >
-                      {grupo.titulo && (
-                        <p
-                          id={idTitulo}
-                          className="mb-1 hidden px-3 text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block"
-                        >
-                          {grupo.titulo}
-                        </p>
-                      )}
-                      <ul
-                        className="contents md:flex md:flex-col md:gap-1"
-                        aria-labelledby={grupo.titulo ? idTitulo : undefined}
+            <FaixaDeAreas>
+              {grupos ? (
+                // Dono e gerente: os mesmos itens em grupos com título e
+                // divisor no computador. No celular grupos e listas somem do
+                // layout (`contents`) e os itens seguem na mesma faixa.
+                <div className="contents md:flex md:flex-col md:gap-3">
+                  {grupos.map((grupo, indice) => {
+                    const idTitulo = `grupo-conta-${indice}`;
+                    return (
+                      <div
+                        key={grupo.titulo ?? "inicio"}
+                        className={clsx("contents md:block", indice > 0 && "md:border-t md:border-chrome-border md:pt-3")}
                       >
-                        {grupo.itens.map(itemDoMenu)}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <ul className={clsx("grid md:flex md:flex-col md:gap-1", COLUNAS_NO_CELULAR[colunasNoCelular])}>
-                {itens.map(itemDoMenu)}
-              </ul>
-            )}
+                        {grupo.titulo && (
+                          <p
+                            id={idTitulo}
+                            className="mb-1 hidden px-3 text-[11px] font-semibold tracking-wider text-chrome-ink-soft uppercase md:block"
+                          >
+                            {grupo.titulo}
+                          </p>
+                        )}
+                        <ul
+                          className="contents md:flex md:flex-col md:gap-1"
+                          aria-labelledby={grupo.titulo ? idTitulo : undefined}
+                        >
+                          {grupo.itens.map((item, i) => itemDoMenu(item, indice > 0 && i === 0))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <ul className="contents md:flex md:flex-col md:gap-1">
+                  {itens.map((item) => itemDoMenu(item))}
+                </ul>
+              )}
+            </FaixaDeAreas>
           </nav>
         )}
 
@@ -253,10 +256,6 @@ export function ShellConta({ children }: { children: ReactNode }) {
             email={identificacaoDaConta(sessao.user)}
             tenantId={contexto && ehDono ? tenantIdAtivo : null}
             pendentes={ehDono ? pendentes : null}
-            areasNoMenu={naOrdemDoMenu.filter((item) => item.noCelular === "menu")}
-            gruposNoMenu={grupos
-              ?.map((g) => ({ ...g, itens: g.itens.filter((item) => item.noCelular === "menu") }))
-              .filter((g) => g.itens.length > 0)}
             configuracoes={ROTA_CONFIGURACOES}
             saindo={saindo}
             aoSair={() => void sair()}

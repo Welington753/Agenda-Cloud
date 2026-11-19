@@ -217,8 +217,13 @@ test.describe("entrada e navegação do piloto", () => {
       "/conta/configuracoes/perfil",
     ]) {
       await page.goto(caminho);
-      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Configurações"]) {
+      // Faixa inferior com todas as áreas: a atual (quando há uma) vem à
+      // vista; as outras ficam a um deslize, com alvo de toque confortável.
+      const atual = nav.locator('[aria-current="page"]');
+      if ((await atual.count()) > 0) await expect(atual).toBeInViewport({ ratio: 1 });
+      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Profissionais", "Serviços", "Equipe e acessos", "Configurações"]) {
         const link = nav.getByRole("link", { name: rotulo, exact: true });
+        await link.scrollIntoViewIfNeeded();
         await expect(link).toBeInViewport();
         const caixa = await link.boundingBox();
         expect(caixa!.height).toBeGreaterThanOrEqual(44);

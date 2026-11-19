@@ -206,11 +206,12 @@ test("portal da plataforma: área própria, recusa por URL e API, ficha, preços
     await page.getByRole("button", { name: "Tentar novamente" }).click();
     await expect(main.getByRole("status")).toHaveText("1 estabelecimento(s) encontrado(s)");
 
-    // No celular, nem a barra nem o menu da conta têm atalho do portal; o
-    // portal continua abrindo pelo próprio endereço.
+    // No celular, nem a faixa de áreas nem o menu da conta têm atalho do
+    // portal; o portal continua abrindo pelo próprio endereço.
     await page.goto("/conta/visao-geral");
     await page.setViewportSize({ width: 360, height: 844 });
-    await expect(navConta(page).getByRole("link").filter({ visible: true })).toHaveCount(4);
+    await expect(navConta(page).getByRole("link", { name: "Visão geral", exact: true })).toBeVisible();
+    await expect(navConta(page).locator('a[href^="/portal"]')).toHaveCount(0);
     await page.getByTestId("abrir-menu-conta").click();
     await expect(page.getByTestId("menu-perfil")).toBeVisible();
     await expect(page.locator('a[href^="/portal"]')).toHaveCount(0);

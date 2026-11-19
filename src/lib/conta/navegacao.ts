@@ -32,22 +32,20 @@ import type { TenantContextReal } from "@/lib/api/auth-api";
 export interface ItemNavegacaoConta {
   href: string;
   rotulo: string;
-  /** "barra": na barra inferior do celular (no máximo quatro áreas, para o
-   * rótulo continuar legível e o toque confortável). "menu": fora da barra;
-   * no celular fica no menu da conta (canto superior). No computador todas
-   * aparecem no menu lateral. */
-  noCelular: "barra" | "menu";
 }
 
-const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações", noCelular: "barra" };
+// Celular e computador mostram os MESMOS itens: no celular, a barra inferior
+// rola na horizontal (components/conta/faixa-de-areas.tsx); no computador,
+// o menu lateral. Nenhuma área fica só no menu da conta.
 
-/** Seção Estoque (adicional ESTOQUE): fora da barra do celular, no menu da
- * conta; no computador, no grupo "Estoque" do menu lateral. */
+const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações" };
+
+/** Seção Estoque (adicional ESTOQUE): grupo "Estoque" do menu. */
 const ITENS_DO_ESTOQUE: readonly ItemNavegacaoConta[] = [
-  { href: ROTA_ESTOQUE_PRODUTOS, rotulo: "Produtos", noCelular: "menu" },
-  { href: ROTA_ESTOQUE_CATEGORIAS, rotulo: "Categorias", noCelular: "menu" },
-  { href: ROTA_ESTOQUE_MOVIMENTACOES, rotulo: "Movimentações", noCelular: "menu" },
-  { href: ROTA_ESTOQUE_CONFERENCIA, rotulo: "Conferência de estoque", noCelular: "menu" },
+  { href: ROTA_ESTOQUE_PRODUTOS, rotulo: "Produtos" },
+  { href: ROTA_ESTOQUE_CATEGORIAS, rotulo: "Categorias" },
+  { href: ROTA_ESTOQUE_MOVIMENTACOES, rotulo: "Movimentações" },
+  { href: ROTA_ESTOQUE_CONFERENCIA, rotulo: "Conferência de estoque" },
 ];
 
 /** O que o menu lê do contexto ativo: o papel, as áreas que o servidor
@@ -66,22 +64,20 @@ export type ContextoDoMenu = Pick<TenantContextReal, "role" | "areas"> & { tenan
  *   áreas (API anterior), não entra: a tela não presume o plano.
  * - O Estoque (Produtos, Categorias, Movimentações e Conferência) segue a
  *   mesma regra, com a área `ESTOQUE_VER` (adicional contratado).
- * - Na barra do celular ficam quatro (Visão geral, Agenda, Clientes e
- *   Configurações); as outras aparecem no menu da conta.
- * - No menu lateral os mesmos itens aparecem em grupos por assunto
+ * - No menu (lateral no computador, barra no celular) os mesmos itens aparecem em grupos por assunto
  *   (`gruposDaNavegacao`), em todos os temas.
  */
 export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoConta[] {
   const itens: ItemNavegacaoConta[] = [
-    { href: ROTA_INICIO, rotulo: "Visão geral", noCelular: "barra" },
-    { href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" },
-    { href: ROTA_PROFISSIONAIS, rotulo: rotuloDosProfissionais(contexto?.tenantCategory), noCelular: "menu" },
-    { href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "menu" },
-    { href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" },
-    { href: ROTA_EQUIPE, rotulo: "Equipe e acessos", noCelular: "menu" },
+    { href: ROTA_INICIO, rotulo: "Visão geral" },
+    { href: ROTA_AGENDA, rotulo: "Agenda" },
+    { href: ROTA_PROFISSIONAIS, rotulo: rotuloDosProfissionais(contexto?.tenantCategory) },
+    { href: ROTA_SERVICOS, rotulo: "Serviços" },
+    { href: ROTA_CLIENTES, rotulo: "Clientes" },
+    { href: ROTA_EQUIPE, rotulo: "Equipe e acessos" },
   ];
   if (contexto?.areas?.includes("COMISSOES_VER")) {
-    itens.push({ href: ROTA_COMISSOES, rotulo: "Comissões", noCelular: "menu" });
+    itens.push({ href: ROTA_COMISSOES, rotulo: "Comissões" });
   }
   if (contexto?.areas?.includes("ESTOQUE_VER")) itens.push(...ITENS_DO_ESTOQUE);
   return [...itens, ITEM_CONFIGURACOES];
@@ -89,26 +85,24 @@ export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoCont
 
 /** Menu do funcionário: a própria agenda e as configurações pessoais. */
 export const ITENS_NAVEGACAO_FUNCIONARIO: readonly ItemNavegacaoConta[] = [
-  { href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda", noCelular: "barra" },
+  { href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda" },
   ITEM_CONFIGURACOES,
 ];
 
 /** Menu do gerente: só as áreas concedidas, na ordem do dia a dia. A agenda
  * do estabelecimento já traz a aba Solicitações; sem ela, Solicitações vira o
- * item próprio. Até quatro na barra do celular (o resto no menu da conta),
- * com Configurações sempre por último. */
+ * item próprio. Configurações sempre por último. */
 export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas"> | null | undefined): ItemNavegacaoConta[] {
   const tem = (area: AreaDoEstabelecimento) => temArea(contexto, area);
-  const candidatos: ItemNavegacaoConta[] = [];
-  if (tem("AGENDA_VER")) candidatos.push({ href: ROTA_AGENDA, rotulo: "Agenda", noCelular: "barra" });
-  else if (tem("SOLICITACOES_VER")) candidatos.push({ href: ROTA_SOLICITACOES, rotulo: "Solicitações", noCelular: "barra" });
-  if (tem("AGENDA_PROPRIA_VER")) candidatos.push({ href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda", noCelular: "barra" });
-  if (tem("CLIENTES_VER")) candidatos.push({ href: ROTA_CLIENTES, rotulo: "Clientes", noCelular: "barra" });
-  if (tem("RECEBIMENTOS_VER")) candidatos.push({ href: ROTA_RECEBIMENTOS, rotulo: "Recebimentos", noCelular: "barra" });
-  if (tem("SERVICOS_VER")) candidatos.push({ href: ROTA_SERVICOS, rotulo: "Serviços", noCelular: "barra" });
-  if (tem("PROFISSIONAIS_VER")) candidatos.push({ href: ROTA_PROFISSIONAIS, rotulo: "Profissionais", noCelular: "barra" });
-  const itens = candidatos.map((item, i) => ({ ...item, noCelular: i < 3 ? ("barra" as const) : ("menu" as const) }));
-  // O estoque vem depois das áreas do dia a dia, sempre no menu da conta.
+  const itens: ItemNavegacaoConta[] = [];
+  if (tem("AGENDA_VER")) itens.push({ href: ROTA_AGENDA, rotulo: "Agenda" });
+  else if (tem("SOLICITACOES_VER")) itens.push({ href: ROTA_SOLICITACOES, rotulo: "Solicitações" });
+  if (tem("AGENDA_PROPRIA_VER")) itens.push({ href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda" });
+  if (tem("CLIENTES_VER")) itens.push({ href: ROTA_CLIENTES, rotulo: "Clientes" });
+  if (tem("RECEBIMENTOS_VER")) itens.push({ href: ROTA_RECEBIMENTOS, rotulo: "Recebimentos" });
+  if (tem("SERVICOS_VER")) itens.push({ href: ROTA_SERVICOS, rotulo: "Serviços" });
+  if (tem("PROFISSIONAIS_VER")) itens.push({ href: ROTA_PROFISSIONAIS, rotulo: "Profissionais" });
+  // O estoque vem depois das áreas do dia a dia.
   if (tem("ESTOQUE_VER")) itens.push(...ITENS_DO_ESTOQUE);
   return [...itens, ITEM_CONFIGURACOES];
 }

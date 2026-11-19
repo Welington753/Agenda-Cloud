@@ -23,7 +23,7 @@
 //   pelo endereço vai para a própria agenda; com "Operar estoque", os atalhos
 //   e "Duplicar cadastro" aparecem;
 // - retirar o adicional bloqueia e preserva; recontratar devolve os dados;
-// - celular (390 e 360): a seção fica no menu da conta, sem rolagem lateral.
+// - celular (390 e 360): a seção fica na faixa inferior, sem rolagem lateral.
 // Invocação própria (`npm run test:browser:estoque`): 1 aceite e 1 login.
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
@@ -371,17 +371,19 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await entrarPeloFormulario(page, `${marca}@example.test`, SENHA);
     await expect(page).toHaveURL(/\/conta/);
 
-    // ------------------------------------------- celular: a seção no menu da conta
+    // ------------------------------------------- celular: a seção na faixa inferior
     for (const width of [390, 360]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto("/conta/estoque/produtos");
       await expect(page.getByRole("heading", { level: 1, name: "Produtos" })).toBeVisible();
-      await page.getByTestId("abrir-menu-conta").click();
-      const mais = page.getByTestId("menu-mais-areas");
-      for (const rotulo of ITENS_DO_ESTOQUE) await expect(mais.getByRole("link", { name: rotulo, exact: true })).toBeVisible();
+      // A área atual (Produtos, no meio da faixa) já vem à vista e destacada.
+      await expect(navConta(page).locator('[aria-current="page"]')).toHaveText("Produtos");
+      await expect(navConta(page).locator('[aria-current="page"]')).toBeInViewport({ ratio: 1 });
+      for (const rotulo of ITENS_DO_ESTOQUE) await expect(navConta(page).getByRole("link", { name: rotulo, exact: true })).toHaveCount(1);
+      await navConta(page).getByRole("link", { name: "Conferência de estoque", exact: true }).click();
+      await expect(page).toHaveURL(/\/conta\/estoque\/conferencia$/);
       await semRolagemHorizontal(page);
-      await page.screenshot({ path: test.info().outputPath(`estoque-menu-celular-${width}.png`) });
-      await page.keyboard.press("Escape");
+      await page.screenshot({ path: test.info().outputPath(`estoque-faixa-celular-${width}.png`) });
     }
     await page.setViewportSize({ width: 1280, height: 900 });
 

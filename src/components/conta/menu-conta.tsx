@@ -8,8 +8,9 @@
 //   própria. Abrir o sino não confirma, recusa nem remarca nada.
 // - MENU DA CONTA: quem está conectado, "Notificações" (pendentes, situação
 //   neste aparelho e o atalho para Configurações → Notificações), Aparência,
-//   Configurações, Perfil e segurança e Sair. No celular, também as áreas que
-//   não cabem na barra inferior (Serviços e Profissionais, para o dono).
+//   Configurações, Perfil e segurança e Sair. As áreas do estabelecimento
+//   ficam todas no menu lateral (computador) ou na barra inferior que rola
+//   na horizontal (celular), nunca aqui.
 //   A situação do push é verificada UMA vez a cada abertura do menu
 //   (lib/push/use-notificacoes-do-dispositivo.ts, o mesmo do cartão); nada
 //   aqui pede permissão ao navegador nem ativa/desativa sozinho.
@@ -30,8 +31,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { itemAtivo, rotuloDoSino, type GrupoNavegacaoConta, type ItemNavegacaoConta } from "@/lib/conta/navegacao";
-import { ICONE_POR_HREF } from "@/components/conta/link-navegacao";
+import { rotuloDoSino } from "@/lib/conta/navegacao";
 import { textoPendentes } from "@/lib/agendamento-publico/solicitacoes";
 import { lerPreferenciaDeSom } from "@/lib/agendamento-publico/som-dos-avisos";
 import { useNotificacoesDoDispositivo } from "@/lib/push/use-notificacoes-do-dispositivo";
@@ -102,8 +102,6 @@ export function MenuConta({
   email,
   tenantId,
   pendentes,
-  areasNoMenu = [],
-  gruposNoMenu,
   configuracoes,
   saindo,
   aoSair,
@@ -113,12 +111,6 @@ export function MenuConta({
   /** Sem estabelecimento ativo (tela de escolha), não há notificações. */
   tenantId: string | null;
   pendentes: number | null;
-  /** Áreas do menu principal que não cabem na barra inferior do celular
-   * (Serviços e Profissionais, para o dono). Só aparecem aqui no celular: no
-   * computador já estão no menu lateral. */
-  areasNoMenu?: readonly ItemNavegacaoConta[];
-  /** As mesmas áreas em grupos com título (dono e gerente, todos os temas). */
-  gruposNoMenu?: readonly GrupoNavegacaoConta[];
   /** Entrada de Configurações (sempre a mesma; parâmetro para o menu não
    * depender do módulo de rotas da área). */
   configuracoes: string;
@@ -130,22 +122,6 @@ export function MenuConta({
   const botaoRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
   const idPainel = useId();
-
-  const linhaDaArea = (area: ItemNavegacaoConta) => {
-    const Icone = ICONE_POR_HREF[area.href] ?? Settings;
-    const atual = itemAtivo(pathname, area.href);
-    return (
-      <Link
-        key={area.href}
-        href={area.href}
-        aria-current={atual ? "page" : undefined}
-        className={clsx(CLASSE_LINHA, atual && "bg-accent-soft")}
-      >
-        <Icone size={18} aria-hidden="true" className="shrink-0 text-accent" />
-        {area.rotulo}
-      </Link>
-    );
-  };
 
   // Navegar fecha o menu.
   useEffect(() => setAberto(false), [pathname]);
@@ -207,8 +183,8 @@ export function MenuConta({
           className={clsx(
             "absolute top-full right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-3 text-ink shadow-[var(--shadow-lift)]",
             "md:top-auto md:right-auto md:bottom-full md:left-0 md:mt-0 md:mb-2 md:w-80",
-            // Cabe na janela e rola por dentro: num celular baixo, com as
-            // áreas que não entram na barra, "Sair" ficaria fora da tela. No
+            // Cabe na janela e rola por dentro: num celular baixo, "Sair"
+            // ficaria fora da tela. No
             // celular desconta a barra superior e a inferior; no computador,
             // o rodapé do menu lateral, de onde o painel abre para cima.
             "max-h-[calc(100dvh-8.5rem-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain md:max-h-[calc(100dvh-6rem)]",
@@ -218,25 +194,6 @@ export function MenuConta({
             <p className="truncate text-sm font-semibold">{nome}</p>
             <p className="truncate text-xs text-ink-soft">{email}</p>
           </div>
-
-          {areasNoMenu.length > 0 && (
-            <nav
-              aria-label="Mais áreas"
-              className="space-y-1 border-t border-border pt-2 md:hidden"
-              data-testid="menu-mais-areas"
-            >
-              {gruposNoMenu && gruposNoMenu.length > 0
-                ? gruposNoMenu.map((grupo, indice) => (
-                    <div key={grupo.titulo ?? "inicio"} className={clsx("space-y-1", indice > 0 && "pt-2")}>
-                      {grupo.titulo && (
-                        <p className="px-2 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">{grupo.titulo}</p>
-                      )}
-                      {grupo.itens.map(linhaDaArea)}
-                    </div>
-                  ))
-                : areasNoMenu.map(linhaDaArea)}
-            </nav>
-          )}
 
           {tenantId && (
             <section aria-label="Notificações" className="space-y-2 border-t border-border pt-3">

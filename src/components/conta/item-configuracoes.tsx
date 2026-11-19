@@ -30,7 +30,7 @@ import { ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import type { ItemNavegacaoConta } from "@/lib/conta/navegacao";
 import { itemAtivo } from "@/lib/conta/navegacao";
-import { LinkNavegacao } from "@/components/conta/link-navegacao";
+import { CLASSE_ITEM_DA_FAIXA, LinkNavegacao } from "@/components/conta/link-navegacao";
 import { iconeDaSecao, useSecoesDeConfiguracoes } from "@/components/conta/configuracoes";
 
 /** Tempo para o mouse atravessar até o submenu antes de ele fechar. */
@@ -115,7 +115,7 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
 
   if (secoes.length === 0) {
     return (
-      <li className="min-w-0">
+      <li className={clsx("min-w-0", CLASSE_ITEM_DA_FAIXA)}>
         <LinkNavegacao item={item} ativo={ativo} />
       </li>
     );
@@ -126,7 +126,7 @@ export function ItemConfiguracoes({ item, ativo }: { item: ItemNavegacaoConta; a
   return (
     <li
       ref={raizRef}
-      className="relative min-w-0"
+      className={clsx("relative min-w-0", CLASSE_ITEM_DA_FAIXA)}
       onPointerEnter={(evento) => {
         if (evento.pointerType !== "mouse" || !comMenuLateral()) return;
         cancelarEspera();

@@ -421,21 +421,20 @@ test.describe("clientes do estabelecimento", () => {
       await page.goto("/conta/clientes");
       await buscar(page, clienteDeA);
       await expect(page.getByTestId("lista-clientes")).toContainText(clienteDeA);
-      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Configurações"]) {
+      // Todas as áreas na faixa inferior, que rola só por dentro.
+      for (const rotulo of ["Visão geral", "Agenda", "Clientes", "Profissionais", "Serviços", "Comissões", "Equipe e acessos", "Configurações"]) {
         const link = nav(page).getByRole("link", { name: rotulo, exact: true });
+        await link.scrollIntoViewIfNeeded();
         await expect(link).toBeInViewport();
         const caixa = (await link.boundingBox())!;
         expect(caixa.height).toBeGreaterThanOrEqual(44);
         expect(caixa.width).toBeGreaterThanOrEqual(64);
-        // Rótulo inteiro, sem reticências.
-        expect(await link.locator("span").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        // Rótulo inteiro (até duas linhas), sem reticências.
+        expect(await link.locator("span").first().evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true);
+        await semRolagemHorizontal(page);
       }
       await expect(nav(page).getByRole("button", { name: "Mais" })).toHaveCount(0);
-      // Profissionais, Serviços, Equipe e acessos e Comissões não cabem na
-      // barra: ficam no menu da conta.
-      await expect(nav(page).getByRole("link", { name: "Profissionais" })).toBeHidden();
-      await page.getByTestId("abrir-menu-conta").click();
-      await page.getByTestId("menu-mais-areas").getByRole("link", { name: "Profissionais" }).click();
+      await nav(page).getByRole("link", { name: "Profissionais" }).click();
       await expect(page).toHaveURL(/\/conta\/configuracoes\/profissionais$/);
       await semRolagemHorizontal(page);
       await page.goto("/conta/clientes");

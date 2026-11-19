@@ -18,20 +18,11 @@ describe("itensDoDono", () => {
     ]);
   });
 
-  it("quatro na barra do celular; as outras vão para o menu da conta", () => {
-    const itens = itensDoDono(DONO_COM_COMISSOES);
-    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
-      "Visão geral",
-      "Agenda",
-      "Clientes",
-      "Configurações",
-    ]);
-    expect(itens.filter((i) => i.noCelular === "menu").map((i) => i.rotulo)).toEqual([
-      "Profissionais",
-      "Serviços",
-      "Equipe e acessos",
-      "Comissões",
-    ]);
+  it("celular e computador usam a mesma lista: nenhuma área fica só no menu da conta", () => {
+    const itens = itensDoDono({ ...DONO_COM_COMISSOES, areas: [...DONO_COM_COMISSOES.areas, "ESTOQUE_VER"] });
+    // A barra do celular segue a ordem dos grupos, com todos os itens.
+    expect(gruposDaNavegacao(itens).flatMap((g) => g.itens.map((i) => i.href)).sort()).toEqual(itens.map((i) => i.href).sort());
+    expect(itens.every((i) => Object.keys(i).sort().join() === "href,rotulo")).toBe(true);
   });
 
   it("Comissões só com a área que o servidor dá a quem tem o recurso no plano", () => {
@@ -80,7 +71,7 @@ describe("itensDaNavegacao", () => {
       const itens = itensDaNavegacao({ comEstabelecimento: true, perfil, contexto });
       expect(itens.every((i) => i.href.startsWith("/conta/"))).toBe(true);
       expect(itens.map((i) => i.rotulo)).not.toContain("Portal da plataforma");
-      expect(itens.every((i) => Object.keys(i).sort().join() === "href,noCelular,rotulo")).toBe(true);
+      expect(itens.every((i) => Object.keys(i).sort().join() === "href,rotulo")).toBe(true);
     }
   });
 
@@ -90,12 +81,9 @@ describe("itensDaNavegacao", () => {
 });
 
 describe("itensDaNavegacao por perfil", () => {
-  it("funcionário: Minha agenda e Configurações, na barra do celular", () => {
+  it("funcionário: Minha agenda e Configurações", () => {
     const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "funcionario" });
-    expect(itens.map((i) => [i.href, i.noCelular])).toEqual([
-      ["/conta/minha-agenda", "barra"],
-      ["/conta/configuracoes", "barra"],
-    ]);
+    expect(itens.map((i) => i.href)).toEqual(["/conta/minha-agenda", "/conta/configuracoes"]);
   });
 
   it("papel sem área: só Configurações; nenhuma área do dono", () => {
@@ -203,7 +191,7 @@ describe("seção Estoque (adicional ESTOQUE)", () => {
   const resumo = (itens: Parameters<typeof gruposDaNavegacao>[0]) =>
     gruposDaNavegacao(itens).map((g) => [g.titulo, g.itens.map((i) => i.rotulo)]);
 
-  it("dono com a área ESTOQUE_VER: grupo Estoque entre Gestão do negócio e Administração, no menu da conta no celular", () => {
+  it("dono com a área ESTOQUE_VER: grupo Estoque entre Gestão do negócio e Administração", () => {
     const itens = itensDoDono({ ...DONO_COM_COMISSOES, areas: [...DONO_COM_COMISSOES.areas, "ESTOQUE_VER", "ESTOQUE_GERENCIAR"] });
     expect(resumo(itens)).toEqual([
       [null, ["Visão geral"]],
@@ -212,8 +200,6 @@ describe("seção Estoque (adicional ESTOQUE)", () => {
       ["Estoque", ESTOQUE],
       ["Administração", ["Equipe e acessos", "Configurações"]],
     ]);
-    expect(itens.filter((i) => ESTOQUE.includes(i.rotulo)).every((i) => i.noCelular === "menu")).toBe(true);
-    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual(["Visão geral", "Agenda", "Clientes", "Configurações"]);
     expect(itens.filter((i) => ESTOQUE.includes(i.rotulo)).map((i) => i.href)).toEqual([
       "/conta/estoque/produtos",
       "/conta/estoque/categorias",
