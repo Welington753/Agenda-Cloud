@@ -4,7 +4,7 @@
 // mínimo, situação (estoque baixo destaca a linha) e o menu de ações. No
 // celular a linha vira cartão (components/estoque/comum.tsx, TABELA).
 import clsx from "clsx";
-import { Archive, History, Pencil, RotateCcw } from "lucide-react";
+import { Archive, Copy, History, Pencil, RotateCcw } from "lucide-react";
 import type { ProdutoEstoque } from "@/lib/api/estoque-api";
 import { detalheDoProduto, ROTULO_SITUACAO, situacaoVisual } from "@/lib/estoque/apresentacao";
 import { formatarQuantidade } from "@/lib/estoque/quantidade";
@@ -18,6 +18,7 @@ export function LinhaProduto({
   podeOperar,
   gravando,
   aoEditar,
+  aoDuplicar,
   aoArquivar,
   aoReativar,
 }: {
@@ -25,6 +26,8 @@ export function LinhaProduto({
   podeOperar: boolean;
   gravando: boolean;
   aoEditar: () => void;
+  /** "Duplicar cadastro": só abre o formulário; nada é criado no clique. */
+  aoDuplicar: () => void;
   aoArquivar: () => void;
   aoReativar: () => void;
 }) {
@@ -34,6 +37,7 @@ export function LinhaProduto({
   ];
   if (podeOperar && !produto.archived) {
     itens.push({ rotulo: "Editar", icone: Pencil, aoEscolher: aoEditar, desabilitado: gravando });
+    itens.push({ rotulo: "Duplicar cadastro", icone: Copy, aoEscolher: aoDuplicar, desabilitado: gravando });
     itens.push({ rotulo: "Arquivar", icone: Archive, aoEscolher: aoArquivar, desabilitado: gravando, perigo: true });
   }
   if (podeOperar && produto.archived) itens.push({ rotulo: "Reativar", icone: RotateCcw, aoEscolher: aoReativar, desabilitado: gravando });

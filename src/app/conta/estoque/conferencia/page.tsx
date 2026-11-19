@@ -198,7 +198,7 @@ export default function ConferenciaDoEstoquePage() {
           <CartaoCorpo className="space-y-3">
             <EtapasDaConferencia atual={etapa} />
             <NotaInformativa>
-              {rascunho ? "Nenhuma movimentação de estoque foi registrada nesta conferência." : "Escolha o que conferir e comece a contagem. Os saldos só mudam na confirmação."}
+              {rascunho ? "Nenhuma movimentação de estoque foi registrada nesta conferência." : "Compare o estoque com a contagem física. O saldo só será ajustado depois da sua confirmação."}
             </NotaInformativa>
           </CartaoCorpo>
         </Cartao>
