@@ -119,6 +119,12 @@ Atualizado a cada checkpoint (abaixo).
   - Ajudas: saldo inicial ("Quantidade que você já tem ao cadastrar este produto."), entrada na movimentação ("Quantidade que chegou depois do cadastro. Ela será somada ao estoque atual.") e conferência ("Compare o estoque com a contagem física. O saldo só será ajustado depois da sua confirmação."). Com diferença, o motivo diz "Obrigatório porque há diferença".
   - A confirmação de arquivar foi para `produtos/janela-arquivar.tsx`, por causa do limite de linhas da página.
 - **Teste de navegador** (`test:browser:estoque`): categoria e subcategoria criadas sem perder o produto, Cancelar e erro (nome em uso) sem apagar nada; duplicar, cancelar sem criar, revisar e salvar como produto independente (sem código, com chave nova e só o próprio saldo inicial); "Cadastrar e continuar" depois dos atalhos e depois de duplicar; gerente só com "Ver estoque" sem "Duplicar cadastro" e, com "Operar estoque", com os atalhos; capturas em 1280 e 390 nos quatro temas.
+- **Publicado (19/11/2026):**
+  - PR #133 mesclado como `b41a301`, com CI verde no head `9b7d5f2`;
+  - API `dep-dbvfnil6e07s73bmide0` (live 13:39 UTC) e web `dep-dbvfo9m7bikc738g4b2g` (live 13:41 UTC), os dois em `b41a301`;
+  - `/health` 200; estoque sem sessão 401; `/login` e as páginas de produtos, movimentações e conferência 200.
+- **Versão atual:** API e web em `b41a301`, banco em 22. O retorno continua só para frente.
+- **Próximo passo:** o roteiro curto de teste do runbook com sessão; o passo 5 agora inclui os atalhos de categoria e "Duplicar cadastro".
 
 **19/11/2026, tarde: "Cadastrar e continuar" no cadastro de produto.**
 
