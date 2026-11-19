@@ -81,6 +81,8 @@ import {
 import { isExclusionViolation } from '../common/exclusion-violation.js';
 import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
 import { ConsumersService } from '../consumers/consumers.service.js';
+import { clienteUnificado, principalDoErroDeUnificado, travarTelefoneDoCliente } from '../consumers/consumer-rules.js';
+import { normalizePhone } from '../auth/phone-normalizer.js';
 import { Appointment } from '../entities/appointment.entity.js';
 import { AppointmentItem } from '../entities/appointment-item.entity.js';
 import { AppointmentStatusChange } from '../entities/appointment-status-change.entity.js';
@@ -302,6 +304,13 @@ export class AppointmentsService {
         // data enviado pelo cliente (que poderia discordar do instante).
         const date = dataLocalDe(startAt, timezone);
 
+        // Cliente novo: a trava do telefone vem ANTES das travas do cálculo,
+        // na mesma ordem do agendamento público (telefone, depois
+        // profissional e serviço).
+        if (dto.consumer.mode === 'new') {
+          await travarTelefoneDoCliente(tx, authorized.tenantId, normalizePhone(dto.consumer.data.whatsapp));
+        }
+
         // Revalidação dentro da transação, com as MESMAS regras da consulta
         // e travando serviço, profissional e vínculo.
         const calculo = await this.availability.calcular(
@@ -370,6 +379,10 @@ export class AppointmentsService {
       if (isExclusionViolation(error, OVERLAP_CONSTRAINT)) {
         throw new ConflictException(SLOT_TAKEN_MESSAGE);
       }
+      // Gatilho do banco: o cadastro foi unificado entre a leitura e a
+      // gravação (ou por um caminho que não conferiu).
+      const principal = principalDoErroDeUnificado(error);
+      if (principal !== undefined) throw clienteUnificado(principal);
       throw error;
     }
   }
@@ -549,7 +562,9 @@ export class AppointmentsService {
     dto: CreateAppointmentDto,
   ): Promise<{ id: string; name: string; whatsapp: string }> {
     if (dto.consumer.mode === 'existing') {
-      const consumer = await this.consumers.findScoped(tx, tenantId, dto.consumer.consumerId);
+      // Travado (`FOR SHARE`) até o fim da reserva; cadastro unificado
+      // recusa com 409 `CLIENTE_UNIFICADO` e o principal.
+      const consumer = await this.consumers.findForLink(tx, tenantId, dto.consumer.consumerId);
       // Id de cliente de outro estabelecimento é indistinguível de
       // inexistente — nunca confirma que o cadastro existe em outro lugar.
       if (!consumer) throw new NotFoundException(CONSUMER_NOT_FOUND_MESSAGE);

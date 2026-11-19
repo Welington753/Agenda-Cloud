@@ -83,6 +83,13 @@ class FakeManager {
   async query(sql: string, parametros: unknown[] = []): Promise<unknown[]> {
     const comercial = commercialQueryFake(sql);
     if (comercial) return comercial;
+    // Cliente existente para o vínculo (`ConsumersService.findForLink`).
+    if (/FROM consumers\s+WHERE tenant_id = \$1 AND id = \$2\s+FOR SHARE/.test(sql)) {
+      const [tenantId, id] = parametros;
+      return this.colecaoDe(Consumer)
+        .filter((c) => c.tenantId === tenantId && c.id === id)
+        .map((c) => ({ id: c.id, name: c.name, whatsapp: c.whatsapp, email: c.email ?? null, merged_into_consumer_id: null }));
+    }
     this.consultas.push({ sql, parametros });
     return [];
   }

@@ -61,7 +61,10 @@ export type AdminAuditAction =
   | 'CATALOG_ITEM_CHANGED'
   // Cadastro do estoque (migration StockEnumValues).
   | 'STOCK_CATEGORY_CHANGED'
-  | 'STOCK_PRODUCT_CHANGED';
+  | 'STOCK_PRODUCT_CHANGED'
+  // Cadastro de clientes (migration ConsumerAuditActions).
+  | 'CONSUMER_UPDATED'
+  | 'CONSUMER_MERGED';
 
 export interface AuditEntry {
   action: AdminAuditAction;
