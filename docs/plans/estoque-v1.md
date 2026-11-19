@@ -111,6 +111,16 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 
 Atualizado a cada checkpoint (abaixo).
 
+**19/11/2026, fim da tarde: primeiro cadastro sem categoria.**
+
+- **Causa:** em `produtos/page.tsx`, "Novo produto" ficava desabilitado quando não havia categoria ativa (`disabled={semCategorias}`), com o aviso "Crie uma categoria antes de cadastrar produtos.". O "+ Nova categoria" do formulário existia, mas o formulário não abria. A lista vazia dizia só "Nenhum produto encontrado", sem botão. Reproduzido no teste de navegador antes da correção (botão `[disabled]` no retrato da página).
+- **Correção só no web**, branch `fix/estoque-primeiro-cadastro`, com o mesmo formulário e as mesmas rotas:
+  - "Novo produto" abre sempre para quem opera; a categoria continua exigida no envio ("Escolha a categoria.") e na API;
+  - lista vazia pela regra `listaVaziaDeProdutos` (`src/lib/estoque/apresentacao.ts`, com testes): sem filtro na aba Ativos, quem opera vê a orientação e "Cadastrar primeiro produto" (`produtos/lista-vazia.tsx`), que abre o mesmo painel; quem só consulta vê só o texto; com filtro ou em Arquivados, só o motivo;
+  - se a lista de categorias não tinha carregado, gravar pelo atalho relê a lista, para a opção nova aparecer.
+- **Teste de navegador** (`test:browser:estoque`): zero produtos e zero categorias, abrir pelo cabeçalho e pela lista vazia, envio sem categoria recusado no formulário, Cancelar e erro de rede no atalho sem perder campos, categoria e subcategoria criadas e escolhidas, Cancelar do produto (nada criado), depois zero produtos com categoria existente e cadastro normal; gerente só com "Ver estoque" sem "Cadastrar primeiro produto"; capturas em 1280 e 390 nos quatro temas. Passou localmente com PostgreSQL descartável.
+- **Próximo passo:** PR, CI verde, merge e publicação de API e web no mesmo SHA (sem migration).
+
 **19/11/2026, noite: atalhos de categoria, "Duplicar cadastro" e ajudas curtas.**
 
 - **Mudança só no web**, branch `feat/estoque-atalhos-cadastro`, reaproveitando as rotas de categoria, subcategoria e produto. Sem migration e sem mudança na API.

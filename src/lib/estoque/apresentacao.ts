@@ -1,6 +1,7 @@
 // Regras de apresentação das telas do estoque: situação de cada produto,
 // resumos dos cartões, cor da diferença da conferência e o filtro da árvore
 // de categorias. Só mostram o que a API devolveu; nenhuma decide acesso.
+import type { FiltrosDeProduto } from "./filtros";
 import type { TipoMovimentacao } from "./rotulos";
 
 export type SituacaoVisual = "arquivado" | "baixo" | "regular";
@@ -107,4 +108,28 @@ export function filtrarCategorias<S extends { name: string; archived: boolean },
  * saídas subtraem. Negativo indica que a API vai recusar (saldo insuficiente). */
 export function saldoDepoisDaMovimentacao(tipo: TipoMovimentacao, saldoMilli: number, quantidadeMilli: number): number {
   return tipo === "ENTRADA_COMPRA" ? saldoMilli + quantidadeMilli : saldoMilli - quantidadeMilli;
+}
+
+export interface ListaVaziaDeProdutos {
+  titulo: string;
+  descricao: string;
+  /** Mostra "Cadastrar primeiro produto" (só para quem opera o estoque). */
+  primeiroCadastro: boolean;
+}
+
+/**
+ * Lista de produtos vazia. Sem filtro nenhum na aba Ativos, ainda não há
+ * produto: quem opera recebe a orientação e "Cadastrar primeiro produto"
+ * (a categoria pode nascer dentro do formulário, então nada depende de já
+ * existir categoria). Com filtro ou na aba Arquivados, só o motivo.
+ */
+export function listaVaziaDeProdutos(filtros: FiltrosDeProduto, podeOperar: boolean): ListaVaziaDeProdutos {
+  const semFiltro = !filtros.busca.trim() && !filtros.categoriaId && !filtros.soEstoqueBaixo;
+  if (semFiltro && filtros.situacao === "ACTIVE") {
+    return podeOperar
+      ? { titulo: "Nenhum produto cadastrado", descricao: "Cadastre o primeiro produto. Se ainda não houver categoria, crie no próprio cadastro.", primeiroCadastro: true }
+      : { titulo: "Nenhum produto cadastrado", descricao: "Os produtos do estoque aparecem aqui.", primeiroCadastro: false };
+  }
+  if (semFiltro && filtros.situacao === "ARCHIVED") return { titulo: "Nenhum produto arquivado", descricao: "Produtos arquivados aparecem aqui.", primeiroCadastro: false };
+  return { titulo: "Nenhum produto encontrado", descricao: "Ajuste a busca ou os filtros.", primeiroCadastro: false };
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FILTROS_INICIAIS } from "./filtros";
 import {
   caminhoDaCategoria,
   contar,
@@ -6,6 +7,7 @@ import {
   corDoTipo,
   detalheDoProduto,
   filtrarCategorias,
+  listaVaziaDeProdutos,
   resumoDaRevisao,
   resumoDeProdutos,
   saldoDepoisDaMovimentacao,
@@ -85,5 +87,23 @@ describe("apresentação do estoque", () => {
     expect(saldoDepoisDaMovimentacao("ENTRADA_COMPRA", 10_000, 5_000)).toBe(15_000);
     expect(saldoDepoisDaMovimentacao("SAIDA_VENDA", 10_000, 3_000)).toBe(7_000);
     expect(saldoDepoisDaMovimentacao("SAIDA_PERDA", 2_000, 3_000)).toBe(-1_000);
+  });
+
+  it("lista vazia sem filtro: primeiro cadastro só para quem opera, sem depender de categoria", () => {
+    expect(listaVaziaDeProdutos(FILTROS_INICIAIS, true)).toMatchObject({ titulo: "Nenhum produto cadastrado", primeiroCadastro: true });
+    expect(listaVaziaDeProdutos(FILTROS_INICIAIS, false)).toMatchObject({ titulo: "Nenhum produto cadastrado", primeiroCadastro: false });
+    expect(listaVaziaDeProdutos({ ...FILTROS_INICIAIS, busca: "   " }, true).primeiroCadastro).toBe(true);
+  });
+
+  it("lista vazia com filtro ou na aba Arquivados: só o motivo, sem primeiro cadastro", () => {
+    for (const filtros of [
+      { ...FILTROS_INICIAIS, busca: "pomada" },
+      { ...FILTROS_INICIAIS, categoriaId: "c1" },
+      { ...FILTROS_INICIAIS, soEstoqueBaixo: true },
+      { ...FILTROS_INICIAIS, situacao: "ALL" as const, busca: "x" },
+    ]) {
+      expect(listaVaziaDeProdutos(filtros, true)).toMatchObject({ titulo: "Nenhum produto encontrado", primeiroCadastro: false });
+    }
+    expect(listaVaziaDeProdutos({ ...FILTROS_INICIAIS, situacao: "ARCHIVED" }, true)).toMatchObject({ titulo: "Nenhum produto arquivado", primeiroCadastro: false });
   });
 });

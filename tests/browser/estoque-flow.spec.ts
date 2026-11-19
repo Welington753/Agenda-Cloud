@@ -5,6 +5,9 @@
 //   motivo (a API recusa);
 // - portal: preço do ESTOQUE no catálogo (se pendente) e contratação em
 //   "Plano e adicionais" (conversão para a assinatura modular);
+// - primeiro cadastro: zero produtos e zero categorias, "Cadastrar primeiro
+//   produto", categoria e subcategoria criadas no formulário (Cancelar e erro
+//   sem perder campos), depois zero produtos com categoria existente;
 // - dono: categoria e subcategoria, produto com saldo inicial, saída,
 //   estorno, perda com motivo (ausente, vazio e curto recusados sem gravar),
 //   conferência com diferença e motivo obrigatório, e estoque baixo,
@@ -137,26 +140,89 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(page.getByTestId("preco-modular-ESTOQUE")).not.toContainText("A definir");
     await mudarEstoqueNoPortal(page, tenantId, true);
 
-    // ------------------------------------------- dono: menu e categorias
+    // ------------------------------------------- dono: menu e primeiro cadastro
+    // Zero produtos e zero categorias: orientação e "Cadastrar primeiro
+    // produto"; "Novo produto" abre, e a categoria e a subcategoria nascem
+    // dentro do formulário. Cancelar e erro do atalho não apagam nada.
     await page.goto("/conta/visao-geral");
     await expect(navConta(page).getByText("Estoque", { exact: true })).toBeVisible();
     for (const rotulo of ITENS_DO_ESTOQUE) await expect(navConta(page).getByRole("link", { name: rotulo, exact: true })).toBeVisible();
-    await abrirNoMenu(page, "Categorias");
-    await page.getByRole("button", { name: "Nova categoria" }).click();
-    await page.getByRole("dialog").getByLabel("Nome da nova categoria").fill("Cabelo");
-    await page.getByRole("dialog").getByRole("button", { name: "Criar categoria" }).click();
-    await expect(page.getByRole("heading", { level: 2, name: "Cabelo" })).toBeVisible();
-    await page.getByRole("button", { name: "Nova subcategoria" }).click();
-    await page.getByRole("dialog").getByLabel("Nome da nova subcategoria").fill("Pomadas");
-    await page.getByRole("dialog").getByRole("button", { name: "Salvar", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Subcategorias de Cabelo" })).toContainText("Pomadas");
-    await expect(page.getByRole("list", { name: "Árvore de categorias" })).toContainText("Pomadas");
-    await capturar(page, "categorias");
-
-    // ------------------------------------------- produto com saldo inicial
     await abrirNoMenu(page, "Produtos");
-    await page.getByRole("button", { name: "Novo produto" }).click();
     const painel = page.getByTestId("painel-produto");
+    const vazio = page.getByTestId("lista-produtos-vazia");
+    const produtosNoBanco = async () => (await db.query("SELECT count(*)::int AS n FROM stock_products WHERE tenant_id = $1", [tenantId])).rows[0].n as number;
+    await expect(page.getByTestId("resumo-categorias")).toContainText("0");
+    await expect(vazio).toContainText("Nenhum produto cadastrado");
+    await expect(page.getByRole("button", { name: "Novo produto" })).toBeEnabled();
+    await capturarNosTemas(page, "primeiro-produto-vazio");
+    await page.getByRole("button", { name: "Novo produto" }).click();
+    await expect(painel.getByRole("heading", { name: "Novo produto" })).toBeVisible();
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    await expect(painel).toHaveCount(0);
+    await vazio.getByRole("button", { name: "Cadastrar primeiro produto" }).click();
+    await expect(painel.getByRole("heading", { name: "Novo produto" })).toBeVisible();
+    await expect(painel.getByLabel("Categoria", { exact: true }).locator("option")).toHaveCount(1);
+    await painel.getByLabel("Nome", { exact: true }).fill("Pomada modeladora");
+    await painel.getByLabel("Descrição (opcional)").fill("Primeiro cadastro");
+    await painel.getByLabel("Código interno (opcional)").fill("POM-1");
+    await painel.getByLabel("Finalidade").selectOption("VENDA");
+    await painel.getByLabel("Estoque mínimo").fill("2");
+    await painel.getByLabel("Saldo inicial (opcional)").fill("10");
+    const primeiroPreenchido = async () => {
+      await expect(painel.getByLabel("Nome", { exact: true })).toHaveValue("Pomada modeladora");
+      await expect(painel.getByLabel("Descrição (opcional)")).toHaveValue("Primeiro cadastro");
+      await expect(painel.getByLabel("Código interno (opcional)")).toHaveValue("POM-1");
+      await expect(painel.getByLabel("Finalidade")).toHaveValue("VENDA");
+      await expect(painel.getByLabel("Unidade de medida")).toHaveValue("UN");
+      await expect(painel.getByLabel("Estoque mínimo")).toHaveValue("2");
+      await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("10");
+    };
+    // A categoria é exigida no envio, não na abertura.
+    await painel.getByRole("button", { name: "Cadastrar produto" }).click();
+    await expect(painel.getByText("Escolha a categoria.")).toBeVisible();
+    await primeiroPreenchido();
+    expect(await produtosNoBanco()).toBe(0);
+    const atalhoPrimeiraCategoria = painel.getByTestId("atalho-categoria");
+    await painel.getByRole("button", { name: "+ Nova categoria" }).click();
+    await atalhoPrimeiraCategoria.getByLabel("Nome da nova categoria").fill("Cabelo");
+    await atalhoPrimeiraCategoria.getByRole("button", { name: "Cancelar" }).click();
+    await expect(atalhoPrimeiraCategoria).toHaveCount(0);
+    await primeiroPreenchido();
+    // Erro na criação (a rede cai): a mensagem fica no atalho e o produto fica.
+    const rotaDeCategorias = (url: URL) => url.pathname.endsWith(`/tenants/${tenantId}/stock/categories`);
+    await page.route(rotaDeCategorias, (route) => (route.request().method() === "POST" ? route.abort("failed") : route.continue()));
+    await painel.getByRole("button", { name: "+ Nova categoria" }).click();
+    await atalhoPrimeiraCategoria.getByLabel("Nome da nova categoria").fill("Cabelo");
+    await atalhoPrimeiraCategoria.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(atalhoPrimeiraCategoria.getByRole("alert")).toBeVisible();
+    await primeiroPreenchido();
+    await page.unroute(rotaDeCategorias);
+    await atalhoPrimeiraCategoria.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(atalhoPrimeiraCategoria).toHaveCount(0);
+    await expect(painel.getByLabel("Categoria", { exact: true }).locator("option:checked")).toHaveText("Cabelo");
+    await expect(painel.getByText("Escolha a categoria.")).toHaveCount(0);
+    await primeiroPreenchido();
+    await painel.getByRole("button", { name: "+ Nova subcategoria" }).click();
+    await expect(painel.getByTestId("atalho-subcategoria")).toContainText("Nova subcategoria em Cabelo");
+    await painel.getByTestId("atalho-subcategoria").getByRole("textbox").fill("Pomadas");
+    await painel.getByTestId("atalho-subcategoria").getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(painel.getByTestId("atalho-subcategoria")).toHaveCount(0);
+    await expect(painel.getByLabel("Subcategoria (opcional)").locator("option:checked")).toHaveText("Pomadas");
+    await primeiroPreenchido();
+    await capturarNosTemas(page, "primeiro-produto-formulario");
+    // Cancelar o produto: categoria e subcategoria ficam, nenhum produto.
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    await expect(painel).toHaveCount(0);
+    expect(await produtosNoBanco()).toBe(0);
+    const primeiraArvore = await db.query(
+      `SELECT c.name AS categoria, s.name AS subcategoria FROM stock_subcategories s JOIN stock_categories c ON c.id = s.category_id WHERE s.tenant_id = $1`,
+      [tenantId],
+    );
+    expect(primeiraArvore.rows).toEqual([{ categoria: "Cabelo", subcategoria: "Pomadas" }]);
+
+    // ------------------------------------------- zero produtos, categoria existente
+    await expect(page.getByTestId("resumo-categorias")).toContainText("1");
+    await vazio.getByRole("button", { name: "Cadastrar primeiro produto" }).click();
     await painel.getByLabel("Nome", { exact: true }).fill("Pomada modeladora");
     await painel.getByLabel("Categoria", { exact: true }).selectOption({ label: "Cabelo" });
     await painel.getByLabel("Subcategoria (opcional)").selectOption({ label: "Pomadas" });
@@ -168,6 +234,22 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await painel.getByRole("button", { name: "Cadastrar produto" }).click();
     const linha = page.locator("[data-testid^='produto-']").filter({ hasText: "Pomada modeladora" });
     await expect(linha.getByTestId("saldo")).toHaveText("10 UN");
+    await expect(vazio).toHaveCount(0);
+
+    // ------------------------------------------- tela de Categorias
+    await abrirNoMenu(page, "Categorias");
+    await expect(page.getByRole("list", { name: "Árvore de categorias" })).toContainText("Pomadas");
+    await page.getByRole("button", { name: "Nova categoria" }).click();
+    await page.getByRole("dialog").getByLabel("Nome da nova categoria").fill("Higiene");
+    await page.getByRole("dialog").getByRole("button", { name: "Criar categoria" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Higiene" })).toBeVisible();
+    await page.getByRole("button", { name: "Nova subcategoria" }).click();
+    await page.getByRole("dialog").getByLabel("Nome da nova subcategoria").fill("Sabonetes");
+    await page.getByRole("dialog").getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Subcategorias de Higiene" })).toContainText("Sabonetes");
+    await expect(page.getByRole("list", { name: "Árvore de categorias" })).toContainText("Sabonetes");
+    await capturar(page, "categorias");
+    await abrirNoMenu(page, "Produtos");
 
     // ------------------------------------------- saída, estorno e perda
     // Envio recusado (motivo ausente, vazio ou curto) não muda saldo nem histórico.
@@ -558,6 +640,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     expect(await navConta(page).getByRole("link").allTextContents()).toEqual([...ITENS_DO_ESTOQUE, "Configurações"]);
     await expect(linha).toBeVisible();
     await expect(page.getByRole("button", { name: "Novo produto" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cadastrar primeiro produto" })).toHaveCount(0);
     await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
     await expect(page.getByRole("menuitem", { name: "Ver histórico" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Editar" })).toHaveCount(0);

@@ -4,8 +4,11 @@
 // busca, filtros por categoria e subcategoria, abas Ativos e Arquivados,
 // "Somente estoque baixo" e a tabela com o saldo atual (no celular, cartões).
 // Cadastro (com "Cadastrar e continuar", atalhos de categoria e "Duplicar
-// cadastro") e edição num painel. Quem só consulta
-// (gerente com "Ver estoque") não vê os botões, e a API recusa do mesmo jeito.
+// cadastro") e edição num painel. "Novo produto" abre mesmo sem categoria:
+// ela pode nascer no formulário, e a exigência vale só para salvar. Sem
+// produto nenhum, a lista vazia orienta e oferece "Cadastrar primeiro
+// produto" (o mesmo painel). Quem só consulta (gerente com "Ver estoque")
+// não vê os botões, e a API recusa do mesmo jeito.
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowLeftRight, FolderTree, Package, Plus, Search } from "lucide-react";
@@ -21,7 +24,7 @@ import {
   type ProdutoEstoque,
   type ResultadoEstoque,
 } from "@/lib/api/estoque-api";
-import { contar, resumoDeProdutos } from "@/lib/estoque/apresentacao";
+import { contar, listaVaziaDeProdutos, resumoDeProdutos } from "@/lib/estoque/apresentacao";
 import { modeloDaCopia, subcategoriaCriada, type ModeloDeProduto } from "@/lib/estoque/atalhos-produto";
 import { consultaDeProdutos, FILTROS_INICIAIS, trocarCategoria, type FiltrosDeProduto } from "@/lib/estoque/filtros";
 import { mensagemDaFalha } from "@/lib/estoque/mensagens";
@@ -32,7 +35,6 @@ import { useProdutosParaEscolha } from "@/lib/estoque/use-produtos-para-escolha"
 import { ROTA_ESTOQUE_MOVIMENTACOES } from "@/lib/conta/rotas";
 import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao } from "@/components/ui/card";
-import { EstadoVazio } from "@/components/ui/empty-state";
 import { EstatisticaCard } from "@/components/ui/estatistica-card";
 import { PainelLateral } from "@/components/ui/painel-lateral";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +44,7 @@ import { AvisoDeFalha, CLASSE_CAMPO, NotaInformativa, SemEstabelecimento, TABELA
 import { respostaDoAtalho } from "./atalho-de-nome";
 import { FormularioProduto, type EnvioDoProduto } from "./formulario-produto";
 import { JanelaArquivar } from "./janela-arquivar";
+import { ListaVazia } from "./lista-vazia";
 import { LinhaProduto } from "./linha-produto";
 
 const TITULO = "Produtos";
@@ -137,9 +140,10 @@ export default function ProdutosDoEstoquePage() {
     });
   }
 
-  /** "+ Nova categoria" e "+ Nova subcategoria" do formulário, pela mesma trava. */
+  /** "+ Nova categoria" e "+ Nova subcategoria" do formulário, pela mesma trava. Lista
+   * de categorias sem carregar: relê, para a opção nova aparecer no campo. */
   const criarNaHora = async (gravar: () => Promise<ResultadoEstoque<CategoriaEstoque>>, escolher: (c: CategoriaEstoque) => string | null) =>
-    respostaDoAtalho(await comTrava(gravar), escolher, substituirCategoria, () => void recarregarCategorias());
+    respostaDoAtalho(await comTrava(gravar), escolher, (c) => (categorias.status === "carregada" ? substituirCategoria(c) : void recarregarCategorias()), () => void recarregarCategorias());
 
   function aoMudarSituacao(produto: ProdutoEstoque, acao: "archive" | "reactivate") {
     void comTrava(async () => {
@@ -155,12 +159,12 @@ export default function ProdutosDoEstoquePage() {
     });
   }
 
-  const semCategorias = categorias.status === "carregada" && !listaDeCategorias.some((c) => !c.archived);
   /** Abre o painel (novo ou edição) sem o erro do envio anterior. */
   const abrirPainel = (nova: Edicao) => {
     setErro(null);
     setEdicao(nova);
   };
+  const abrirNovo = () => abrirPainel({ modo: "novo", chave: novaChaveDeEnvio() });
 
   return (
     <PaginaConta
@@ -173,15 +177,13 @@ export default function ProdutosDoEstoquePage() {
             <LinkBotao variante="secundaria" href={`${ROTA_ESTOQUE_MOVIMENTACOES}?novo=1`}>
               <ArrowLeftRight size={16} aria-hidden="true" /> Registrar movimentação
             </LinkBotao>
-            <Botao onClick={() => abrirPainel({ modo: "novo", chave: novaChaveDeEnvio() })} disabled={semCategorias}>
+            <Botao onClick={abrirNovo}>
               <Plus size={16} aria-hidden="true" /> Novo produto
             </Botao>
           </>
         )
       }
     >
-      {semCategorias && ctx.podeOperar && <NotaInformativa destaque>Crie uma categoria antes de cadastrar produtos.</NotaInformativa>}
-
       <div className="grid gap-3 sm:grid-cols-3">
         <EstatisticaCard icone={Package} rotulo="Produtos ativos" valor={resumo ? String(resumo.ativos) : "–"} testId="resumo-ativos" />
         <EstatisticaCard icone={AlertTriangle} corIcone="warning" rotulo="Estoque baixo" valor={resumo ? String(resumo.baixo) : "–"} testId="resumo-baixo" />
@@ -260,9 +262,7 @@ export default function ProdutosDoEstoquePage() {
           </div>
         )}
         {estado.status === "carregada" && estado.itens.length === 0 && (
-          <div className="p-4">
-            <EstadoVazio icone={Package} titulo="Nenhum produto encontrado" descricao="Ajuste os filtros ou cadastre um produto." />
-          </div>
+          <ListaVazia vazia={listaVaziaDeProdutos(filtros, ctx.podeOperar)} aoCadastrar={abrirNovo} />
         )}
         {estado.status === "carregada" && estado.itens.length > 0 && (
           <>
