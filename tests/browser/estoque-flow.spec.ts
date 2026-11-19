@@ -9,6 +9,8 @@
 //   estorno, perda com motivo (ausente, vazio e curto recusados sem gravar),
 //   conferência com diferença e motivo obrigatório, e estoque baixo,
 //   arquivamento sem perder o histórico;
+// - "Cadastrar e continuar": limpeza só depois do sucesso, erro sem perder
+//   campos, reenvio com a mesma chave sem duplicar e chave nova por produto;
 // - rascunho da conferência apagado no logout;
 // - gerente só com "Ver estoque": vê, sem botões de operação; funcionário
 //   pelo endereço vai para a própria agenda;
@@ -286,6 +288,104 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
     await page.getByRole("menuitem", { name: "Reativar" }).click();
     await expect(linha.getByText("Arquivado")).toHaveCount(0);
+
+    // ------------------------------------------- "Cadastrar e continuar"
+    // A com "Cadastrar e continuar": a janela fica, os campos voltam ao padrão
+    // e o foco vai para o Nome. B: erro de validação e resultado incerto
+    // (gravou na API, mas a resposta não chegou) mantêm o preenchimento; o
+    // reenvio com a mesma chave não duplica produto nem saldo inicial.
+    const produtosDe = async (nome: string) =>
+      (
+        await db.query(
+          `SELECT p.request_key AS chave, p.balance_milli::text AS saldo,
+                  (SELECT count(*)::int FROM stock_movements m WHERE m.product_id = p.id) AS movimentos
+             FROM stock_products p WHERE p.tenant_id = $1 AND p.name = $2`,
+          [tenantId, nome],
+        )
+      ).rows as { chave: string; saldo: string; movimentos: number }[];
+    await page.getByRole("group", { name: "Situação" }).getByRole("button", { name: "Ativos" }).click();
+    await expect(page.getByTestId("resumo-ativos")).toContainText("1");
+    await page.getByRole("button", { name: "Novo produto" }).click();
+    const nomeDoProduto = painel.getByLabel("Nome", { exact: true });
+    await nomeDoProduto.fill("Cera A");
+    await painel.getByLabel("Descrição (opcional)").fill("Cera de fixação forte");
+    await painel.getByLabel("Código interno (opcional)").fill("CERA-A");
+    await painel.getByLabel("Categoria", { exact: true }).selectOption({ label: "Cabelo" });
+    await painel.getByLabel("Subcategoria (opcional)").selectOption({ label: "Pomadas" });
+    await painel.getByLabel("Finalidade").selectOption("VENDA");
+    await painel.getByLabel("Unidade de medida").selectOption("FR");
+    await painel.getByLabel("Estoque mínimo").fill("4");
+    await painel.getByLabel("Saldo inicial (opcional)").fill("6");
+    await painel.getByRole("button", { name: "Cadastrar e continuar" }).click();
+    await expect(painel.getByTestId("produto-cadastrado-continuar")).toHaveText("Produto cadastrado. Você já pode cadastrar o próximo.");
+    await expect(nomeDoProduto).toBeFocused();
+    await expect(nomeDoProduto).toHaveValue("");
+    await expect(painel.getByLabel("Descrição (opcional)")).toHaveValue("");
+    await expect(painel.getByLabel("Código interno (opcional)")).toHaveValue("");
+    await expect(painel.getByLabel("Categoria", { exact: true })).toHaveValue("");
+    await expect(painel.getByLabel("Subcategoria (opcional)")).toHaveValue("");
+    await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("");
+    await expect(painel.getByLabel("Estoque mínimo")).toHaveValue("0");
+    await expect(painel.getByLabel("Finalidade")).toHaveValue("AMBOS");
+    await expect(painel.getByLabel("Unidade de medida")).toHaveValue("UN");
+    const linhaA = page.locator("[data-testid^='produto-']").filter({ hasText: "Cera A" });
+    await expect(linhaA.getByTestId("saldo")).toHaveText("6 FR");
+    await expect(page.getByTestId("resumo-ativos")).toContainText("2");
+    await capturar(page, "cadastrar-e-continuar");
+
+    // B sem categoria: a tela recusa e nada se perde.
+    await nomeDoProduto.fill("Cera B");
+    await painel.getByLabel("Saldo inicial (opcional)").fill("3");
+    await painel.getByRole("button", { name: "Cadastrar produto" }).click();
+    await expect(painel.getByText("Escolha a categoria.")).toBeVisible();
+    await expect(painel.getByTestId("produto-cadastrado-continuar")).toHaveCount(0);
+    await expect(nomeDoProduto).toHaveValue("Cera B");
+    await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("3");
+    await painel.getByLabel("Categoria", { exact: true }).selectOption({ label: "Cabelo" });
+
+    // Resultado incerto: a API grava, a resposta se perde. Os dois botões
+    // ficam bloqueados durante o envio.
+    let liberar!: () => void;
+    const segura = new Promise<void>((resolve) => (liberar = resolve));
+    const rotaDoCadastro = (url: URL) => url.pathname.endsWith(`/tenants/${tenantId}/stock/products`);
+    await page.route(rotaDoCadastro, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fetch();
+      await segura;
+      await route.abort("failed");
+    });
+    await painel.getByRole("button", { name: "Cadastrar produto" }).click();
+    await expect(painel.getByRole("button", { name: "Salvando…" })).toBeDisabled();
+    await expect(painel.getByRole("button", { name: "Cadastrar e continuar" })).toBeDisabled();
+    await expect(painel.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    await expect.poll(async () => (await produtosDe("Cera B")).length).toBe(1);
+    liberar();
+    await expect(painel.getByRole("alert")).toContainText("Não foi possível falar com o servidor.");
+    await page.unroute(rotaDoCadastro);
+    await expect(nomeDoProduto).toHaveValue("Cera B");
+    await expect(painel.getByLabel("Categoria", { exact: true })).not.toHaveValue("");
+    await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("3");
+    // Repetir o mesmo cadastro usa a mesma chave: devolve o produto já gravado e fecha.
+    await painel.getByRole("button", { name: "Cadastrar produto" }).click();
+    await expect(painel).toHaveCount(0);
+    const linhaB = page.locator("[data-testid^='produto-']").filter({ hasText: "Cera B" });
+    await expect(linhaB.getByTestId("saldo")).toHaveText("3 UN");
+    await expect(page.getByTestId("resumo-ativos")).toContainText("3");
+    const [a] = await produtosDe("Cera A");
+    const b = await produtosDe("Cera B");
+    expect(b).toHaveLength(1);
+    expect(b[0]).toMatchObject({ saldo: "3000", movimentos: 1 });
+    expect(a).toMatchObject({ saldo: "6000", movimentos: 1 });
+    expect(a.chave).not.toBe(b[0].chave);
+
+    // Cancelar fecha só o formulário atual; A e B continuam cadastrados.
+    await page.getByRole("button", { name: "Novo produto" }).click();
+    await nomeDoProduto.fill("Cera C");
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    await expect(painel).toHaveCount(0);
+    await expect(linhaA).toBeVisible();
+    await expect(linhaB).toBeVisible();
+    expect(await produtosDe("Cera C")).toHaveLength(0);
 
     // ------------------------------------------- gerente só com "Ver estoque"
     await db.query("UPDATE memberships SET role = 'GERENTE', permissions_confirmed_at = now() WHERE tenant_id = $1 AND user_id = $2", [tenantId, conta.user.id]);

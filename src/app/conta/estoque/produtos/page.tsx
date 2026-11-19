@@ -3,8 +3,8 @@
 // Produtos do estoque: cartões de resumo (ativos, estoque baixo, categorias),
 // busca, filtros por categoria e subcategoria, abas Ativos e Arquivados,
 // "Somente estoque baixo" e a tabela com o saldo atual (no celular, cartões).
-// Cadastro e edição num painel. Quem só consulta (gerente com "Ver estoque")
-// não vê os botões, e a API recusa do mesmo jeito.
+// Cadastro (com "Cadastrar e continuar") e edição num painel. Quem só consulta
+// (gerente com "Ver estoque") não vê os botões, e a API recusa do mesmo jeito.
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowLeftRight, FolderTree, Package, Plus, Search } from "lucide-react";
@@ -39,7 +39,7 @@ import { FormularioProduto, type EnvioDoProduto } from "./formulario-produto";
 import { LinhaProduto } from "./linha-produto";
 
 const TITULO = "Produtos";
-type Edicao = { modo: "fechado" } | { modo: "novo"; chave: string } | { modo: "editar"; produto: ProdutoEstoque };
+type Edicao = { modo: "fechado" } | { modo: "novo"; chave: string; aviso?: true } | { modo: "editar"; produto: ProdutoEstoque };
 const ABAS = [
   { valor: "ACTIVE", rotulo: "Ativos" },
   { valor: "ARCHIVED", rotulo: "Arquivados" },
@@ -110,7 +110,7 @@ export default function ProdutosDoEstoquePage() {
     void recarregarCategorias();
   }
 
-  function aoSalvar({ dados, initialQuantityMilli }: EnvioDoProduto) {
+  function aoSalvar({ dados, initialQuantityMilli }: EnvioDoProduto, continuar: boolean) {
     void comTrava(async () => {
       setErro(null);
       if (edicao.modo === "fechado") return;
@@ -125,6 +125,7 @@ export default function ProdutosDoEstoquePage() {
       }
       substituir(r.dados, true);
       atualizarResumo();
+      if (continuar && edicao.modo === "novo") return setEdicao({ modo: "novo", chave: novaChaveDeEnvio(), aviso: true });
       notificar(edicao.modo === "novo" ? "Produto cadastrado." : "Produto atualizado.", "sucesso");
       setEdicao({ modo: "fechado" });
     });
@@ -145,9 +146,10 @@ export default function ProdutosDoEstoquePage() {
   }
 
   const semCategorias = categorias.status === "carregada" && !listaDeCategorias.some((c) => !c.archived);
-  const abrirNovo = () => {
+  /** Abre o painel (novo ou edição) sem o erro do envio anterior. */
+  const abrirPainel = (nova: Edicao) => {
     setErro(null);
-    setEdicao({ modo: "novo", chave: novaChaveDeEnvio() });
+    setEdicao(nova);
   };
 
   return (
@@ -161,7 +163,7 @@ export default function ProdutosDoEstoquePage() {
             <LinkBotao variante="secundaria" href={`${ROTA_ESTOQUE_MOVIMENTACOES}?novo=1`}>
               <ArrowLeftRight size={16} aria-hidden="true" /> Registrar movimentação
             </LinkBotao>
-            <Botao onClick={abrirNovo} disabled={semCategorias}>
+            <Botao onClick={() => abrirPainel({ modo: "novo", chave: novaChaveDeEnvio() })} disabled={semCategorias}>
               <Plus size={16} aria-hidden="true" /> Novo produto
             </Botao>
           </>
@@ -274,10 +276,7 @@ export default function ProdutosDoEstoquePage() {
                     produto={p}
                     podeOperar={ctx.podeOperar}
                     gravando={gravando}
-                    aoEditar={() => {
-                      setErro(null);
-                      setEdicao({ modo: "editar", produto: p });
-                    }}
+                    aoEditar={() => abrirPainel({ modo: "editar", produto: p })}
                     aoArquivar={() => setArquivando(p)}
                     aoReativar={() => aoMudarSituacao(p, "reactivate")}
                   />
@@ -338,6 +337,7 @@ export default function ProdutosDoEstoquePage() {
             categorias={listaDeCategorias}
             enviando={gravando}
             erro={erro}
+            aviso={edicao.modo === "novo" && edicao.aviso}
             aoEnviar={aoSalvar}
             aoCancelar={() => setEdicao({ modo: "fechado" })}
           />
