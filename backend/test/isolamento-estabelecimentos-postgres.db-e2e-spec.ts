@@ -239,6 +239,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
     const countId = (
       await chamar(dono, 'post', `${t}/stock/counts`, {
         requestKey: `chave-${id()}`,
+        note: 'Conferência de teste',
         items: [{ productId, expectedBalanceVersion: 2, expectedUnit: 'UN', countedMilli: 60000 }],
       }).expect(ok)
     ).body.count.id as string;

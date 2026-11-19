@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anotarContagem, confirmarRevisao, itensMarcados, novoRascunho, reconciliar, revisar } from "./conferencia";
+import { anotarContagem, confirmarRevisao, itensMarcados, novoRascunho, reconciliar, revisar, erroDoMotivo } from "./conferencia";
 
 const produtos = [
   { id: "a", name: "Pomada", unit: "UN" as const, balanceMilli: 10000, balanceVersion: 3, archived: false },
@@ -62,5 +62,21 @@ describe("conferência na tela", () => {
     const r = anotarContagem(novoRascunho("u1", "t1", produtos), "b", "1");
     expect(reconciliar(r, [], false).itens[1].situacao).toBe("ok");
     expect(reconciliar(r, [], true).itens[1]).toMatchObject({ situacao: "recontar", contado: "" });
+  });
+});
+
+describe("motivo dos ajustes", () => {
+  it("com ajuste: ausente, vazio ou curto é recusado; 3 letras bastam", () => {
+    expect(erroDoMotivo("", 1)).toBe("Informe o motivo dos ajustes (pelo menos 3 letras).");
+    expect(erroDoMotivo("   ", 2)).toBe("Informe o motivo dos ajustes (pelo menos 3 letras).");
+    expect(erroDoMotivo(" ab ", 1)).toBe("O motivo precisa ter pelo menos 3 letras.");
+    expect(erroDoMotivo("abc", 1)).toBeNull();
+    expect(erroDoMotivo("Quebra no transporte", 3)).toBeNull();
+  });
+
+  it("sem ajuste: opcional, mas curto continua recusado (a API recusa)", () => {
+    expect(erroDoMotivo("", 0)).toBeNull();
+    expect(erroDoMotivo("  ", 0)).toBeNull();
+    expect(erroDoMotivo("ab", 0)).toBe("O motivo precisa ter pelo menos 3 letras.");
   });
 });

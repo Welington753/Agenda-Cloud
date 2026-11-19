@@ -9,11 +9,14 @@
 //   `CONFERENCIA_DESATUALIZADA` com o estado atual dos itens afetados, e
 //   nada é gravado: uma contagem velha nunca sobrescreve um lançamento novo;
 // - diferença diferente de zero vira `AJUSTE_CONFERENCIA` (contado − saldo);
-//   diferença zero fica registrada só na conferência.
+//   diferença zero fica registrada só na conferência;
+// - motivo (`note`) obrigatório quando a confirmação registra ajuste, e com
+//   pelo menos 3 letras sempre que vier: senão 400 `MOTIVO_OBRIGATORIO` e
+//   nada é gravado. É o mesmo motivo de cada ajuste no histórico.
 //
 // Reenvio igual ao das movimentações: mesma chave e mesmos itens devolvem a
 // conferência original; itens diferentes, 409 `CHAVE_REUTILIZADA`.
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { isUniqueViolation } from '../auth/unique-violation.js';
@@ -72,7 +75,9 @@ const SELECT_CONFERENCIA = `SELECT c.id, c.note, c.recorded_by_user_id, u.name A
     (SELECT count(*)::int FROM stock_count_items i WHERE i.tenant_id = c.tenant_id AND i.count_id = c.id AND i.difference_milli <> 0) AS adjusted_count
   FROM stock_counts c JOIN users u ON u.id = c.recorded_by_user_id`;
 
-const MOTIVO_PADRAO = 'Ajuste após conferência física.';
+const MOTIVO_MINIMO = 3;
+const MOTIVO_OBRIGATORIO = () =>
+  new BadRequestException({ code: 'MOTIVO_OBRIGATORIO', message: 'Informe o motivo dos ajustes, com pelo menos 3 letras.' });
 
 function toCountView(l: ConferenciaRow): CountView {
   return {
@@ -122,6 +127,8 @@ export class StockCountsService {
     const impressao = impressaoDaConferencia(dto);
     const repetido = await this.porChave(this.dataSource.manager, autorizado.tenantId, userId, dto.requestKey);
     if (repetido) return { created: false, count: conferirRepeticao(repetido, impressao) };
+    const nota = textoNormalizado(dto.note);
+    if (nota !== null && nota.length < MOTIVO_MINIMO) throw MOTIVO_OBRIGATORIO();
     try {
       const id = await this.dataSource.transaction(async (manager) => {
         const t = (await autorizarOperacao(manager, userId, tenantId)).tenantId;
@@ -148,8 +155,12 @@ export class StockCountsService {
           );
         }
 
+        // A diferença só é conhecida com o saldo travado: sem motivo, nada
+        // foi gravado ainda e a transação inteira volta.
+        const temAjuste = itens.some((item) => item.countedMilli !== produtos.get(item.productId)!.balanceMilli);
+        if (temAjuste && nota === null) throw MOTIVO_OBRIGATORIO();
+
         const conferencia = generateId();
-        const nota = textoNormalizado(dto.note);
         await manager.query(
           `INSERT INTO stock_counts (id, tenant_id, note, recorded_by_user_id, recorded_at, request_key, request_fingerprint)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -167,7 +178,7 @@ export class StockCountsService {
                   produto,
                   kind: 'AJUSTE_CONFERENCIA',
                   deltaMilli: diferenca,
-                  reason: nota ?? MOTIVO_PADRAO,
+                  reason: nota,
                   userId,
                   now,
                   countId: conferencia,

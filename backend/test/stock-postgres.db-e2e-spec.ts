@@ -89,6 +89,20 @@ describe.skipIf(!url)('estoque contra PostgreSQL descartável: regras', () => {
     return Number(l.saldo);
   }
 
+  /** Tudo que um envio do estoque pode gravar no estabelecimento: saldos,
+   * movimentações, conferências e itens. Envio recusado não muda nada. */
+  async function retrato(tenantId: string) {
+    const [l] = await q(
+      `SELECT (SELECT COALESCE(sum(balance_milli), 0)::text FROM stock_products WHERE tenant_id = $1) AS saldos,
+              (SELECT COALESCE(sum(balance_version), 0)::int FROM stock_products WHERE tenant_id = $1) AS versoes,
+              (SELECT count(*)::int FROM stock_movements WHERE tenant_id = $1) AS movimentos,
+              (SELECT count(*)::int FROM stock_counts WHERE tenant_id = $1) AS conferencias,
+              (SELECT count(*)::int FROM stock_count_items WHERE tenant_id = $1) AS itens`,
+      [tenantId],
+    );
+    return l;
+  }
+
   beforeAll(async () => {
     db = await abrirBanco(url!);
     dados = semeador(db, `estoque-${novoId()}`);
@@ -287,6 +301,26 @@ describe.skipIf(!url)('estoque contra PostgreSQL descartável: regras', () => {
       expect(await conferirInvariante(p.id)).toBe(0);
     });
 
+    it.each([
+      ['ausente', null],
+      ['vazio', '   '],
+      ['curto', 'ab'],
+    ])('perda e estorno com motivo %s: a constraint do banco recusa mesmo sem a validação da rota, sem gravar', async (_nome, reason) => {
+      // A rota recusa antes (400, stock.dto.spec e stock.e2e-spec); aqui o
+      // serviço é chamado direto para provar a última barreira.
+      const p = await produto(`Sem motivo ${novoId().slice(0, 5)}`, { initialQuantityMilli: 5000 });
+      const venda = (await mover(p.id, 'SAIDA_VENDA', 1000)).movement;
+      const antes = await retrato(est.tenantId);
+      const perda = (await erroDe(mover(p.id, 'SAIDA_PERDA', 1000, { reason }))) as Error & { driverError?: { constraint?: string } };
+      expect(perda.driverError?.constraint).toBe('ck_stock_movements_reason');
+      const estorno = (await erroDe(movimentos.reverse(dono(), est.tenantId, venda.id, { requestKey: novaChave(), reason: reason as string }))) as Error & {
+        driverError?: { constraint?: string };
+      };
+      expect(estorno.driverError?.constraint).toBe('ck_stock_movements_reason');
+      expect(await retrato(est.tenantId)).toEqual(antes);
+      expect(await conferirInvariante(p.id)).toBe(4000);
+    });
+
     it('histórico imutável: o banco recusa UPDATE e DELETE de movimentação', async () => {
       const p = await produto('Talco', { initialQuantityMilli: 1000 });
       const [m] = await q<{ id: string }>(`SELECT id FROM stock_movements WHERE product_id = $1`, [p.id]);
@@ -397,6 +431,54 @@ describe.skipIf(!url)('estoque contra PostgreSQL descartável: regras', () => {
       expect(ajuste).toMatchObject({ id: itemA.movementId, deltaMilli: -2000, countId: r.count.id, reason: 'Contagem de sexta' });
       expect(await conferirInvariante(a.id)).toBe(8000);
       expect(await conferirInvariante(b.id)).toBe(4000);
+    });
+
+    it.each([
+      ['ausente', {}],
+      ['nulo', { note: null }],
+      ['vazio', { note: '   ' }],
+      ['curto', { note: ' ab ' }],
+    ])('com ajuste e motivo %s: 400 MOTIVO_OBRIGATORIO, sem alterar saldo nem histórico', async (_nome, nota) => {
+      const a = await produto(`Motivo A ${novoId().slice(0, 5)}`, { initialQuantityMilli: 5000 });
+      const b = await produto(`Motivo B ${novoId().slice(0, 5)}`, { initialQuantityMilli: 2000 });
+      const antes = await retrato(est.tenantId);
+      const e = await erroDe(
+        conferencias.create(dono(), est.tenantId, {
+          requestKey: novaChave(),
+          ...nota,
+          items: [
+            { productId: a.id, expectedBalanceVersion: 1, expectedUnit: 'UN', countedMilli: 3000 },
+            { productId: b.id, expectedBalanceVersion: 1, expectedUnit: 'UN', countedMilli: 2000 },
+          ],
+        } as never),
+      );
+      expect(e.getStatus?.()).toBe(400);
+      expect(e.getResponse?.()).toMatchObject({ code: 'MOTIVO_OBRIGATORIO', message: 'Informe o motivo dos ajustes, com pelo menos 3 letras.' });
+      expect(await retrato(est.tenantId)).toEqual(antes);
+      expect(await conferirInvariante(a.id)).toBe(5000);
+      expect(await conferirInvariante(b.id)).toBe(2000);
+    });
+
+    it('motivo válido vira o motivo de cada ajuste; sem diferença, o motivo é opcional, mas curto é recusado', async () => {
+      const a = await produto(`Motivo ok ${novoId().slice(0, 5)}`, { initialQuantityMilli: 5000 });
+      const r = await conferencias.create(dono(), est.tenantId, {
+        requestKey: novaChave(),
+        note: '  Ajuste   de fechamento ',
+        items: [{ productId: a.id, expectedBalanceVersion: 1, expectedUnit: 'UN', countedMilli: 4000 }],
+      });
+      expect(r.count).toMatchObject({ adjustedCount: 1, note: 'Ajuste de fechamento' });
+      const [ajuste] = (await movimentos.list(dono(), est.tenantId, { productId: a.id, kind: 'AJUSTE_CONFERENCIA' } as never)).movements;
+      expect(ajuste).toMatchObject({ reason: 'Ajuste de fechamento', deltaMilli: -1000 });
+      expect(await conferirInvariante(a.id)).toBe(4000);
+
+      const semDiferenca = { productId: a.id, expectedBalanceVersion: 2, expectedUnit: 'UN' as const, countedMilli: 4000 };
+      expect((await conferencias.create(dono(), est.tenantId, { requestKey: novaChave(), note: null, items: [semDiferenca] })).count).toMatchObject({
+        adjustedCount: 0,
+        note: null,
+      });
+      const antes = await retrato(est.tenantId);
+      expect(await codigoDe(conferencias.create(dono(), est.tenantId, { requestKey: novaChave(), note: 'ab', items: [semDiferenca] }))).toBe('MOTIVO_OBRIGATORIO');
+      expect(await retrato(est.tenantId)).toEqual(antes);
     });
 
     it('desatualizada por movimentação concorrente: 409 com o estado atual, nada gravado', async () => {
