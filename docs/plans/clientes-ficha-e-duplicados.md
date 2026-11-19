@@ -166,16 +166,47 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 ## Estado e retomada
 
-**19/11/2026: PR 1 (SHA_A) em andamento** na branch `feat/clientes-identidade` (worktree `C:/wt/estoque`).
-- **Feito:**
-  - migrations 23 e 24 e o manifesto até 24;
-  - as rotas novas, o cadastro com chave, o público e as preferências por telefone;
-  - os testes listados acima.
-- **Falta no PR 1:**
-  - verificar a bateria completa de banco num banco novo;
-  - o ensaio do schema 25 com a bateria inteira (local);
-  - o roteiro da publicação em 5 passos;
-  - o mapa técnico;
-  - o PR e o CI verde.
-- **Depois:** PR 2 (SHA_B) com a migration 25, `outraPessoa`, prévia e unificação, as travas de recebimento e comissão no agendamento, e a tela de Clientes com a ficha.
-- **Só neste computador:** o PostgreSQL descartável local (porta 55433). Os bancos de teste são recriados pelos scripts e não guardam nada que precise ser levado.
+**Encerramento de 19/11/2026, 20:07 UTC.** Nada do Lote C foi mesclado, aplicado no piloto nem publicado.
+
+**Lote N (navegação no celular): publicado.**
+- PR #137 mesclado como `0d8f479`, com CI verde no head `27f4151`.
+- API e web live em `0d8f479`. O banco do piloto continua com **22 migrations**: o Lote N não tem migration e o banco não foi tocado.
+- Deploys:
+  - API `dep-dbvkl6bl550s73856vt0`, 19:14:33–19:15:31 UTC;
+  - web `dep-dbvklocipgvc73dgklb0`, 19:15:45–19:18:11 UTC.
+- **Antes da publicação:**
+  - os dois serviços estavam live em `e78c3d1`;
+  - a fila estava vazia;
+  - o Auto-Deploy estava `off`.
+- **Depois da publicação:**
+  - API: `/` e `/health` respondem 200; o log mostra "Nest application successfully started", sem aviso de `SchemaReadiness`;
+  - web: `/`, `/login` e `/conta` respondem 200, e o pacote de `/conta` contém `faixa-de-areas`;
+  - `/agenda_api/auth/me` sem sessão responde 401 em JSON.
+- O registro está no PR de documentação **#138** (`docs/navegacao-celular-publicada`, `83ee0e7`), **aberto**.
+- **Falta:** o teste no celular com sessão real, feito pelo responsável.
+
+**Lote C, PR 1 (SHA_A): PR #139 aberto.**
+- Branch `feat/clientes-identidade`, head de código `413a14e`. O commit desta seção é só de documentação.
+- **Migrations 23 e 24: NÃO aplicadas no piloto.** Nenhum backup, migration ou deploy foi feito para o Lote C.
+- **CI no encerramento, no head `413a14e`:**
+  - `test-migration-lote6b2.yml` (migration:show/run reais): **falhou**. Em `scripts/lote6b2-migration.migration-e2e-spec.ts`, o teste "estado final do banco bate exatamente com o baseline pós-migration esperado" deu `expected 62 to be 60`: a contagem de tabelas do baseline não inclui as duas tabelas novas da migration 24 (`consumer_create_requests` e `whatsapp_consent_events`). Ainda não foi corrigido.
+  - `test-frontend-auth.yml` (navegador + API): **em andamento** no encerramento. O resultado está pendente.
+- **Testes locais (PostgreSQL descartável, porta 55433):**
+  - unitários do backend: 145 arquivos e 2161 testes, todos verdes; `typecheck` e `lint` limpos;
+  - HTTP sem banco (`test:e2e`): 18 arquivos e 199 testes, verdes;
+  - testes de banco novos, verdes: `consumer-migrations` (3), `consumers-identity-postgres` (a versão final, com o caso do contrato, passou na 2ª rodada completa) e `isolamento-estabelecimentos` (1);
+  - bateria completa de banco (`test:db-e2e`), em banco novo:
+    - **1ª rodada:** só `stock-migrations` falhou, porque esperava 22 migrations; corrigido para migrar até a 22;
+    - **2ª rodada:** 426 de 427 passaram;
+    - **falha intermitente:** `commercial-access-postgres` › "pagamento manual: registra, repete sem duplicar, disputa entre telas e renova encadeado". No log apareceu `ck_teste_falha` em `tenant_access_periods`. O mesmo teste passou na 1ª rodada completa e passou sozinho (8/8) logo depois. **Não está resolvida:** a causa não foi investigada e pode voltar no CI.
+- **PR 2 (SHA_B): não iniciado.**
+
+**Próxima ação:**
+1. Reler o Git (branch e PRs #138 e #139) e o CI do #139.
+2. Corrigir a contagem de tabelas do baseline em `scripts/lote6b2-migration.migration-e2e-spec.ts`, de 60 para 62, com as duas tabelas da migration 24. Conferir o resultado do `test-frontend-auth.yml` e qualquer outra falha, inclusive se a intermitente de `tenant_access_periods` aparecer.
+3. Com o CI verde, pedir autorização para o merge do #139. Depois retomar o plano aprovado: PR 2, ensaio dos 5 passos numa cópia restaurada de um backup novo e publicação só com pedido explícito.
+
+**Só neste computador:**
+- o PostgreSQL descartável local (dados em `scratchpad/pg`, porta 55433), parado no encerramento;
+- os scripts auxiliares do scratchpad (`novo-banco.sh`, `q.cjs`).
+Nada disso precisa ser levado: os bancos de teste são recriados pelas migrations.
