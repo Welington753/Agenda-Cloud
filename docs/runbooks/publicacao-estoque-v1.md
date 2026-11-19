@@ -125,6 +125,6 @@ SELECT
 2. Num estabelecimento de teste, em "Plano e adicionais", marcar o Controle de estoque, revisar e salvar.
 3. Entrar como dono e conferir o grupo "Estoque" no menu: Produtos, Categorias, Movimentações e Conferência de estoque.
 4. Em "Equipe e acessos", conceder "Ver estoque" ou "Operar estoque" a um gerente.
-5. Criar categoria e subcategoria; cadastrar um produto com saldo inicial; registrar entrada e saída; estornar uma saída.
-6. Fazer uma conferência com diferença e conferir o ajuste no histórico.
+5. Criar categoria e subcategoria; cadastrar um produto com saldo inicial; registrar entrada e saída; estornar uma saída. Tentar uma perda e um estorno sem motivo: a tela recusa e o saldo não muda.
+6. Fazer uma conferência com diferença. Sem motivo, a tela não avança para a confirmação. Com motivo, conferir o ajuste e o motivo no histórico.
 7. Retirar o adicional: o menu some, o endereço direto mostra o motivo e os dados ficam preservados. Recontratar devolve tudo.
