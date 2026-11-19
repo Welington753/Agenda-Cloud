@@ -121,6 +121,13 @@ Atualizado a cada checkpoint (abaixo).
 - **Sem migration.** A constraint do banco já exigia o motivo; publicar é API e depois web, no mesmo SHA.
 - **Compatibilidade:** no intervalo com a API nova e o web ainda em `0dedc35`, o web antigo recebe 400 numa conferência com diferença sem motivo. A mensagem da API aparece na tela, e nada é gravado.
 - **Retorno:** o H3 reprovou (runbook). Depois da primeira contratação ou concessão, somente correção para frente. Nenhum rollback foi feito.
+- **Publicado (19/11/2026):**
+  - PR #129 mesclado como `f3807b9`, com CI verde no head `7b82f40` e a mesma árvore;
+  - API `dep-dbve58ou01pc73dji580` (live 11:51 UTC, log "22 de 22") e web `dep-dbve5uek1f9s73ca64dg` (live 11:55 UTC), os dois em `f3807b9`;
+  - `/health` 200; estoque sem sessão 401; `/login`, `/conta/estoque/produtos` e `/conta/estoque/conferencia` 200; agendamento público 200 em dois estabelecimentos e 404 no terceiro, ativo e sem serviços, como antes.
+- **Piloto (só leitura, antes e depois):** 22 migrations; ESTOQUE com preço de 1990 centavos e contratado por um estabelecimento (`overrides` 1, concessões 0), que já tinha dados de estoque logo depois da publicação. Por isso o retorno para `208d7ee` não é mais permitido.
+- **Versão atual:** API e web em `f3807b9`, banco em 22.
+- **Próximo passo:** o roteiro curto de teste do runbook com sessão, incluindo as recusas de motivo nos passos 5 e 6.
 
 **18/11/2026, noite: publicado e liberado.**
 
