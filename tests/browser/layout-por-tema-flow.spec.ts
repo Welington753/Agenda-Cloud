@@ -166,13 +166,9 @@ test("mesma estrutura em todos os temas: portal e /conta (dono, gerente, funcion
 
     const navegarPeloMenu = (rotulo: string, caminho: RegExp) => async (p: Page) => {
       if (caminho.test(new URL(p.url()).pathname)) return;
-      const link = navConta(p).getByRole("link", { name: rotulo, exact: true });
-      if (await link.isVisible()) await link.click();
-      else {
-        // Celular: o que não está na barra fica no menu da conta.
-        await p.getByTestId("abrir-menu-conta").click();
-        await p.getByTestId("menu-mais-areas").getByRole("link", { name: rotulo, exact: true }).click();
-      }
+      // No celular a área pode estar fora da parte visível da faixa: o
+      // clique rola a faixa até ela (nunca pelo menu da conta).
+      await navConta(p).getByRole("link", { name: rotulo, exact: true }).click();
       await expect(p).toHaveURL(caminho);
       await expect(p.getByRole("heading", { level: 1 })).toBeVisible();
     };

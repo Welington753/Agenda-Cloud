@@ -89,12 +89,6 @@ describe("gerente: só as áreas que o servidor liberou", () => {
     expect(inicioDoPerfil("gerente", g)).toBe("/conta/agendamentos");
     const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: g });
     expect(itens.map((i) => i.rotulo)).toEqual(["Agenda", "Minha agenda", "Recebimentos", "Profissionais", "Configurações"]);
-    expect(itens.filter((i) => i.noCelular === "barra").map((i) => i.rotulo)).toEqual([
-      "Agenda",
-      "Minha agenda",
-      "Recebimentos",
-      "Configurações",
-    ]);
     for (const livre of ["/conta/agendamentos", "/conta/agendamentos/solicitacoes", "/conta/recebimentos", "/conta/minha-agenda"]) {
       expect(redirecionamentoDoPerfil("gerente", livre, g), livre).toBeNull();
     }

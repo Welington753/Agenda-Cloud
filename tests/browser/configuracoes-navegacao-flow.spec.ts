@@ -36,6 +36,19 @@ const CAMINHOS = [
 ];
 
 const nav = (page: Page) => page.getByRole("navigation", { name: "Áreas da conta" });
+/** Áreas do dono (com Comissões) na faixa do celular, na ordem dos grupos. */
+const AREAS_DO_DONO_NO_CELULAR: readonly (readonly [string, RegExp])[] = (
+  [
+    ["Visão geral", "/conta/visao-geral"],
+    ["Agenda", "/conta/agendamentos"],
+    ["Clientes", "/conta/clientes"],
+    ["Profissionais", "/conta/configuracoes/profissionais"],
+    ["Serviços", "/conta/configuracoes/servicos"],
+    ["Comissões", "/conta/comissoes"],
+    ["Equipe e acessos", "/conta/configuracoes/equipe"],
+    ["Configurações", "/conta/configuracoes"],
+  ] as const
+).map(([rotulo, caminho]) => [rotulo, new RegExp(`${caminho}$`)] as const);
 const submenu = (page: Page) => page.getByTestId("submenu-configuracoes");
 const botaoSubmenu = (page: Page) => page.getByTestId("abrir-submenu-configuracoes");
 
@@ -277,7 +290,8 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
     const celular = await contexto.newPage();
     try {
       await celular.goto("/conta/visao-geral");
-      await expect(nav(celular).getByRole("link")).toHaveText(["Visão geral", "Agenda", "Clientes", "Configurações"]);
+      // Todas as áreas do menu, na ordem dos grupos, na faixa inferior.
+      await expect(nav(celular).getByRole("link")).toHaveText(AREAS_DO_DONO_NO_CELULAR.map(([rotulo]) => rotulo));
       await expect(botaoSubmenu(celular)).toBeHidden();
       await nav(celular).getByRole("link", { name: "Configurações" }).tap();
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
@@ -297,17 +311,58 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
       await celular.getByRole("link", { name: "Voltar para Configurações" }).tap();
       await expect(celular).toHaveURL(/\/conta\/configuracoes$/);
 
-      // O que não cabe na barra, pelo menu da conta, na ordem do menu
-      // agrupado (Gestão do negócio, depois Administração).
+      // A faixa rola só por dentro: a página não desliza para o lado, a seta
+      // indica que há mais áreas e cada toque deixa a área atual destacada e
+      // inteira à vista.
+      await celular.goto("/conta/visao-geral");
+      const faixa = celular.getByTestId("faixa-de-areas");
+      expect(await faixa.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      await expect(celular.getByTestId("faixa-mais-depois")).toHaveAttribute("data-visivel", "true");
+      await expect(celular.getByTestId("faixa-mais-antes")).toHaveAttribute("data-visivel", "false");
+      await semRolagemHorizontal(celular);
+      for (const [rotulo, caminho] of AREAS_DO_DONO_NO_CELULAR.slice(1)) {
+        const area = nav(celular).getByRole("link", { name: rotulo, exact: true });
+        await area.scrollIntoViewIfNeeded();
+        const toque = (await area.boundingBox())!;
+        expect(toque.height).toBeGreaterThanOrEqual(44);
+        expect(toque.width).toBeGreaterThanOrEqual(44);
+        await area.tap();
+        await expect(celular).toHaveURL(caminho);
+        const atual = nav(celular).locator('[aria-current="page"]');
+        await expect(atual).toHaveText(rotulo);
+        await expect(atual).toBeInViewport({ ratio: 1 });
+        await semRolagemHorizontal(celular);
+      }
+      await expect(celular.getByTestId("faixa-mais-antes")).toHaveAttribute("data-visivel", "true");
+      // Abrindo direto uma área do fim, ela já vem para a parte visível.
+      await celular.goto("/conta/configuracoes/equipe");
+      await expect(nav(celular).locator('[aria-current="page"]')).toHaveText("Equipe e acessos");
+      await expect(nav(celular).locator('[aria-current="page"]')).toBeInViewport({ ratio: 1 });
+      // Teclado: o Tab percorre a faixa inteira, e o foco fica à vista.
+      await celular.goto("/conta/visao-geral");
+      await nav(celular).getByRole("link").first().focus();
+      for (const [rotulo] of AREAS_DO_DONO_NO_CELULAR.slice(1)) {
+        await celular.keyboard.press("Tab");
+        const foco = nav(celular).locator(":focus");
+        await expect(foco).toHaveText(rotulo);
+        await expect(foco).toBeInViewport();
+      }
+      if (width === 390) {
+        for (const tema of ["light", "dark"] as const) {
+          await celular.emulateMedia({ colorScheme: tema });
+          await celular.screenshot({ path: test.info().outputPath(`configuracoes-faixa-celular-${tema}-${width}.png`) });
+        }
+        await celular.emulateMedia({ colorScheme: "light" });
+      }
+
+      // O menu da conta fica só com as ações da conta (nenhuma área) e cabe
+      // entre as duas barras: "Sair", o último item, fica à vista e recebe o
+      // toque mesmo num celular baixo.
       await celular.getByTestId("abrir-menu-conta").tap();
-      await expect(celular.getByTestId("menu-mais-areas").getByRole("link")).toHaveText([
-        "Profissionais",
-        "Serviços",
-        "Comissões",
-        "Equipe e acessos",
-      ]);
-      // O menu inteiro cabe entre as duas barras: "Sair", o último item,
-      // fica à vista e recebe o toque mesmo num celular baixo.
+      for (const [rotulo] of AREAS_DO_DONO_NO_CELULAR) {
+        if (rotulo === "Configurações") continue;
+        await expect(celular.getByTestId("menu-conta").getByRole("link", { name: rotulo, exact: true })).toHaveCount(0);
+      }
       await celular.setViewportSize({ width, height: 560 });
       const sair = celular.getByRole("button", { name: "Sair" });
       await sair.scrollIntoViewIfNeeded();
@@ -317,24 +372,7 @@ test("Configurações: submenu no computador, índice, seções e áreas própri
       expect(caixaDoSair.y + caixaDoSair.height).toBeLessThanOrEqual(barraInferior.y);
       await sair.tap({ trial: true });
       await celular.setViewportSize({ width, height: 844 });
-      await celular.keyboard.press("Escape");
-      for (const [rotulo, caminho] of [
-        ["Profissionais", /\/conta\/configuracoes\/profissionais$/],
-        ["Serviços", /\/conta\/configuracoes\/servicos$/],
-        ["Equipe e acessos", /\/conta\/configuracoes\/equipe$/],
-        ["Comissões", /\/conta\/comissoes$/],
-      ] as const) {
-        await celular.getByTestId("abrir-menu-conta").tap();
-        const area = celular.getByTestId("menu-mais-areas").getByRole("link", { name: rotulo });
-        const toque = (await area.boundingBox())!;
-        expect(toque.height).toBeGreaterThanOrEqual(44);
-        await area.tap();
-        await expect(celular).toHaveURL(caminho);
-        await expect(celular.getByTestId("menu-conta")).toHaveCount(0);
-        await semRolagemHorizontal(celular);
-      }
       if (width === 390) {
-        await celular.getByTestId("abrir-menu-conta").tap();
         for (const tema of ["light", "dark"] as const) {
           await celular.emulateMedia({ colorScheme: tema });
           await celular.screenshot({ path: test.info().outputPath(`configuracoes-menu-celular-${tema}-${width}.png`) });

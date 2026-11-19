@@ -11,11 +11,13 @@ import {
   Contact,
   FolderTree,
   HandCoins,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   Package,
   Settings,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
@@ -33,7 +35,9 @@ import {
   ROTA_INICIO,
   ROTA_MINHA_AGENDA,
   ROTA_PROFISSIONAIS,
+  ROTA_RECEBIMENTOS,
   ROTA_SERVICOS,
+  ROTA_SOLICITACOES,
 } from "@/lib/conta/rotas";
 
 export const ICONE_POR_HREF: Record<string, LucideIcon> = {
@@ -50,21 +54,19 @@ export const ICONE_POR_HREF: Record<string, LucideIcon> = {
   [ROTA_ESTOQUE_CATEGORIAS]: FolderTree,
   [ROTA_ESTOQUE_MOVIMENTACOES]: ArrowLeftRight,
   [ROTA_ESTOQUE_CONFERENCIA]: ClipboardCheck,
+  [ROTA_SOLICITACOES]: Inbox,
+  [ROTA_RECEBIMENTOS]: Wallet,
 };
 
-/** Colunas da barra inferior do celular: uma por área da barra.
- * Classes escritas por extenso para o Tailwind encontrá-las. */
-export const COLUNAS_NO_CELULAR: Record<number, string> = {
-  1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-  5: "grid-cols-5",
-};
+/** `<li>` de cada área. No celular, uma coluna da faixa que rola na
+ * horizontal, com a largura do rótulo (mínimo 4,5rem; o rótulo quebra só
+ * entre palavras, em até duas linhas, ver `LinkNavegacao`); com poucas
+ * áreas, elas dividem a largura. No computador, uma linha do menu lateral. */
+export const CLASSE_ITEM_DA_FAIXA = "min-w-[4.5rem] flex-[1_0_auto] snap-start md:min-w-0 md:flex-none";
 
 export const CLASSE_ITEM = clsx(
-  "flex min-h-14 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[11px] leading-tight font-medium tracking-tight md:tracking-normal",
-  "md:min-h-11 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
+  "flex h-full min-h-14 flex-col items-center justify-center gap-0.5 px-1.5 py-1.5 text-center text-[11px] leading-tight font-medium tracking-tight md:tracking-normal",
+  "md:h-auto md:min-h-11 md:py-0 md:flex-row md:justify-start md:gap-3 md:rounded-[var(--radius-control)] md:px-3 md:text-left md:text-sm",
   "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-chrome-focus",
 );
 // Fundo + sombra interna, não borda: a regra global `* { border-color }` de
@@ -121,7 +123,7 @@ export function LinkNavegacao({
       )}
     >
       <Icone size={20} aria-hidden="true" className="shrink-0 md:size-[18px]" />
-      <span className={emLista ? undefined : "w-full truncate md:w-auto"}>{item.rotulo}</span>
+      <span className={emLista ? undefined : "line-clamp-2 max-w-[6rem] hyphens-none md:block md:w-auto md:max-w-none md:truncate"}>{item.rotulo}</span>
       <Contador total={contador} naBarra={!emLista} />
     </Link>
   );

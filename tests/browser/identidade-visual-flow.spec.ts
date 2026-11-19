@@ -281,10 +281,12 @@ test("identidade visual: paleta escura, contraste, agenda em lista e capturas", 
   expect(opcaoAtual.fundo).toBe(ESCURO.selecionado);
   expect(razao(opcaoAtual.texto, opcaoAtual.fundo)).toBeGreaterThanOrEqual(7);
 
-  // Celular: menu da conta com "Mais áreas", avatar neutro.
+  // Celular: faixa inferior com todas as áreas e menu da conta só com as
+  // ações da conta, avatar neutro.
   await page.mouse.move(5, 5);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("faixa-de-areas")).toBeVisible();
   await page.getByTestId("abrir-menu-conta").click();
-  await expect(page.getByTestId("menu-mais-areas")).toBeVisible();
+  await expect(page.getByTestId("menu-conta")).toBeVisible();
   await capturar(page, "menu-conta", [360, 390]);
 });
