@@ -5,7 +5,9 @@
 // Toda consulta leva `tenant_id` no `where`. Nenhuma função daqui devolve
 // dado de cliente: só ids, contagens e o necessário para o recibo.
 import type { EntityManager } from 'typeorm';
+import { Logger } from '@nestjs/common';
 import { generateId } from '../entities/common/generate-id.js';
+import { travarTelefoneDoCliente } from '../consumers/consumer-rules.js';
 
 export interface ConfiguracaoPublica {
   enabled: boolean;
@@ -60,9 +62,8 @@ export async function travarTelefone(
   tenantId: string,
   telefone: string,
 ): Promise<void> {
-  await manager.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `public-booking:${tenantId}:${telefone}`,
-  ]);
+  // A mesma trava do cadastro e da edição de clientes (consumer-rules.ts).
+  await travarTelefoneDoCliente(manager, tenantId, telefone);
 }
 
 /**
@@ -157,38 +158,70 @@ export async function registrarPedido(
   );
 }
 
+const logger = new Logger('PublicBookingConsumer');
+
 /**
- * Cliente deste tenant com este telefone, criado se ainda não existe.
+ * Cliente deste tenant para um pedido público, chamado JÁ sob
+ * `travarTelefone` (pedidos do mesmo telefone se enfileiram).
  *
- * Cliente EXISTENTE: nada nele é alterado — nem nome, nem e-mail, nem
- * autorização de contato. Quem preenche o formulário público não prova que
- * é o dono do cadastro, então não pode reescrevê-lo.
+ * Telefone e nome são critérios de correspondência, não identidade:
+ * 1. candidatos = cadastros ATIVOS com o mesmo `whatsapp_normalized` e o
+ *    mesmo `name_key` (comparado pela função do banco, `consumer_name_key`),
+ *    travados `FOR SHARE`. Um cadastro unificado enquanto este pedido
+ *    esperava a trava sai do resultado (o PostgreSQL reconfere o `WHERE` na
+ *    versão nova da linha);
+ * 2. exatamente um: é ele. Nenhum: cadastro novo. Mais de um: NÃO escolhe;
+ *    cria um cadastro novo e registra só a contagem (sem nome nem telefone);
+ * 3. variação do 9º dígito ou do DDD nunca conta como correspondência;
+ * 4. nada no cadastro existente é alterado — nem nome, nem e-mail, nem
+ *    autorização de contato. Quem preenche o formulário público não prova
+ *    que é o dono do cadastro. Cadastro novo nasce só com nome e telefone, sem
+ *    autorização de contato.
  *
- * Cliente NOVO: nasce só com nome e telefone; as colunas de autorização de
- * contato ficam NULAS (ninguém é dado como autorizado por ter pedido).
- *
- * `ON CONFLICT DO NOTHING` em vez de capturar o erro de UNIQUE: um erro
- * dentro da transação a deixaria abortada, e dois pedidos simultâneos do
- * mesmo telefone novo são possíveis (de tenants diferentes não se cruzam;
- * do mesmo tenant, `travarTelefone` já os serializa — isto é a segunda
- * barreira).
+ * Enquanto existir o UNIQUE antigo de telefone (schema anterior à migration
+ * ConsumerSharedPhone), o mesmo telefone com OUTRO nome não consegue um
+ * segundo cadastro: o pedido fica no cadastro ativo daquele telefone, como
+ * antes; o nome digitado fica só no snapshot do agendamento. `ON CONFLICT DO
+ * NOTHING` sem alvo funciona com e sem o UNIQUE, e não aborta a transação.
  */
 export async function clienteDoTelefone(
   manager: EntityManager,
   tenantId: string,
   dados: { nome: string; whatsapp: string; telefone: string },
 ): Promise<string> {
-  await manager.query(
+  const candidatos = (await manager.query(
+    `SELECT id FROM consumers
+      WHERE tenant_id = $1 AND whatsapp_normalized = $2 AND name_key = consumer_name_key($3)
+        AND merged_into_consumer_id IS NULL
+      ORDER BY id
+      FOR SHARE`,
+    [tenantId, dados.telefone, dados.nome],
+  )) as { id: string }[];
+  if (candidatos.length === 1) return candidatos[0].id;
+  if (candidatos.length > 1) {
+    logger.warn(
+      `Pedido público com ${candidatos.length} cadastros de mesmo telefone e nome no estabelecimento ${tenantId}: criado um cadastro novo, sem escolher.`,
+    );
+  }
+
+  const [criado] = (await manager.query(
     `INSERT INTO consumers (id, tenant_id, name, whatsapp, whatsapp_normalized)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT ON CONSTRAINT uq_consumers_tenant_whatsapp DO NOTHING`,
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
     [generateId(), tenantId, dados.nome, dados.whatsapp, dados.telefone],
-  );
-  const [linha] = (await manager.query(
-    `SELECT id FROM consumers WHERE tenant_id = $1 AND whatsapp_normalized = $2`,
+  )) as { id: string }[];
+  if (criado) return criado.id;
+
+  // Só com o UNIQUE antigo: o telefone já tem um cadastro (com outro nome).
+  const [existente] = (await manager.query(
+    `SELECT id FROM consumers
+      WHERE tenant_id = $1 AND whatsapp_normalized = $2 AND merged_into_consumer_id IS NULL
+      FOR SHARE`,
     [tenantId, dados.telefone],
   )) as { id: string }[];
-  return linha.id;
+  if (!existente) throw new Error('Cadastro do telefone não encontrado depois do conflito.');
+  return existente.id;
 }
 
 /** Quais destas reservas vieram do agendamento público. */

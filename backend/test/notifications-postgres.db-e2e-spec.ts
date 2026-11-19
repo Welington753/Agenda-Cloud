@@ -163,8 +163,11 @@ describe.skipIf(!DIRECT_URL)('notificações automáticas contra PostgreSQL desc
       whatsapp: `(11) 9${String(Math.floor(Math.random() * 90_000_000 + 10_000_000))}`,
     });
     if (opcoes.autorizado ?? true) {
+      // Preferência por telefone (whatsapp_consent_events): o número do
+      // cadastro autorizou.
       await dataSource.query(
-        `UPDATE consumers SET whatsapp_opt_in_at = $3, whatsapp_opt_in_source = 'TESTE'
+        `INSERT INTO whatsapp_consent_events (tenant_id, whatsapp_normalized, kind, source, occurred_at, consumer_id)
+         SELECT tenant_id, whatsapp_normalized, 'OPT_IN', 'TESTE', $3, id FROM consumers
           WHERE tenant_id = $1 AND id = $2`,
         [tenant.id, consumidor.id, new Date('2027-01-01T00:00:00Z')],
       );

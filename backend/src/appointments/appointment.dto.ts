@@ -14,7 +14,7 @@
 // instante contra a grade real do fuso do estabelecimento — vir da interface
 // não é motivo para aceitar.
 import { z } from 'zod';
-import { createConsumerSchema } from '../consumers/consumer.dto.js';
+import { consumerDataSchema } from '../consumers/consumer.dto.js';
 import { conferirEscolha, serviceSelectionShape } from './service-selection.js';
 
 /** `varchar(30)` das colunas de id — limite da coluna, não de negócio. */
@@ -52,7 +52,7 @@ const instanteSchema = z
  * existir o estado "mandou id E dados" sem resposta definida. */
 const consumerSchema = z.union([
   z.object({ mode: z.literal('existing'), consumerId: idSchema }).strict(),
-  z.object({ mode: z.literal('new'), data: createConsumerSchema }).strict(),
+  z.object({ mode: z.literal('new'), data: consumerDataSchema }).strict(),
 ]);
 
 export const createAppointmentSchema = z

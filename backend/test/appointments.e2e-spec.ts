@@ -289,14 +289,23 @@ describe('rotas de clientes (e2e)', () => {
   let app: INestApplication<App>;
   let searchMock: ReturnType<typeof vi.fn>;
   let createMock: ReturnType<typeof vi.fn>;
+  let updateMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     searchMock = vi.fn().mockResolvedValue([
       { id: 'consumer_1', name: 'Maria', whatsapp: '(11) 90000-0000', email: null },
     ]);
-    createMock = vi
-      .fn()
-      .mockResolvedValue({ id: 'consumer_2', name: 'João', whatsapp: '(11) 98888-7777', email: null });
+    createMock = vi.fn().mockResolvedValue({
+      consumer: { id: 'consumer_2', name: 'João', whatsapp: '(11) 98888-7777', email: null },
+      repeated: false,
+    });
+    updateMock = vi.fn().mockResolvedValue({
+      id: 'consumer_1',
+      name: 'Maria',
+      whatsapp: '(11) 90000-0000',
+      email: null,
+      updatedAt: '2026-11-19T12:00:00.000Z',
+    });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -304,7 +313,7 @@ describe('rotas de clientes (e2e)', () => {
       .overrideProvider(DataSource)
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(ConsumersService)
-      .useValue({ search: searchMock, create: createMock })
+      .useValue({ search: searchMock, register: createMock, update: updateMock })
       .overrideGuard(SessionGuard)
       .useValue({
         canActivate: (context: { switchToHttp: () => { getRequest: () => Record<string, unknown> } }) => {
@@ -347,6 +356,26 @@ describe('rotas de clientes (e2e)', () => {
     expect(resposta.body.consumer.id).toBe('consumer_2');
   });
 
+  it('POST repetido com a mesma chave de pedido responde 200 com o cadastro original', async () => {
+    createMock.mockResolvedValueOnce({
+      consumer: { id: 'consumer_2', name: 'João', whatsapp: '(11) 98888-7777', email: null },
+      repeated: true,
+    });
+    const resposta = await request(app.getHttpServer())
+      .post(CAMINHO_CLIENTES)
+      .send({ name: 'João', whatsapp: '(11) 98888-7777', requestKey: 'k_0123456789abcdef' })
+      .expect(200);
+    expect(resposta.body).toMatchObject({ repeated: true, consumer: { id: 'consumer_2' } });
+  });
+
+  it('POST com outraPessoa é 400 nesta versão', async () => {
+    await request(app.getHttpServer())
+      .post(CAMINHO_CLIENTES)
+      .send({ name: 'João', whatsapp: '(11) 98888-7777', requestKey: 'k_0123456789abcdef', outraPessoa: true })
+      .expect(400);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['senha', { name: 'João', whatsapp: '(11) 98888-7777', password: 'x' }],
     ['papel', { name: 'João', whatsapp: '(11) 98888-7777', role: 'DONO' }],
@@ -355,8 +384,17 @@ describe('rotas de clientes (e2e)', () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('não existe rota de listagem completa de clientes', async () => {
+  it('não existe exclusão de cliente', async () => {
     await request(app.getHttpServer()).delete(`${CAMINHO_CLIENTES}/consumer_1`).expect(404);
-    await request(app.getHttpServer()).patch(`${CAMINHO_CLIENTES}/consumer_1`).send({}).expect(404);
+  });
+
+  it('PATCH edita com a versão lida; sem campo ou sem versão é 400', async () => {
+    await request(app.getHttpServer()).patch(`${CAMINHO_CLIENTES}/consumer_1`).send({}).expect(400);
+    await request(app.getHttpServer()).patch(`${CAMINHO_CLIENTES}/consumer_1`).send({ name: 'Maria' }).expect(400);
+    expect(updateMock).not.toHaveBeenCalled();
+    const corpo = { name: 'Maria Souza', expectedUpdatedAt: '2026-11-19T12:00:00.000Z' };
+    const resposta = await request(app.getHttpServer()).patch(`${CAMINHO_CLIENTES}/consumer_1`).send(corpo).expect(200);
+    expect(resposta.body.consumer.id).toBe('consumer_1');
+    expect(updateMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'consumer_1', corpo);
   });
 });
