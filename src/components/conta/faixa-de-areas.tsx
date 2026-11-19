@@ -68,8 +68,8 @@ export function FaixaDeAreas({ children }: { children: ReactNode }) {
         ref={faixa}
         data-testid="faixa-de-areas"
         className={clsx(
-          "flex snap-x overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-          "md:block md:snap-none md:overflow-visible",
+          "flex snap-x scroll-px-1 overflow-x-auto overscroll-x-contain px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "md:block md:snap-none md:overflow-visible md:px-0",
         )}
       >
         {children}
