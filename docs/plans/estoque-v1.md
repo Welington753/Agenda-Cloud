@@ -116,7 +116,7 @@ Atualizado a cada checkpoint (abaixo).
   - migrations 21 e 22 aplicadas uma por vez (`aplicarSomenteAPendente`);
   - janelas 1a, 1b, 2 e 3 do H0 verdes, com as suítes gerente, equipe, agendamento público, administração e agenda (e estoque na janela 3);
   - únicas falhas esperadas: o teste antigo que afirma o ESTOQUE como "futuro", e o limite de aceites (429) quando várias suítes usaram a mesma API, resolvido reiniciando a API;
-  - H3 passou com ressalva (runbook, seção H3).
+  - H3 reprovou: a versão antiga apaga as concessões de estoque do gerente ao salvar o acesso dele (runbook, seção H3).
 - **Piloto:**
   - 21 aplicada às 21:28 UTC e 22 às 21:29 UTC;
   - API `dep-dbv1hf15efls73cv9080` e web `dep-dbv1io6k1f9s73b4speg`, os dois em `0dedc35`;
@@ -126,7 +126,7 @@ Atualizado a cada checkpoint (abaixo).
   - `0 | 0 | 0 | 0`;
   - `/health` 200; estoque sem sessão 401; `/conta/estoque/produtos` e `/login` 200; agendamento público 200 em dois estabelecimentos.
   - Um terceiro estabelecimento, ativo e sem serviços nem profissionais, responde 404, como antes. A release não toca o agendamento público.
-- **Limite do retorno:** seguro enquanto a última consulta da H2 der `0 | 0 | 0 | 0`. Depois da primeira contratação ou concessão, o retorno é possível com a ressalva do H3.
+- **Limite do retorno:** seguro enquanto a última consulta da H2 der `0 | 0 | 0 | 0`. Depois da primeira contratação ou concessão, **somente correção para frente** (decisão de 19/11/2026, pelo H3 reprovado). Nenhum rollback foi feito.
 - **Próximo passo:** o roteiro curto de teste do runbook, a começar pelo preço do Controle de estoque, que está "a definir".
 - **Só neste computador:**
   - os backups e as capturas em `%USERPROFILE%\AgendaCloud-operacoes`;

@@ -106,17 +106,17 @@ SELECT
 ## H3. Até quando o retorno para `208d7ee` é seguro
 
 - **Seguro (ensaiado):** enquanto a última consulta da seção H2 der `0 | 0 | 0 | 0`. Isso vale para qualquer momento da publicação e para depois da liberação, até a primeira contratação ou concessão.
-- **Depois da primeira contratação ou concessão** (mesmo sem produto): o retorno só é permitido se o **ensaio pós-uso** tiver passado.
+- **Depois da primeira contratação ou concessão** (mesmo sem produto): **somente correção para frente**. O ensaio pós-uso reprovou (abaixo), então não há retorno para `208d7ee` a partir desse ponto.
   - O ensaio é feito na cópia restaurada, antes de publicar:
     1. Com a API nova, contratar ESTOQUE, conceder as duas permissões a um gerente e criar categoria, produto e movimentação.
     2. Voltar API e web para `208d7ee`.
     3. Verificar: login do dono e do gerente, "Equipe e acessos" (abrir e salvar), portal "Plano e adicionais" (abrir e salvar sem alterar o ESTOQUE) e agendamento.
-  - Resultado do ensaio (18/11/2026, cópia restaurada de `pre-mig21-20-backup-2026-11-18T20-46-56Z`): **passou, com ressalva**.
-    - Com API e web `208d7ee` sobre a cópia já usada, funcionaram: login do dono e do gerente, "Equipe e acessos" (abrir e salvar), portal "Plano e adicionais" (salvar sem mexer no ESTOQUE, que continua contratado) e agendamento público. Nenhum erro de tela.
-    - **Ressalva:** a versão antiga não conhece as permissões de estoque. Salvar o acesso de um gerente na tela antiga **apaga** as concessões "Ver estoque" e "Operar estoque" dele. Contratação, categorias, produtos e movimentações ficam intactos.
-    - Consequência: o retorno é possível, mas depois de voltar para a versão nova o dono confere e, se preciso, concede de novo o estoque aos gerentes.
-    - Se passar: o retorno é possível, com o estoque indisponível e os dados preservados, e contratar pelo portal antigo continua proibido.
-    - Se falhar: **somente correção para frente** a partir da primeira contratação ou concessão.
+  - Critério: passa só se a versão antiga funcionar **e** preservar o que a nova gravou. Se falhar, somente correção para frente a partir da primeira contratação ou concessão.
+  - Resultado do ensaio (18/11/2026, cópia restaurada de `pre-mig21-20-backup-2026-11-18T20-46-56Z`): **reprovou**.
+    - Funcionaram com API e web `208d7ee` sobre a cópia já usada: login do dono e do gerente, "Equipe e acessos" (abrir e salvar), portal "Plano e adicionais" (salvar sem mexer no ESTOQUE, que continua contratado) e agendamento público. Nenhum erro de tela.
+    - **Falha:** a versão antiga não conhece as permissões de estoque. Salvar o acesso de um gerente na tela antiga **apaga** as concessões "Ver estoque" e "Operar estoque" dele. O retorno não preserva as concessões de estoque.
+    - Contratação, categorias, produtos e movimentações ficaram intactos.
+  - **Decisão (19/11/2026):** depois da primeira contratação ou concessão, somente correção para frente. Nenhum rollback foi feito. Problema na versão nova se resolve com versão nova: PR, CI verde, ensaio quando houver migration, e API e web no mesmo SHA.
 - Em nenhum caso há `down` das migrations no piloto.
 
 ## Roteiro curto de teste (depois da liberação)
