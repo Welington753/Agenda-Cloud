@@ -106,7 +106,10 @@ export function FormularioMovimentacao({
           ))}
         </select>
       </Campo>
-      <Campo rotulo={produto ? `Quantidade (${produto.unit})` : "Quantidade"} htmlFor="mov-quantidade" erro={erros.quantidade}>
+      <Campo rotulo={produto ? `Quantidade (${produto.unit})` : "Quantidade"} htmlFor="mov-quantidade"
+        erro={erros.quantidade}
+        ajuda={tipoValido.startsWith("ENTRADA") ? "Quantidade que chegou depois do cadastro. Ela será somada ao estoque atual." : undefined}
+      >
         <input id="mov-quantidade" className={CLASSE_CAMPO} inputMode="decimal" value={quantidade} disabled={incerto} onChange={(e) => setQuantidade(e.target.value)} />
       </Campo>
       {produto && (

@@ -138,7 +138,7 @@ export function RevisaoDasDiferencas({
               </p>
             ) : (
               <p id="conf-nota-ajuda" className={CLASSE_AJUDA}>
-                {resumo.comDiferenca > 0 ? "Obrigatório: fica registrado em cada ajuste do histórico." : "Opcional quando nenhum saldo muda."}
+                {resumo.comDiferenca > 0 ? "Obrigatório porque há diferença: fica registrado em cada ajuste do histórico." : "Opcional quando nenhum saldo muda."}
               </p>
             )}
           </div>

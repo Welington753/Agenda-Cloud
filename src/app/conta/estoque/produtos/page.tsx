@@ -3,23 +3,28 @@
 // Produtos do estoque: cartões de resumo (ativos, estoque baixo, categorias),
 // busca, filtros por categoria e subcategoria, abas Ativos e Arquivados,
 // "Somente estoque baixo" e a tabela com o saldo atual (no celular, cartões).
-// Cadastro (com "Cadastrar e continuar") e edição num painel. Quem só consulta
+// Cadastro (com "Cadastrar e continuar", atalhos de categoria e "Duplicar
+// cadastro") e edição num painel. Quem só consulta
 // (gerente com "Ver estoque") não vê os botões, e a API recusa do mesmo jeito.
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowLeftRight, FolderTree, Package, Plus, Search } from "lucide-react";
 import {
+  criarCategoria,
   criarProduto,
+  criarSubcategoria,
   editarProduto,
   listarProdutos,
   novaChaveDeEnvio,
   situacaoDoProduto,
+  type CategoriaEstoque,
   type ProdutoEstoque,
+  type ResultadoEstoque,
 } from "@/lib/api/estoque-api";
 import { contar, resumoDeProdutos } from "@/lib/estoque/apresentacao";
+import { modeloDaCopia, subcategoriaCriada, type ModeloDeProduto } from "@/lib/estoque/atalhos-produto";
 import { consultaDeProdutos, FILTROS_INICIAIS, trocarCategoria, type FiltrosDeProduto } from "@/lib/estoque/filtros";
 import { mensagemDaFalha } from "@/lib/estoque/mensagens";
-import { formatarQuantidade } from "@/lib/estoque/quantidade";
 import { useCategorias } from "@/lib/estoque/use-categorias";
 import { useContextoEstoque } from "@/lib/estoque/use-contexto-estoque";
 import { useListaPaginada } from "@/lib/estoque/use-lista-paginada";
@@ -29,17 +34,18 @@ import { Botao, LinkBotao } from "@/components/ui/button";
 import { Cartao } from "@/components/ui/card";
 import { EstadoVazio } from "@/components/ui/empty-state";
 import { EstatisticaCard } from "@/components/ui/estatistica-card";
-import { Modal } from "@/components/ui/modal";
 import { PainelLateral } from "@/components/ui/painel-lateral";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { AvisoDeFalha, CLASSE_CAMPO, NotaInformativa, SemEstabelecimento, TABELA, trilhaDoEstoque } from "@/components/estoque/comum";
+import { respostaDoAtalho } from "./atalho-de-nome";
 import { FormularioProduto, type EnvioDoProduto } from "./formulario-produto";
+import { JanelaArquivar } from "./janela-arquivar";
 import { LinhaProduto } from "./linha-produto";
 
 const TITULO = "Produtos";
-type Edicao = { modo: "fechado" } | { modo: "novo"; chave: string; aviso?: true } | { modo: "editar"; produto: ProdutoEstoque };
+type Edicao = { modo: "fechado" } | { modo: "novo"; chave: string; aviso?: true; modelo?: ModeloDeProduto } | { modo: "editar"; produto: ProdutoEstoque };
 const ABAS = [
   { valor: "ACTIVE", rotulo: "Ativos" },
   { valor: "ARCHIVED", rotulo: "Arquivados" },
@@ -48,7 +54,7 @@ const ABAS = [
 export default function ProdutosDoEstoquePage() {
   const ctx = useContextoEstoque();
   const { notificar } = useToast();
-  const { estado: categorias, recarregar: recarregarCategorias } = useCategorias(ctx.tenantId);
+  const { estado: categorias, recarregar: recarregarCategorias, substituir: substituirCategoria } = useCategorias(ctx.tenantId);
   // Todos os ativos, para os cartões de resumo (independem dos filtros).
   const { estado: ativos, recarregar: recarregarResumo } = useProdutosParaEscolha(ctx.tenantId, "ACTIVE");
   const [filtros, setFiltros] = useState<FiltrosDeProduto>(FILTROS_INICIAIS);
@@ -92,12 +98,12 @@ export default function ProdutosDoEstoquePage() {
   const resumo = ativos.status === "carregada" ? resumoDeProdutos(ativos.produtos) : null;
   const categoriasAtivas = categorias.status === "carregada" ? listaDeCategorias.filter((c) => !c.archived).length : null;
 
-  async function comTrava(acao: () => Promise<void>) {
-    if (travado.current) return;
+  async function comTrava<T>(acao: () => Promise<T>): Promise<T | undefined> {
+    if (travado.current) return undefined;
     travado.current = true;
     setGravando(true);
     try {
-      await acao();
+      return await acao();
     } finally {
       travado.current = false;
       setGravando(false);
@@ -130,6 +136,10 @@ export default function ProdutosDoEstoquePage() {
       setEdicao({ modo: "fechado" });
     });
   }
+
+  /** "+ Nova categoria" e "+ Nova subcategoria" do formulário, pela mesma trava. */
+  const criarNaHora = async (gravar: () => Promise<ResultadoEstoque<CategoriaEstoque>>, escolher: (c: CategoriaEstoque) => string | null) =>
+    respostaDoAtalho(await comTrava(gravar), escolher, substituirCategoria, () => void recarregarCategorias());
 
   function aoMudarSituacao(produto: ProdutoEstoque, acao: "archive" | "reactivate") {
     void comTrava(async () => {
@@ -277,6 +287,7 @@ export default function ProdutosDoEstoquePage() {
                     podeOperar={ctx.podeOperar}
                     gravando={gravando}
                     aoEditar={() => abrirPainel({ modo: "editar", produto: p })}
+                    aoDuplicar={() => abrirPainel({ modo: "novo", chave: novaChaveDeEnvio(), modelo: modeloDaCopia(p, listaDeCategorias) })}
                     aoArquivar={() => setArquivando(p)}
                     aoReativar={() => aoMudarSituacao(p, "reactivate")}
                   />
@@ -300,28 +311,7 @@ export default function ProdutosDoEstoquePage() {
 
       <NotaInformativa>As quantidades são atualizadas por movimentações manuais e pela conferência de estoque.</NotaInformativa>
 
-      <Modal
-        aberto={arquivando !== null}
-        aoFechar={() => !gravando && setArquivando(null)}
-        titulo="Arquivar produto"
-        rodape={
-          <>
-            <Botao variante="secundaria" onClick={() => setArquivando(null)} disabled={gravando}>
-              Cancelar
-            </Botao>
-            <Botao variante="perigo" onClick={() => arquivando && aoMudarSituacao(arquivando, "archive")} disabled={gravando}>
-              Arquivar
-            </Botao>
-          </>
-        }
-      >
-        {arquivando && (
-          <p className="text-ink">
-            Arquivar &quot;{arquivando.name}&quot;? O saldo de {formatarQuantidade(arquivando.balanceMilli, arquivando.unit)} e o histórico ficam preservados. Produto
-            arquivado não recebe movimentação nem entra na conferência.
-          </p>
-        )}
-      </Modal>
+      <JanelaArquivar produto={arquivando} gravando={gravando} aoConfirmar={(p) => aoMudarSituacao(p, "archive")} aoFechar={() => setArquivando(null)} />
 
       <PainelLateral
         aberto={edicao.modo !== "fechado"}
@@ -338,6 +328,11 @@ export default function ProdutosDoEstoquePage() {
             enviando={gravando}
             erro={erro}
             aviso={edicao.modo === "novo" && edicao.aviso}
+            modelo={edicao.modo === "novo" ? edicao.modelo : null}
+            aoCriarCategoria={(nome) => criarNaHora(() => criarCategoria(tenantId, nome), (c) => c.id)}
+            aoCriarSubcategoria={(id, nome) =>
+              criarNaHora(() => criarSubcategoria(tenantId, id, nome), (c) => subcategoriaCriada(listaDeCategorias.find((x) => x.id === id), c, nome))
+            }
             aoEnviar={aoSalvar}
             aoCancelar={() => setEdicao({ modo: "fechado" })}
           />

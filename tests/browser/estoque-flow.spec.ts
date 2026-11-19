@@ -11,9 +11,14 @@
 //   arquivamento sem perder o histórico;
 // - "Cadastrar e continuar": limpeza só depois do sucesso, erro sem perder
 //   campos, reenvio com a mesma chave sem duplicar e chave nova por produto;
+// - atalhos "+ Nova categoria" e "+ Nova subcategoria" no produto (Cancelar
+//   e erro sem apagar o preenchimento) e "Duplicar cadastro" (nada criado no
+//   clique, sem código, saldo nem histórico, chave nova), nos quatro temas;
+// - ajudas curtas do saldo inicial, da entrada e da conferência;
 // - rascunho da conferência apagado no logout;
 // - gerente só com "Ver estoque": vê, sem botões de operação; funcionário
-//   pelo endereço vai para a própria agenda;
+//   pelo endereço vai para a própria agenda; com "Operar estoque", os atalhos
+//   e "Duplicar cadastro" aparecem;
 // - retirar o adicional bloqueia e preserva; recontratar devolve os dados;
 // - celular (390 e 360): a seção fica no menu da conta, sem rolagem lateral.
 // Invocação própria (`npm run test:browser:estoque`): 1 aceite e 1 login.
@@ -41,6 +46,23 @@ async function capturar(page: Page, nome: string) {
     await semRolagemHorizontal(page);
     await page.screenshot({ path: test.info().outputPath(`estoque-${nome}-${width}.png`), fullPage: true });
   }
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+/** Mesmo recorte de `capturar`, nos quatro temas (tema é só paleta). */
+async function capturarNosTemas(page: Page, nome: string) {
+  const original = await page.evaluate(() => document.documentElement.getAttribute("data-tema"));
+  for (const tema of ["claro", "escuro", "azul", "sistema"] as const) {
+    await page.emulateMedia({ colorScheme: tema === "sistema" ? "dark" : "light" });
+    await page.evaluate((t) => document.documentElement.setAttribute("data-tema", t), tema);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await semRolagemHorizontal(page);
+      await page.screenshot({ path: test.info().outputPath(`estoque-${nome}-${tema}-${width}.png`), fullPage: true });
+    }
+  }
+  await page.evaluate((t) => (t ? document.documentElement.setAttribute("data-tema", t) : document.documentElement.removeAttribute("data-tema")), original);
+  await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
@@ -141,6 +163,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await painel.getByLabel("Finalidade").selectOption("VENDA");
     await painel.getByLabel("Estoque mínimo").fill("2");
     await painel.getByLabel("Saldo inicial (opcional)").fill("10");
+    await expect(painel.getByText("Quantidade que você já tem ao cadastrar este produto.")).toBeVisible();
     await capturar(page, "novo-produto");
     await painel.getByRole("button", { name: "Cadastrar produto" }).click();
     const linha = page.locator("[data-testid^='produto-']").filter({ hasText: "Pomada modeladora" });
@@ -166,6 +189,8 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
         await form.getByLabel("Produto").selectOption({ index: 1 });
       });
       await form.getByLabel("Tipo").selectOption(tipo);
+      const ajudaDaEntrada = form.getByText("Quantidade que chegou depois do cadastro. Ela será somada ao estoque atual.");
+      await expect(ajudaDaEntrada).toHaveCount(tipo.startsWith("ENTRADA") ? 1 : 0);
       await form.getByLabel(/^Quantidade/).fill(quantidade);
       if (motivo) await form.getByLabel(/^Motivo|^Observação/).fill(motivo);
       if (depois) await expect(form.getByTestId("previa-saldo")).toContainText(depois);
@@ -212,6 +237,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
 
     // ------------------------------------------- conferência com diferença; estoque baixo
     await abrirNoMenu(page, "Conferência de estoque");
+    await expect(page.getByText("Compare o estoque com a contagem física. O saldo só será ajustado depois da sua confirmação.")).toBeVisible();
     await page.getByRole("button", { name: "Começar contagem" }).click();
     await page.getByLabel("Quantidade encontrada de Pomada modeladora (UN)").fill("2");
     await capturar(page, "contagem");
@@ -222,6 +248,7 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(page.getByTestId("revisao")).toContainText("9 UN");
     await expect(page.getByTestId("revisao")).toContainText("-7 UN");
     await expect(page.getByText("Nenhum saldo será alterado antes da confirmação.")).toBeVisible();
+    await expect(page.getByText("Obrigatório porque há diferença: fica registrado em cada ajuste do histórico.")).toBeVisible();
     // Com ajuste, o motivo é obrigatório: sem ele não se chega à confirmação.
     antes = await retrato();
     const motivoDosAjustes = page.getByLabel("Motivo dos ajustes");
@@ -297,12 +324,12 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     const produtosDe = async (nome: string) =>
       (
         await db.query(
-          `SELECT p.request_key AS chave, p.balance_milli::text AS saldo,
+          `SELECT p.id, p.request_key AS chave, p.internal_code AS codigo, p.balance_milli::text AS saldo,
                   (SELECT count(*)::int FROM stock_movements m WHERE m.product_id = p.id) AS movimentos
              FROM stock_products p WHERE p.tenant_id = $1 AND p.name = $2`,
           [tenantId, nome],
         )
-      ).rows as { chave: string; saldo: string; movimentos: number }[];
+      ).rows as { id: string; chave: string; codigo: string | null; saldo: string; movimentos: number }[];
     await page.getByRole("group", { name: "Situação" }).getByRole("button", { name: "Ativos" }).click();
     await expect(page.getByTestId("resumo-ativos")).toContainText("1");
     await page.getByRole("button", { name: "Novo produto" }).click();
@@ -387,6 +414,138 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await expect(linhaB).toBeVisible();
     expect(await produtosDe("Cera C")).toHaveLength(0);
 
+    // ------------------------------------------- atalhos de categoria no produto
+    // "+ Nova categoria" e "+ Nova subcategoria" sem sair do produto: Cancelar
+    // e erro não apagam nada; gravou, a opção nova vem escolhida.
+    const contagemDeCategorias = async () =>
+      (
+        await db.query(
+          `SELECT (SELECT count(*)::int FROM stock_categories WHERE tenant_id = $1) AS categorias,
+                  (SELECT count(*)::int FROM stock_subcategories WHERE tenant_id = $1) AS subcategorias`,
+          [tenantId],
+        )
+      ).rows[0] as { categorias: number; subcategorias: number };
+    await page.getByRole("button", { name: "Novo produto" }).click();
+    await nomeDoProduto.fill("Gel D");
+    await painel.getByLabel("Descrição (opcional)").fill("Gel de brilho");
+    await painel.getByLabel("Código interno (opcional)").fill("GEL-D");
+    await painel.getByLabel("Finalidade").selectOption("CONSUMO_INTERNO");
+    await painel.getByLabel("Unidade de medida").selectOption("FR");
+    await painel.getByLabel("Estoque mínimo").fill("2");
+    await painel.getByLabel("Saldo inicial (opcional)").fill("5");
+    const continuaPreenchido = async () => {
+      await expect(nomeDoProduto).toHaveValue("Gel D");
+      await expect(painel.getByLabel("Descrição (opcional)")).toHaveValue("Gel de brilho");
+      await expect(painel.getByLabel("Código interno (opcional)")).toHaveValue("GEL-D");
+      await expect(painel.getByLabel("Finalidade")).toHaveValue("CONSUMO_INTERNO");
+      await expect(painel.getByLabel("Unidade de medida")).toHaveValue("FR");
+      await expect(painel.getByLabel("Estoque mínimo")).toHaveValue("2");
+      await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("5");
+    };
+    const categoriasAntes = await contagemDeCategorias();
+    await expect(painel.getByRole("button", { name: "+ Nova subcategoria" })).toBeDisabled();
+    const atalhoCategoria = painel.getByTestId("atalho-categoria");
+    await painel.getByRole("button", { name: "+ Nova categoria" }).click();
+    await expect(atalhoCategoria.getByLabel("Nome da nova categoria")).toBeFocused();
+    await atalhoCategoria.getByLabel("Nome da nova categoria").fill("Barba");
+    await expect(painel.getByRole("button", { name: "Cadastrar produto" })).toBeDisabled();
+    await atalhoCategoria.getByRole("button", { name: "Cancelar" }).click();
+    await expect(atalhoCategoria).toHaveCount(0);
+    await expect(painel).toBeVisible();
+    await continuaPreenchido();
+    // Erro da API (nome em uso): a mensagem fica no atalho e o produto fica.
+    await painel.getByRole("button", { name: "+ Nova categoria" }).click();
+    await atalhoCategoria.getByLabel("Nome da nova categoria").fill("Cabelo");
+    await atalhoCategoria.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(atalhoCategoria.getByRole("alert")).toContainText("Já existe uma categoria com esse nome.");
+    await continuaPreenchido();
+    expect(await contagemDeCategorias()).toEqual(categoriasAntes);
+    await atalhoCategoria.getByLabel("Nome da nova categoria").fill("Barba");
+    await atalhoCategoria.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(atalhoCategoria).toHaveCount(0);
+    await expect(painel.getByLabel("Categoria", { exact: true }).locator("option:checked")).toHaveText("Barba");
+    await continuaPreenchido();
+    // Subcategoria da categoria escolhida; Enter salva sem enviar o produto.
+    await painel.getByRole("button", { name: "+ Nova subcategoria" }).click();
+    const atalhoSub = painel.getByTestId("atalho-subcategoria");
+    await expect(atalhoSub).toContainText("Nova subcategoria em Barba");
+    await atalhoSub.getByRole("textbox").fill("Géis");
+    await capturarNosTemas(page, "atalho-subcategoria");
+    await atalhoSub.getByRole("textbox").press("Enter");
+    await expect(atalhoSub).toHaveCount(0);
+    await expect(painel.getByLabel("Subcategoria (opcional)").locator("option:checked")).toHaveText("Géis");
+    await continuaPreenchido();
+    expect(await produtosDe("Gel D")).toHaveLength(0);
+    expect(await contagemDeCategorias()).toEqual({ categorias: categoriasAntes.categorias + 1, subcategorias: categoriasAntes.subcategorias + 1 });
+    const daSub = await db.query(
+      `SELECT c.name AS categoria FROM stock_subcategories s JOIN stock_categories c ON c.id = s.category_id WHERE s.tenant_id = $1 AND s.name = 'Géis'`,
+      [tenantId],
+    );
+    expect(daSub.rows).toEqual([{ categoria: "Barba" }]);
+    // Depois dos atalhos, "Cadastrar e continuar" segue igual.
+    await painel.getByRole("button", { name: "Cadastrar e continuar" }).click();
+    await expect(painel.getByTestId("produto-cadastrado-continuar")).toBeVisible();
+    await expect(nomeDoProduto).toHaveValue("");
+    await expect(painel.getByLabel("Categoria", { exact: true })).toHaveValue("");
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    const linhaD = page.locator("[data-testid^='produto-']").filter({ has: page.getByText("Gel D", { exact: true }) });
+    await expect(linhaD.getByTestId("saldo")).toHaveText("5 FR");
+    await expect(linhaD).toContainText("GEL-D · Barba / Géis");
+
+    // ------------------------------------------- "Duplicar cadastro"
+    // Abre "Novo produto" preenchido, sem código nem saldo; nada é criado no
+    // clique nem no Cancelar. Salvo, é um produto independente (chave nova,
+    // só a própria movimentação de saldo inicial).
+    const totalDeProdutos = async () => (await db.query("SELECT count(*)::int AS n FROM stock_products WHERE tenant_id = $1", [tenantId])).rows[0].n as number;
+    const totalAntes = await totalDeProdutos();
+    const duplicarD = async () => {
+      await linhaD.getByRole("button", { name: "Ações de Gel D" }).click();
+      await page.getByRole("menuitem", { name: "Duplicar cadastro" }).click();
+      await expect(painel.getByTestId("aviso-copia")).toHaveText("Revise os dados antes de cadastrar a cópia.");
+    };
+    await duplicarD();
+    await expect(painel.getByRole("heading", { name: "Novo produto" })).toBeVisible();
+    await expect(nomeDoProduto).toBeFocused();
+    await expect(nomeDoProduto).toHaveValue("Gel D");
+    await expect(painel.getByLabel("Descrição (opcional)")).toHaveValue("Gel de brilho");
+    await expect(painel.getByLabel("Categoria", { exact: true }).locator("option:checked")).toHaveText("Barba");
+    await expect(painel.getByLabel("Subcategoria (opcional)").locator("option:checked")).toHaveText("Géis");
+    await expect(painel.getByLabel("Finalidade")).toHaveValue("CONSUMO_INTERNO");
+    await expect(painel.getByLabel("Unidade de medida")).toHaveValue("FR");
+    await expect(painel.getByLabel("Estoque mínimo")).toHaveValue("2");
+    await expect(painel.getByLabel("Código interno (opcional)")).toHaveValue("");
+    await expect(painel.getByLabel("Saldo inicial (opcional)")).toHaveValue("");
+    expect(await totalDeProdutos()).toBe(totalAntes);
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    await expect(painel).toHaveCount(0);
+    expect(await totalDeProdutos()).toBe(totalAntes);
+    // Revisar e cadastrar a cópia.
+    await duplicarD();
+    await nomeDoProduto.fill("Gel D refil");
+    await painel.getByLabel("Saldo inicial (opcional)").fill("1");
+    await capturarNosTemas(page, "duplicar-cadastro");
+    await painel.getByRole("button", { name: "Cadastrar produto" }).click();
+    await expect(painel).toHaveCount(0);
+    const linhaRefil = page.locator("[data-testid^='produto-']").filter({ has: page.getByText("Gel D refil", { exact: true }) });
+    await expect(linhaRefil.getByTestId("saldo")).toHaveText("1 FR");
+    const [origem] = await produtosDe("Gel D");
+    const [copia] = await produtosDe("Gel D refil");
+    expect(origem).toMatchObject({ codigo: "GEL-D", saldo: "5000", movimentos: 1 });
+    expect(copia).toMatchObject({ codigo: null, saldo: "1000", movimentos: 1 });
+    expect(copia.id).not.toBe(origem.id);
+    expect(copia.chave).not.toBe(origem.chave);
+    // Depois de duplicar, "Cadastrar e continuar" limpa tudo, inclusive o aviso da cópia.
+    await duplicarD();
+    await nomeDoProduto.fill("Gel D viagem");
+    await painel.getByRole("button", { name: "Cadastrar e continuar" }).click();
+    await expect(painel.getByTestId("produto-cadastrado-continuar")).toBeVisible();
+    await expect(painel.getByTestId("aviso-copia")).toHaveCount(0);
+    await expect(nomeDoProduto).toHaveValue("");
+    await expect(painel.getByLabel("Categoria", { exact: true })).toHaveValue("");
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    expect(await produtosDe("Gel D viagem")).toMatchObject([{ codigo: null, saldo: "0", movimentos: 0 }]);
+    expect(await totalDeProdutos()).toBe(totalAntes + 2);
+
     // ------------------------------------------- gerente só com "Ver estoque"
     await db.query("UPDATE memberships SET role = 'GERENTE', permissions_confirmed_at = now() WHERE tenant_id = $1 AND user_id = $2", [tenantId, conta.user.id]);
     await db.query(
@@ -402,7 +561,22 @@ test("estoque: contratação no portal, operação do dono, papéis, retirada e 
     await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
     await expect(page.getByRole("menuitem", { name: "Ver histórico" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Editar" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Duplicar cadastro" })).toHaveCount(0);
     await page.keyboard.press("Escape");
+    // Com "Operar estoque" (concedido pelo dono), os atalhos aparecem.
+    await db.query(
+      `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode)
+       SELECT $1, tenant_id, id, 'ESTOQUE_GERENCIAR', 'GRANTED' FROM memberships WHERE tenant_id = $2 AND user_id = $3`,
+      [id(), tenantId, conta.user.id],
+    );
+    await page.reload();
+    await linha.getByRole("button", { name: "Ações de Pomada modeladora" }).click();
+    await expect(page.getByRole("menuitem", { name: "Duplicar cadastro" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Novo produto" }).click();
+    await expect(painel.getByRole("button", { name: "+ Nova categoria" })).toBeVisible();
+    await painel.getByRole("button", { name: "Cancelar" }).click();
+    await db.query("DELETE FROM membership_permission_overrides WHERE tenant_id = $1 AND permission = 'ESTOQUE_GERENCIAR'", [tenantId]);
     await page.goto("/conta/estoque/movimentacoes");
     await expect(page.getByRole("table", { name: "Histórico de movimentações" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Registrar movimentação" })).toHaveCount(0);

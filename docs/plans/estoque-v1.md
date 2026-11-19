@@ -61,6 +61,8 @@ Branch `feat/estoque-v1` (worktree `C:/wt/estoque`), a partir de `208d7ee`. Plan
   - Produto arquivado não recebe movimentação e não entra na conferência.
   - O código interno é único por estabelecimento.
   - Na janela "Novo produto", "Cadastrar e continuar" usa a mesma validação e o mesmo envio de "Cadastrar produto", mas mantém a janela aberta. Os campos só voltam ao padrão depois do sucesso da API, e cada produto novo recebe uma `requestKey` nova. Em erro ou resultado incerto, o preenchimento e a chave ficam, e repetir não duplica o produto nem o saldo inicial. Só vale para a criação.
+  - Também na criação, "+ Nova categoria" e "+ Nova subcategoria" (da categoria escolhida) abrem um campo de nome dentro do produto. Usam as mesmas rotas, validações e permissões da tela de Categorias. Gravou, a opção nova já vem escolhida; Cancelar ou erro não mexem no preenchimento do produto.
+  - "Duplicar cadastro" (menu "…" do produto ativo, para quem pode operar) só abre "Novo produto" preenchido com nome, descrição, categoria, subcategoria, finalidade, unidade e estoque mínimo, com a orientação "Revise os dados antes de cadastrar a cópia.". Código interno e saldo inicial vêm vazios; categoria ou subcategoria arquivada não é herdada. Nada é criado no clique: a cópia é um produto independente, com chave nova e só a própria movimentação de saldo inicial. Sem variações nem estoque compartilhado.
 - **Reenvio:**
   - Toda criação leva `requestKey` e uma impressão digital dos dados normalizados.
   - Mesma chave com os mesmos dados devolve o original; com outros dados, 409 `CHAVE_REUTILIZADA`, sem gravar.
@@ -108,6 +110,15 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 ## 6. Estado e retomada
 
 Atualizado a cada checkpoint (abaixo).
+
+**19/11/2026, noite: atalhos de categoria, "Duplicar cadastro" e ajudas curtas.**
+
+- **Mudança só no web**, branch `feat/estoque-atalhos-cadastro`, reaproveitando as rotas de categoria, subcategoria e produto. Sem migration e sem mudança na API.
+  - Atalhos de categoria: `produtos/atalho-de-nome.tsx` (campo de nome sem `<form>` aninhado; Enter salva sem enviar o produto). A página grava pela mesma trava do produto e põe a categoria devolvida na lista (`useCategorias().substituir`). Em falha, relê a lista, para a opção aparecer se a rede caiu depois de gravar.
+  - Cópia: `src/lib/estoque/atalhos-produto.ts` (`modeloDaCopia` e `subcategoriaCriada`, com testes).
+  - Ajudas: saldo inicial ("Quantidade que você já tem ao cadastrar este produto."), entrada na movimentação ("Quantidade que chegou depois do cadastro. Ela será somada ao estoque atual.") e conferência ("Compare o estoque com a contagem física. O saldo só será ajustado depois da sua confirmação."). Com diferença, o motivo diz "Obrigatório porque há diferença".
+  - A confirmação de arquivar foi para `produtos/janela-arquivar.tsx`, por causa do limite de linhas da página.
+- **Teste de navegador** (`test:browser:estoque`): categoria e subcategoria criadas sem perder o produto, Cancelar e erro (nome em uso) sem apagar nada; duplicar, cancelar sem criar, revisar e salvar como produto independente (sem código, com chave nova e só o próprio saldo inicial); "Cadastrar e continuar" depois dos atalhos e depois de duplicar; gerente só com "Ver estoque" sem "Duplicar cadastro" e, com "Operar estoque", com os atalhos; capturas em 1280 e 390 nos quatro temas.
 
 **19/11/2026, tarde: "Cadastrar e continuar" no cadastro de produto.**
 

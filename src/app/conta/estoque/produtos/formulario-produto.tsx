@@ -9,14 +9,22 @@
 // de "Cadastrar produto". Quem limpa é a página: só depois do sucesso da API
 // ela abre um formulário novo (outra chave de pedido), que chega com `aviso`
 // e o foco no Nome. Em erro, nada muda e a chave anterior fica.
+//
+// Na criação também: "+ Nova categoria" e "+ Nova subcategoria" (da
+// categoria escolhida) abrem um campo de nome sem sair do produto; gravou,
+// a opção nova já vem escolhida. "Duplicar cadastro" chega como `modelo`
+// (lib/estoque/atalhos-produto.ts): os campos vêm preenchidos, sem código
+// interno nem saldo inicial, e só o envio cria alguma coisa.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import type { CategoriaEstoque, DadosDoProduto, ProdutoEstoque } from "@/lib/api/estoque-api";
 import { lerQuantidade, MAIOR_SALDO_MILLI, quantidadeParaCampo, UNIDADES, type UnidadeEstoque } from "@/lib/estoque/quantidade";
 import { FINALIDADES, type FinalidadeEstoque } from "@/lib/estoque/rotulos";
 import { subcategoriaCompativel } from "@/lib/estoque/filtros";
+import type { ModeloDeProduto } from "@/lib/estoque/atalhos-produto";
 import { Botao } from "@/components/ui/button";
-import { Campo, CLASSE_CAMPO, ErroDoFormulario } from "@/components/estoque/comum";
+import { Campo, CLASSE_CAMPO, ErroDoFormulario, NotaInformativa } from "@/components/estoque/comum";
+import { AtalhoDeNome, BotaoDeAtalho, type ResultadoDoAtalho } from "./atalho-de-nome";
 
 export interface EnvioDoProduto {
   dados: DadosDoProduto;
@@ -29,6 +37,9 @@ export function FormularioProduto({
   enviando,
   erro,
   aviso = false,
+  modelo = null,
+  aoCriarCategoria,
+  aoCriarSubcategoria,
   aoEnviar,
   aoCancelar,
 }: {
@@ -38,27 +49,39 @@ export function FormularioProduto({
   erro: string | null;
   /** O produto anterior foi cadastrado por "Cadastrar e continuar". */
   aviso?: boolean;
+  /** "Duplicar cadastro": dados do produto de origem para revisar. */
+  modelo?: ModeloDeProduto | null;
+  aoCriarCategoria?: (nome: string) => Promise<ResultadoDoAtalho>;
+  aoCriarSubcategoria?: (categoriaId: string, nome: string) => Promise<ResultadoDoAtalho>;
   aoEnviar: (envio: EnvioDoProduto, continuar: boolean) => void;
   aoCancelar: () => void;
 }) {
-  const [nome, setNome] = useState(produto?.name ?? "");
-  const [descricao, setDescricao] = useState(produto?.description ?? "");
+  const base = produto ?? modelo;
+  const [nome, setNome] = useState(base?.name ?? "");
+  const [descricao, setDescricao] = useState(base?.description ?? "");
   const [codigo, setCodigo] = useState(produto?.internalCode ?? "");
-  const [categoriaId, setCategoriaId] = useState(produto?.categoryId ?? "");
-  const [subcategoriaId, setSubcategoriaId] = useState(produto?.subcategoryId ?? "");
-  const [finalidade, setFinalidade] = useState<FinalidadeEstoque>(produto?.purpose ?? "AMBOS");
-  const [unidade, setUnidade] = useState<UnidadeEstoque>(produto?.unit ?? "UN");
-  const [minimo, setMinimo] = useState(produto ? quantidadeParaCampo(produto.minQuantityMilli) : "0");
+  const [categoriaId, setCategoriaId] = useState(base?.categoryId ?? "");
+  const [subcategoriaId, setSubcategoriaId] = useState(base?.subcategoryId ?? "");
+  const [finalidade, setFinalidade] = useState<FinalidadeEstoque>(base?.purpose ?? "AMBOS");
+  const [unidade, setUnidade] = useState<UnidadeEstoque>(base?.unit ?? "UN");
+  const [minimo, setMinimo] = useState(base ? quantidadeParaCampo(base.minQuantityMilli) : "0");
+  const [atalho, setAtalho] = useState<"categoria" | "subcategoria" | null>(null);
   const [inicial, setInicial] = useState("");
   const [erros, setErros] = useState<Record<string, string>>({});
   const unidadeTravada = !!produto && produto.balanceVersion > 0;
+  // Atalhos de categoria só na criação (inclusive a cópia).
+  const podeCriar = !produto && !!aoCriarCategoria && !!aoCriarSubcategoria;
   const campoNome = useRef<HTMLInputElement>(null);
   // Qual botão de cadastro mostra "Salvando…" (os dois ficam bloqueados).
   const [continuando, setContinuando] = useState(false);
 
   useEffect(() => {
-    if (aviso) campoNome.current?.focus();
-  }, [aviso]);
+    if (!aviso && !modelo) return;
+    // Na cópia o painel acabou de abrir e põe o foco nele depois deste efeito
+    // (efeito do pai roda depois): o Nome recebe o foco na volta seguinte.
+    const espera = setTimeout(() => campoNome.current?.focus(), 0);
+    return () => clearTimeout(espera);
+  }, [aviso, modelo]);
 
   // Só categorias e subcategorias ativas (e a atual do produto, para ele não
   // perder o vínculo só por abrir o formulário).
@@ -73,11 +96,30 @@ export function FormularioProduto({
 
   function trocarCategoria(id: string) {
     setCategoriaId(id);
+    // A subcategoria nova seria da categoria anterior: o campo fecha.
+    setAtalho((aberto) => (aberto === "subcategoria" ? null : aberto));
     setSubcategoriaId((atual) => subcategoriaCompativel(categorias, id || null, atual || null) ?? "");
   }
 
+  /** Grava pelo atalho; deu certo, escolhe a opção nova e fecha o campo. */
+  async function criarPeloAtalho(nomeNovo: string): Promise<string | null> {
+    const r =
+      atalho === "categoria" ? await aoCriarCategoria?.(nomeNovo) : atalho === "subcategoria" && categoriaId ? await aoCriarSubcategoria?.(categoriaId, nomeNovo) : undefined;
+    if (!r) return null;
+    if (!r.ok) return r.erro;
+    if (atalho === "categoria") {
+      setCategoriaId(r.id);
+      setSubcategoriaId("");
+      setErros((atuais) => Object.fromEntries(Object.entries(atuais).filter(([campo]) => campo !== "categoria")));
+    } else {
+      setSubcategoriaId(r.id);
+    }
+    setAtalho(null);
+    return null;
+  }
+
   function enviar(continuar: boolean) {
-    if (enviando) return;
+    if (enviando || atalho) return;
     setContinuando(continuar);
     const novos: Record<string, string> = {};
     if (!nome.trim()) novos.nome = "Informe o nome do produto.";
@@ -122,6 +164,11 @@ export function FormularioProduto({
           <span>Produto cadastrado. Você já pode cadastrar o próximo.</span>
         </p>
       )}
+      {modelo && (
+        <NotaInformativa destaque data-testid="aviso-copia">
+          Revise os dados antes de cadastrar a cópia.
+        </NotaInformativa>
+      )}
       <Campo rotulo="Nome" htmlFor="produto-nome" erro={erros.nome}>
         <input id="produto-nome" ref={campoNome} className={CLASSE_CAMPO} value={nome} maxLength={80} onChange={(e) => setNome(e.target.value)} />
       </Campo>
@@ -141,6 +188,11 @@ export function FormularioProduto({
               </option>
             ))}
           </select>
+          {podeCriar && (
+            <BotaoDeAtalho aoClicar={() => setAtalho("categoria")} disabled={enviando}>
+              + Nova categoria
+            </BotaoDeAtalho>
+          )}
         </Campo>
         <Campo rotulo="Subcategoria (opcional)" htmlFor="produto-subcategoria">
           <select id="produto-subcategoria" className={CLASSE_CAMPO} value={subcategoriaId} disabled={!categoriaId || subs.length === 0} onChange={(e) => setSubcategoriaId(e.target.value)}>
@@ -151,7 +203,22 @@ export function FormularioProduto({
               </option>
             ))}
           </select>
+          {podeCriar && (
+            <BotaoDeAtalho aoClicar={() => setAtalho("subcategoria")} disabled={enviando || !categoriaId}>
+              + Nova subcategoria
+            </BotaoDeAtalho>
+          )}
         </Campo>
+        {atalho && (
+          <AtalhoDeNome
+            key={atalho}
+            id={`atalho-${atalho}`}
+            rotulo={atalho === "categoria" ? "Nome da nova categoria" : `Nova subcategoria em ${opcoes.find((c) => c.id === categoriaId)?.name ?? ""}`}
+            enviando={enviando}
+            aoSalvar={criarPeloAtalho}
+            aoCancelar={() => setAtalho(null)}
+          />
+        )}
         <Campo rotulo="Finalidade" htmlFor="produto-finalidade">
           <select id="produto-finalidade" className={CLASSE_CAMPO} value={finalidade} onChange={(e) => setFinalidade(e.target.value as FinalidadeEstoque)}>
             {FINALIDADES.map((f) => (
@@ -174,7 +241,7 @@ export function FormularioProduto({
           <input id="produto-minimo" className={CLASSE_CAMPO} inputMode="decimal" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
         </Campo>
         {!produto && (
-          <Campo rotulo="Saldo inicial (opcional)" htmlFor="produto-inicial" erro={erros.inicial} ajuda="Vira a primeira movimentação do produto.">
+          <Campo rotulo="Saldo inicial (opcional)" htmlFor="produto-inicial" erro={erros.inicial} ajuda="Quantidade que você já tem ao cadastrar este produto.">
             <input id="produto-inicial" className={CLASSE_CAMPO} inputMode="decimal" value={inicial} onChange={(e) => setInicial(e.target.value)} />
           </Campo>
         )}
@@ -185,11 +252,11 @@ export function FormularioProduto({
           Cancelar
         </Botao>
         {!produto && (
-          <Botao type="button" variante="secundaria" onClick={() => enviar(true)} disabled={enviando}>
+          <Botao type="button" variante="secundaria" onClick={() => enviar(true)} disabled={enviando || !!atalho}>
             {enviando && continuando ? "Salvando…" : "Cadastrar e continuar"}
           </Botao>
         )}
-        <Botao type="submit" disabled={enviando}>
+        <Botao type="submit" disabled={enviando || !!atalho}>
           {enviando && !continuando ? "Salvando…" : produto ? "Salvar alterações" : "Cadastrar produto"}
         </Botao>
       </div>
