@@ -60,6 +60,7 @@ Branch `feat/estoque-v1` (worktree `C:/wt/estoque`), a partir de `208d7ee`. Plan
   - Arquivar preserva saldo e histórico.
   - Produto arquivado não recebe movimentação e não entra na conferência.
   - O código interno é único por estabelecimento.
+  - Na janela "Novo produto", "Cadastrar e continuar" usa a mesma validação e o mesmo envio de "Cadastrar produto", mas mantém a janela aberta. Os campos só voltam ao padrão depois do sucesso da API, e cada produto novo recebe uma `requestKey` nova. Em erro ou resultado incerto, o preenchimento e a chave ficam, e repetir não duplica o produto nem o saldo inicial. Só vale para a criação.
 - **Reenvio:**
   - Toda criação leva `requestKey` e uma impressão digital dos dados normalizados.
   - Mesma chave com os mesmos dados devolve o original; com outros dados, 409 `CHAVE_REUTILIZADA`, sem gravar.
@@ -107,6 +108,19 @@ Roteiro, intervalos, falhas, liberação e limite do retorno: `docs/runbooks/pub
 ## 6. Estado e retomada
 
 Atualizado a cada checkpoint (abaixo).
+
+**19/11/2026, tarde: "Cadastrar e continuar" no cadastro de produto.**
+
+- **Mudança só no web**, branch `feat/estoque-cadastrar-e-continuar`, reaproveitando a rota de criação. Sem migration e sem mudança na API.
+  - O formulário (`formulario-produto.tsx`) ganhou o botão, que só aparece na criação. Os dois botões de cadastro ficam bloqueados durante o envio.
+  - Depois do sucesso, a página (`produtos/page.tsx`) abre um formulário novo, com outra chave, a mensagem "Produto cadastrado. Você já pode cadastrar o próximo." e o foco no Nome. A listagem e os cartões de resumo são atualizados.
+- **Teste de navegador** (`test:browser:estoque`):
+  - cadastrar A e continuar, conferindo a limpeza, os padrões e o foco;
+  - recusa de validação em B sem perder os campos;
+  - resultado incerto: a API grava, mas a resposta se perde. Os campos ficam, e o reenvio fecha a janela sem duplicar produto nem saldo inicial;
+  - chaves diferentes para A e B;
+  - "Cancelar" não desfaz os já cadastrados.
+- **Próximo passo:** PR, CI e publicação (API e web no mesmo SHA). Depois, registrar a versão aqui.
 
 **19/11/2026: motivo obrigatório na conferência e retorno só para frente.**
 

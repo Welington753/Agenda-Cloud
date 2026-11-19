@@ -4,7 +4,13 @@
 // saldo inicial vira a primeira movimentação; depois, só movimentações mudam
 // o saldo. A unidade trava depois da primeira movimentação. Trocar a
 // categoria limpa a subcategoria que não é dela.
-import { useMemo, useState } from "react";
+//
+// Na criação, "Cadastrar e continuar" usa a mesma validação e o mesmo envio
+// de "Cadastrar produto". Quem limpa é a página: só depois do sucesso da API
+// ela abre um formulário novo (outra chave de pedido), que chega com `aviso`
+// e o foco no Nome. Em erro, nada muda e a chave anterior fica.
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import type { CategoriaEstoque, DadosDoProduto, ProdutoEstoque } from "@/lib/api/estoque-api";
 import { lerQuantidade, MAIOR_SALDO_MILLI, quantidadeParaCampo, UNIDADES, type UnidadeEstoque } from "@/lib/estoque/quantidade";
 import { FINALIDADES, type FinalidadeEstoque } from "@/lib/estoque/rotulos";
@@ -22,6 +28,7 @@ export function FormularioProduto({
   categorias,
   enviando,
   erro,
+  aviso = false,
   aoEnviar,
   aoCancelar,
 }: {
@@ -29,7 +36,9 @@ export function FormularioProduto({
   categorias: CategoriaEstoque[];
   enviando: boolean;
   erro: string | null;
-  aoEnviar: (envio: EnvioDoProduto) => void;
+  /** O produto anterior foi cadastrado por "Cadastrar e continuar". */
+  aviso?: boolean;
+  aoEnviar: (envio: EnvioDoProduto, continuar: boolean) => void;
   aoCancelar: () => void;
 }) {
   const [nome, setNome] = useState(produto?.name ?? "");
@@ -43,6 +52,13 @@ export function FormularioProduto({
   const [inicial, setInicial] = useState("");
   const [erros, setErros] = useState<Record<string, string>>({});
   const unidadeTravada = !!produto && produto.balanceVersion > 0;
+  const campoNome = useRef<HTMLInputElement>(null);
+  // Qual botão de cadastro mostra "Salvando…" (os dois ficam bloqueados).
+  const [continuando, setContinuando] = useState(false);
+
+  useEffect(() => {
+    if (aviso) campoNome.current?.focus();
+  }, [aviso]);
 
   // Só categorias e subcategorias ativas (e a atual do produto, para ele não
   // perder o vínculo só por abrir o formulário).
@@ -60,8 +76,9 @@ export function FormularioProduto({
     setSubcategoriaId((atual) => subcategoriaCompativel(categorias, id || null, atual || null) ?? "");
   }
 
-  function enviar(e: React.FormEvent) {
-    e.preventDefault();
+  function enviar(continuar: boolean) {
+    if (enviando) return;
+    setContinuando(continuar);
     const novos: Record<string, string> = {};
     if (!nome.trim()) novos.nome = "Informe o nome do produto.";
     if (!categoriaId) novos.categoria = "Escolha a categoria.";
@@ -87,13 +104,26 @@ export function FormularioProduto({
         minQuantityMilli: lidoMinimo.milli,
       },
       initialQuantityMilli: inicialMilli,
-    });
+    }, continuar);
   }
 
   return (
-    <form className="space-y-4" onSubmit={enviar} noValidate>
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        enviar(false);
+      }}
+      noValidate
+    >
+      {aviso && !erro && Object.keys(erros).length === 0 && (
+        <p role="status" data-testid="produto-cadastrado-continuar" className="flex items-start gap-2 rounded-[var(--radius-control)] bg-success-soft px-3 py-2 text-sm text-ink">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-[color:var(--color-success)]" aria-hidden="true" />
+          <span>Produto cadastrado. Você já pode cadastrar o próximo.</span>
+        </p>
+      )}
       <Campo rotulo="Nome" htmlFor="produto-nome" erro={erros.nome}>
-        <input id="produto-nome" className={CLASSE_CAMPO} value={nome} maxLength={80} onChange={(e) => setNome(e.target.value)} />
+        <input id="produto-nome" ref={campoNome} className={CLASSE_CAMPO} value={nome} maxLength={80} onChange={(e) => setNome(e.target.value)} />
       </Campo>
       <Campo rotulo="Descrição (opcional)" htmlFor="produto-descricao">
         <textarea id="produto-descricao" className={CLASSE_CAMPO} rows={2} value={descricao} maxLength={500} onChange={(e) => setDescricao(e.target.value)} />
@@ -154,8 +184,13 @@ export function FormularioProduto({
         <Botao type="button" variante="fantasma" onClick={aoCancelar} disabled={enviando}>
           Cancelar
         </Botao>
+        {!produto && (
+          <Botao type="button" variante="secundaria" onClick={() => enviar(true)} disabled={enviando}>
+            {enviando && continuando ? "Salvando…" : "Cadastrar e continuar"}
+          </Botao>
+        )}
         <Botao type="submit" disabled={enviando}>
-          {enviando ? "Salvando…" : produto ? "Salvar alterações" : "Cadastrar produto"}
+          {enviando && !continuando ? "Salvando…" : produto ? "Salvar alterações" : "Cadastrar produto"}
         </Botao>
       </div>
     </form>
