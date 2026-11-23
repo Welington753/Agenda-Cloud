@@ -10,6 +10,8 @@
 //    por inteiro, e a segunda execução aplica só a 22;
 // 4. modo `all` com as duas pendentes: a 22 para com a mensagem clara e
 //    nada fica gravado (nem os valores de enum).
+// Cada cenário migra até a 22 (`ate: MODULO`): as migrations posteriores
+// têm o próprio teste (consumer-migrations.db-e2e-spec.ts).
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { Client } from 'pg';
@@ -134,7 +136,7 @@ describe.skipIf(!url)('migrations do estoque contra PostgreSQL descartável (ban
 
   it('1. banco novo: as 22 no modo do DataSource (each); enums, tabelas e adicional disponível, sem ligar ninguém', async () => {
     const banco = await novoBanco();
-    const aplicadas = await migrar(banco, { viaDataSource: true });
+    const aplicadas = await migrar(banco, { ate: MODULO, viaDataSource: true });
     expect(aplicadas.map((m) => m.name).slice(-2)).toEqual([ENUMS, MODULO]);
     const e = await estado(banco);
     expect(e.migrations).toHaveLength(22);
@@ -170,9 +172,9 @@ describe.skipIf(!url)('migrations do estoque contra PostgreSQL descartável (ban
         expect(meio.migrations.at(-1)).toBe(ENUMS);
         expect(meio.enums).toEqual(TODOS_OS_ENUMS);
         expect(meio.tabelas).toEqual([]);
-        expect((await migrar(banco, { transaction: 'all' })).map((m) => m.name)).toEqual([MODULO]);
+        expect((await migrar(banco, { ate: MODULO, transaction: 'all' })).map((m) => m.name)).toEqual([MODULO]);
       } else {
-        expect((await migrar(banco)).map((m) => m.name)).toEqual([ENUMS, MODULO]);
+        expect((await migrar(banco, { ate: MODULO })).map((m) => m.name)).toEqual([ENUMS, MODULO]);
       }
       const depois = await estado(banco);
       expect(depois.migrations).toHaveLength(22);
@@ -192,7 +194,7 @@ describe.skipIf(!url)('migrations do estoque contra PostgreSQL descartável (ban
     await migrar(banco, { ate: ULTIMA_ANTES });
     // Obstáculo: uma tabela com o nome que a 22 cria.
     await comCliente(urlDe(banco), (c) => c.query(`CREATE TABLE stock_categories (obstaculo int)`));
-    await expect(migrar(banco)).rejects.toThrow(/stock_categories/);
+    await expect(migrar(banco, { ate: MODULO })).rejects.toThrow(/stock_categories/);
     const falhou = await estado(banco);
     expect(falhou.migrations).toHaveLength(21);
     expect(falhou.migrations.at(-1)).toBe(ENUMS);
@@ -202,7 +204,7 @@ describe.skipIf(!url)('migrations do estoque contra PostgreSQL descartável (ban
     expect(falhou.estoque).toMatchObject({ feature_key: null, availability: 'PLANNED' });
 
     await comCliente(urlDe(banco), (c) => c.query(`DROP TABLE stock_categories`));
-    expect((await migrar(banco)).map((m) => m.name)).toEqual([MODULO]);
+    expect((await migrar(banco, { ate: MODULO })).map((m) => m.name)).toEqual([MODULO]);
     const retomado = await estado(banco);
     expect(retomado.migrations).toHaveLength(22);
     expect(retomado.tabelas).toEqual(TODAS_AS_TABELAS);
@@ -214,7 +216,7 @@ describe.skipIf(!url)('migrations do estoque contra PostgreSQL descartável (ban
   it("4. modo 'all' com 21 e 22 pendentes: para com a mensagem clara e nada fica gravado", async () => {
     const banco = await novoBanco();
     await migrar(banco, { ate: ULTIMA_ANTES });
-    await expect(migrar(banco, { transaction: 'all' })).rejects.toThrow(/precisa estar confirmada antes desta/);
+    await expect(migrar(banco, { ate: MODULO, transaction: 'all' })).rejects.toThrow(/precisa estar confirmada antes desta/);
     const depois = await estado(banco);
     expect(depois.migrations).toHaveLength(20);
     expect(depois.enums).toEqual([]);

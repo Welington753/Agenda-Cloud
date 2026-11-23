@@ -57,6 +57,8 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'CatalogItemEdit1793923200000',
   'StockEnumValues1794009600000',
   'StockModule1794096000000',
+  'ConsumerAuditActions1794182400000',
+  'ConsumerIdentity1794268800000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -202,7 +204,9 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // tenant_subscription_items (ModularSubscription).
       // 60 com stock_categories, stock_subcategories, stock_products,
       // stock_counts, stock_movements e stock_count_items (StockModule).
-      expect(Number(tables.rows[0]?.n)).toBe(60);
+      // 62 com consumer_create_requests e whatsapp_consent_events
+      // (ConsumerIdentity; ConsumerAuditActions não cria tabela).
+      expect(Number(tables.rows[0]?.n)).toBe(62);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');

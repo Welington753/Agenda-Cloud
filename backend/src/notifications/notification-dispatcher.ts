@@ -74,8 +74,9 @@ interface SituacaoDaReserva {
   start_at: Date;
   consumer_name: string;
   whatsapp_normalized: string | null;
-  whatsapp_opt_in_at: Date | null;
-  whatsapp_opt_out_at: Date | null;
+  /** Último evento de preferência do NÚMERO que vai receber
+   * (`whatsapp_consent_events`, migration ConsumerIdentity), ou `null`. */
+  consentimento: 'OPT_IN' | 'OPT_OUT' | null;
   timezone: string;
   tenant_status: TenantStatus;
   unit_name: string;
@@ -100,9 +101,7 @@ export function motivoParaNaoEnviar(
   }
   if (agora.getTime() >= new Date(situacao.start_at).getTime()) return 'ATENDIMENTO_JA_COMECOU';
   if (agora.getTime() > new Date(tarefa.not_after).getTime()) return 'FORA_DO_PRAZO';
-  const autorizou = situacao.whatsapp_opt_in_at ? new Date(situacao.whatsapp_opt_in_at) : null;
-  const revogou = situacao.whatsapp_opt_out_at ? new Date(situacao.whatsapp_opt_out_at) : null;
-  if (!autorizou || (revogou && revogou.getTime() >= autorizou.getTime())) return 'SEM_AUTORIZACAO';
+  if (situacao.consentimento !== 'OPT_IN') return 'SEM_AUTORIZACAO';
   if (!telefoneInternacional(situacao.whatsapp_normalized)) return 'TELEFONE_INVALIDO';
   return null;
 }
@@ -174,7 +173,12 @@ export class ExecutorDeNotificacoes {
       const [situacao] = linhasDe<SituacaoDaReserva>(
         await tx.query(
           `SELECT a.status, a.start_at, c.name AS consumer_name, c.whatsapp_normalized,
-                  c.whatsapp_opt_in_at, c.whatsapp_opt_out_at,
+                  -- Preferência do NÚMERO que vai receber, neste
+                  -- estabelecimento (função da migration ConsumerIdentity:
+                  -- evento mais recente; no empate, opt-out; sem evento,
+                  -- não envia). Trocar o telefone do cadastro não leva a
+                  -- autorização do número antigo para o novo.
+                  whatsapp_consent_current(a.tenant_id, c.whatsapp_normalized) AS consentimento,
                   t.timezone, t.status AS tenant_status, u.name AS unit_name
              FROM appointments a
              JOIN consumers c ON c.tenant_id = a.tenant_id AND c.id = a.consumer_id
