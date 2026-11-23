@@ -17,8 +17,10 @@ import { Botao } from "@/components/ui/button";
 import { FaixaConexao } from "@/components/conexao/aviso-conexao";
 import { avisoDaConexao } from "@/lib/auth/conexao";
 
+// Fonte de 16 px (abaixo disso o Safari do iPhone aproxima a tela ao focar) e
+// 48 px de altura, acima do alvo de toque de 44 px.
 const CAMPO =
-  "w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-2.5 text-sm text-ink focus:border-accent";
+  "min-h-12 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3.5 py-3 text-base text-ink focus:border-accent";
 
 export function FormularioLogin({
   aoEntrar,
@@ -76,9 +78,9 @@ export function FormularioLogin({
     <>
       <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
 
-      <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
+      <form onSubmit={(e) => void aoEnviar(e)} className="space-y-5">
         <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-ink">
             E-mail ou login
           </label>
           <input
@@ -102,7 +104,7 @@ export function FormularioLogin({
           )}
         </div>
         <div>
-          <label htmlFor="senha" className="mb-1 block text-sm font-medium text-ink">
+          <label htmlFor="senha" className="mb-1.5 block text-sm font-medium text-ink">
             Senha
           </label>
           <input
@@ -125,8 +127,8 @@ export function FormularioLogin({
 
         {extra}
 
-        <Botao type="submit" className="w-full" disabled={entrando || aguardandoServidor}>
-          <KeyRound size={16} className="mr-1.5" />
+        <Botao type="submit" tamanho="lg" className="min-h-12 w-full" disabled={entrando || aguardandoServidor}>
+          <KeyRound size={18} aria-hidden="true" />
           {entrando ? "Entrando..." : aguardandoServidor ? "Aguardando o servidor..." : "Entrar"}
         </Botao>
       </form>

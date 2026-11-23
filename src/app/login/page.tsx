@@ -12,6 +12,7 @@ import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-
 import { useToast } from "@/components/ui/toast";
 import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcaTimVix } from "@/components/marca/marca";
+import { Cartao } from "@/components/ui/card";
 
 export default function LoginPage() {
   return (
@@ -35,48 +36,35 @@ function LoginPageConteudo() {
     return next ?? ROTA_PADRAO_POS_LOGIN;
   }
 
+  // Coluna única, a mesma em qualquer largura e nos quatro temas (só tokens).
+  // Altura: o contêiner tem altura mínima da tela, em coluna, e o bloco usa
+  // `my-auto`. Sobrando altura, o bloco fica no meio; faltando (tela baixa,
+  // teclado aberto), as margens automáticas viram zero e a página rola a
+  // partir do topo. Nada fica inalcançável: não há altura fixa nem
+  // `overflow-hidden`, e `justify-center` não é usado porque, com conteúdo
+  // maior que a tela, empurraria o topo para fora da área de rolagem.
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-chrome p-10 text-chrome-ink border-r border-chrome-border lg:flex">
-        <div>
-          <MarcaTimVix />
+    <div className="flex min-h-dvh flex-col px-4 py-6 sm:px-6 sm:py-10">
+      <main className="mx-auto my-auto w-full max-w-md">
+        <div className="mb-5 flex flex-col items-center text-center sm:mb-6">
+          <MarcaTimVix className="text-base text-ink" tamanho={24} />
+          <h1 className="mt-4 text-xl font-bold text-ink sm:mt-5 sm:text-2xl">Acesse sua conta</h1>
+          <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
         </div>
-        <div className="max-w-sm space-y-4">
-          <div className="flex size-12 items-center justify-center rounded-[var(--radius-card)] bg-chrome-selected">
-            <ShieldCheck size={24} />
-          </div>
-          <h2 className="text-2xl font-bold">Acesso reservado à equipe</h2>
-          <p className="text-sm text-chrome-ink-soft">
-            Esta é a porta de entrada da equipe de cada estabelecimento
-            (donos, gerentes, recepcionistas e profissionais). Consumidores finais nunca precisam fazer login — eles
-            agendam direto pela página pública do estabelecimento.
-          </p>
-        </div>
-        <p className="text-xs text-chrome-ink-soft">Protótipo em transição para autenticação real.</p>
-      </div>
 
-      <div className="flex flex-col justify-center px-4 py-10 sm:px-10">
-        <div className="mx-auto w-full max-w-sm space-y-6">
-          <div className="lg:hidden">
-            <MarcaTimVix className="text-sm text-ink" tamanho={20} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-ink">Entrar</h1>
-            <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
-          </div>
-
+        <Cartao className="space-y-5 p-5 sm:p-7">
           <FormularioLogin
             aoEntrar={() => router.push(destinoPosLogin())}
             placeholder="voce@seuestabelecimento.com.br ou seu login"
             dica="Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um."
             extra={
-              <div className="flex items-center justify-end text-sm">
+              <div className="-mt-2 flex items-center justify-end text-sm">
                 <button
                   type="button"
                   onClick={() =>
                     notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
                   }
-                  className="font-medium text-accent hover:underline"
+                  className="inline-flex min-h-11 items-center font-medium text-accent hover:underline"
                 >
                   Esqueci minha senha
                 </button>
@@ -86,21 +74,29 @@ function LoginPageConteudo() {
 
           {/* Não há cadastro aberto: o acesso real vem do convite da
               administração. */}
-          <div className="space-y-3 border-t border-border pt-6 text-center">
-            <p className="text-sm text-ink-soft">
-              Ainda não tem acesso?{" "}
-              <Link href="/cadastro" className="font-medium text-accent hover:underline">
-                Saiba como obter
-              </Link>
-            </p>
-            <p className="text-xs text-ink-soft">
-              <Link href="/" className="underline hover:text-ink">
-                ← Voltar para a apresentação
-              </Link>
-            </p>
-          </div>
+          <p className="border-t border-border pt-5 text-center text-sm text-ink-soft">
+            Ainda não tem acesso?{" "}
+            <Link href="/cadastro" className="font-medium text-accent hover:underline">
+              Saiba como obter
+            </Link>
+          </p>
+        </Cartao>
+
+        <div className="mt-6 space-y-3 text-center text-xs text-ink-soft">
+          <p className="mx-auto flex max-w-sm items-start justify-center gap-1.5 text-left">
+            <ShieldCheck size={14} aria-hidden="true" className="mt-px shrink-0" />
+            <span>
+              Acesso reservado à equipe de cada estabelecimento (donos, gerentes, recepcionistas e profissionais).
+              Consumidores finais não precisam de login: agendam pela página pública do estabelecimento.
+            </span>
+          </p>
+          <p>
+            <Link href="/" className="underline hover:text-ink">
+              ← Voltar para a apresentação
+            </Link>
+          </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
