@@ -192,22 +192,55 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 ## Estado e retomada
 
-**23/11/2026 (PC do trabalho).** Nada do Lote C foi aplicado no piloto nem publicado.
+**23/11/2026 (PC do trabalho): Lote C publicado.** Piloto com API e web em `63f1cd6` (SHA_B) e banco com 25 migrations.
 
-**Piloto, conferido só por leitura em 23/11:** API e web live em `0d8f479` (deploys de 19/11), Auto-Deploy `off` nos dois. O banco não foi tocado desde 19/11 (22 migrations, conferido em 19/11).
+**Merges:**
+- #138 (docs): `41fe1e1`.
+- #139 (PR 1): `15e2790` = SHA_A. CI dos dois workflows verde no head `298a2e1`. Correções antes do merge: contagem de tabelas do `lote6b2-migration` de 60 para 62 (a diferença é exatamente `consumer_create_requests` e `whatsapp_consent_events`) e a falha intermitente de `commercial-access-postgres`, que vinha de estabelecimentos do plano modular criados por outro arquivo no banco compartilhado (filtro pela marca do arquivo).
+- #140 (PR 2): `63f1cd6` = SHA_B. CI dos dois workflows verde no head `4d449ec`. Correções no fim:
+  - `whatsapp-contato-flow` interceptava `/consumers/page`, mas a busca da tela agora usa `/consumers/groups`;
+  - o job de navegador + API ganhou 30 minutos, porque as execuções verdes anteriores já levavam cerca de 20 (o limite);
+  - `web-push-crypto.spec.ts` falhou uma vez e passou ao rodar de novo: a chave privada gerada no teste às vezes tem 31 bytes (cerca de 1 vez em 256). O teste é anterior a este lote e não foi corrigido.
 
-**Lote N:** PR de documentação #138 mesclado como `41fe1e1` (só docs, nenhum workflow dispara). Falta o teste no celular com sessão real (responsável).
+**Backup e restauração:** `%USERPROFILE%\AgendaCloud-operacoes\pre-mig23-22-backup-2026-11-23T14-13-11Z` (PG 17.12, 22 migrations, 60 tabelas). Restaurado num PostgreSQL 17 descartável com TLS: contagem e md5 iguais em todas as tabelas (`restauracao-conferida.json` na mesma pasta).
 
-**PR 1 (#139): mesclado como `15e2790` = SHA_A.**
-- Antes do merge, duas correções, com o CI dos dois workflows verde no head `298a2e1`:
-  - `scripts/lote6b2-migration.migration-e2e-spec.ts`: 60 para 62 tabelas. Conferido num banco descartável: migrar até a 24, voltar até a 22 e comparar as listas; a diferença é exatamente `consumer_create_requests` e `whatsapp_consent_events`;
-  - a falha intermitente de `commercial-access-postgres` ("pagamento manual"): a lista de estabelecimentos é da plataforma inteira e o banco é compartilhado entre os arquivos. Conforme a ordem dos arquivos (o Vitest a escolhe pelo histórico de duração), a página mais recente trazia estabelecimentos do plano modular criados por `platform-portal-postgres` (`maxProfessionals` nulo), que o contrato do web `0c44052` não conhece. Reproduzida rodando `platform-portal-postgres` e depois `commercial-access-postgres` no mesmo banco; corrigida filtrando a lista pela marca do arquivo. O `ck_teste_falha` do log era só o 500 esperado de outro teste do mesmo arquivo. Bateria completa local depois da correção: 427/427.
+**Diagnóstico C0 de 23/11 (cópia restaurada, só agregados):** igual ao de 18/11.
+- 1 estabelecimento com clientes, 9 clientes;
+- 0 grupos com telefone repetido;
+- 0 grupos com variação de 9º dígito ou DDD com zero, e nenhum DDD com zero;
+- 1 grupo com mesmo nome e telefones diferentes (4 cadastros);
+- 1 cadastro com mais de um nome nos agendamentos;
+- opt-in e opt-out: 0 e 0;
+- 1 celular com 9 seguido de 0–5;
+- 1 telefone fora de qualquer padrão. É o cadastro com `phone_match_key` nulo depois da migration 24.
 
-**PR 2 (#140, branch `feat/clientes-unificacao`): aberto.** API e telas finais, migration 25. Local: unitários do backend e do web, `typecheck`, `lint`, `lint:types`, HTTP sem banco e os testes de banco afetados verdes; bateria completa de banco e navegador no CI.
+**Ensaio na cópia (todas OK, pela API e pela tela):**
+- janela 1: API e web atuais no schema 24;
+- janela 2: API A com o web atual;
+- retorno da seção P3: telefone editado pela API A, depois a API atual de volta;
+- migration 25 aplicada com a API A no ar;
+- janela 3: API A no schema 25;
+- janela 4: API B com o web atual;
+- janela 5: API B com o web B.
 
-**Próxima ação:**
-1. CI verde no head final do #140 e merge (SHA_B).
-2. Ensaio completo do roteiro `docs/runbooks/publicacao-clientes-ficha.md` numa cópia restaurada de um backup NOVO, com as combinações de versão das janelas 1 a 5 e o retorno da seção P3.
-3. Publicação no piloto pelos SHAs exatos, só com pedido explícito, terminando com API e web em SHA_B.
+**Publicação no piloto (23/11, UTC).** As consultas da seção P2 rodaram antes e depois de cada migration, no lugar de `pilot:check-database`.
+1. Migration 23 com o kit do SHA_A. Depois, a 24. Resultado: 24 migrations, gatilho presente, UNIQUE ainda presente, 9 clientes, 0 lápides, 1 sem chave, 0 pedidos de cadastro, 0 eventos de consentimento.
+2. API `15e2790`, deploy `dep-dc24nfm8bjmc739jsjtg`. `/health` 200.
+3. Migration 25 com o kit do SHA_B. Resultado: 25 migrations, UNIQUE removido, os mesmos 9 clientes.
+4. API `63f1cd6`, deploy `dep-dc24ofp42hec739098og`. `/health` 200, sem erro no log.
+5. Web `63f1cd6`, deploy `dep-dc24p2bm8hqs73b67cn0`. Fila vazia nos dois serviços.
 
-**Só neste computador:** o PostgreSQL descartável da sessão (scratchpad, porta 55435). Nada precisa ser levado.
+**Retorno:** depois da migration 25 o piso é a API SHA_A. A API `0d8f479` não volta (seção P3).
+
+**Falta (responsável):** o roteiro curto de teste do runbook com sessão real no piloto:
+- grupo e ficha;
+- aviso de "mesmo nome";
+- edição de telefone mantendo o histórico;
+- "Usar este" e "Cadastrar outra pessoa";
+- unificação como dono, conferindo também que cancelar não grava nada e que o gerente não vê "Unificar".
+
+Falta também o teste no celular do Lote N.
+
+**Só neste computador:**
+- o backup acima, que deve ser guardado;
+- os clusters descartáveis da sessão (scratchpad), que podem ser apagados.
