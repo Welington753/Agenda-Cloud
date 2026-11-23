@@ -250,7 +250,13 @@ describe.skipIf(!url)('planos e validade do acesso pela API contra PostgreSQL de
     expect(fichaCrua.accessPeriods).toHaveLength(1);
     expect(fichaCrua.billing).toEqual({ available: false });
     expect(webAnterior.ehDetalheEstabelecimento(fichaCrua)).toBe(true);
-    expect(webAnterior.ehListaEstabelecimentos((await master.get('/platform/establishments').expect(200)).body)).toBe(true);
+    // A lista é da plataforma inteira e o banco é compartilhado entre os
+    // arquivos: sem filtro, a página traria estabelecimentos de outros testes
+    // (ex.: no plano modular, que o web 0c44052 não conhecia), conforme a
+    // ordem em que os arquivos rodaram. Filtrada pela marca deste arquivo.
+    const listaCrua = (await master.get(`/platform/establishments?q=${marca}`).expect(200)).body;
+    expect(listaCrua.items.map((e: { id: string }) => e.id)).toContain(est.tenantId);
+    expect(webAnterior.ehListaEstabelecimentos(listaCrua)).toBe(true);
     expect(webAnterior.ehAcesso((await master.get('/platform/access').expect(200)).body)).toBe(true);
 
     // A mesma requisição de novo (resposta perdida, clique duplo): nada novo.
