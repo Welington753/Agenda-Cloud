@@ -263,7 +263,10 @@ export class ConsumersService {
    *   simultâneas com a mesma chave e telefones diferentes não se esperam:
    *   a PK de `consumer_create_requests` barra a segunda, que relê a chave.
    * - Telefone já usado por um cadastro ativo: 409 `TELEFONE_EM_USO`,
-   *   conferido aqui, sob a trava (com ou sem o UNIQUE antigo no banco).
+   *   conferido aqui, sob a trava, a não ser com `outraPessoa: true` (outra
+   *   pessoa no mesmo telefone, ex.: mãe e filho; nome igual permitido). A
+   *   chave de pedido, obrigatória nesse caso, impede o reenvio de virar um
+   *   terceiro cadastro.
    */
   async create(userId: string, tenantId: string, dto: CreateConsumerDto): Promise<ConsumerView> {
     return (await this.register(userId, tenantId, dto)).consumer;
@@ -280,7 +283,7 @@ export class ConsumersService {
     const telefone = normalizePhone(dto.whatsapp);
     const chave = dto.requestKey;
     const impressao = chave
-      ? impressaoDoPedido({ name: dto.name, whatsappNormalized: telefone, email: dto.email, outraPessoa: false })
+      ? impressaoDoPedido({ name: dto.name, whatsappNormalized: telefone, email: dto.email, outraPessoa: dto.outraPessoa === true })
       : null;
 
     try {
@@ -361,7 +364,7 @@ export class ConsumersService {
   async createWith(
     manager: EntityManager,
     tenantId: string,
-    dto: Pick<CreateConsumerDto, 'name' | 'whatsapp' | 'email'>,
+    dto: Pick<CreateConsumerDto, 'name' | 'whatsapp' | 'email' | 'outraPessoa'>,
   ): Promise<ConsumerView> {
     const telefone = normalizePhone(dto.whatsapp);
     await travarTelefoneDoCliente(manager, tenantId, telefone);
@@ -369,23 +372,14 @@ export class ConsumersService {
   }
 
   /** Grava o cadastro, já sob a trava do telefone. Telefone de um cadastro
-   * ativo: 409 `TELEFONE_EM_USO` (o UNIQUE antigo, enquanto existir, dá a
-   * mesma resposta). */
+   * ativo: 409 `TELEFONE_EM_USO`, a não ser com `outraPessoa: true`. */
   private async gravarNovo(
     manager: EntityManager,
     tenantId: string,
-    dto: Pick<CreateConsumerDto, 'name' | 'whatsapp' | 'email'>,
+    dto: Pick<CreateConsumerDto, 'name' | 'whatsapp' | 'email' | 'outraPessoa'>,
     whatsappNormalized: string,
   ): Promise<ConsumerView> {
-    const [emUso] = linhasDe<{ id: string }>(
-      await manager.query(
-        `SELECT id FROM consumers
-          WHERE tenant_id = $1 AND whatsapp_normalized = $2 AND merged_into_consumer_id IS NULL
-          LIMIT 1`,
-        [tenantId, whatsappNormalized],
-      ),
-    );
-    if (emUso) throw telefoneEmUso();
+    if (dto.outraPessoa !== true) await this.recusarTelefoneEmUso(manager, tenantId, whatsappNormalized);
 
     try {
       const salvo = await manager.save(
@@ -399,9 +393,32 @@ export class ConsumersService {
       );
       return toView(salvo);
     } catch (error) {
+      // Só num banco anterior à ConsumerSharedPhone (ensaio): o UNIQUE antigo.
       if (isUniqueViolation(error, 'uq_consumers_tenant_whatsapp')) throw telefoneEmUso();
       throw error;
     }
+  }
+
+  /** 409 `TELEFONE_EM_USO` quando um cadastro ativo já usa o telefone
+   * (chamado sob a trava do telefone), com esses cadastros (até
+   * `LIMITE_DE_BUSCA`) para a tela oferecer "Usar este". */
+  private async recusarTelefoneEmUso(
+    manager: EntityManager,
+    tenantId: string,
+    whatsappNormalized: string,
+    exceto?: string,
+  ): Promise<void> {
+    const emUso = linhasDe<LinhaDoCliente>(
+      await manager.query(
+        `SELECT id, name, whatsapp, email FROM consumers
+          WHERE tenant_id = $1 AND whatsapp_normalized = $2 AND merged_into_consumer_id IS NULL
+            AND ($3::varchar IS NULL OR id <> $3)
+          ORDER BY name_key, id
+          LIMIT ${LIMITE_DE_BUSCA}`,
+        [tenantId, whatsappNormalized, exceto ?? null],
+      ),
+    );
+    if (emUso.length > 0) throw telefoneEmUso(emUso.map(viewDaLinha));
   }
 
   /**
@@ -439,7 +456,7 @@ export class ConsumersService {
    * público) e depois a linha (`FOR UPDATE`). Lápide: 409
    * `CLIENTE_UNIFICADO`. Versão lida diferente da atual: 409
    * `CLIENTE_ALTERADO`. Telefone de outro cadastro ativo: 409
-   * `TELEFONE_EM_USO`.
+   * `TELEFONE_EM_USO`, a não ser com `outraPessoa: true`.
    */
   async update(
     userId: string,
@@ -487,16 +504,8 @@ export class ConsumersService {
           return { ...viewDaLinha(atual), updatedAt: new Date(atual.updated_at).toISOString() };
         }
 
-        if (novo.whatsappNormalized !== atual.whatsapp_normalized) {
-          const [outro] = linhasDe<{ id: string }>(
-            await tx.query(
-              `SELECT id FROM consumers
-                WHERE tenant_id = $1 AND whatsapp_normalized = $2 AND id <> $3 AND merged_into_consumer_id IS NULL
-                LIMIT 1`,
-              [tenant, novo.whatsappNormalized, consumerId],
-            ),
-          );
-          if (outro) throw telefoneEmUso();
+        if (novo.whatsappNormalized !== atual.whatsapp_normalized && dto.outraPessoa !== true) {
+          await this.recusarTelefoneEmUso(tx, tenant, novo.whatsappNormalized, consumerId);
         }
 
         const [salvo] = linhasDe<LinhaDoCliente>(

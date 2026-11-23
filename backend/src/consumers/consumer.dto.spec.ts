@@ -1,6 +1,13 @@
 // Contrato de busca e cadastro de clientes (Lote 6D.5).
 import { describe, expect, it } from 'vitest';
-import { consumerDataSchema, consumerSearchSchema, createConsumerSchema, updateConsumerSchema } from './consumer.dto.js';
+import {
+  consumerDataSchema,
+  consumerSearchSchema,
+  createConsumerSchema,
+  mergeConsumersSchema,
+  mergePreviewSchema,
+  updateConsumerSchema,
+} from './consumer.dto.js';
 
 describe('consumerSearchSchema', () => {
   it('aceita um termo de busca', () => {
@@ -70,13 +77,17 @@ describe('createConsumerSchema — chave de pedido e outra pessoa', () => {
     expect(createConsumerSchema.safeParse({ ...VALIDO, requestKey }).success).toBe(false);
   });
 
-  it('esta versão recusa outraPessoa (só existe depois da ConsumerSharedPhone)', () => {
-    expect(createConsumerSchema.safeParse({ ...VALIDO, requestKey: 'k_0123456789abcdef', outraPessoa: true }).success).toBe(false);
+  it('outraPessoa exige a chave de pedido (o reenvio nunca vira um terceiro cadastro)', () => {
+    expect(createConsumerSchema.safeParse({ ...VALIDO, requestKey: 'k_0123456789abcdef', outraPessoa: true }).success).toBe(true);
+    expect(createConsumerSchema.safeParse({ ...VALIDO, outraPessoa: true }).success).toBe(false);
+    expect(createConsumerSchema.safeParse({ ...VALIDO, outraPessoa: false }).success).toBe(true);
+    expect(createConsumerSchema.safeParse({ ...VALIDO, requestKey: 'k_0123456789abcdef', outraPessoa: 'sim' }).success).toBe(false);
   });
 
   it('o cliente novo da agenda não aceita requestKey (o reenvio ali é barrado pela reserva)', () => {
     expect(consumerDataSchema.safeParse({ ...VALIDO, requestKey: 'k_0123456789abcdef' }).success).toBe(false);
     expect(consumerDataSchema.safeParse(VALIDO).success).toBe(true);
+    expect(consumerDataSchema.safeParse({ ...VALIDO, outraPessoa: true }).success).toBe(true);
   });
 });
 
@@ -99,9 +110,25 @@ describe('updateConsumerSchema', () => {
     expect(updateConsumerSchema.parse({ ...VERSAO, email: '' }).email).toBeNull();
   });
 
-  it('recusa telefone inválido, outraPessoa e campos desconhecidos', () => {
+  it('aceita outraPessoa; recusa telefone inválido e campos desconhecidos', () => {
     expect(updateConsumerSchema.safeParse({ ...VERSAO, whatsapp: '123' }).success).toBe(false);
-    expect(updateConsumerSchema.safeParse({ ...VERSAO, name: 'M', outraPessoa: true }).success).toBe(false);
+    expect(updateConsumerSchema.safeParse({ ...VERSAO, whatsapp: '(11) 90000-0000', outraPessoa: true }).success).toBe(true);
     expect(updateConsumerSchema.safeParse({ ...VERSAO, name: 'M', tenantId: 'outro' }).success).toBe(false);
+  });
+});
+
+describe('prévia e unificação', () => {
+  const VERSAO = 'a'.repeat(64);
+  it('prévia exige só o principal', () => {
+    expect(mergePreviewSchema.safeParse({ principalId: 'abc123' }).success).toBe(true);
+    expect(mergePreviewSchema.safeParse({}).success).toBe(false);
+    expect(mergePreviewSchema.safeParse({ principalId: 'abc123', extra: '1' }).success).toBe(false);
+    expect(mergePreviewSchema.safeParse({ principalId: 'a b' }).success).toBe(false);
+  });
+  it('unificação exige o principal e a versão revisada (hex de 64)', () => {
+    expect(mergeConsumersSchema.safeParse({ principalId: 'abc123', versaoDaPrevia: VERSAO }).success).toBe(true);
+    expect(mergeConsumersSchema.safeParse({ principalId: 'abc123' }).success).toBe(false);
+    expect(mergeConsumersSchema.safeParse({ principalId: 'abc123', versaoDaPrevia: 'A'.repeat(64) }).success).toBe(false);
+    expect(mergeConsumersSchema.safeParse({ principalId: 'abc123', versaoDaPrevia: VERSAO, tenantId: 'x' }).success).toBe(false);
   });
 });

@@ -3,10 +3,9 @@
 // nunca ecoa o valor recebido na mensagem de erro.
 //
 // Busca, cadastro (com chave de pedido opcional), lista agrupada, ficha,
-// histórico e edição (docs/plans/clientes-ficha-e-duplicados.md). Esta
-// versão NÃO aceita `outraPessoa`: cadastrar outra pessoa no mesmo telefone
-// só existe depois da migration ConsumerSharedPhone (o `.strict()` recusa o
-// campo com 400).
+// histórico, edição, prévia e unificação (docs/plans/clientes-ficha-e-duplicados.md).
+// `outraPessoa: true` cadastra outra pessoa num telefone que já tem cadastro
+// (só existe com a migration ConsumerSharedPhone, que esta versão exige).
 //
 // Um cliente NÃO é um usuário: `consumers` não tem senha, e-mail de login,
 // credencial nem Membership (ver consumer.entity.ts). Cadastrar aqui nunca
@@ -77,10 +76,14 @@ const camposDoCliente = {
     .optional(),
 };
 
+/** Pedido explícito de outro cadastro num telefone que já tem um (ex.: mãe e
+ * filho). Sem ele, telefone em uso responde 409 `TELEFONE_EM_USO`. */
+const outraPessoaSchema = z.boolean().optional();
+
 /** Dados de um cliente novo criado junto com o agendamento (agenda,
  * `mode: 'new'`): o reenvio ali é barrado pela própria reserva. */
 export const consumerDataSchema = z
-  .object(camposDoCliente)
+  .object({ ...camposDoCliente, outraPessoa: outraPessoaSchema })
   .strict()
   .superRefine((valor, ctx) => conferirTelefone(valor.whatsapp, ctx));
 
@@ -91,9 +94,17 @@ export const createConsumerSchema = z
     // reenvio (rede caiu) devolve o cadastro já criado em vez de outro.
     // Opcional: o web anterior não manda.
     requestKey: requestKeySchema.optional(),
+    outraPessoa: outraPessoaSchema,
   })
   .strict()
-  .superRefine((valor, ctx) => conferirTelefone(valor.whatsapp, ctx));
+  .superRefine((valor, ctx) => {
+    conferirTelefone(valor.whatsapp, ctx);
+    // Outro cadastro no mesmo telefone só com chave de pedido: o reenvio
+    // (rede caiu) nunca vira um terceiro cadastro.
+    if (valor.outraPessoa === true && valor.requestKey === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['requestKey'], message: 'Recarregue a página e tente de novo.' });
+    }
+  });
 
 export type CreateConsumerDto = z.infer<typeof createConsumerSchema>;
 
@@ -130,6 +141,7 @@ export const updateConsumerSchema = z
       .transform((valor) => (valor === '' ? null : valor))
       .optional(),
     expectedUpdatedAt: z.iso.datetime({ offset: true }),
+    outraPessoa: outraPessoaSchema,
   })
   .strict()
   .superRefine((valor, ctx) => {
@@ -139,3 +151,18 @@ export const updateConsumerSchema = z
     }
   });
 export type UpdateConsumerDto = z.infer<typeof updateConsumerSchema>;
+
+/** Prévia da unificação (`GET .../consumers/:id/merge-preview`): o cadastro
+ * do caminho é o SECUNDÁRIO (vira lápide); `principalId` fica com o histórico. */
+export const mergePreviewSchema = z.object({ principalId: idSchema }).strict();
+export type MergePreviewDto = z.infer<typeof mergePreviewSchema>;
+
+/** Unificação (`POST .../consumers/:id/merge`). `versaoDaPrevia` é a versão
+ * que a pessoa revisou: se o conteúdo mudou, 409 `PREVIA_DESATUALIZADA`. */
+export const mergeConsumersSchema = z
+  .object({
+    principalId: idSchema,
+    versaoDaPrevia: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+export type MergeConsumersDto = z.infer<typeof mergeConsumersSchema>;

@@ -9,11 +9,12 @@ import { AuthModule } from '../auth/auth.module.js';
 import { ConsumersController } from './consumers.controller.js';
 import { ConsumersService } from './consumers.service.js';
 import { ConsumerProfileService } from './consumer-profile.service.js';
+import { ConsumerMergeService } from './consumer-merge.service.js';
 
 @Module({
   imports: [AuthModule],
   controllers: [ConsumersController],
-  providers: [ConsumersService, ConsumerProfileService],
+  providers: [ConsumersService, ConsumerProfileService, ConsumerMergeService],
   exports: [ConsumersService],
 })
 export class ConsumersModule {}

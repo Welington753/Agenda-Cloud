@@ -44,3 +44,18 @@ export function canManageConsumers(
     Permission.CONSUMIDORES_GERENCIAR,
   ]);
 }
+
+export const CONSUMERS_MERGE_FORBIDDEN_MESSAGE = 'Só o dono do estabelecimento unifica cadastros de clientes.';
+
+/**
+ * Unificar cadastros: SÓ o dono (decisão do responsável, 19/11/2026), nem
+ * com permissão concedida ao gerente. Um `DENIED` do próprio dono em
+ * visualizar ou gerenciar clientes tira também a unificação.
+ */
+export function canMergeConsumers(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role !== EstablishmentRole.DONO) return false;
+  return !algumaNegada(overrides, [Permission.CONSUMIDORES_VISUALIZAR, Permission.CONSUMIDORES_GERENCIAR]);
+}

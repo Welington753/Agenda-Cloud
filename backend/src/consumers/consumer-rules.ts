@@ -37,8 +37,22 @@ export const CLIENTE_UNIFICADO_MESSAGE =
 export const CLIENTE_ALTERADO_MESSAGE =
   'Este cadastro foi alterado por outra pessoa. Recarregue para ver a versão atual.';
 
-export function telefoneEmUso(): ConflictException {
-  return new ConflictException({ statusCode: 409, code: 'TELEFONE_EM_USO', message: TELEFONE_EM_USO_MESSAGE });
+/** Cadastro ativo que já usa o telefone, para a tela oferecer "Usar este"
+ * ou "Cadastrar outra pessoa". Só vai para quem já pode ver os clientes. */
+export interface CadastroDoTelefone {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+}
+
+export function telefoneEmUso(consumers?: readonly CadastroDoTelefone[]): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    code: 'TELEFONE_EM_USO',
+    message: TELEFONE_EM_USO_MESSAGE,
+    ...(consumers ? { consumers } : {}),
+  });
 }
 
 export function chaveReutilizada(): ConflictException {

@@ -1,4 +1,5 @@
-// Migrations dos clientes (23 ConsumerAuditActions e 24 ConsumerIdentity) com
+// Migrations dos clientes (23 ConsumerAuditActions, 24 ConsumerIdentity e 25
+// ConsumerSharedPhone) com
 // o runtime COMPILADO (`dist-migrations`, o mesmo do CI e do piloto), cada
 // cenário num banco TEMPORÁRIO próprio, criado e apagado aqui:
 // 1. atualização a partir das 22, com clientes já gravados: chaves geradas,
@@ -6,7 +7,10 @@
 //    antigo mantido, gatilhos e índices; também pelo caminho do piloto (uma
 //    por vez);
 // 2. regra única da chave de telefone e da chave de nome;
-// 3. retorno (`down`) só sem dados novos; com dados novos, recusa.
+// 3. retorno (`down`) só sem dados novos; com dados novos, recusa;
+// 4. a 25 a partir da 24 com dados: o UNIQUE de telefone sai, o mesmo
+//    telefone passa a aceitar outro cadastro; o retorno recusa com telefone
+//    repetido.
 // Nenhum dado real: nomes e telefones fictícios.
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -22,6 +26,7 @@ const FONTE_COMPILADA = new URL('../dist-migrations/database/migrations-data-sou
 const ULTIMA_ANTES = 'StockModule1794096000000';
 const ENUMS = 'ConsumerAuditActions1794182400000';
 const IDENTIDADE = 'ConsumerIdentity1794268800000';
+const TELEFONE_COMPARTILHADO = 'ConsumerSharedPhone1794355200000';
 
 type Opcoes = ConstructorParameters<typeof DataSource>[0];
 
@@ -133,7 +138,7 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
     const banco = await novoBanco();
     await migrar(banco, ULTIMA_ANTES);
     await semear(banco);
-    const aplicadas = await migrar(banco);
+    const aplicadas = await migrar(banco, IDENTIDADE);
     expect(aplicadas.map((m) => m.name)).toEqual([ENUMS, IDENTIDADE]);
 
     const enums = await q<{ v: string }>(banco, `SELECT unnest(enum_range(NULL::audit_action))::text AS v`);
@@ -255,7 +260,7 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
 
   it('3. retorno: sem dados novos, a 24 desfaz; com pedido de cadastro gravado, recusa', async () => {
     const banco = await novoBanco();
-    await migrar(banco);
+    await migrar(banco, IDENTIDADE);
     await comDataSource(banco, (ds) => ds.undoLastMigration({ transaction: 'each' }));
     const colunas = await q<{ column_name: string }>(
       banco,
@@ -263,7 +268,7 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
     );
     expect(colunas).toEqual([]);
 
-    await migrar(banco);
+    await migrar(banco, IDENTIDADE);
     await semear(banco);
     await q(
       banco,
@@ -273,5 +278,28 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
     await expect(comDataSource(banco, (ds) => ds.undoLastMigration({ transaction: 'each' }))).rejects.toThrow(/só para frente/);
     const [ainda] = await q<{ n: number }>(banco, `SELECT count(*)::int AS n FROM consumer_create_requests`);
     expect(ainda.n).toBe(1);
+  }, 120_000);
+
+  it('4. a 25 a partir da 24 com dados: sai o UNIQUE de telefone; o retorno recusa com telefone repetido', async () => {
+    const banco = await novoBanco();
+    await migrar(banco, IDENTIDADE);
+    await semear(banco);
+    expect((await migrar(banco)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
+    const restricoes = async () =>
+      (await q<{ conname: string }>(banco, `SELECT conname FROM pg_constraint WHERE conname IN ('uq_consumers_tenant_whatsapp', 'uq_consumers_tenant_id') ORDER BY 1`)).map(
+        (r) => r.conname,
+      );
+    expect(await restricoes()).toEqual(['uq_consumers_tenant_id']);
+    // Outra pessoa no mesmo telefone: aceito pelo banco (a aplicação decide).
+    await q(banco, `INSERT INTO consumers (id, tenant_id, name, whatsapp, whatsapp_normalized) VALUES ('c9', 't1', 'Filho', 'x', '+5511987654321')`);
+    const [chave] = await q<{ phone_match_key: string }>(banco, `SELECT phone_match_key FROM consumers WHERE id = 'c9'`);
+    expect(chave.phone_match_key).toBe('+551187654321');
+
+    await expect(comDataSource(banco, (ds) => ds.undoLastMigration({ transaction: 'each' }))).rejects.toThrow(/só para frente/);
+    expect(await restricoes()).toEqual(['uq_consumers_tenant_id']);
+    await q(banco, `DELETE FROM consumers WHERE id = 'c9'`);
+    await comDataSource(banco, (ds) => ds.undoLastMigration({ transaction: 'each' }));
+    expect(await restricoes()).toEqual(['uq_consumers_tenant_id', 'uq_consumers_tenant_whatsapp']);
+    expect((await migrar(banco)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
   }, 120_000);
 });

@@ -22,6 +22,7 @@ import { AppModule } from '../src/app.module.js';
 import { SessionGuard } from '../src/auth/session.guard.js';
 import { AppointmentsService } from '../src/appointments/appointments.service.js';
 import { ConsumersService } from '../src/consumers/consumers.service.js';
+import { ConsumerMergeService } from '../src/consumers/consumer-merge.service.js';
 
 const FAKE_DATA_SOURCE = {
   isInitialized: false,
@@ -290,8 +291,12 @@ describe('rotas de clientes (e2e)', () => {
   let searchMock: ReturnType<typeof vi.fn>;
   let createMock: ReturnType<typeof vi.fn>;
   let updateMock: ReturnType<typeof vi.fn>;
+  let previewMock: ReturnType<typeof vi.fn>;
+  let mergeMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    previewMock = vi.fn().mockResolvedValue({ versaoDaPrevia: 'a'.repeat(64) });
+    mergeMock = vi.fn().mockResolvedValue({ repeated: false, secundarioId: 'consumer_2' });
     searchMock = vi.fn().mockResolvedValue([
       { id: 'consumer_1', name: 'Maria', whatsapp: '(11) 90000-0000', email: null },
     ]);
@@ -314,6 +319,8 @@ describe('rotas de clientes (e2e)', () => {
       .useValue(FAKE_DATA_SOURCE)
       .overrideProvider(ConsumersService)
       .useValue({ search: searchMock, register: createMock, update: updateMock })
+      .overrideProvider(ConsumerMergeService)
+      .useValue({ preview: previewMock, merge: mergeMock })
       .overrideGuard(SessionGuard)
       .useValue({
         canActivate: (context: { switchToHttp: () => { getRequest: () => Record<string, unknown> } }) => {
@@ -368,12 +375,17 @@ describe('rotas de clientes (e2e)', () => {
     expect(resposta.body).toMatchObject({ repeated: true, consumer: { id: 'consumer_2' } });
   });
 
-  it('POST com outraPessoa é 400 nesta versão', async () => {
+  it('POST com outraPessoa exige a chave de pedido', async () => {
+    await request(app.getHttpServer())
+      .post(CAMINHO_CLIENTES)
+      .send({ name: 'João', whatsapp: '(11) 98888-7777', outraPessoa: true })
+      .expect(400);
+    expect(createMock).not.toHaveBeenCalled();
     await request(app.getHttpServer())
       .post(CAMINHO_CLIENTES)
       .send({ name: 'João', whatsapp: '(11) 98888-7777', requestKey: 'k_0123456789abcdef', outraPessoa: true })
-      .expect(400);
-    expect(createMock).not.toHaveBeenCalled();
+      .expect(201);
+    expect(createMock).toHaveBeenCalledWith('user_1', 'tenant_a', expect.objectContaining({ outraPessoa: true }));
   });
 
   it.each([
@@ -396,5 +408,22 @@ describe('rotas de clientes (e2e)', () => {
     const resposta = await request(app.getHttpServer()).patch(`${CAMINHO_CLIENTES}/consumer_1`).send(corpo).expect(200);
     expect(resposta.body.consumer.id).toBe('consumer_1');
     expect(updateMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'consumer_1', corpo);
+  });
+
+  it('prévia: GET com o principal; sem ele é 400', async () => {
+    await request(app.getHttpServer()).get(`${CAMINHO_CLIENTES}/consumer_2/merge-preview`).expect(400);
+    expect(previewMock).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).get(`${CAMINHO_CLIENTES}/consumer_2/merge-preview`).query({ principalId: 'consumer_1' }).expect(200);
+    expect(previewMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'consumer_2', 'consumer_1');
+  });
+
+  it('unificação: POST com principal e versão responde 200; corpo incompleto ou com campo a mais é 400', async () => {
+    const caminho = `${CAMINHO_CLIENTES}/consumer_2/merge`;
+    await request(app.getHttpServer()).post(caminho).send({ principalId: 'consumer_1' }).expect(400);
+    await request(app.getHttpServer()).post(caminho).send({ principalId: 'consumer_1', versaoDaPrevia: 'a'.repeat(64), tenantId: 'x' }).expect(400);
+    expect(mergeMock).not.toHaveBeenCalled();
+    const corpo = { principalId: 'consumer_1', versaoDaPrevia: 'a'.repeat(64) };
+    await request(app.getHttpServer()).post(caminho).send(corpo).expect(200);
+    expect(mergeMock).toHaveBeenCalledWith('user_1', 'tenant_a', 'consumer_2', corpo);
   });
 });

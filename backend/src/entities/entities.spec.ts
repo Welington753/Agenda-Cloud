@@ -365,8 +365,9 @@ describe('unicidades de negócio com escopo do tenant', () => {
     expect(hasIndexOnColumns(CommissionEntry, ['appointmentId'], true)).toBe(true);
   });
 
-  it('Consumer é único por (tenantId, whatsappNormalized) — isolamento por par, nunca telefone sozinho', () => {
-    expect(hasUniqueOnColumns(Consumer, ['tenantId', 'whatsappNormalized'])).toBe(true);
+  it('Consumer: o mesmo telefone pode ter mais de um cadastro no estabelecimento (ConsumerSharedPhone); a identidade é (tenantId, id)', () => {
+    expect(hasUniqueOnColumns(Consumer, ['tenantId', 'whatsappNormalized'])).toBe(false);
+    expect(hasUniqueOnColumns(Consumer, ['tenantId', 'id'])).toBe(true);
   });
 
   it('ProfessionalService é único por (tenantId, professionalId, serviceId)', () => {

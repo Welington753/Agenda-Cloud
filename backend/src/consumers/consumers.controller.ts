@@ -5,9 +5,10 @@
 //
 // BUSCA, CADASTRO, a LISTAGEM PAGINADA da tela de Clientes (no máximo 50
 // por página, sempre do tenant provado), a LISTA AGRUPADA por telefone, a
-// FICHA, o HISTÓRICO e a EDIÇÃO (docs/plans/clientes-ficha-e-duplicados.md).
+// FICHA, o HISTÓRICO, a EDIÇÃO, a PRÉVIA e a UNIFICAÇÃO (só o dono)
+// (docs/plans/clientes-ficha-e-duplicados.md).
 // Rotas fixas (`page`, `groups`) antes de `:consumerId`.
-import { Body, Controller, Get, Patch, Post, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { AUTH_CONTEXT_REQUEST_KEY, type IdentityContext } from '../auth/session-context.js';
@@ -19,16 +20,21 @@ import {
   consumerPageSchema,
   consumerSearchSchema,
   createConsumerSchema,
+  mergeConsumersSchema,
+  mergePreviewSchema,
   updateConsumerSchema,
   type ConsumerGroupsDto,
   type ConsumerHistoryDto,
   type ConsumerPageDto,
   type ConsumerSearchDto,
   type CreateConsumerDto,
+  type MergeConsumersDto,
+  type MergePreviewDto,
   type UpdateConsumerDto,
 } from './consumer.dto.js';
 import { ConsumersService } from './consumers.service.js';
 import { ConsumerProfileService } from './consumer-profile.service.js';
+import { ConsumerMergeService } from './consumer-merge.service.js';
 
 function identityOf(req: Request): IdentityContext {
   return (req as unknown as Record<string, unknown>)[
@@ -42,6 +48,7 @@ export class ConsumersController {
   constructor(
     private readonly consumersService: ConsumersService,
     private readonly profileService: ConsumerProfileService,
+    private readonly mergeService: ConsumerMergeService,
   ) {}
 
   @Get()
@@ -122,5 +129,29 @@ export class ConsumersController {
   ) {
     const consumer = await this.consumersService.update(identityOf(req).userId, tenantId, consumerId, dto);
     return { consumer };
+  }
+
+  /** Prévia da unificação: o cadastro do caminho é o secundário. Só leitura. */
+  @Get(':consumerId/merge-preview')
+  async mergePreview(
+    @Param('tenantId') tenantId: string,
+    @Param('consumerId', new ZodValidationPipe(consumerIdParamSchema)) consumerId: string,
+    @Query(new ZodValidationPipe(mergePreviewSchema)) query: MergePreviewDto,
+    @Req() req: Request,
+  ) {
+    return this.mergeService.preview(identityOf(req).userId, tenantId, consumerId, query.principalId);
+  }
+
+  /** Unificação confirmada com a versão revisada. Reenvio: 200 com o que já
+   * foi gravado (`repeated: true`). */
+  @Post(':consumerId/merge')
+  @HttpCode(200)
+  async merge(
+    @Param('tenantId') tenantId: string,
+    @Param('consumerId', new ZodValidationPipe(consumerIdParamSchema)) consumerId: string,
+    @Body(new ZodValidationPipe(mergeConsumersSchema)) dto: MergeConsumersDto,
+    @Req() req: Request,
+  ) {
+    return this.mergeService.merge(identityOf(req).userId, tenantId, consumerId, dto);
   }
 }
