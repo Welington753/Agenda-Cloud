@@ -39,7 +39,8 @@ Plano do lote: `docs/plans/clientes-ficha-e-duplicados.md`. Este roteiro não co
    4. API SHA_B. Conferir a janela 4.
    5. Web SHA_B. Conferir a janela 5 e o roteiro curto.
    6. Ensaio de retorno: a seção P3, antes do passo 3.
-6. **Piloto:** repetir os passos 5.1 a 5.5 contra o piloto, um de cada vez, com `pilot:check-database` antes e depois de cada migration e a conferência de cada janela.
+6. **Piloto:** repetir os passos 5.1 a 5.5 contra o piloto, um de cada vez, com as consultas só de leitura da seção P2 antes e depois de cada migration e a conferência de cada janela.
+   - `pilot:check-database` não tem estado esperado para 22, 24 ou 25 migrations; por isso as consultas P2 o substituem neste lote, como já foi feito no lote de estoque. Não rodar `migration:show` (escreve em `typeorm_migrations`).
    - Entre os passos, parar se algo divergir.
    - O passo 3 (migration 25) é o ponto sem volta para a API atual (seção P3).
 7. **Registrar:**
