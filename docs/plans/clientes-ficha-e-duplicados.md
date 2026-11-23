@@ -192,6 +192,15 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 ## Estado e retomada
 
+**Retomada curta (encerrado no PC de casa em 23/11/2026): tela de login no celular.**
+- **PR #143** (`feat/login-limpo-celular`) aberto para `integration/nestjs-typeorm-frontend`, head `eb6ba9b`, CI verde.
+- Login implementado (coluna única, marca e "Acesse sua conta" acima do cartão, campos de 48 px, mesmo layout nos quatro temas). **Revisão visual ainda pendente.**
+- **Teste com teclado real no celular ainda pendente.** A altura reduzida 320×480 já foi conferida.
+- **Nenhum merge ou deploy realizado.**
+- Última publicação registrada: `63f1cd6`, banco com 25 migrations (sem mudança).
+- Capturas em `%USERPROFILE%\AgendaCloud-operacoes\capturas-login-limpo-2026-11-23`. Worktree local: `C:\Projetos\Agenda-Cloud-login-limpo`.
+- **Próximo passo:** revisar as capturas antes da publicação.
+
 **Retomada curta (encerrado no PC do trabalho em 23/11/2026):**
 - **Última publicação:** API e web em `63f1cd6`, banco com 25 migrations.
 - **Testes manuais concluídos pela pessoa responsável, sem problemas:** fluxos de clientes e navegação no celular.
