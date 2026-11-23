@@ -172,7 +172,7 @@ export function ListaClientes({
                       </summary>
                       <div className="mt-3 space-y-4">
                         {secoes.map((secao) => (
-                          <section key={secao.titulo} aria-label={secao.titulo} className="space-y-3" data-testid="secao-grupo">
+                          <section key={secao.titulo} className="space-y-3" data-testid="secao-grupo">
                             <h3 className="text-xs font-semibold tracking-wide text-ink-soft uppercase">{secao.titulo}</h3>
                             <ul className="space-y-3">
                               {secao.membros.map((membro) => (
