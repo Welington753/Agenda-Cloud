@@ -5,8 +5,8 @@ Plano do lote: `docs/plans/clientes-ficha-e-duplicados.md`. Este roteiro não co
 **Antes de começar:**
 - Nada aqui é autorizado por este texto. Cada passo no piloto depende de pedido explícito do responsável.
 - Os SHAs ficam assim:
-  - **SHA_A:** merge do PR 1, com as migrations 23–24 e o manifesto até 24;
-  - **SHA_B:** merge do PR 2, com a migration 25 e o manifesto até 25;
+  - **SHA_A = `15e2790`:** merge do PR #139, com as migrations 23–24 e o manifesto até 24;
+  - **SHA_B:** merge do PR #140, com a migration 25 (`ConsumerSharedPhone1794355200000`) e o manifesto até 25;
   - **atual:** o par API e web no ar (hoje `0d8f479`).
 
 ## P. Sequência
@@ -31,11 +31,11 @@ Plano do lote: `docs/plans/clientes-ficha-e-duplicados.md`. Este roteiro não co
    1. `aplicarSomenteAPendente` (`backend/scripts/operacao-piloto.mjs`) com:
       - `esperadasAntes` = as 22;
       - `pendente` = `ConsumerAuditActions1794182400000`;
-      - `posteriores` = `["ConsumerIdentity1794268800000", "ConsumerSharedPhone…"]`.
+      - `posteriores` = `["ConsumerIdentity1794268800000"]` (o kit é o `dist-migrations` do SHA_A, que só tem até a 24).
       
-      Depois, a mesma função para `ConsumerIdentity1794268800000`. Conferir a seção P2 (24).
+      Depois, a mesma função para `ConsumerIdentity1794268800000`, com `posteriores` vazio. Conferir a seção P2 (24).
    2. API SHA_A sobre a cópia, com o web atual. Conferir a janela 2 da seção P0.
-   3. Migration 25 pelo mesmo caminho. Conferir a seção P2 (25) e a janela 3.
+   3. Migration 25 com o kit do SHA_B: `esperadasAntes` = as 24, `pendente` = `ConsumerSharedPhone1794355200000`, `posteriores` vazio. Conferir a seção P2 (25) e a janela 3.
    4. API SHA_B. Conferir a janela 4.
    5. Web SHA_B. Conferir a janela 5 e o roteiro curto.
    6. Ensaio de retorno: a seção P3, antes do passo 3.
