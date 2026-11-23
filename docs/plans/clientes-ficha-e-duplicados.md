@@ -232,14 +232,18 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 **Retorno:** depois da migration 25 o piso é a API SHA_A. A API `0d8f479` não volta (seção P3).
 
-**Falta (responsável):** o roteiro curto de teste do runbook com sessão real no piloto:
+**Teste manual (responsável), concluído sem problemas:** a pessoa responsável confirmou, em 23/11, que fez o roteiro curto de teste do runbook com sessão real no piloto em `63f1cd6`. O roteiro cobre:
 - grupo e ficha;
 - aviso de "mesmo nome";
 - edição de telefone mantendo o histórico;
 - "Usar este" e "Cadastrar outra pessoa";
 - unificação como dono, conferindo também que cancelar não grava nada e que o gerente não vê "Unificar".
 
-Falta também o teste no celular do Lote N.
+O teste no celular do Lote N (navegação) também foi concluído sem problemas.
+
+**Pendências que continuam:**
+- `web-push-crypto.spec.ts` segue instável (cerca de 1 falha em 256, por causa da chave privada de 31 bytes) e não foi corrigido;
+- o backup de 23/11 deve ser guardado (abaixo).
 
 **Só neste computador:**
 - o backup acima, que deve ser guardado;
