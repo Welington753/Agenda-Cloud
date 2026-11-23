@@ -188,13 +188,16 @@ test("WhatsApp: links certos, texto codificado e nenhuma mudança na reserva", a
 
   // Telefone inválido (só o campo da resposta real é trocado): sem link.
   await page.route(
-    (u) => u.pathname.endsWith("/consumers/page") && u.searchParams.has("q"),
+    (u) => u.pathname.endsWith("/consumers/groups") && u.searchParams.has("q"),
     async (rota) => {
       const resposta = await rota.fetch();
-      const corpo = (await resposta.json()) as { consumers: { whatsapp: string }[] };
+      const corpo = (await resposta.json()) as { groups: { membros: { whatsapp: string }[] }[] };
       await rota.fulfill({
         response: resposta,
-        json: { ...corpo, consumers: corpo.consumers.map((c) => ({ ...c, whatsapp: "123" })) },
+        json: {
+          ...corpo,
+          groups: corpo.groups.map((g) => ({ ...g, membros: g.membros.map((c) => ({ ...c, whatsapp: "123" })) })),
+        },
       });
     },
   );
