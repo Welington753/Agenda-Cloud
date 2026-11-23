@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import { canManageConsumers, canViewConsumers } from './consumer-access.js';
+import { canManageConsumers, canMergeConsumers, canViewConsumers } from './consumer-access.js';
 
 const negado = (permission: Permission) => [{ permission, mode: PermissionMode.DENIED }];
 const concedido = (permission: Permission) => [{ permission, mode: PermissionMode.GRANTED }];
@@ -57,4 +57,30 @@ describe('canManageConsumers', () => {
       canManageConsumers(EstablishmentRole.RECEPCIONISTA, concedido(Permission.CONSUMIDORES_GERENCIAR)),
     ).toBe(false);
   });
+});
+
+describe('canMergeConsumers', () => {
+  it('só o DONO unifica', () => {
+    expect(canMergeConsumers(EstablishmentRole.DONO)).toBe(true);
+  });
+
+  it.each([EstablishmentRole.GERENTE, EstablishmentRole.RECEPCIONISTA, EstablishmentRole.PROFISSIONAL])(
+    '%s não unifica, nem com CONSUMIDORES_GERENCIAR concedida',
+    (role) => {
+      expect(canMergeConsumers(role)).toBe(false);
+      expect(
+        canMergeConsumers(role, [
+          ...concedido(Permission.CONSUMIDORES_VISUALIZAR),
+          ...concedido(Permission.CONSUMIDORES_GERENCIAR),
+        ]),
+      ).toBe(false);
+    },
+  );
+
+  it.each([Permission.CONSUMIDORES_VISUALIZAR, Permission.CONSUMIDORES_GERENCIAR])(
+    'DENIED em %s tira a unificação do próprio DONO',
+    (permission) => {
+      expect(canMergeConsumers(EstablishmentRole.DONO, negado(permission))).toBe(false);
+    },
+  );
 });

@@ -3,11 +3,13 @@
 // clientes-ficha-e-duplicados.md) contra PostgreSQL DESCARTÁVEL.
 //
 // Dois schemas:
-// - "24": o banco do DB_E2E_DIRECT_URL (migrations até ConsumerIdentity),
-//   com o UNIQUE antigo de telefone;
-// - "25": um banco TEMPORÁRIO, com as mesmas migrations e o UNIQUE removido
-//   como fará a ConsumerSharedPhone. A API desta versão precisa funcionar
-//   nos dois.
+// - "25": o banco do DB_E2E_DIRECT_URL (todas as migrations, sem o UNIQUE
+//   antigo de telefone);
+// - "24": um banco TEMPORÁRIO, com as mesmas migrations e o UNIQUE de
+//   telefone recriado como era antes da ConsumerSharedPhone. A API desta
+//   versão só sobe no 25; o 24 continua aqui para provar o código que
+//   funciona nos dois (agendamento público, cadastro e edição), usado pela
+//   API intermediária da publicação.
 // Sem GERENTE (ver a nota sobre o banco compartilhado no CI); a regra de
 // preço por papel é coberta em src/consumers/consumer-profile.spec.ts.
 // Nomes e telefones fictícios.
@@ -71,7 +73,7 @@ async function recusa(promessa: Promise<unknown>): Promise<{ status: number; cod
 describe.skipIf(!DIRECT_URL)('clientes: identidade, ficha e duplicados contra PostgreSQL descartável', () => {
   let s24: Ambiente;
   let s25: Ambiente;
-  let banco25: string;
+  let banco24: string;
   const sufixo = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   let contador = 0;
   let planId: string;
@@ -158,7 +160,8 @@ describe.skipIf(!DIRECT_URL)('clientes: identidade, ficha e duplicados contra Po
     return id;
   }
 
-  /** Lápide por SQL (a unificação pela API só existe com a migration 25). */
+  /** Lápide por SQL (a unificação pela API tem o próprio teste:
+   * consumers-merge-postgres.db-e2e-spec.ts). */
   async function unificar(amb: Ambiente, est: Est, secundario: string, principal: string) {
     await amb.ds.query(
       `UPDATE consumers SET merged_into_consumer_id = $3, merged_at = now(), merged_by_user_id = $4 WHERE tenant_id = $1 AND id = $2`,
@@ -183,8 +186,8 @@ describe.skipIf(!DIRECT_URL)('clientes: identidade, ficha e duplicados contra Po
 
   beforeAll(async () => {
     const entidades = await carregarEntidades();
-    s24 = await ambiente(DIRECT_URL!, entidades);
-    const [plano] = (await s24.ds.query(`SELECT id FROM plans WHERE code = 'equipe'`)) as { id: string }[];
+    s25 = await ambiente(DIRECT_URL!, entidades);
+    const [plano] = (await s25.ds.query(`SELECT id FROM plans WHERE code = 'equipe'`)) as { id: string }[];
     if (!plano) throw new Error('Catálogo de planos ausente — migrations não foram aplicadas.');
     planId = plano.id;
 
@@ -192,21 +195,21 @@ describe.skipIf(!DIRECT_URL)('clientes: identidade, ficha e duplicados contra Po
     const { buildMigrationsDataSourceOptions } = (await import(FONTE_COMPILADA.href)) as {
       buildMigrationsDataSourceOptions: (u: string) => ConstructorParameters<typeof DataSource>[0];
     };
-    banco25 = `clientes_s25_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-    await comCliente(DIRECT_URL!, (c) => c.query(`CREATE DATABASE "${banco25}"`));
-    const mig = new DataSource({ ...buildMigrationsDataSourceOptions(urlDe(banco25)), logging: false } as ConstructorParameters<typeof DataSource>[0]);
+    banco24 = `clientes_s24_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    await comCliente(DIRECT_URL!, (c) => c.query(`CREATE DATABASE "${banco24}"`));
+    const mig = new DataSource({ ...buildMigrationsDataSourceOptions(urlDe(banco24)), logging: false } as ConstructorParameters<typeof DataSource>[0]);
     await mig.initialize();
     await mig.runMigrations({ transaction: 'each' });
-    // O que a ConsumerSharedPhone fará.
-    await mig.query(`ALTER TABLE consumers DROP CONSTRAINT uq_consumers_tenant_whatsapp`);
+    // O UNIQUE como era antes da ConsumerSharedPhone.
+    await mig.query(`ALTER TABLE consumers ADD CONSTRAINT uq_consumers_tenant_whatsapp UNIQUE (tenant_id, whatsapp_normalized)`);
     await mig.destroy();
-    s25 = await ambiente(urlDe(banco25), entidades);
+    s24 = await ambiente(urlDe(banco24), entidades);
   }, 120_000);
 
   afterAll(async () => {
     await s24?.ds.destroy();
     await s25?.ds.destroy();
-    if (banco25) await comCliente(DIRECT_URL!, (c) => c.query(`DROP DATABASE IF EXISTS "${banco25}" WITH (FORCE)`));
+    if (banco24) await comCliente(DIRECT_URL!, (c) => c.query(`DROP DATABASE IF EXISTS "${banco24}" WITH (FORCE)`));
   });
 
   describe('cadastro com chave de pedido', () => {

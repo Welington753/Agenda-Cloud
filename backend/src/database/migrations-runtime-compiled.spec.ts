@@ -35,16 +35,17 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as vinte e quatro migrations no dist (nunca specs)', () => {
+  it('descobre as vinte e cinco migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(24);
+    expect(migrationJsFiles).toHaveLength(25);
     expect(migrationJsFiles.some((f) => f.includes('ModularSubscription'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('CatalogItemEdit'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('StockEnumValues'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('StockModule'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ConsumerAuditActions'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ConsumerIdentity'))).toBe(true);
+    expect(migrationJsFiles.some((f) => f.includes('ConsumerSharedPhone'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('TenantTestFlag'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ProfessionalCommissionSettings'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ProfessionalCommissions'))).toBe(true);
@@ -63,9 +64,9 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(migrationJsFiles.some((f) => f.includes('AppointmentPayments'))).toBe(true);
     // As três mais recentes, na ordem do carimbo (a ordem de aplicação).
     expect([...migrationJsFiles].sort().slice(-3)).toEqual([
-      '1794096000000-StockModule.js',
       '1794182400000-ConsumerAuditActions.js',
       '1794268800000-ConsumerIdentity.js',
+      '1794355200000-ConsumerSharedPhone.js',
     ]);
     // Nenhum `.spec.js` deve escapar para o dist — só código de migration real.
     expect(files.some((f) => f.includes('.spec.'))).toBe(false);

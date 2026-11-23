@@ -18,7 +18,6 @@ import type { Appointment } from './appointment.entity.js';
 import type { Tenant } from './tenant.entity.js';
 
 @Entity('consumers')
-@Unique('uq_consumers_tenant_whatsapp', ['tenantId', 'whatsappNormalized'])
 @Unique('uq_consumers_tenant_id', ['tenantId', 'id'])
 export class Consumer {
   @PrimaryColumn({ type: 'varchar', length: 30 })
@@ -29,10 +28,9 @@ export class Consumer {
     this.id ??= generateId();
   }
 
-  // Sem índice avulso aqui — a unicidade composta
-  // (tenantId, whatsappNormalized) abaixo já cobre `WHERE tenant_id = $1`
-  // sozinho pelo prefixo esquerdo; um índice extra só em tenantId seria
-  // redundante.
+  // Sem índice avulso aqui — a unicidade composta (tenantId, id) já cobre
+  // `WHERE tenant_id = $1` pelo prefixo esquerdo. O mesmo telefone pode ter
+  // mais de um cadastro no estabelecimento (migration ConsumerSharedPhone).
   @Column({ type: 'varchar', length: 30 })
   tenantId!: string;
 

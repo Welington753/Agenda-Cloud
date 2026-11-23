@@ -211,6 +211,16 @@ export class PaymentsService {
         mensagemProibido: PAYMENT_REFUND_FORBIDDEN_MESSAGE,
         recurso: FeatureKey.PAGAMENTOS,
       });
+      // O agendamento antes do recebimento (mesma ordem do registro): a
+      // unificação de clientes trava os agendamentos do cadastro e confere a
+      // prévia; um estorno em curso termina antes ou espera por ela.
+      await manager.query(
+        `SELECT a.id FROM appointments a
+           JOIN appointment_payments pg ON pg.tenant_id = a.tenant_id AND pg.appointment_id = a.id
+          WHERE pg.tenant_id = $1 AND pg.id = $2
+            FOR UPDATE OF a`,
+        [autorizado.tenantId, paymentId],
+      );
       const [linha] = linhasDe<{ refunded_at: Date | null; amount_cents: string; timezone: string; received_on: string }>(
         await manager.query(
           `SELECT pg.refunded_at, pg.amount_cents::text AS amount_cents, t.timezone, to_char(pg.received_on, 'YYYY-MM-DD') AS received_on

@@ -1,8 +1,8 @@
 "use client";
 
-// Estado da tela de Clientes: listagem paginada no servidor (a primeira
-// página carrega ao abrir), busca que filtra a mesma listagem e cadastro, com
-// as garantias que a página não deve reimplementar.
+// Estado da tela de Clientes: lista AGRUPADA por telefone, paginada no
+// servidor (a primeira página carrega ao abrir), busca que filtra a mesma
+// lista e cadastro, com as garantias que a página não deve reimplementar.
 //
 //  - LEITURA MAIS RECENTE VENCE: cada listagem recebe um número de sequência e
 //    aborta a anterior. Uma resposta atrasada de um termo antigo nunca
@@ -14,14 +14,16 @@
 //    descartados na hora, e qualquer resposta do tenant anterior é ignorada.
 //  - CADASTRO NUNCA É REENVIADO SOZINHO: a barreira contra envio duplicado é
 //    uma ref síncrona (dois cliques no mesmo tick nunca viram dois POST), e
-//    falha de comunicação vira "resultado incerto" — quem decide tentar de
-//    novo é a pessoa, depois de pesquisar.
+//    falha de comunicação vira "resultado incerto". A chave de pedido vem de
+//    quem abriu o formulário: repetir com a mesma chave devolve o mesmo
+//    cadastro.
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as clientesApi from "@/lib/api/consumers-api";
 import type {
   ClienteReal,
   DadosCadastroCliente,
   FalhaClientesReal,
+  GrupoDeClientes,
   ResultadoClientesReal,
 } from "@/lib/api/consumers-api";
 
@@ -31,7 +33,7 @@ export type EstadoListaClientes =
       status: "pronta";
       /** `null`: sem filtro (todos os clientes, em páginas). */
       termo: string | null;
-      clientes: ClienteReal[];
+      grupos: GrupoDeClientes[];
       total: number;
       proximoCursor: string | null;
       carregandoMais: boolean;
@@ -83,11 +85,7 @@ export function useClientesReais(tenantId: string | null): ClientesReais {
       setLista({ status: "carregando", termo });
 
       void (async () => {
-        const resultado = await clientesApi.listarPaginaDeClientes(
-          tenantId,
-          { termo: termo ?? undefined },
-          controller.signal,
-        );
+        const resultado = await clientesApi.listarGruposDeClientes(tenantId, { termo: termo ?? undefined }, controller.signal);
         if (sequencia !== sequenciaRef.current || tenantAtualRef.current !== tenantId) return;
         controllerRef.current = null;
         setLista(
@@ -95,7 +93,7 @@ export function useClientesReais(tenantId: string | null): ClientesReais {
             ? {
                 status: "pronta",
                 termo,
-                clientes: resultado.dados.clientes,
+                grupos: resultado.dados.grupos,
                 total: resultado.dados.total,
                 proximoCursor: resultado.dados.proximoCursor,
                 carregandoMais: false,
@@ -125,7 +123,7 @@ export function useClientesReais(tenantId: string | null): ClientesReais {
     setLista({ ...atual, carregandoMais: true, falhaAoCarregarMais: null });
 
     void (async () => {
-      const resultado = await clientesApi.listarPaginaDeClientes(
+      const resultado = await clientesApi.listarGruposDeClientes(
         tenantId,
         { termo: atual.termo ?? undefined, cursor: atual.proximoCursor },
         controller.signal,
@@ -136,10 +134,10 @@ export function useClientesReais(tenantId: string | null): ClientesReais {
       setLista((anterior) => {
         if (anterior.status !== "pronta") return anterior;
         if (!resultado.ok) return { ...anterior, carregandoMais: false, falhaAoCarregarMais: resultado.falha };
-        const vistos = new Set(anterior.clientes.map((c) => c.id));
+        const vistos = new Set(anterior.grupos.map((g) => g.chave));
         return {
           ...anterior,
-          clientes: [...anterior.clientes, ...resultado.dados.clientes.filter((c) => !vistos.has(c.id))],
+          grupos: [...anterior.grupos, ...resultado.dados.grupos.filter((g) => !vistos.has(g.chave))],
           total: resultado.dados.total,
           proximoCursor: resultado.dados.proximoCursor,
           carregandoMais: false,

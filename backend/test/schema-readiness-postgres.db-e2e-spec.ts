@@ -113,24 +113,34 @@ describe.skipIf(!url)('conferência das migrations exigidas contra PostgreSQL de
     expect(ate21).toHaveLength(21);
     await registrar(ate21);
     const erro = await problemaDe(checkRequiredMigrations(db));
-    expect(erro.problem).toMatchObject({ reason: 'missing-migrations', missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000'], required: 24 });
+    expect(erro.problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000'],
+      required: 25,
+    });
 
     await registrar(REQUIRED_MIGRATIONS.slice(0, 22));
     const depois = await problemaDe(checkRequiredMigrations(db));
-    expect(depois.problem).toMatchObject({ reason: 'missing-migrations', missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000'] });
+    expect(depois.problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000'],
+    });
   });
 
-  it('2c. clientes: em 24, aprova; com a 25 (ConsumerSharedPhone) já aplicada, a API do manifesto até 24 também sobe', async () => {
-    expect(REQUIRED_MIGRATIONS.slice(-2)).toEqual(['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000']);
-    await registrar(REQUIRED_MIGRATIONS);
-    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 24, applied: 24, extra: [] });
+  // A API do manifesto até 24 (PR 1) sobe com a 25 aplicada: provado no
+  // commit dela. Esta versão exige a 25.
+  it('2c. clientes: em 24 (sem ConsumerSharedPhone) recusa a inicialização; em 25, aprova', async () => {
+    expect(REQUIRED_MIGRATIONS.slice(-3)).toEqual([
+      'ConsumerAuditActions1794182400000',
+      'ConsumerIdentity1794268800000',
+      'ConsumerSharedPhone1794355200000',
+    ]);
+    await registrar(REQUIRED_MIGRATIONS.slice(0, 24));
+    const erro = await problemaDe(checkRequiredMigrations(db));
+    expect(erro.problem).toMatchObject({ reason: 'missing-migrations', missing: ['ConsumerSharedPhone1794355200000'], required: 25 });
 
-    await registrar([...REQUIRED_MIGRATIONS, 'ConsumerSharedPhone1794355200000']);
-    await expect(checkRequiredMigrations(db)).resolves.toEqual({
-      required: 24,
-      applied: 25,
-      extra: ['ConsumerSharedPhone1794355200000'],
-    });
+    await registrar(REQUIRED_MIGRATIONS);
+    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 25, applied: 25, extra: [] });
   });
 
   it('3. anterior ausente, com a última registrada: recusa', async () => {

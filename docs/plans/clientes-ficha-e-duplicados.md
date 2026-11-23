@@ -69,8 +69,8 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 - Reenvio com a mesma impressão: 200, `repeated: true`, com o cadastro original. Se ele virou lápide, a resposta traz também `principal`.
 - Reenvio com outra impressão: 409 `CHAVE_REUTILIZADA`.
 - A comparação é sempre com a impressão gravada, nunca com o cadastro atual.
-- Telefone de um cadastro ativo: 409 `TELEFONE_EM_USO`. A aplicação confere isso sob a trava, com ou sem o UNIQUE antigo.
-- `outraPessoa` só existe no PR 2. Nesta versão, o corpo estrito recusa o campo com 400.
+- Telefone de um cadastro ativo: 409 `TELEFONE_EM_USO`, a não ser com `outraPessoa`. A aplicação confere isso sob a trava, com ou sem o UNIQUE antigo.
+- `outraPessoa: true` (PR 2) cadastra outra pessoa no mesmo telefone, mesmo com nome igual. Exige `requestKey`. Sem ele, o 409 `TELEFONE_EM_USO` traz os cadastros desse telefone (`consumers`), para a tela oferecer "Usar este" ou "Cadastrar outra pessoa".
 
 **Edição** (`PATCH consumers/:id`, `CONSUMIDORES_GERENCIAR`):
 - Ordem das travas: o telefone novo, depois a linha (`FOR UPDATE`).
@@ -110,6 +110,19 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
   - nenhum total somado entre cadastros.
 - `GET consumers/page` e `GET consumers?q=` continuam iguais para o web anterior, só sem lápides.
 
+**Unificação** (PR 2, `consumer-merge.service.ts`, regras puras em `consumer-merge-rules.ts`):
+- Só o dono (`canMergeConsumers`), e só pares sugeridos: mesmo telefone, número parecido ou mesmo nome. Fora disso, 409 `NAO_SUGERIDO`; o mesmo cadastro dos dois lados, 400 `MESMO_CADASTRO`.
+- `GET consumers/:id/merge-preview?principalId=`: o cadastro do caminho é o secundário. Mostra os dois cadastros, as relações, o que vai para o principal (agendamentos por situação, recebimentos, comissões e pedidos públicos que seguem por eles) e a `versaoDaPrevia`.
+- A versão é o SHA-256 do conteúdo apresentado: dados dos dois cadastros (com a situação de lápide), cada agendamento do secundário (situação, horário e preços dos itens), cada recebimento (valor, forma, data, estorno), cada comissão (valores e situação) e cada pedido público.
+- `POST consumers/:id/merge` com `{ principalId, versaoDaPrevia }`, numa transação:
+  1. trava, por ordem de id, os dois cadastros e as lápides que apontam para o secundário (`FOR UPDATE`);
+  2. reenvio (o secundário já aponta para este principal): 200 com o resumo gravado, antes da checagem de lápide;
+  3. lápide de outro, ou principal lápide: 409 `CLIENTE_UNIFICADO`;
+  4. trava todos os agendamentos do secundário; o estorno passou a travar o agendamento antes do recebimento, como o registro já fazia;
+  5. relê o conteúdo e recalcula a versão: diferente, 409 `PREVIA_DESATUALIZADA` com a prévia nova, e nada é transferido;
+  6. move os agendamentos (snapshots intactos), redireciona as lápides antigas, grava a lápide com o autor e a auditoria `CONSUMER_MERGED` (versão confirmada e quantidades).
+- Telefone, nome e preferências do principal não mudam; os eventos de preferência ficam no número ao qual foram dados.
+
 **Preferências de mensagem por telefone** (`whatsapp_consent_events`, só inserção):
 - A decisão de envio usa `whatsapp_consent_current(tenant, telefone)`:
   - vale o evento mais recente do número que vai receber;
@@ -123,9 +136,9 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 | Etapa | Commit | Manifesto (`required-migrations.ts`) | Funciona em | O que libera |
 |---|---|---|---|---|
-| C1 | SHA_A (PR 1) | até 24 | schemas 24 e 25 | lista agrupada, ficha, histórico, edição, novo público, preferências por telefone |
+| C1 | SHA_A = `15e2790` (PR #139) | até 24 | schemas 24 e 25 | lista agrupada, ficha, histórico, edição, novo público, preferências por telefone |
 | C2 | migration 25 no kit do PR 2 | — | — | remove `uq_consumers_tenant_whatsapp` |
-| C3 | SHA_B (PR 2) | até 25 | schema 25 | `outraPessoa`, prévia e unificação, telas finais |
+| C3 | SHA_B (PR #140) | até 25 | schema 25 | `outraPessoa`, prévia e unificação, telas finais |
 
 **Publicação no piloto:** pelo roteiro, com backup novo e restauração conferida, e `pilot:check-database` antes e depois. Antes de tudo, os 5 passos são ensaiados numa cópia restaurada:
 1. migrations 23–24;
@@ -164,49 +177,37 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
     - o contrato do web publicado (`test/support/contrato-web-anterior-clientes.ts`, cópia de `0d8f479`).
   - `test/isolamento-estabelecimentos-postgres.db-e2e-spec.ts`: as quatro rotas novas.
 
+## Testes (PR 2)
+
+- **Unidade:** `consumer-merge-rules.spec.ts` (par sugerido, versão da prévia muda com cada campo apresentado, resumo), `consumer-access.spec.ts` (`canMergeConsumers`: só o dono, `DENIED` tira), `consumer.dto.spec.ts` (`outraPessoa` exige chave; prévia e unificação estritas), spec da migration 25.
+- **HTTP sem banco:** `test/appointments.e2e-spec.ts` (outraPessoa com e sem chave, prévia e unificação).
+- **Banco:**
+  - `test/consumers-merge-postgres.db-e2e-spec.ts` (schema 25): telefone compartilhado (409 com os cadastros, outra pessoa com nome igual, reenvio, simultâneos, edição, agenda), público no schema 25, unificação completa, prévia desatualizada por agendamento, recebimento, estorno, comissão apurada ou revertida, situação e e-mail; gravação antes e depois da trava da unificação (duas conexões); concorrência com público, agenda, INSERT direto, edição, outra unificação e a mesma repetida; preferências; recusas (mesmo cadastro, par não sugerido, lápide, outro estabelecimento, gerente com permissões concedidas);
+  - `test/consumer-migrations.db-e2e-spec.ts`: a 25 a partir da 24 com dados e o retorno recusado com telefone repetido;
+  - `test/consumers-identity-postgres.db-e2e-spec.ts`: agora o banco principal é o 25 e o 24 é o temporário (UNIQUE recriado), para o código que funciona nos dois;
+  - `test/public-booking-postgres.db-e2e-spec.ts`: outro nome no mesmo telefone vira outro cadastro; mesmo nome reaproveita;
+  - `test/isolamento-estabelecimentos-postgres.db-e2e-spec.ts`: prévia e unificação;
+  - `test/schema-readiness-postgres.db-e2e-spec.ts`: esta versão recusa o banco sem a 25.
+- **Navegador:** `tests/browser/clients-flow.spec.ts`, teste "telefone compartilhado, ficha, edição, unificação e gerente sem Unificar".
+
 ## Estado e retomada
 
-**Encerramento de 19/11/2026, 20:07 UTC.** Nada do Lote C foi mesclado, aplicado no piloto nem publicado.
+**23/11/2026 (PC do trabalho).** Nada do Lote C foi aplicado no piloto nem publicado.
 
-**Lote N (navegação no celular): publicado.**
-- PR #137 mesclado como `0d8f479`, com CI verde no head `27f4151`.
-- API e web live em `0d8f479`. O banco do piloto continua com **22 migrations**: o Lote N não tem migration e o banco não foi tocado.
-- Deploys:
-  - API `dep-dbvkl6bl550s73856vt0`, 19:14:33–19:15:31 UTC;
-  - web `dep-dbvklocipgvc73dgklb0`, 19:15:45–19:18:11 UTC.
-- **Antes da publicação:**
-  - os dois serviços estavam live em `e78c3d1`;
-  - a fila estava vazia;
-  - o Auto-Deploy estava `off`.
-- **Depois da publicação:**
-  - API: `/` e `/health` respondem 200; o log mostra "Nest application successfully started", sem aviso de `SchemaReadiness`;
-  - web: `/`, `/login` e `/conta` respondem 200, e o pacote de `/conta` contém `faixa-de-areas`;
-  - `/agenda_api/auth/me` sem sessão responde 401 em JSON.
-- O registro está no PR de documentação **#138** (`docs/navegacao-celular-publicada`, `83ee0e7`), **aberto**.
-- **Falta:** o teste no celular com sessão real, feito pelo responsável.
+**Piloto, conferido só por leitura em 23/11:** API e web live em `0d8f479` (deploys de 19/11), Auto-Deploy `off` nos dois. O banco não foi tocado desde 19/11 (22 migrations, conferido em 19/11).
 
-**Lote C, PR 1 (SHA_A): PR #139 aberto.**
-- Branch `feat/clientes-identidade`, head de código `413a14e`. O commit desta seção é só de documentação.
-- **Migrations 23 e 24: NÃO aplicadas no piloto.** Nenhum backup, migration ou deploy foi feito para o Lote C.
-- **CI no encerramento, no head `413a14e`:**
-  - `test-migration-lote6b2.yml` (migration:show/run reais): **falhou**. Em `scripts/lote6b2-migration.migration-e2e-spec.ts`, o teste "estado final do banco bate exatamente com o baseline pós-migration esperado" deu `expected 62 to be 60`: a contagem de tabelas do baseline não inclui as duas tabelas novas da migration 24 (`consumer_create_requests` e `whatsapp_consent_events`). Ainda não foi corrigido.
-  - `test-frontend-auth.yml` (navegador + API): **em andamento** no encerramento. O resultado está pendente.
-- **Testes locais (PostgreSQL descartável, porta 55433):**
-  - unitários do backend: 145 arquivos e 2161 testes, todos verdes; `typecheck` e `lint` limpos;
-  - HTTP sem banco (`test:e2e`): 18 arquivos e 199 testes, verdes;
-  - testes de banco novos, verdes: `consumer-migrations` (3), `consumers-identity-postgres` (a versão final, com o caso do contrato, passou na 2ª rodada completa) e `isolamento-estabelecimentos` (1);
-  - bateria completa de banco (`test:db-e2e`), em banco novo:
-    - **1ª rodada:** só `stock-migrations` falhou, porque esperava 22 migrations; corrigido para migrar até a 22;
-    - **2ª rodada:** 426 de 427 passaram;
-    - **falha intermitente:** `commercial-access-postgres` › "pagamento manual: registra, repete sem duplicar, disputa entre telas e renova encadeado". No log apareceu `ck_teste_falha` em `tenant_access_periods`. O mesmo teste passou na 1ª rodada completa e passou sozinho (8/8) logo depois. **Não está resolvida:** a causa não foi investigada e pode voltar no CI.
-- **PR 2 (SHA_B): não iniciado.**
+**Lote N:** PR de documentação #138 mesclado como `41fe1e1` (só docs, nenhum workflow dispara). Falta o teste no celular com sessão real (responsável).
+
+**PR 1 (#139): mesclado como `15e2790` = SHA_A.**
+- Antes do merge, duas correções, com o CI dos dois workflows verde no head `298a2e1`:
+  - `scripts/lote6b2-migration.migration-e2e-spec.ts`: 60 para 62 tabelas. Conferido num banco descartável: migrar até a 24, voltar até a 22 e comparar as listas; a diferença é exatamente `consumer_create_requests` e `whatsapp_consent_events`;
+  - a falha intermitente de `commercial-access-postgres` ("pagamento manual"): a lista de estabelecimentos é da plataforma inteira e o banco é compartilhado entre os arquivos. Conforme a ordem dos arquivos (o Vitest a escolhe pelo histórico de duração), a página mais recente trazia estabelecimentos do plano modular criados por `platform-portal-postgres` (`maxProfessionals` nulo), que o contrato do web `0c44052` não conhece. Reproduzida rodando `platform-portal-postgres` e depois `commercial-access-postgres` no mesmo banco; corrigida filtrando a lista pela marca do arquivo. O `ck_teste_falha` do log era só o 500 esperado de outro teste do mesmo arquivo. Bateria completa local depois da correção: 427/427.
+
+**PR 2 (#140, branch `feat/clientes-unificacao`): aberto.** API e telas finais, migration 25. Local: unitários do backend e do web, `typecheck`, `lint`, `lint:types`, HTTP sem banco e os testes de banco afetados verdes; bateria completa de banco e navegador no CI.
 
 **Próxima ação:**
-1. Reler o Git (branch e PRs #138 e #139) e o CI do #139.
-2. Corrigir a contagem de tabelas do baseline em `scripts/lote6b2-migration.migration-e2e-spec.ts`, de 60 para 62, com as duas tabelas da migration 24. Conferir o resultado do `test-frontend-auth.yml` e qualquer outra falha, inclusive se a intermitente de `tenant_access_periods` aparecer.
-3. Com o CI verde, pedir autorização para o merge do #139. Depois retomar o plano aprovado: PR 2, ensaio dos 5 passos numa cópia restaurada de um backup novo e publicação só com pedido explícito.
+1. CI verde no head final do #140 e merge (SHA_B).
+2. Ensaio completo do roteiro `docs/runbooks/publicacao-clientes-ficha.md` numa cópia restaurada de um backup NOVO, com as combinações de versão das janelas 1 a 5 e o retorno da seção P3.
+3. Publicação no piloto pelos SHAs exatos, só com pedido explícito, terminando com API e web em SHA_B.
 
-**Só neste computador:**
-- o PostgreSQL descartável local (dados em `scratchpad/pg`, porta 55433), parado no encerramento;
-- os scripts auxiliares do scratchpad (`novo-banco.sh`, `q.cjs`).
-Nada disso precisa ser levado: os bancos de teste são recriados pelas migrations.
+**Só neste computador:** o PostgreSQL descartável da sessão (scratchpad, porta 55435). Nada precisa ser levado.

@@ -170,6 +170,10 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
     const consumerId = (
       await chamar(dono, 'post', `${t}/consumers`, { name: nomeDoCliente, whatsapp, email: `${marca}-cliente-${letra}@example.test` }).expect(ok)
     ).body.consumer.id as string;
+    // Mesmo nome, outro telefone: o par sugerido da prévia e da unificação.
+    const xaraId = (
+      await chamar(dono, 'post', `${t}/consumers`, { name: nomeDoCliente, whatsapp: letra === 'A' ? '11911115555' : '11933337777' }).expect(ok)
+    ).body.consumer.id as string;
 
     const base = { tenantId, unitId, consumerId, serviceId, nomeDoCliente };
     const agora = Date.now();
@@ -318,6 +322,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       livre,
       solto,
       consumerId,
+      xaraId,
       nomeDoCliente,
       whatsapp,
       reservas,
@@ -801,6 +806,28 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       ['POST /tenants/:tenantId/professionals/:professionalId/deactivate', 'dono', (t, r) => `${p(t)}/professionals/${r.livre}/deactivate`, null, 200, true],
       ['POST /tenants/:tenantId/professionals/:professionalId/reactivate', 'dono', (t, r) => `${p(t)}/professionals/${r.livre}/reactivate`, null, 200, true],
       ['DELETE /tenants/:tenantId/team/members/:membershipId', 'dono', (t, r) => `${p(t)}/team/members/${r.membershipId}`, null, 204, true],
+      // Por último: a unificação de B, no controle positivo, faz do cliente de
+      // B uma lápide.
+      [
+        'GET /tenants/:tenantId/consumers/:consumerId/merge-preview',
+        'dono',
+        (t, r) => `${p(t)}/consumers/${r.xaraId}/merge-preview?principalId=${r.consumerId}`,
+        null,
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/consumers/:consumerId/merge',
+        'dono',
+        (t, r) => `${p(t)}/consumers/${r.xaraId}/merge`,
+        async (_t, r) => ({
+          principalId: r.consumerId,
+          versaoDaPrevia: (await chamar(r.dono, 'get', `${p(r)}/consumers/${r.xaraId}/merge-preview?principalId=${r.consumerId}`).expect(200)).body
+            .versaoDaPrevia as string,
+        }),
+        200,
+        true,
+      ],
     ];
 
     // Aplicação em massa: um profissional de `r`, e a impressão da prévia
@@ -883,6 +910,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       b.livre,
       b.solto,
       b.consumerId,
+      b.xaraId,
       b.nomeDoCliente,
       b.whatsapp,
       b.donoEmail,

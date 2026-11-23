@@ -513,10 +513,18 @@ describe.skipIf(!DIRECT_URL)('agendamento público contra PostgreSQL descartáve
       whatsapp_opt_in_at: null,
       whatsapp_opt_in_source: null,
     });
-    // O dono vê o nome informado no pedido (snapshot), ligado ao cadastro existente.
+    // Schema 25 (ConsumerSharedPhone): telefone e nome são critérios de
+    // correspondência; outro nome no mesmo telefone vira outro cadastro, e o
+    // existente fica intacto. (No schema 24 o pedido ficava no cadastro do
+    // telefone: consumers-identity-postgres.db-e2e-spec.ts.)
     const pedidos = (await publico.pendingRequests(c.ownerUserId, c.tenantId)).requests;
     const doExistente = pedidos.find((p) => p.startAt === DEZ)!;
-    expect(doExistente.consumer).toMatchObject({ id: existente.id, name: 'Impostor Qualquer' });
+    expect(doExistente.consumer.name).toBe('Impostor Qualquer');
+    expect(doExistente.consumer.id).not.toBe(existente.id);
+    // Mesmo telefone e mesmo nome do cadastro: reaproveita o existente.
+    await pedir(c, MEIO_DIA, { whatsapp, name: 'nome  verdadeiro' });
+    const doMeioDia = (await publico.pendingRequests(c.ownerUserId, c.tenantId)).requests.find((p) => p.startAt === MEIO_DIA)!;
+    expect(doMeioDia.consumer.id).toBe(existente.id);
   });
 
   // ------------------------------------------------------------ limites
