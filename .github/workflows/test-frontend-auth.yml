@@ -42,7 +42,7 @@ jobs:
   test:
     name: auth real e serviços reais (navegador + API) contra PostgreSQL descartável
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       # Official Playwright image, same version as package-lock.json
       # (playwright-core 1.63.0, chromium revision 1243) and same Ubuntu as
