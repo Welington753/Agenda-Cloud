@@ -630,15 +630,15 @@ test.describe("clientes do estabelecimento", () => {
 
     // Bia e o filho no mesmo WhatsApp; a forma antiga do número (sem o 9);
     // duas Doras com telefones diferentes ("Mesmo nome — confira").
-    const telBia = `(11) 98${sufixo}-0101`;
+    const telBia = `(11) 98${sufixo.slice(0, 3)}-0101`;
     const bia = await post({ name: `Bia ${marca}`, whatsapp: telBia });
     expect(bia.status).toBe(201);
     const emUso = await post({ name: `Caio ${marca}`, whatsapp: telBia });
     expect(emUso.status).toBe(409);
     expect((await post({ name: `Caio ${marca}`, whatsapp: telBia, requestKey: chave(), outraPessoa: true })).status).toBe(201);
-    expect((await post({ name: `Bia Antiga ${marca}`, whatsapp: `(11) 8${sufixo}-0101` })).status).toBe(201);
-    const dora = await post({ name: `Dora ${marca}`, whatsapp: `(21) 97${sufixo}-0202` });
-    const doraDois = await post({ name: `Dora ${marca}`, whatsapp: `(31) 96${sufixo}-0303` });
+    expect((await post({ name: `Bia Antiga ${marca}`, whatsapp: `(11) 8${sufixo.slice(0, 3)}-0101` })).status).toBe(201);
+    const dora = await post({ name: `Dora ${marca}`, whatsapp: `(21) 97${sufixo.slice(0, 3)}-0202` });
+    const doraDois = await post({ name: `Dora ${marca}`, whatsapp: `(31) 96${sufixo.slice(0, 3)}-0303` });
     expect([dora.status, doraDois.status]).toEqual([201, 201]);
 
     await entrar(page, u.email);
@@ -674,11 +674,13 @@ test.describe("clientes do estabelecimento", () => {
     for (const [i, nome] of [`Dora ${marca}`, "Outra Pessoa"].entries()) {
       await noBancoDescartavel(
         `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot, professional_id, start_at, end_at, status)
-         VALUES ($1, $2, (SELECT id FROM units WHERE tenant_id = $2 ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, $6, $6::timestamptz + interval '30 minutes', 'COMPLETED')`,
+         VALUES ($1, $2::varchar, (SELECT id FROM units WHERE tenant_id = $2::varchar ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, $6::timestamptz, $6::timestamptz + interval '30 minutes', 'COMPLETED')`,
         [`e2eh${i}${Date.now().toString(36)}`.slice(0, 30), u.tenantId, dora.corpo.consumer.id, nome, profissional.corpo.professional.id, `2026-0${i + 1}-10T13:00:00Z`],
       );
     }
     await page.getByRole("button", { name: "Fechar aviso" }).click();
+    // Depois do cadastro a lista fica filtrada pelo WhatsApp: volta a todos.
+    await page.getByTestId("clientes-limpar-busca").click();
     await page.getByTestId("cliente-ficha-link").filter({ hasText: `Dora ${marca}` }).first().click();
     await expect(page).toHaveURL(new RegExp(`/conta/clientes/${dora.corpo.consumer.id}$`));
     await expect(nav(page).getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
@@ -689,10 +691,10 @@ test.describe("clientes do estabelecimento", () => {
 
     // ------------------------------------------------ edição do WhatsApp mantém o histórico
     await page.getByTestId("ficha-editar").click();
-    await page.getByLabel("WhatsApp").fill(`(21) 95${sufixo}-0909`);
+    await page.getByLabel("WhatsApp").fill(`(21) 95${sufixo.slice(0, 3)}-0909`);
     await page.getByRole("button", { name: "Salvar" }).click();
     await expect(page.getByTestId("ficha-aviso")).toContainText("Cadastro atualizado");
-    await expect(page.getByTestId("ficha-dados")).toContainText(`(21) 95${sufixo}-0909`);
+    await expect(page.getByTestId("ficha-dados")).toContainText(`(21) 95${sufixo.slice(0, 3)}-0909`);
     await expect(page.getByTestId("ficha-historico").getByRole("listitem")).toHaveCount(2);
 
     // ------------------------------------------------ unificação: prévia e Cancelar não gravam
@@ -710,7 +712,7 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByTestId("unificar-previa")).toBeVisible();
     await noBancoDescartavel(
       `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot, professional_id, start_at, end_at, status)
-       VALUES ($1, $2, (SELECT id FROM units WHERE tenant_id = $2 ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, '2026-03-10T13:00:00Z', '2026-03-10T13:30:00Z', 'CANCELED')`,
+       VALUES ($1, $2::varchar, (SELECT id FROM units WHERE tenant_id = $2::varchar ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, '2026-03-10T13:00:00Z', '2026-03-10T13:30:00Z', 'CANCELED')`,
       [`e2ed${Date.now().toString(36)}`.slice(0, 30), u.tenantId, doraDois.corpo.consumer.id, `Dora ${marca}`, profissional.corpo.professional.id],
     );
     await page.getByTestId("unificar-confirmar").click();
