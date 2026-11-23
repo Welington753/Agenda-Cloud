@@ -42,4 +42,19 @@ No celular, a barra inferior de `/conta` mostrava no máximo quatro áreas. As o
 
 Capturas conferidas em 390 e 360.
 
-**Próximo passo:** PR para a integração, CI verde, merge e publicação de API e web no mesmo SHA (sem migration).
+**19/11/2026, mesclado e publicado.** PR #137 mesclado como `0d8f479`, com CI verde no head `27f4151`. Antes do merge, o CI teve duas correções: folga de 4 px nas pontas da faixa e a suíte do portal, que ainda esperava 4 itens. Nenhum arquivo de `backend/` nem migration; banco do piloto não foi tocado.
+
+Antes da publicação: API e web `live` em `e78c3d1`, fila vazia, Auto-Deploy `off` nos dois serviços.
+
+| Serviço | Deploy | Commit | Início (UTC) | Fim (UTC) | Situação |
+|---|---|---|---|---|---|
+| API | `dep-dbvkl6bl550s73856vt0` | `0d8f479` | 19:14:33 | 19:15:31 | live |
+| web | `dep-dbvklocipgvc73dgklb0` | `0d8f479` | 19:15:45 | 19:18:11 | live |
+
+Conferências depois:
+- API: `GET /` 200, `GET /health` 200, log com "Nest application successfully started" e sem aviso de `SchemaReadiness`;
+- web: `/`, `/login` e `/conta` 200; o pacote servido em `/conta` contém a faixa nova (`faixa-de-areas`); `/agenda_api/auth/me` sem sessão responde 401 em JSON da API (proxy alcança a API).
+
+**Falta:** teste no celular com sessão real (feito pelo responsável).
+
+**Retorno, se preciso:** API e web voltam juntos a `e78c3d1` (sem migration envolvida).
