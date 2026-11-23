@@ -192,6 +192,15 @@ A tela de Clientes era só lista e cadastro: não havia ficha, edição, histór
 
 ## Estado e retomada
 
+**Retomada curta (encerrado no PC do trabalho em 23/11/2026):**
+- **Última publicação:** API e web em `63f1cd6`, banco com 25 migrations.
+- **Testes manuais concluídos pela pessoa responsável, sem problemas:** fluxos de clientes e navegação no celular.
+- **Próxima prioridade: a experiência no celular**, que deve ser o principal meio de uso.
+  - Na retomada, primeiro identificar problemas concretos.
+  - Depois, fazer ajustes pequenos, um de cada vez, sem mudar o desktop.
+  - Nenhuma alteração de interface foi começada.
+- **Pendências que continuam:** as listadas abaixo, no fim desta seção.
+
 **23/11/2026 (PC do trabalho): Lote C publicado.** Piloto com API e web em `63f1cd6` (SHA_B) e banco com 25 migrations.
 
 **Merges:**
