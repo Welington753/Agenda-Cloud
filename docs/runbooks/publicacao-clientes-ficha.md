@@ -6,8 +6,8 @@ Plano do lote: `docs/plans/clientes-ficha-e-duplicados.md`. Este roteiro não co
 - Nada aqui é autorizado por este texto. Cada passo no piloto depende de pedido explícito do responsável.
 - Os SHAs ficam assim:
   - **SHA_A = `15e2790`:** merge do PR #139, com as migrations 23–24 e o manifesto até 24;
-  - **SHA_B:** merge do PR #140, com a migration 25 (`ConsumerSharedPhone1794355200000`) e o manifesto até 25;
-  - **atual:** o par API e web no ar (hoje `0d8f479`).
+  - **SHA_B = `63f1cd6`:** merge do PR #140, com a migration 25 (`ConsumerSharedPhone1794355200000`) e o manifesto até 25;
+  - **atual:** o par API e web no ar antes do lote (`0d8f479`; desde 23/11 o piloto está em SHA_B).
 
 ## P. Sequência
 
