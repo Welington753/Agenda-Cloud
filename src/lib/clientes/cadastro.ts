@@ -87,6 +87,10 @@ export function mensagemFalhaCadastro(falha: FalhaClientesReal): string {
       );
     case "sem_permissao":
       return "Você não tem permissão para cadastrar clientes neste estabelecimento.";
+    case "chave_reutilizada":
+      return "Este formulário já foi usado com outros dados. Cancele e abra o cadastro de novo.";
+    case "conflito":
+      return falha.mensagem ?? "Não foi possível cadastrar com estes dados.";
     case "dados_invalidos":
       return falha.mensagem ?? "Alguns dados não foram aceitos. Revise os campos e tente novamente.";
     // Resultado INCERTO: a requisição pode ter sido gravada. Nunca afirma que

@@ -22,6 +22,7 @@ import { linhasDe } from '../common/linhas-de.js';
 import { managerCan } from '../common/manager-permissions.js';
 import { canViewPayments } from '../payments/payment-access.js';
 import { featureEnabled } from '../commercial/commercial-gate.js';
+import { dataLocalDe, horaLocalDe } from '../availability/time-zone.js';
 import { canViewConsumers, CONSUMERS_FORBIDDEN_MESSAGE } from './consumer-access.js';
 import type { ConsumerGroupsDto, ConsumerHistoryDto } from './consumer.dto.js';
 import { clienteUnificado } from './consumer-rules.js';
@@ -50,6 +51,9 @@ export interface OutroCadastro extends ConsumerView {
 export interface AtendimentoResumido {
   id: string;
   startAt: string;
+  /** Data (`YYYY-MM-DD`) e hora (`HH:mm`) no fuso do estabelecimento. */
+  localDate: string;
+  localStart: string;
   status: string;
   professionalName: string;
   services: string[];
@@ -496,13 +500,14 @@ export class ConsumerProfileService {
     const linhas = linhasDe<{
       id: string;
       start_at: Date;
+      timezone: string;
       status: string;
       professional_name: string;
       servicos: string[] | null;
       precos: (number | null)[] | null;
     }>(
       await manager.query(
-        `SELECT a.id, a.start_at, a.status, p.name AS professional_name,
+        `SELECT a.id, a.start_at, t.timezone, a.status, p.name AS professional_name,
                 (SELECT array_agg(coalesce(i.service_name_snapshot, s.name, '') ORDER BY i.position, i.id)
                    FROM appointment_items i
                    LEFT JOIN services s ON s.tenant_id = i.tenant_id AND s.id = i.service_id
@@ -512,6 +517,7 @@ export class ConsumerProfileService {
                   WHERE i.tenant_id = a.tenant_id AND i.appointment_id = a.id) AS precos
            FROM appointments a
            JOIN professionals p ON p.tenant_id = a.tenant_id AND p.id = a.professional_id
+           JOIN tenants t ON t.id = a.tenant_id
           WHERE a.tenant_id = $1 AND ${condicao}
           ORDER BY ${ordem}
           LIMIT ${Number(limite)}`,
@@ -521,6 +527,8 @@ export class ConsumerProfileService {
     return linhas.map((linha) => ({
       id: linha.id,
       startAt: new Date(linha.start_at).toISOString(),
+      localDate: dataLocalDe(new Date(linha.start_at), linha.timezone),
+      localStart: horaLocalDe(new Date(linha.start_at), linha.timezone),
       status: linha.status,
       professionalName: linha.professional_name,
       services: (linha.servicos ?? []).filter((nome) => nome !== ''),

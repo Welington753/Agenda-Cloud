@@ -6,8 +6,11 @@
 // resultado limitado, cadastro com bloqueio de envio repetido, persistência
 // após recarregar, duplicidade sem sobrescrever, resultado incerto sem
 // reenvio, falha só da leitura após cadastro confirmado, o cliente achado no
-// seletor de "Novo agendamento", troca de estabelecimento sem sobra e a
-// navegação em computador e celular.
+// seletor de "Novo agendamento", troca de estabelecimento sem sobra, a
+// navegação em computador e celular, a lista agrupada por telefone, "Cadastrar
+// outra pessoa" no mesmo WhatsApp, a ficha com o aviso de histórico
+// compartilhado, a edição do WhatsApp, a unificação (prévia, Cancelar,
+// prévia desatualizada e confirmação) e o gerente sem "Unificar".
 //
 // Prova pela API (botão escondido não é controle de acesso): o dono de outro
 // estabelecimento não lê nem grava clientes deste.
@@ -16,7 +19,7 @@
 // o ROMPIMENTO de conexão (`route.abort`) é simulado, porque não há outro
 // jeito de perder uma resposta de propósito.
 //
-// Orçamento de POST /invites/accept (fixture de contas): 4 de 10 (rate limit real por IP). Roda em
+// Orçamento de POST /invites/accept (fixture de contas): 6 de 10 (rate limit real por IP). Roda em
 // invocação própria do Playwright (`npm run test:browser:clients`).
 import { criarContaDeTeste as contaPorConvite } from "./support/contas-de-teste";
 import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
@@ -92,8 +95,8 @@ async function buscar(page: Page, termo: string) {
   await page.getByRole("search").getByRole("button", { name: "Buscar" }).click();
 }
 
-/** Leitura da listagem da tela de Clientes (com ou sem filtro). */
-const ehBusca = (url: URL) => /\/tenants\/[^/]+\/consumers\/page$/.test(url.pathname);
+/** Leitura da lista agrupada da tela de Clientes (com ou sem filtro). */
+const ehBusca = (url: URL) => /\/tenants\/[^/]+\/consumers\/groups$/.test(url.pathname);
 /** Busca do seletor de cliente da Agenda (rota de busca, no máximo 20). */
 const ehBuscaDoSeletor = (url: URL) => /consumers$/.test(url.pathname) && url.searchParams.has("q");
 const ehCadastro = (route: Route) =>
@@ -183,7 +186,7 @@ test.describe("clientes do estabelecimento", () => {
     await page.reload();
     // A primeira página mostra o cliente sem busca nenhuma.
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
-    await expect(page.getByTestId("clientes-total")).toHaveText("1 cliente cadastrado");
+    await expect(page.getByTestId("clientes-total")).toHaveText("1 cliente ou grupo");
     await buscar(page, `Teste ${marca}`);
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(1);
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
@@ -199,6 +202,9 @@ test.describe("clientes do estabelecimento", () => {
     await expect(page.getByRole("main").getByRole("alert")).toContainText("Já existe um cliente com este WhatsApp");
     expect(posts).toBe(2);
     await expect(page.getByLabel("Nome do cliente")).toHaveValue("Nome Sobrescrito");
+    // Os cadastros desse WhatsApp aparecem, com "Usar este" (a ficha).
+    await expect(page.getByTestId("cadastros-do-whatsapp")).toContainText(nomeMaria);
+    await expect(page.getByTestId("usar-este-cadastro")).toHaveCount(1);
     await page.getByRole("button", { name: "Pesquisar este WhatsApp" }).click();
     await expect(page.getByTestId("lista-clientes")).toContainText(nomeMaria);
     await expect(page.getByTestId("lista-clientes")).not.toContainText("Nome Sobrescrito");
@@ -282,17 +288,17 @@ test.describe("clientes do estabelecimento", () => {
     }
     await buscar(page, prefixo);
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(20);
-    await expect(page.getByTestId("clientes-total")).toHaveText(`21 clientes encontrados para “${prefixo}”`);
+    await expect(page.getByTestId("clientes-total")).toHaveText(`21 clientes ou grupos para “${prefixo}”`);
     await expect(page.getByTestId("clientes-mostrando")).toHaveText("Mostrando 20 de 21, em ordem alfabética.");
     await page.getByTestId("clientes-carregar-mais").click();
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(21);
     await expect(page.getByTestId("clientes-carregar-mais")).toHaveCount(0);
     // Ordem estável: a segunda página continua de onde a primeira parou.
-    const nomes = await page.getByTestId("lista-clientes").getByRole("listitem").locator("p.font-semibold").allTextContents();
+    const nomes = await page.getByTestId("lista-clientes").getByTestId("cliente-ficha-link").allTextContents();
     expect(nomes).toEqual(Array.from({ length: 21 }, (_, i) => `${prefixo} ${String(i).padStart(2, "0")}`));
     // Sem filtro, todos os clientes do estabelecimento, também paginados.
     await page.getByTestId("clientes-limpar-busca").click();
-    await expect(page.getByTestId("clientes-total")).toHaveText("23 clientes cadastrados");
+    await expect(page.getByTestId("clientes-total")).toHaveText("23 clientes ou grupos");
     await expect(page.getByTestId("lista-clientes").getByRole("listitem")).toHaveCount(20);
 
     // ------------------------------------------------ o cliente aparece no seletor da agenda
@@ -612,5 +618,146 @@ test.describe("clientes do estabelecimento", () => {
     // A seleção do cliente segue como antes.
     await resultados.getByRole("button", { name: new RegExp(gama) }).click();
     await expect(painel.getByText("Cliente selecionado:")).toContainText(gama);
+  });
+  test("telefone compartilhado, ficha, edição, unificação e gerente sem Unificar", async ({ page, request, playwright }) => {
+    test.setTimeout(150_000);
+    await page.setViewportSize(COMPUTADOR);
+    const u = await cadastrar(request, "Unif");
+    const sufixo = Date.now().toString().slice(-4);
+    const marca = sufixo.replace(/\d/g, (d) => "abcdefghij"[Number(d)]);
+    const post = (corpo: Record<string, unknown>) => chamar<{ consumer: { id: string } }>(request, "POST", `/tenants/${u.tenantId}/consumers`, corpo);
+    const chave = () => `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+
+    // Bia e o filho no mesmo WhatsApp; a forma antiga do número (sem o 9);
+    // duas Doras com telefones diferentes ("Mesmo nome — confira").
+    const telBia = `(11) 98${sufixo}-0101`;
+    const bia = await post({ name: `Bia ${marca}`, whatsapp: telBia });
+    expect(bia.status).toBe(201);
+    const emUso = await post({ name: `Caio ${marca}`, whatsapp: telBia });
+    expect(emUso.status).toBe(409);
+    expect((await post({ name: `Caio ${marca}`, whatsapp: telBia, requestKey: chave(), outraPessoa: true })).status).toBe(201);
+    expect((await post({ name: `Bia Antiga ${marca}`, whatsapp: `(11) 8${sufixo}-0101` })).status).toBe(201);
+    const dora = await post({ name: `Dora ${marca}`, whatsapp: `(21) 97${sufixo}-0202` });
+    const doraDois = await post({ name: `Dora ${marca}`, whatsapp: `(31) 96${sufixo}-0303` });
+    expect([dora.status, doraDois.status]).toEqual([201, 201]);
+
+    await entrar(page, u.email);
+    await expect(page).toHaveURL(/\/conta\/visao-geral$/);
+    await page.goto("/conta/clientes");
+
+    // ------------------------------------------------ lista agrupada
+    const grupo = page.getByTestId("grupo-clientes");
+    await expect(grupo).toHaveCount(1);
+    await grupo.locator("summary").click();
+    const secoes = grupo.getByTestId("secao-grupo");
+    await expect(secoes).toHaveCount(2);
+    await expect(secoes.nth(0)).toContainText("Mesmo WhatsApp");
+    await expect(secoes.nth(0)).toContainText(`Bia ${marca}`);
+    await expect(secoes.nth(0)).toContainText(`Caio ${marca}`);
+    await expect(secoes.nth(1)).toContainText("Número parecido (9º dígito ou DDD) — confira");
+    await expect(secoes.nth(1)).toContainText(`Bia Antiga ${marca}`);
+    await expect(page.getByTestId("aviso-mesmo-nome")).toHaveCount(2);
+    await expect(page.getByTestId("aviso-mesmo-nome").first()).toHaveText("Mesmo nome em outro cadastro — confira");
+
+    // ------------------------------------------------ "Cadastrar outra pessoa" com nome igual
+    await page.getByRole("button", { name: "Novo cliente" }).click();
+    await page.getByLabel("Nome do cliente").fill(`Bia ${marca}`);
+    await page.getByLabel("WhatsApp").fill(telBia);
+    await page.getByRole("button", { name: "Cadastrar cliente" }).click();
+    await expect(page.getByTestId("cadastros-do-whatsapp")).toContainText(`Caio ${marca}`);
+    await page.getByTestId("cadastrar-outra-pessoa").click();
+    await expect(page.getByTestId("cliente-cadastrado")).toContainText(`Cliente Bia ${marca} cadastrado.`);
+
+    // ------------------------------------------------ ficha com histórico de nomes diferentes
+    const profissional = await chamar<{ professional: { id: string } }>(request, "POST", `/tenants/${u.tenantId}/professionals`, { name: "Ana Unif" });
+    expect(profissional.status).toBe(201);
+    for (const [i, nome] of [`Dora ${marca}`, "Outra Pessoa"].entries()) {
+      await noBancoDescartavel(
+        `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot, professional_id, start_at, end_at, status)
+         VALUES ($1, $2, (SELECT id FROM units WHERE tenant_id = $2 ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, $6, $6::timestamptz + interval '30 minutes', 'COMPLETED')`,
+        [`e2eh${i}${Date.now().toString(36)}`.slice(0, 30), u.tenantId, dora.corpo.consumer.id, nome, profissional.corpo.professional.id, `2026-0${i + 1}-10T13:00:00Z`],
+      );
+    }
+    await page.getByRole("button", { name: "Fechar aviso" }).click();
+    await page.getByTestId("cliente-ficha-link").filter({ hasText: `Dora ${marca}` }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/conta/clientes/${dora.corpo.consumer.id}$`));
+    await expect(nav(page).getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("ficha-resumo")).toContainText("2 agendamentos");
+    await expect(page.getByTestId("aviso-historico-compartilhado")).toContainText("o histórico pode ser de mais de uma pessoa");
+    await expect(page.getByTestId("ficha-historico").getByRole("listitem")).toHaveCount(2);
+    await expect(page.getByTestId("outros-cadastros")).toContainText("Mesmo nome — confira");
+
+    // ------------------------------------------------ edição do WhatsApp mantém o histórico
+    await page.getByTestId("ficha-editar").click();
+    await page.getByLabel("WhatsApp").fill(`(21) 95${sufixo}-0909`);
+    await page.getByRole("button", { name: "Salvar" }).click();
+    await expect(page.getByTestId("ficha-aviso")).toContainText("Cadastro atualizado");
+    await expect(page.getByTestId("ficha-dados")).toContainText(`(21) 95${sufixo}-0909`);
+    await expect(page.getByTestId("ficha-historico").getByRole("listitem")).toHaveCount(2);
+
+    // ------------------------------------------------ unificação: prévia e Cancelar não gravam
+    await page.getByTestId("unificar-com").click();
+    await page.getByTestId("unificar-revisar").click();
+    await expect(page.getByTestId("unificar-previa")).toContainText("Fica com o histórico (principal)");
+    await expect(page.getByTestId("unificar-transferir")).toContainText("0 agendamentos");
+    await page.getByTestId("unificar-cancelar").click();
+    await expect(page.getByTestId("unificar-cadastros")).toHaveCount(0);
+    await expect(page.getByTestId("outro-cadastro")).toHaveCount(1);
+
+    // Prévia desatualizada: um agendamento entra no secundário antes de confirmar.
+    await page.getByTestId("unificar-com").click();
+    await page.getByTestId("unificar-revisar").click();
+    await expect(page.getByTestId("unificar-previa")).toBeVisible();
+    await noBancoDescartavel(
+      `INSERT INTO appointments (id, tenant_id, unit_id, consumer_id, consumer_name_snapshot, consumer_whatsapp_snapshot, professional_id, start_at, end_at, status)
+       VALUES ($1, $2, (SELECT id FROM units WHERE tenant_id = $2 ORDER BY is_primary DESC LIMIT 1), $3, $4, 'x', $5, '2026-03-10T13:00:00Z', '2026-03-10T13:30:00Z', 'CANCELED')`,
+      [`e2ed${Date.now().toString(36)}`.slice(0, 30), u.tenantId, doraDois.corpo.consumer.id, `Dora ${marca}`, profissional.corpo.professional.id],
+    );
+    await page.getByTestId("unificar-confirmar").click();
+    await expect(page.getByTestId("unificar-previa-desatualizada")).toContainText("mudaram desde a prévia");
+    await expect(page.getByTestId("unificar-transferir")).toContainText("1 agendamento (0 concluídos, 1 cancelado");
+    await page.getByTestId("unificar-confirmar").click();
+    await expect(page.getByTestId("ficha-aviso")).toContainText("Cadastros unificados");
+    await expect(page.getByTestId("ficha-resumo")).toContainText("3 agendamentos");
+    await expect(page.getByTestId("outros-cadastros")).toHaveCount(0);
+    // A lápide some da lista e a ficha dela leva ao principal.
+    await page.goto(`/conta/clientes/${doraDois.corpo.consumer.id}`);
+    await expect(page.getByTestId("ficha-falha")).toContainText("foi unificado");
+    await page.getByTestId("abrir-principal").click();
+    await expect(page).toHaveURL(new RegExp(`/conta/clientes/${dora.corpo.consumer.id}$`));
+
+    // ------------------------------------------------ celular: a ficha cabe na tela
+    for (const viewport of [CELULAR, CELULAR_ESTREITO]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`/conta/clientes/${bia.corpo.consumer.id}`);
+      await expect(page.getByTestId("outros-cadastros")).toBeVisible();
+      await semRolagemHorizontal(page);
+      await page.screenshot({ path: test.info().outputPath(`ficha-${viewport.width}.png`), fullPage: true });
+    }
+
+    // ------------------------------------------------ gerente: edita, mas não unifica
+    const apiG = await playwright.request.newContext();
+    const g = await cadastrar(apiG, "Ger");
+    await apiG.dispose();
+    const vinculo = `e2eg${Date.now().toString(36)}`.slice(0, 30);
+    await noBancoDescartavel(
+      `INSERT INTO memberships (id, user_id, tenant_id, role, permissions_confirmed_at) VALUES ($1, $2, $3, 'GERENTE', now())`,
+      [vinculo, g.userId, u.tenantId],
+    );
+    for (const [i, permissao] of ["CONSUMIDORES_VISUALIZAR", "CONSUMIDORES_GERENCIAR"].entries()) {
+      await noBancoDescartavel(
+        `INSERT INTO membership_permission_overrides (id, tenant_id, membership_id, permission, mode) VALUES ($1, $2, $3, $4::permission, 'GRANTED')`,
+        [`${vinculo}${i}`.slice(0, 30), u.tenantId, vinculo, permissao],
+      );
+    }
+    await page.setViewportSize(COMPUTADOR);
+    await page.context().clearCookies();
+    await entrar(page, g.email);
+    await expect(page).toHaveURL(/\/conta\/selecionar-estabelecimento$/);
+    await page.getByRole("button", { name: new RegExp(u.businessName) }).click();
+    await page.goto(`/conta/clientes/${bia.corpo.consumer.id}`);
+    await expect(page.getByTestId("outros-cadastros")).toBeVisible();
+    await expect(page.getByTestId("ficha-editar")).toBeVisible();
+    await expect(page.getByTestId("unificar-com")).toHaveCount(0);
   });
 });

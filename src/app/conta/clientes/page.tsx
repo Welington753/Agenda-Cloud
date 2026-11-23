@@ -1,10 +1,12 @@
 "use client";
 
 // Clientes do estabelecimento ativo: a primeira página aparece ao abrir
-// (GET /tenants/:tenantId/consumers/page, paginada e ordenada no servidor), a
-// busca filtra essa mesma listagem e o cadastro usa POST .../consumers. Sem
-// edição, exclusão nem histórico. O funcionário não chega aqui (o shell o
-// leva à agenda dele) e o servidor recusa a rota a ele de qualquer forma.
+// (GET /tenants/:tenantId/consumers/groups, agrupada por telefone, paginada e
+// ordenada no servidor), a busca filtra essa mesma lista e o cadastro usa POST
+// .../consumers com a chave do formulário aberto. Cada nome leva à ficha
+// (`/conta/clientes/[id]`), onde ficam histórico, edição e unificação. O
+// funcionário não chega aqui (o shell o leva à agenda dele) e o servidor
+// recusa a rota a ele de qualquer forma.
 //
 // Vive sob `/conta`, área REAL: nada da demonstração é importado (ver
 // lib/servicos/sem-dados-demo.test.ts). O cliente cadastrado aqui é o mesmo
@@ -15,17 +17,19 @@
 //  - CONFIRMADO: o aviso de sucesso fica na tela e a busca pelo WhatsApp roda
 //    em seguida (a lista filtrada mostra o cliente novo). Se só essa leitura falhar, o aviso continua e "Tentar
 //    novamente" repete só a leitura, nunca o POST.
-//  - DUPLICADO (409): nada é sobrescrito; o formulário continua preenchido e
-//    oferece pesquisar o WhatsApp.
+//  - WHATSAPP EM USO (409): nada é sobrescrito; o formulário continua
+//    preenchido e mostra os cadastros desse WhatsApp, com "Usar este" (abre a
+//    ficha) ou "Cadastrar outra pessoa" (mãe e filho no mesmo número; nome
+//    igual permitido), que reenvia com a mesma chave.
 //  - INCERTO (sem resposta): o cliente pode ter sido gravado. A tela diz isso
 //    e oferece pesquisar antes de qualquer nova tentativa. Nunca reenvia.
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Search, Store, UserPlus, X } from "lucide-react";
+import { CheckCircle2, Search, Store, UserPlus, Users, X } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
-import { TERMO_MINIMO_BUSCA, type ClienteReal, type DadosCadastroCliente } from "@/lib/api/consumers-api";
+import { TERMO_MINIMO_BUSCA, novaChaveDeCadastro, type ClienteReal, type DadosCadastroCliente } from "@/lib/api/consumers-api";
 import { mensagemFalhaCadastro } from "@/lib/clientes/cadastro";
 import { useClientesReais } from "@/lib/clientes/use-clientes-reais";
 import { Botao } from "@/components/ui/button";
@@ -34,12 +38,16 @@ import { PaginaConta } from "@/components/conta/pagina-conta";
 import { useAreas } from "@/lib/conta/use-areas";
 import { FormularioCliente } from "./formulario-cliente";
 import { ListaClientes } from "./lista-clientes";
-import { ROTA_AGENDA } from "@/lib/conta/rotas";
+import { ROTA_AGENDA, rotaDaFichaDoCliente } from "@/lib/conta/rotas";
 
-/** Falha do cadastro com o WhatsApp tentado, para oferecer a pesquisa. */
+/** Falha do cadastro com o WhatsApp tentado, para oferecer a pesquisa, e os
+ * cadastros que já usam o número (para "Usar este" ou "Cadastrar outra
+ * pessoa"). */
 interface ErroCadastro {
   mensagem: string;
   whatsapp: string | null;
+  cadastros: ClienteReal[];
+  dados: DadosCadastroCliente;
 }
 
 export default function ClientesPage() {
@@ -57,6 +65,8 @@ export default function ClientesPage() {
   const [formularioAberto, setFormularioAberto] = useState(false);
   const [erroCadastro, setErroCadastro] = useState<ErroCadastro | null>(null);
   const [cadastrado, setCadastrado] = useState<ClienteReal | null>(null);
+  // Uma chave por formulário aberto: repetir o envio devolve o mesmo cadastro.
+  const [chaveDoFormulario, setChaveDoFormulario] = useState(novaChaveDeCadastro);
 
   useEffect(() => {
     if (precisaSelecionar) router.replace("/conta/selecionar-estabelecimento");
@@ -112,12 +122,13 @@ export default function ClientesPage() {
 
   function abrirFormulario() {
     setErroCadastro(null);
+    setChaveDoFormulario(novaChaveDeCadastro());
     setFormularioAberto(true);
   }
 
   async function aoCadastrar(dados: DadosCadastroCliente) {
     setErroCadastro(null);
-    const resultado = await cadastrar(dados);
+    const resultado = await cadastrar({ ...dados, requestKey: chaveDoFormulario });
     if (!resultado) return;
 
     if (!resultado.ok) {
@@ -126,6 +137,8 @@ export default function ClientesPage() {
       setErroCadastro({
         mensagem: mensagemFalhaCadastro(resultado.falha),
         whatsapp: comPesquisa ? dados.whatsapp : null,
+        cadastros: resultado.falha.tipo === "duplicado" ? (resultado.falha.cadastros ?? []) : [],
+        dados,
       });
       return;
     }
@@ -144,7 +157,7 @@ export default function ClientesPage() {
   return (
     <PaginaConta
       titulo="Clientes"
-      descricao="Todos os clientes do estabelecimento, em ordem alfabética. Filtre pelo nome ou WhatsApp."
+      descricao="Todos os clientes do estabelecimento, em ordem alfabética, com os cadastros de WhatsApp igual ou parecido juntos. Filtre pelo nome ou WhatsApp."
       acoes={
         !formularioAberto && podeCadastrar ? (
           <Botao type="button" onClick={abrirFormulario}>
@@ -191,17 +204,56 @@ export default function ClientesPage() {
               enviando={gravando}
               erro={erroCadastro?.mensagem ?? null}
               acaoDoErro={
-                erroCadastro?.whatsapp ? (
-                  <Botao
-                    type="button"
-                    variante="secundaria"
-                    tamanho="sm"
-                    disabled={gravando}
-                    onClick={() => pesquisarWhatsapp(erroCadastro.whatsapp!)}
-                  >
-                    <Search size={14} aria-hidden="true" />
-                    Pesquisar este WhatsApp
-                  </Botao>
+                erroCadastro && (erroCadastro.whatsapp || erroCadastro.cadastros.length > 0) ? (
+                  <div className="space-y-3">
+                    {erroCadastro.cadastros.length > 0 && (
+                      <div className="space-y-2" data-testid="cadastros-do-whatsapp">
+                        <p className="text-sm font-medium text-ink">Cadastros com este WhatsApp:</p>
+                        <ul className="space-y-2">
+                          {erroCadastro.cadastros.map((c) => (
+                            <li
+                              key={c.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border p-2"
+                            >
+                              <span className="min-w-0 text-sm break-words text-ink">
+                                {c.name} · {c.whatsapp}
+                              </span>
+                              <Link
+                                href={rotaDaFichaDoCliente(c.id)}
+                                className="inline-flex min-h-11 items-center text-sm font-medium text-[color:var(--color-accent-hover)] underline"
+                                data-testid="usar-este-cadastro"
+                              >
+                                Usar este
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                        <Botao
+                          type="button"
+                          variante="secundaria"
+                          tamanho="sm"
+                          disabled={gravando}
+                          data-testid="cadastrar-outra-pessoa"
+                          onClick={() => void aoCadastrar({ ...erroCadastro.dados, outraPessoa: true })}
+                        >
+                          <Users size={14} aria-hidden="true" />
+                          Cadastrar outra pessoa com este WhatsApp
+                        </Botao>
+                      </div>
+                    )}
+                    {erroCadastro.whatsapp && (
+                      <Botao
+                        type="button"
+                        variante="secundaria"
+                        tamanho="sm"
+                        disabled={gravando}
+                        onClick={() => pesquisarWhatsapp(erroCadastro.whatsapp!)}
+                      >
+                        <Search size={14} aria-hidden="true" />
+                        Pesquisar este WhatsApp
+                      </Botao>
+                    )}
+                  </div>
                 ) : undefined
               }
               aoEnviar={(dados) => void aoCadastrar(dados)}

@@ -92,7 +92,7 @@ export function FormularioCliente({
           "whatsapp",
           "WhatsApp",
           { type: "tel", inputMode: "tel", placeholder: "(11) 90000-0000", autoComplete: "off" },
-          "Com DDD. Cada WhatsApp só pode ser usado por um cliente neste estabelecimento.",
+          "Com DDD. Se outra pessoa já usa este WhatsApp, você poderá confirmar que é um cadastro diferente.",
         )}
         {campo(
           "email",

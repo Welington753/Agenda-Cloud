@@ -22,6 +22,10 @@ export const ROTA_INICIO = "/conta/visao-geral";
 export const ROTA_AGENDA = "/conta/agendamentos";
 export const ROTA_SOLICITACOES = `${ROTA_AGENDA}/solicitacoes`;
 export const ROTA_CLIENTES = "/conta/clientes";
+/** Ficha de um cliente (dentro de Clientes: o menu destaca Clientes). */
+export function rotaDaFichaDoCliente(id: string): string {
+  return `${ROTA_CLIENTES}/${encodeURIComponent(id)}`;
+}
 export const ROTA_MINHA_AGENDA = "/conta/minha-agenda";
 export const ROTA_SELECIONAR_ESTABELECIMENTO = "/conta/selecionar-estabelecimento";
 /** Recebimentos manuais (dono), abertos pela Visão geral e por Configurações. */

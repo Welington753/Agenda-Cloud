@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  rotaDaFichaDoCliente,
   ENCAMINHAMENTOS_CONTA_ANTIGA,
   agruparSecoes,
   emAreaSobConfiguracoes,
@@ -66,5 +67,12 @@ describe("endereços antigos", () => {
       ["/conta/profissionais/:caminho*", "/conta/configuracoes/profissionais/:caminho*", false],
       ["/conta/equipe", "/conta/configuracoes/equipe", false],
     ]);
+  });
+});
+
+describe("ficha do cliente", () => {
+  it("fica dentro de Clientes, com o id codificado", () => {
+    expect(rotaDaFichaDoCliente("abc123")).toBe("/conta/clientes/abc123");
+    expect(rotaDaFichaDoCliente("a/b")).toBe("/conta/clientes/a%2Fb");
   });
 });
