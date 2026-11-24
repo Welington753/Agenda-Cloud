@@ -6,6 +6,7 @@ import { AccountDelivery } from './account-delivery.js';
 import {
   ACCOUNT_PREVIEW_LIMIT,
   ACCOUNT_SUBMIT_LIMIT,
+  PASSWORD_RESET_REQUEST_LIMIT,
   REAUTH_LIMIT,
   createAccountRateLimiter,
 } from './account-rate-limit.js';
@@ -13,13 +14,14 @@ import { AccountsAdminController } from './accounts-admin.controller.js';
 import { AccountsAdminService } from './accounts-admin.service.js';
 import { AccountsDirectoryService } from './accounts-directory.service.js';
 import { InvitesService } from './invites.service.js';
+import { PasswordResetRequests } from './password-reset-requests.js';
 import { PasswordResetsService } from './password-resets.service.js';
 import { PublicAccountsController } from './public-accounts.controller.js';
 
 @Module({
   imports: [ConfigModule, AuthModule],
   controllers: [AccountsAdminController, PublicAccountsController],
-  providers: [AccountDelivery, AccountsAdminService, AccountsDirectoryService, InvitesService, PasswordResetsService],
+  providers: [AccountDelivery, AccountsAdminService, AccountsDirectoryService, InvitesService, PasswordResetsService, PasswordResetRequests],
   // Exportado para o TeamModule: o convite de funcionário usa o MESMO fluxo.
   exports: [InvitesService],
 })
@@ -41,6 +43,9 @@ export class AccountsModule implements NestModule {
         { path: 'invites/preview', method: RequestMethod.POST },
         { path: 'password-resets/preview', method: RequestMethod.POST },
       );
+    consumer
+      .apply(createAccountRateLimiter(PASSWORD_RESET_REQUEST_LIMIT, source, secret))
+      .forRoutes({ path: 'password-resets/request', method: RequestMethod.POST });
     consumer
       .apply(createAccountRateLimiter(REAUTH_LIMIT, source, secret))
       .forRoutes({ path: 'platform/reauth', method: RequestMethod.POST });

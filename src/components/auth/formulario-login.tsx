@@ -10,11 +10,12 @@
 // sozinho, então mandá-lo para um servidor ainda dormindo só geraria um erro.
 // O que foi digitado continua no formulário.
 import { useState, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, KeyRound, Loader2 } from "lucide-react";
+import { ChevronDown, KeyRound } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
 import { FaixaConexao } from "@/components/conexao/aviso-conexao";
+import { AvisoPreparandoAcesso } from "@/components/auth/aviso-preparando-acesso";
 import { avisoDaConexao } from "@/lib/auth/conexao";
 
 // Fonte de 16 px (abaixo disso o Safari do iPhone aproxima a tela ao focar) e
@@ -81,18 +82,7 @@ export function FormularioLogin({
           demais estados (sem internet, erro, "Tentar novamente") e as outras
           telas continuam com a faixa comum. O envio segue bloqueado. */}
       {conexaoExibida === "acordando" ? (
-        <div
-          role="status"
-          data-testid="faixa-conexao-acordando"
-          className="flex items-start gap-2.5 rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 py-2.5 text-sm text-ink"
-        >
-          <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-ink-soft" aria-hidden="true" />
-          <p>
-            <span className="block font-medium">Preparando seu acesso…</span>
-            <span className="block text-ink-soft">Pode levar cerca de 1 min.</span>
-            <span className="block text-ink-soft">Continuamos automaticamente.</span>
-          </p>
-        </div>
+        <AvisoPreparandoAcesso />
       ) : (
         <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
       )}

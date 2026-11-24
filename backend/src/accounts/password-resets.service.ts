@@ -1,11 +1,16 @@
-// Redefinição de senha pedida pela administração. A administração nunca vê
-// nem define a senha: só dispara um link para o e-mail da conta. Quem abre o
-// link cria a senha nova; depois disso, todas as sessões da conta são
-// encerradas (quem estivesse usando a senha antiga sai).
+// Redefinição de senha por link. Duas origens (`password_resets.origin`):
 //
-// Mesmas regras dos convites: 24 horas, uso único, só o hash no banco, no
-// máximo um pedido pendente por conta (um pedido novo revoga o anterior),
-// envio depois do commit e com o estado registrado.
+// - ADMIN: a administração dispara o link para o e-mail da conta (aqui, em
+//   `request`). Nunca vê nem define a senha. 24 horas; um pedido novo da
+//   administração revoga o pendente, inclusive um de autoatendimento.
+// - SELF_SERVICE: "Esqueci minha senha", pedido anônimo resolvido em
+//   password-reset-requests.ts. 1 hora; nunca revoga um link pendente.
+//
+// Para as duas: uso único, só o hash no banco, no máximo um pendente por
+// conta (índice parcial), envio depois do commit com o estado registrado.
+// Quem abre o link cria a senha nova (`complete`); depois disso, todas as
+// sessões da conta são encerradas e nenhum link pendente sobra. O segundo
+// fator não é tocado: o próximo login continua pedindo.
 import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
@@ -27,7 +32,9 @@ export interface PasswordResetView {
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
-  requestedBy: { id: string; name: string };
+  origin: 'ADMIN' | 'SELF_SERVICE';
+  /** Quem pediu, só na origem ADMIN. O pedido de autoatendimento é anônimo. */
+  requestedBy: { id: string; name: string } | null;
 }
 
 export const PASSWORD_RESET_COLUMNS = `json_build_object(
@@ -38,13 +45,16 @@ export const PASSWORD_RESET_COLUMNS = `json_build_object(
   'createdAt', r.created_at,
   'expiresAt', r.expires_at,
   'usedAt', r.used_at,
-  'requestedBy', json_build_object('id', req.id, 'name', req.name)
+  'origin', r.origin,
+  'requestedBy', CASE WHEN req.id IS NULL THEN NULL ELSE json_build_object('id', req.id, 'name', req.name) END
 ) AS reset`;
+
+/** FROM para `PASSWORD_RESET_COLUMNS`: autor opcional (autoatendimento). */
+export const PASSWORD_RESET_FROM = 'password_resets r LEFT JOIN users req ON req.id = r.requested_by_user_id';
 
 export async function loadPasswordResetView(manager: EntityManager, id: string): Promise<PasswordResetView | null> {
   const [linha] = await manager.query<{ reset: PasswordResetView }[]>(
-    `SELECT ${PASSWORD_RESET_COLUMNS} FROM password_resets r JOIN users req ON req.id = r.requested_by_user_id
-      WHERE r.id = $1`,
+    `SELECT ${PASSWORD_RESET_COLUMNS} FROM ${PASSWORD_RESET_FROM} WHERE r.id = $1`,
     [id],
   );
   return linha?.reset ?? null;
@@ -53,9 +63,9 @@ export async function loadPasswordResetView(manager: EntityManager, id: string):
 type PublicResetStatus = 'VALID' | 'INVALID' | 'EXPIRED' | 'USED' | 'REVOKED' | 'UNAVAILABLE';
 
 const MENSAGEM: Record<Exclude<PublicResetStatus, 'VALID' | 'INVALID'>, string> = {
-  EXPIRED: 'Este link expirou. Peça outro à administração.',
+  EXPIRED: 'Este link expirou. Peça outro em "Esqueci minha senha" ou à administração.',
   USED: 'Este link já foi usado.',
-  REVOKED: 'Este link foi substituído por outro mais recente.',
+  REVOKED: 'Este link não vale mais. Use o link mais recente ou peça outro em "Esqueci minha senha".',
   UNAVAILABLE: 'Esta conta não pode redefinir a senha agora. Fale com a administração.',
 };
 
@@ -113,16 +123,17 @@ export class PasswordResetsService {
           });
         }
         await manager.query(
-          `UPDATE password_resets SET status = 'REVOKED', revoked_at = $2 WHERE user_id = $1 AND status = 'PENDING'`,
+          `UPDATE password_resets SET status = 'REVOKED', revoked_at = $2, delivery_due_at = NULL
+            WHERE user_id = $1 AND status = 'PENDING'`,
           [target.id, now],
         );
         const id = generateId();
         const { token, tokenHash } = generateAccountToken();
         const expiresAt = linkExpiresAt(now);
         await manager.query(
-          `INSERT INTO password_resets (id, user_id, requested_by_user_id, token_hash, status, created_at, expires_at,
-              request_key)
-           VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7)`,
+          `INSERT INTO password_resets (id, user_id, requested_by_user_id, origin, token_hash, status, created_at,
+              expires_at, request_key)
+           VALUES ($1, $2, $3, 'ADMIN', $4, 'PENDING', $5, $6, $7)`,
           [id, target.id, actor.id, tokenHash, now, expiresAt, requestKey],
         );
         await recordAudit(
@@ -193,7 +204,17 @@ export class PasswordResetsService {
         alvo.user_id,
         now,
       ]);
-      await manager.query(`UPDATE password_resets SET status = 'USED', used_at = $2 WHERE id = $1`, [alvo.id, now]);
+      await manager.query(
+        `UPDATE password_resets SET status = 'USED', used_at = $2, delivery_due_at = NULL WHERE id = $1`,
+        [alvo.id, now],
+      );
+      // Nenhum outro link da conta continua valendo (o índice parcial já
+      // impede dois pendentes; isto fecha o caso por construção).
+      await manager.query(
+        `UPDATE password_resets SET status = 'REVOKED', revoked_at = $2, delivery_due_at = NULL
+          WHERE user_id = $1 AND status = 'PENDING' AND id <> $3`,
+        [alvo.user_id, now, alvo.id],
+      );
       await recordAudit(
         manager,
         {

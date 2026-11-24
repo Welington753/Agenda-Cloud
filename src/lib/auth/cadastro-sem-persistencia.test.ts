@@ -11,6 +11,7 @@ const ARQUIVOS_ALVO = [
   ...listarArquivos("src/app/cadastro"),
   ...listarArquivos("src/app/convite"),
   ...listarArquivos("src/app/redefinir-senha"),
+  ...listarArquivos("src/app/esqueci-senha"),
   "src/lib/auth/senha.ts",
   "src/lib/auth/link-do-email.ts",
   "src/components/administracao/reautenticacao.tsx",

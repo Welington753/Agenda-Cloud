@@ -37,6 +37,7 @@ export const ROTAS_SEM_INDEXACAO = [
   "/cadastro/:path*",
   "/convite/:path*",
   "/redefinir-senha/:path*",
+  "/esqueci-senha/:path*",
   "/agenda_api/:path*",
   "/403/:path*",
   // Demonstração local (localStorage), legado.

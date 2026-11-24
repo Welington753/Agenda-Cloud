@@ -35,6 +35,7 @@ export const RESERVED_SLUGS: readonly string[] = [
   'portal',
   'profissional',
   'redefinir-senha',
+  'esqueci-senha',
   'apple-icon',
   // Entradas antigas que redirecionam para o portal.
   'plataforma',

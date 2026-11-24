@@ -81,6 +81,7 @@ describe("regras do next.config", () => {
       "/cadastro",
       "/convite",
       "/redefinir-senha",
+      "/esqueci-senha",
       "/painel",
       "/master",
       "/profissional",

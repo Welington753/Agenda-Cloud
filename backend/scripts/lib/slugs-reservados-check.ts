@@ -28,6 +28,7 @@ export const SLUGS_RESERVADOS: readonly string[] = [
   'portal',
   'profissional',
   'redefinir-senha',
+  'esqueci-senha',
   'apple-icon',
   'plataforma',
   'administracao',

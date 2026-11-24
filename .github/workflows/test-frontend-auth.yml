@@ -343,6 +343,24 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/portal-entrada
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:portal-entrada
 
+      # Invocação SEPARADA (2 pedidos de recuperação, limite de 5 por IP; 1
+      # login): "Esqueci minha senha" pelo login e pelo portal, resposta igual
+      # para login sem e-mail e e-mail confirmado, link pela caixa local, nova
+      # senha, sessão antiga encerrada e capturas nos quatro temas.
+      - name: Run self-service password recovery (forgot password, link, new password)
+        id: browser_recuperacao_senha
+        env:
+          NODE_ENV: development
+          IGNORE_DOTENV_FILE: "true"
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/recuperacao-senha
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:recuperacao-senha
+
       - name: Run platform portal temporary password (change inside the portal, 3 login attempts)
         id: browser_portal_senha_temporaria
         env:
@@ -970,6 +988,15 @@ jobs:
         with:
           name: administracao-visual-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/administracao/**/administracao-*.png
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload password recovery screenshots
+        if: always() && steps.browser_recuperacao_senha.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recuperacao-senha-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/recuperacao-senha/**/recuperacao-*.png
           retention-days: 7
           if-no-files-found: error
 

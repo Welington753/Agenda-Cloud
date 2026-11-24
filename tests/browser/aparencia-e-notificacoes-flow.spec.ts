@@ -635,6 +635,7 @@ test("Azul e branco: escolha salva vale em /conta, login, recuperação, portal 
   for (const [caminho, titulo] of [
     ["/login", "Acesse sua conta"],
     ["/redefinir-senha", null],
+    ["/esqueci-senha", "Recuperar senha"],
     ["/portal", "Entrar no portal"],
   ] as const) {
     await a.goto(caminho);

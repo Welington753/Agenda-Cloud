@@ -18,7 +18,7 @@ import { EFFECTIVE_PLATFORM_PERMISSIONS, platformCapabilities } from '../platfor
 import type { AuditQuery, InvitesQuery, UsersQuery } from './accounts.dto.js';
 import { canManageAccount, loadActor, platformDataVisibility, requireCapability, type Actor } from './actor.js';
 import { INVITE_COLUMNS, INVITE_FROM, INVITE_STATUS_SQL, type InviteView } from './invite-views.js';
-import { PASSWORD_RESET_COLUMNS, type PasswordResetView } from './password-resets.service.js';
+import { PASSWORD_RESET_COLUMNS, PASSWORD_RESET_FROM, type PasswordResetView } from './password-resets.service.js';
 import {
   EFFECTIVE_TENANT_PERMISSIONS,
   EFFECTIVE_TENANT_ROLES,
@@ -309,11 +309,18 @@ export class AccountsDirectoryService {
         `SELECT ${INVITE_COLUMNS} ${INVITE_FROM} WHERE i.target_user_id = $1 ORDER BY i.created_at DESC, i.id DESC LIMIT 20`,
         [userId],
       );
-      const [reset] = await manager.query<{ reset: PasswordResetView }[]>(
-        `SELECT ${PASSWORD_RESET_COLUMNS} FROM password_resets r JOIN users req ON req.id = r.requested_by_user_id
-          WHERE r.user_id = $1 ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
-        [userId],
-      );
+      // `latestPasswordReset` mantém o contrato do web anterior ao
+      // autoatendimento, que lê `requestedBy.name` sem conferir: só links da
+      // administração (sempre com autor). O link de "Esqueci minha senha"
+      // (sem autor) vai em campo próprio, que o web anterior ignora.
+      const ultimoLink = (origem: 'ADMIN' | 'SELF_SERVICE') =>
+        manager.query<{ reset: PasswordResetView }[]>(
+          `SELECT ${PASSWORD_RESET_COLUMNS} FROM ${PASSWORD_RESET_FROM}
+            WHERE r.user_id = $1 AND r.origin = $2 ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
+          [userId, origem],
+        );
+      const [reset] = await ultimoLink('ADMIN');
+      const [resetProprio] = await ultimoLink('SELF_SERVICE');
       const visibilidade = platformDataVisibility(actor, {
         platformRole: user.platformRole,
         hasEstablishmentLink:
@@ -345,6 +352,7 @@ export class AccountsDirectoryService {
         memberships: memberships.map(vinculoParaTela),
         invites: invites.map((linha) => linha.invite).filter((c) => !ocultar || c.type === 'ESTABLISHMENT'),
         latestPasswordReset: reset?.reset ?? null,
+        latestSelfServicePasswordReset: resetProprio?.reset ?? null,
         /** O que a conta que está olhando pode fazer aqui (o servidor confere
          * de novo em cada operação). */
         allowedActions: {

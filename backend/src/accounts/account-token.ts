@@ -7,6 +7,9 @@ import { generateSessionToken, hashSessionToken, isValidSessionTokenFormat } fro
 /** Validade de um link: 24 horas a partir da emissão (ou do reenvio). */
 export const ACCOUNT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Validade do link pedido pela própria pessoa ("Esqueci minha senha"): 1 hora. */
+export const SELF_SERVICE_LINK_TTL_MS = 60 * 60 * 1000;
+
 /** Links emitidos por convite, contando o primeiro. Reenvio troca o token. */
 export const MAX_INVITE_SENDS = 5;
 

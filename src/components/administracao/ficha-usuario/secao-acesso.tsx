@@ -12,7 +12,7 @@ import { ResultadoEnvio } from "@/components/administracao/resultado-envio";
 import { acaoAdministrativa } from "@/lib/administracao/api-contas";
 import { useEnvioComChave } from "@/lib/administracao/use-envio-com-chave";
 import { corEnvio, dataHora, textoEnvio } from "@/lib/administracao/rotulos";
-import type { RedefinicaoSenha } from "@/lib/administracao/contas";
+import { ultimaRedefinicao, type RedefinicaoSenha } from "@/lib/administracao/contas";
 import { BotaoConfirmado, type SecaoProps } from "./comum";
 
 const SITUACAO_REDEFINICAO: Record<RedefinicaoSenha["status"], string> = {
@@ -28,7 +28,7 @@ function ehResultadoRedefinicao(v: unknown): v is { created: boolean; reset: Red
 
 export function SecaoAcesso({ ficha, aoMudar }: SecaoProps) {
   const envio = useEnvioComChave(ehResultadoRedefinicao);
-  const ultima = ficha.latestPasswordReset;
+  const ultima = ultimaRedefinicao(ficha);
 
   function pedir() {
     void envio
@@ -49,7 +49,9 @@ export function SecaoAcesso({ ficha, aoMudar }: SecaoProps) {
               <Badge>{SITUACAO_REDEFINICAO[ultima.status]}</Badge>
               {ultima.status === "PENDING" && <Badge cor={corEnvio(ultima.delivery.status)}>{textoEnvio(ultima.delivery)}</Badge>}
               <span className="text-xs text-ink-soft">
-                Pedido por {ultima.requestedBy.name} em {dataHora(ultima.createdAt)}
+                {ultima.origin === "SELF_SERVICE" || !ultima.requestedBy
+                  ? `Pedido em "Esqueci minha senha" em ${dataHora(ultima.createdAt)}`
+                  : `Pedido por ${ultima.requestedBy.name} em ${dataHora(ultima.createdAt)}`}
               </span>
             </div>
           )}

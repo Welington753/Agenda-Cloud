@@ -14,6 +14,8 @@ import { AccountsAdminService } from '../src/accounts/accounts-admin.service.js'
 import { AccountsDirectoryService } from '../src/accounts/accounts-directory.service.js';
 import { InvitesService } from '../src/accounts/invites.service.js';
 import { PasswordResetsService } from '../src/accounts/password-resets.service.js';
+import { PasswordResetRequests } from '../src/accounts/password-reset-requests.js';
+import { PASSWORD_RESET_REQUEST_LIMIT } from '../src/accounts/account-rate-limit.js';
 
 const TOKEN = 'a'.repeat(64);
 const KEY = 'chave-do-formulario-0001';
@@ -52,6 +54,7 @@ describe('gestão de contas — HTTP', () => {
     accept: vi.fn(),
   };
   const resets = { request: vi.fn(), findByRequestKey: vi.fn(), preview: vi.fn(), complete: vi.fn() };
+  const resetRequests = { enqueue: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -59,7 +62,7 @@ describe('gestão de contas — HTTP', () => {
       context.switchToHttp().getRequest().auth = { userId: 'proven_user', sessionId: 'proven_session' };
       return true;
     });
-    for (const fn of [...Object.values(directory), ...Object.values(admin), ...Object.values(invites), ...Object.values(resets)]) {
+    for (const fn of [...Object.values(directory), ...Object.values(admin), ...Object.values(invites), ...Object.values(resets), ...Object.values(resetRequests)]) {
       fn.mockResolvedValue({ ok: true });
     }
     const module = await Test.createTestingModule({ imports: [AppModule] })
@@ -73,6 +76,8 @@ describe('gestão de contas — HTTP', () => {
       .useValue(invites)
       .overrideProvider(PasswordResetsService)
       .useValue(resets)
+      .overrideProvider(PasswordResetRequests)
+      .useValue(resetRequests)
       .overrideGuard(SessionGuard)
       .useValue(guard)
       // O guard do segundo fator lê o banco; aqui só o controller é testado.
@@ -191,5 +196,43 @@ describe('gestão de contas — HTTP', () => {
     expect(resets.preview).toHaveBeenCalledWith(TOKEN);
     const ok = await request(server()).post('/password-resets/complete').send({ token: TOKEN, password: 'senha-nova-123' }).expect(204);
     expect(ok.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('"Esqueci minha senha": 202 sem corpo, igual para qualquer identificador bem formado', async () => {
+    for (const identifier of ['ana@example.test', 'nao-existe@example.test', 'maria@salao', 'joao.silva']) {
+      const r = await request(server()).post('/password-resets/request').send({ identifier }).expect(202);
+      expect(r.text).toBe('');
+      expect(r.headers['cache-control']).toBe('private, no-store');
+      expect(r.headers['set-cookie']).toBeUndefined();
+    }
+    expect(resetRequests.enqueue.mock.calls.map((c) => c[0])).toEqual([
+      'ana@example.test',
+      'nao-existe@example.test',
+      'maria@salao',
+      'joao.silva',
+    ]);
+  });
+
+  it('"Esqueci minha senha": normaliza como o login; forma inválida, campo extra ou destinatário alternativo: 400', async () => {
+    await request(server()).post('/password-resets/request').send({ identifier: '  Ana@Example.TEST ' }).expect(202);
+    expect(resetRequests.enqueue).toHaveBeenLastCalledWith('ana@example.test');
+    resetRequests.enqueue.mockClear();
+    await request(server()).post('/password-resets/request').send({ identifier: '' }).expect(400);
+    await request(server()).post('/password-resets/request').send({ identifier: 'com espaço' }).expect(400);
+    await request(server()).post('/password-resets/request').send({ email: 'ana@example.test' }).expect(400);
+    await request(server())
+      .post('/password-resets/request')
+      .send({ identifier: 'ana@example.test', to: 'outra@example.test' })
+      .expect(400);
+    expect(resetRequests.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('"Esqueci minha senha": limite por IP devolve 429 independentemente da conta', async () => {
+    for (let i = 0; i < PASSWORD_RESET_REQUEST_LIMIT; i += 1) {
+      await request(server()).post('/password-resets/request').send({ identifier: `pessoa${i}@example.test` }).expect(202);
+    }
+    await request(server()).post('/password-resets/request').send({ identifier: 'ana@example.test' }).expect(429);
+    await request(server()).post('/password-resets/request').send({ identifier: 'nao-existe@example.test' }).expect(429);
+    expect(resetRequests.enqueue).toHaveBeenCalledTimes(PASSWORD_RESET_REQUEST_LIMIT);
   });
 });
