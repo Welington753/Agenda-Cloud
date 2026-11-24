@@ -146,13 +146,20 @@ A recuperação assistida continua igual:
 - Antes de voltar, rodar as consultas de fila da seção P2 e registrar os números.
 - O web volta junto com a API.
 
+**Teste real de e-mail (24/11, confirmado pelo responsável)**
+
+- Pedido feito com a própria conta. A Brevo registrou o envio às 18:11:08 UTC e `delivered` às 18:11:10 UTC.
+- O e-mail chegou na pasta de **spam** do Gmail. O remetente aparece reescrito pela Brevo para um endereço `brevosend.com`, porque o remetente configurado é um endereço gratuito.
+- Com o link, o responsável redefiniu a senha e entrou com a senha nova.
+
 **Não feito**
 
-- Teste real de e-mail com uma conta do responsável (passo 8 do runbook): chegada, inclusive na pasta de spam, remetente, link e validade de 1 hora. Depois, o teste com teclado real no celular.
+- Teste com teclado real no celular, ainda não confirmado pelo responsável.
+- Remetente de domínio próprio autenticado (seção E do runbook), para o e-mail não cair no spam. Decisão futura do responsável.
 
 **Próximo passo**
 
-1. O responsável executa o roteiro curto com a própria conta e informa o resultado.
-2. Se o e-mail não chegar ou cair no spam, conferir a seção E do runbook. O remetente de domínio próprio fica para decisão futura.
+1. O responsável faz o teste no celular e informa o resultado.
+2. Até haver domínio próprio, orientar quem pedir recuperação a procurar o e-mail no spam.
 
 **Só neste computador:** o backup acima, que deve ser guardado.
