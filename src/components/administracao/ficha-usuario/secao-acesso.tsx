@@ -49,7 +49,9 @@ export function SecaoAcesso({ ficha, aoMudar }: SecaoProps) {
               <Badge>{SITUACAO_REDEFINICAO[ultima.status]}</Badge>
               {ultima.status === "PENDING" && <Badge cor={corEnvio(ultima.delivery.status)}>{textoEnvio(ultima.delivery)}</Badge>}
               <span className="text-xs text-ink-soft">
-                Pedido por {ultima.requestedBy.name} em {dataHora(ultima.createdAt)}
+                {ultima.origin === "SELF_SERVICE" || !ultima.requestedBy
+                  ? `Pedido em "Esqueci minha senha" em ${dataHora(ultima.createdAt)}`
+                  : `Pedido por ${ultima.requestedBy.name} em ${dataHora(ultima.createdAt)}`}
               </span>
             </div>
           )}

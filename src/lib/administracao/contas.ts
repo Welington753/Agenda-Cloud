@@ -73,7 +73,10 @@ export interface RedefinicaoSenha {
   createdAt: string;
   expiresAt: string;
   usedAt: string | null;
-  requestedBy: { id: string; name: string };
+  /** Ausente numa API anterior: era sempre a administração. */
+  origin?: "ADMIN" | "SELF_SERVICE";
+  /** Quem pediu; `null` no pedido de "Esqueci minha senha" (anônimo). */
+  requestedBy: { id: string; name: string } | null;
 }
 
 export interface FichaUsuario extends Omit<UsuarioResumo, "memberships"> {

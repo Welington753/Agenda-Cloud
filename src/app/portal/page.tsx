@@ -13,10 +13,12 @@
 // `GET /platform/access` confirmando o proprietário, e o servidor recusa cada
 // leitura e escrita de quem não é `MASTER_OWNER` ativo.
 import { Suspense, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
+import { linkEsqueciSenha } from "@/lib/auth/recuperacao-senha";
 import { destinoNoPortal } from "@/lib/administracao/rotas";
 import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcadorAparencia } from "@/components/aparencia/aparencia";
@@ -71,7 +73,18 @@ function EntradaDoPortalConteudo() {
               <h1 className="text-2xl font-bold text-ink">Entrar no portal</h1>
               <p className="mt-1 text-sm text-ink-soft">Acesso exclusivo dos proprietários da plataforma.</p>
             </div>
-            <FormularioLogin aoEntrar={() => router.replace(destino)} placeholder="voce@exemplo.com.br" />
+            <FormularioLogin
+              aoEntrar={() => router.replace(destino)}
+              placeholder="voce@exemplo.com.br"
+              acaoSenha={
+                <Link
+                  href={linkEsqueciSenha("portal")}
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
+              }
+            />
           </>
         )}
       </main>

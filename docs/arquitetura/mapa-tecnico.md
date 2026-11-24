@@ -75,7 +75,7 @@ navegador ── web Next.js (raiz) ── /agenda_api/* (proxy) ── API Nest
 | `src/app/conta/*` | Área real (dono, gerente, profissional): `agendamentos`, `minha-agenda`, `clientes`, `recebimentos`, `visao-geral`, `configuracoes` (serviços, profissionais, equipe, aparência) |
 | `src/app/plataforma/*` | Portal da plataforma, layout e menu próprios (`components/administracao/shell-plataforma.tsx`); `/administracao/**` e `/conta/administracao/**` encaminham para cá |
 | `src/app/agendar/[slug]` | Agendamento público real. `/agendar/<slug>` é o endereço canônico, o que a tela copia (`linkPublico`). O endereço curto `/<slug>` (`src/app/[slug]/page.tsx`, regra em `src/lib/agendamento-publico/endereco-curto.ts`) é decidido no servidor: 308 para cá quando a API confirma, 404 quando ela responde 404, 307 na dúvida; os slugs da semente da demonstração ficam na demonstração. As colisões com rotas da raiz e com a semente seguem pendentes (R6 da auditoria) |
-| `src/app/login`, `convite`, `redefinir-senha`, `cadastro` | Entrada e ativação de conta |
+| `src/app/login`, `convite`, `redefinir-senha`, `esqueci-senha`, `cadastro` | Entrada e ativação de conta |
 | `src/app/agenda_api/[...caminho]` | Proxy de mesma origem |
 | `src/app/sitemap.ts`, `robots.ts`, `not-found.tsx`, `imagem-de-compartilhamento.png` | Indexação, 404 e imagem de compartilhamento. Regras em `src/lib/site/` (`origem-do-site.ts`, `indexacao.ts`, `metadados-do-site.ts`, `dados-estruturados.ts`, `cabecalhos.ts`) |
 | `src/lib/api/*` | Um cliente por área. Cada um valida a forma da resposta (`eh<Coisa>`) e classifica a falha pelo status. `mensagemDoBackend` (em `http-client.ts`) lê o `message` |
@@ -103,6 +103,7 @@ linhas sobre `localStorage`, sem API. Não misture com a área real:
 | Fuso e dia local | `availability/time-zone.ts` (sempre o fuso do estabelecimento) |
 | Telefone normalizado | `backend/src/auth/phone-normalizer.ts`; `src/lib/contato/whatsapp.ts` repete a regra, com teste |
 | Política de senha | `passwordSchema` no backend; a tela confere o mesmo limite |
+| Recuperação de senha ("Esqueci minha senha") | Pedido público e executor: `backend/src/accounts/password-reset-requests.ts` (quem recebe: `contaElegivel`/`decidirPedido`; nova tentativa: `proximoEnvio`; fila persistente em `password_reset_requests` e `password_resets.delivery_due_at`, migration `SelfServicePasswordReset1794441600000`). Link e conclusão: `password-resets.service.ts` (`origin` ADMIN/SELF_SERVICE). Rota `POST password-resets/request` (202 sempre igual; limite por IP em `account-rate-limit.ts`). Telas: `src/app/esqueci-senha`, `src/app/redefinir-senha`; regras em `src/lib/auth/recuperacao-senha.ts`. Plano: `docs/plans/recuperacao-de-senha.md` |
 | Quando notificar | `notifications/notification-policy.ts` |
 | Áreas visíveis na sessão | `auth/session-areas.ts`; a tela lê de `/auth/me` (`src/lib/conta/navegacao.ts`) |
 | Invariantes de publicação | `render.yaml` + `src/lib/publicacao/render-blueprint.test.ts` |

@@ -24,6 +24,7 @@ const PONTOS_DE_ENTRADA = [
   "src/app/cadastro",
   "src/app/convite",
   "src/app/redefinir-senha",
+  "src/app/esqueci-senha",
   "src/app/agendar",
   "src/components/conta",
   "src/components/auth",

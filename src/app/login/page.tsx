@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ShieldCheck } from "lucide-react";
 import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
-import { useToast } from "@/components/ui/toast";
+import { linkEsqueciSenha } from "@/lib/auth/recuperacao-senha";
 import { FormularioLogin } from "@/components/auth/formulario-login";
 import { MarcaTimVix } from "@/components/marca/marca";
 import { Cartao } from "@/components/ui/card";
@@ -27,7 +27,6 @@ export default function LoginPage() {
 // useSearchParams") — por isso o conteúdo real fica separado do export
 // default acima.
 function LoginPageConteudo() {
-  const { notificar } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -58,15 +57,12 @@ function LoginPageConteudo() {
             placeholder="Seu e-mail ou login"
             dica="Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um."
             acaoSenha={
-              <button
-                type="button"
-                onClick={() =>
-                  notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
-                }
+              <Link
+                href={linkEsqueciSenha("login")}
                 className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
               >
                 Esqueci minha senha
-              </button>
+              </Link>
             }
           />
 
