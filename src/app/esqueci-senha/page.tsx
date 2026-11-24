@@ -159,11 +159,14 @@ function EsqueciSenhaConteudo() {
           </p>
         </Cartao>
 
-        <p className="mt-4 text-center text-xs text-ink-soft">
-          <Link href={entrada} className="inline-flex min-h-11 items-center underline hover:text-ink">
-            ← Voltar para a entrada
-          </Link>
-        </p>
+        {/* Em "Pedido recebido" o botão do cartão já leva à entrada. */}
+        {!enviado && (
+          <p className="mt-4 text-center text-xs text-ink-soft">
+            <Link href={entrada} className="inline-flex min-h-11 items-center underline hover:text-ink">
+              ← Voltar para a entrada
+            </Link>
+          </p>
+        )}
       </main>
     </div>
   );
