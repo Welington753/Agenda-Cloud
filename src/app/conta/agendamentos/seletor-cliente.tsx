@@ -37,6 +37,21 @@ export function SeletorCliente({
   const [erroBusca, setErroBusca] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  // Depois de escolher um cliente da busca, a lista recolhe e fica só o
+  // escolhido com "Trocar"; "Trocar" reabre a busca (termo e resultados de
+  // antes, o escolhido marcado) sem desfazer a escolha até outro ser tocado.
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const campoBuscaRef = useRef<HTMLInputElement>(null);
+  const trocarRef = useRef<HTMLButtonElement>(null);
+  // O elemento tocado some ao recolher/reabrir: o foco vai para o equivalente.
+  const focarDepois = useRef<"trocar" | "busca" | null>(null);
+  useEffect(() => {
+    if (focarDepois.current === "trocar") trocarRef.current?.focus();
+    if (focarDepois.current === "busca") campoBuscaRef.current?.focus();
+    focarDepois.current = null;
+  });
+  const escolhido = clienteEscolhido && selecao?.mode === "existing" ? clienteEscolhido : null;
+  const recolhida = !!escolhido && !buscaAberta;
 
   /** Tenant vigente conforme o render mais recente — resposta atrasada de um
    * estabelecimento anterior nunca escreve na tela do novo. */
@@ -62,6 +77,7 @@ export function SeletorCliente({
     setTermo("");
     setBuscando(false);
     setErroBusca(null);
+    setBuscaAberta(false);
   }, [tenantId]);
 
   useEffect(() => () => invalidarBusca(), []);
@@ -138,12 +154,46 @@ export function SeletorCliente({
         </Botao>
       </div>
 
-      {modo === "buscar" && (
+      {modo === "buscar" && recolhida && escolhido && (
+        <div
+          data-testid="cliente-escolhido"
+          className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-accent bg-paper-muted px-3 py-2"
+        >
+          <div className="min-w-0">
+            <p className="text-sm text-ink-soft">
+              Cliente selecionado: <strong className="break-words text-ink">{escolhido.name}</strong>
+            </p>
+            {escolhido.whatsapp && (
+              <p data-testid="telefone-cliente-escolhido" className="text-xs text-ink-soft tabular-nums">
+                {escolhido.whatsapp}
+              </p>
+            )}
+          </div>
+          <Botao
+            ref={trocarRef}
+            type="button"
+            variante="secundaria"
+            tamanho="sm"
+            className="shrink-0 max-sm:min-h-11"
+            aria-label={`Trocar cliente ${escolhido.name}`}
+            disabled={desabilitado}
+            onClick={() => {
+              focarDepois.current = "busca";
+              setBuscaAberta(true);
+            }}
+          >
+            Trocar
+          </Botao>
+        </div>
+      )}
+
+      {modo === "buscar" && !recolhida && (
         <div className="space-y-2">
           {/* `div`, não `form`: um formulário aninhado no da reserva faria o
               Enter da busca enviar a reserva inteira. */}
           <div className="flex gap-2">
             <input
+              ref={campoBuscaRef}
               type="search"
               aria-label="Buscar cliente por nome ou telefone"
               value={termo}
@@ -188,16 +238,22 @@ export function SeletorCliente({
           {resultados.length > 0 && (
             <ul className="space-y-1" data-testid="resultados-clientes">
               {resultados.map((cliente) => {
-                const escolhido =
-                  selecao?.mode === "existing" && selecao.consumerId === cliente.id;
+                // Identificação sempre pelo id: homônimos e telefones iguais
+                // são cadastros distintos.
+                const marcado = selecao?.mode === "existing" && selecao.consumerId === cliente.id;
                 return (
                   <li key={cliente.id}>
                     <button
                       type="button"
+                      aria-pressed={marcado}
                       disabled={desabilitado}
-                      onClick={() => aoEscolherExistente(cliente)}
+                      onClick={() => {
+                        aoEscolherExistente(cliente);
+                        focarDepois.current = "trocar";
+                        setBuscaAberta(false);
+                      }}
                       className={`w-full rounded-[var(--radius-control)] border px-3 py-2 text-left text-sm max-sm:min-h-11 ${
-                        escolhido ? "border-accent bg-paper-muted" : "border-border"
+                        marcado ? "border-accent bg-paper-muted" : "border-border"
                       }`}
                     >
                       <span className="font-medium text-ink">{cliente.name}</span>
@@ -215,9 +271,11 @@ export function SeletorCliente({
             </p>
           )}
 
-          {clienteEscolhido && selecao?.mode === "existing" && (
+          {/* Busca reaberta por "Trocar": a escolha anterior continua valendo
+              até outro cliente ser tocado. */}
+          {escolhido && (
             <p className="text-xs text-ink-soft">
-              Cliente selecionado: <strong className="text-ink">{clienteEscolhido.name}</strong>
+              Cliente selecionado: <strong className="text-ink">{escolhido.name}</strong>
             </p>
           )}
         </div>
