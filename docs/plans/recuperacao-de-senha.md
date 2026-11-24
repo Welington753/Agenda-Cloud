@@ -46,7 +46,7 @@ A recuperação assistida continua igual:
   - Só acrescenta, e as linhas existentes viram `ADMIN`.
   - A API anterior continua gravando, porque o DEFAULT supre a origem.
   - Ordem: migration (pelo runbook) → API → web, as duas no mesmo SHA.
-  - A tela de administração antiga lê `requestedBy` sem checar `null`. Um link de autoatendimento visto por ela entre a publicação da API e a do web quebraria essa ficha. Por isso, publique o web logo depois da API.
+  - A ficha do usuário no web anterior lê `latestPasswordReset.requestedBy.name` sem checar `null`. Por isso esse campo continua só com links da administração, e o autoatendimento vai em `latestSelfServicePasswordReset`: a API nova funciona com navegadores que ainda tenham o web anterior aberto.
 - **E-mail real**
   - Com `EMAIL_PROVIDER=none` (o padrão), a recuperação **não entrega**: o link fica registrado como "envio não configurado".
   - Antes de publicar, confira no Render: `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` e `FRONTEND_URL`.
@@ -97,16 +97,21 @@ A recuperação assistida continua igual:
 - No navegador, a única falha local foi o menu de push do teste de aparência, que depende das chaves VAPID que só o CI define.
 - Capturas em `C:\Users\User\AgendaCloud-operacoes\capturas-recuperacao-senha-2026-11-24`. Ficam só neste computador.
 
+**Integração e compatibilidade (24/11/2026)**
+
+- #143 mesclado na integração como `8093875`. Este PR passou a ter a integração como base.
+- Incompatibilidade encontrada antes do merge: com a API nova, o web publicado (`63f1cd6`, igual ao #143 no portal) não abria a ficha de um usuário cujo último link veio de "Esqueci minha senha". O web lê `latestPasswordReset.requestedBy.name` sem conferir, e o link de autoatendimento não tem autor. Reproduzido no banco descartável com o web do #143.
+- Correção: `latestPasswordReset` só traz links da administração (contrato anterior). O autoatendimento vai em `latestSelfServicePasswordReset`, que o web anterior ignora, e o web novo mostra o mais recente dos dois. Coberto pelo db-e2e da recuperação (reprova sem a correção) e por `src/lib/administracao/contas.test.ts`.
+- Ensaio de retorno com envios pendentes (API nova, depois `63f1cd6`, depois a nova): resultado e limites na seção P3 do runbook.
+- Runbook: `docs/runbooks/publicacao-recuperacao-senha.md`, com as combinações testadas e a configuração de e-mail conferida no Render (só leitura).
+
 **Não feito**
 
-- Merge e publicação.
-- Conferência da configuração real de e-mail no Render.
-- Teste com teclado real no celular.
+- Merge do #144 e publicação.
+- Decisão do responsável sobre o remetente do e-mail (endereço gratuito, nome "Agenda-Cloud"); ver a seção E do runbook.
+- Teste real de e-mail e teste com teclado real no celular, depois da publicação.
 
 **Próximo passo**
 
-1. Revisão visual e do texto.
-2. Merge do #143.
-3. Base deste PR na integração, com CI verde no head final.
-4. Conferir a configuração de e-mail.
-5. Publicar pelo runbook: migration 26, depois API, depois web.
+1. Merge do #144 com o CI verde no head final.
+2. Publicar pelo runbook, com pedido explícito: backup, restauração conferida, ensaio, migration 26, API e web no mesmo SHA.
