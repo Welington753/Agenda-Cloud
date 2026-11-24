@@ -90,7 +90,12 @@ export interface FichaUsuario extends Omit<UsuarioResumo, "memberships"> {
   ineffectivePlatformPermissions: string[];
   memberships: Vinculo[];
   invites: Convite[];
+  /** Último link pedido pela administração (sempre com autor). Contrato do
+   * web anterior ao autoatendimento: nunca traz link sem autor. */
   latestPasswordReset: RedefinicaoSenha | null;
+  /** Último link de "Esqueci minha senha" (sem autor). Ausente numa API
+   * anterior ao autoatendimento. */
+  latestSelfServicePasswordReset?: RedefinicaoSenha | null;
   allowedActions: {
     edit: boolean;
     block: boolean;
@@ -195,6 +200,20 @@ function ehVinculo(v: unknown): boolean {
     lista(v.deniedPermissions) &&
     lista(v.effectiveAccess) &&
     v.effectiveAccess.every((a) => objeto(a) && texto(a.key) && typeof a.allowed === "boolean")
+  );
+}
+
+/** O link mais recente da conta, venha da administração ou de "Esqueci
+ * minha senha". */
+export function ultimaRedefinicao(
+  ficha: Pick<FichaUsuario, "latestPasswordReset" | "latestSelfServicePasswordReset">,
+): RedefinicaoSenha | null {
+  const links = [ficha.latestPasswordReset, ficha.latestSelfServicePasswordReset ?? null].filter(
+    (link): link is RedefinicaoSenha => link !== null,
+  );
+  return links.reduce<RedefinicaoSenha | null>(
+    (maisNovo, link) => (!maisNovo || Date.parse(link.createdAt) > Date.parse(maisNovo.createdAt) ? link : maisNovo),
+    null,
   );
 }
 

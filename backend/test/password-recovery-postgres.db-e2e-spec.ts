@@ -218,7 +218,50 @@ describe.skipIf(!url)('"Esqueci minha senha" contra PostgreSQL descartável', ()
     // Ficha da administração: origem explícita, sem autor inventado.
     const master = await conta('confirmada-master', { role: 'MASTER_OWNER' });
     const ficha = await directory.userDetail(master.userId, pessoa.userId);
-    expect(ficha.latestPasswordReset).toMatchObject({ origin: 'SELF_SERVICE', requestedBy: null, status: 'USED' });
+    expect(ficha.latestPasswordReset).toBeNull();
+    expect(ficha.latestSelfServicePasswordReset).toMatchObject({ origin: 'SELF_SERVICE', requestedBy: null, status: 'USED' });
+  });
+
+  // O web publicado antes do autoatendimento lê `latestPasswordReset.requestedBy.name`
+  // sem conferir: com um link sem autor nesse campo, a ficha inteira deixava
+  // de abrir no portal. Esse campo continua só da administração.
+  it('ficha da administração: o contrato do web anterior nunca recebe link sem autor; o histórico e a auditoria ficam', async () => {
+    const master = await conta('ficha-master', { role: 'MASTER_OWNER' });
+    const comHistorico = await conta('ficha-com-historico');
+    const semHistorico = await conta('ficha-sem-historico');
+
+    await resets.request(master.userId, comHistorico.userId, `chave-${id()}`);
+    await resets.complete(tokenDe(mensagensPara(email('ficha-com-historico')).at(-1)!), 'senha-nova-pela-administracao');
+    const [linkDaAdministracao] = await resetsDe(comHistorico.userId);
+    const auditoria = () =>
+      db.query(
+        `SELECT action, actor_user_id, new_data FROM audit_logs WHERE target_user_id = $1 ORDER BY occurred_at, action`,
+        [comHistorico.userId],
+      );
+    const auditoriaAntes = await auditoria();
+    expect(auditoriaAntes.map((linha: { action: string }) => linha.action)).toEqual(['PASSWORD_RESET_REQUESTED', 'PASSWORD_RESET_COMPLETED']);
+
+    const fila = executor();
+    await pedir(email('ficha-com-historico'));
+    await pedir(email('ficha-sem-historico'));
+    await fila.runOnce();
+
+    const ficha = await directory.userDetail(master.userId, comHistorico.userId);
+    expect(ficha.latestPasswordReset).toMatchObject({
+      id: linkDaAdministracao.id,
+      origin: 'ADMIN',
+      status: 'USED',
+      requestedBy: { id: master.userId, name: 'Pessoa ficha-master' },
+    });
+    expect(ficha.latestSelfServicePasswordReset).toMatchObject({ origin: 'SELF_SERVICE', status: 'PENDING', requestedBy: null });
+
+    const fichaSemHistorico = await directory.userDetail(master.userId, semHistorico.userId);
+    expect(fichaSemHistorico.latestPasswordReset).toBeNull();
+    expect(fichaSemHistorico.latestSelfServicePasswordReset).toMatchObject({ origin: 'SELF_SERVICE', requestedBy: null });
+
+    // Registro e auditoria da administração intactos.
+    expect((await resetsDe(comHistorico.userId)).find((r) => r.id === linkDaAdministracao.id)).toEqual(linkDaAdministracao);
+    expect(await auditoria()).toEqual(auditoriaAntes);
   });
 
   it('ninguém recebe: login de equipe (inclusive com cara de e-mail), e-mail não confirmado, bloqueada, sem senha, inexistente', async () => {
