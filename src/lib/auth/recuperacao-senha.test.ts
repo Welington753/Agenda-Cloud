@@ -38,8 +38,9 @@ describe("textos que nunca revelam a conta", () => {
   it("a confirmação é condicional e serve para qualquer conta", () => {
     const texto = CONFIRMACAO_DO_PEDIDO.join(" ");
     expect(texto).toContain("Se o e-mail ou login informado for de uma conta com e-mail confirmado");
-    expect(texto).toContain("1 hora");
-    expect(texto).toContain("use o e-mail anterior");
+    expect(texto).toContain("Confira o prazo de validade no e-mail.");
+    expect(texto).toContain("use a mensagem anterior");
+    expect(texto).toContain("Um novo pedido não renova esse prazo.");
     expect(texto).not.toMatch(/não encontramos|não existe|enviamos para|conta encontrada/i);
   });
 

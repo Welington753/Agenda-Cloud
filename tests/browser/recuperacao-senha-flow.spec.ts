@@ -84,8 +84,18 @@ test("esqueci minha senha: pedido genérico, link por e-mail confirmado, nova se
   await expect(paginaAntiga).toHaveURL(/\/conta/);
 
   // ------------------------------------------------ 1. do login, pedido genérico
-  const anonimo = await browser.newContext();
+  // Azul e branco: as capturas dos estados de sucesso saem neste tema.
+  const anonimo = await browser.newContext({ viewport: { width: 1280, height: 844 } });
+  await anonimo.addInitScript(([chave, valor]) => localStorage.setItem(chave, valor), [CHAVE_APARENCIA, "azul"]);
   const a = await anonimo.newPage();
+  const foto = async (nome: string, larguras: number[]) => {
+    for (const width of larguras) {
+      await a.setViewportSize({ width, height: 844 });
+      await semRolagemHorizontal(a);
+      await a.screenshot({ path: test.info().outputPath(`recuperacao-azul-${nome}-${width}.png`), fullPage: true });
+    }
+    await a.setViewportSize({ width: 1280, height: 844 });
+  };
   await a.goto("/login");
   await a.getByRole("link", { name: "Esqueci minha senha" }).click();
   await expect(a).toHaveURL(/\/esqueci-senha$/);
@@ -97,6 +107,7 @@ test("esqueci minha senha: pedido genérico, link por e-mail confirmado, nova se
   const confirmacao = a.getByRole("status").filter({ hasText: "Pedido recebido." });
   await expect(confirmacao).toBeVisible();
   const textoParaEquipe = await confirmacao.textContent();
+  await foto("pedido-recebido", [390, 1280]);
   await expect(a.getByText("Usa um login sem e-mail?")).toBeVisible();
 
   await a.getByRole("button", { name: "Usar outro e-mail ou login" }).click();
@@ -120,6 +131,7 @@ test("esqueci minha senha: pedido genérico, link por e-mail confirmado, nova se
   // ------------------------------------------------ 2. nova senha pelo link
   await a.goto(link);
   await expect(a.getByRole("heading", { level: 1, name: "Criar nova senha" })).toBeVisible();
+  await foto("nova-senha", [1280]);
   await a.getByLabel("Nova senha").fill(SENHA_NOVA);
   await a.getByLabel("Confirmar senha").fill("outra-coisa-qualquer");
   await a.getByRole("button", { name: "Salvar nova senha" }).click();
@@ -131,6 +143,8 @@ test("esqueci minha senha: pedido genérico, link por e-mail confirmado, nova se
   await a.getByRole("button", { name: "Salvar nova senha" }).click();
   await expect(a.getByRole("heading", { level: 1, name: "Senha alterada" })).toBeVisible();
   await expect(a.getByText("ela continua sendo pedida ao entrar")).toBeVisible();
+  await expect(a.getByRole("link", { name: "Entrar no portal da plataforma" })).toHaveAttribute("href", "/portal");
+  await foto("senha-alterada", [390, 1280]);
 
   // A sessão aberta com a senha antiga caiu.
   await paginaAntiga.goto("/conta");

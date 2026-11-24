@@ -188,11 +188,18 @@ export default function RedefinirSenhaPage() {
           )}
         </Cartao>
 
-        <p className="mt-4 text-center text-xs text-ink-soft">
-          <Link href="/login" className="inline-flex min-h-11 items-center underline hover:text-ink">
-            ← Voltar para o login
-          </Link>
-        </p>
+        {/* Destinos fixos (o link do e-mail não diz de qual entrada veio o
+            pedido). Na senha alterada eles já estão no cartão. */}
+        {previa !== "concluida" && (
+          <p className="mt-4 flex flex-wrap items-center justify-center gap-x-4 text-center text-xs text-ink-soft">
+            <Link href="/login" className="inline-flex min-h-11 items-center underline hover:text-ink">
+              Ir para o login
+            </Link>
+            <Link href="/portal" className="inline-flex min-h-11 items-center underline hover:text-ink">
+              Entrar no portal da plataforma
+            </Link>
+          </p>
+        )}
       </main>
     </div>
   );

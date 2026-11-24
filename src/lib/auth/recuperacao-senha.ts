@@ -40,7 +40,7 @@ export const ORIENTACAO_LOGIN_SEM_EMAIL =
 /** Texto depois do pedido aceito: igual para qualquer conta. */
 export const CONFIRMACAO_DO_PEDIDO = [
   "Se o e-mail ou login informado for de uma conta com e-mail confirmado, enviaremos um link para esse e-mail em alguns minutos. Confira também o spam.",
-  "O link vale por 1 hora e pode ser usado uma vez. Se você já pediu um link há pouco, use o e-mail anterior: ele continua valendo.",
+  "Confira o prazo de validade no e-mail. Cada link pode ser usado uma única vez. Se você já recebeu um link e ele ainda estiver válido, use a mensagem anterior. Um novo pedido não renova esse prazo.",
 ] as const;
 
 /** Mensagem de erro do envio (o aceito não é erro). */
