@@ -5,14 +5,19 @@
 //
 // Aceite com sucesso abre a sessão (cookie depois do COMMIT, como o login).
 // Redefinição de senha não abre sessão: a pessoa entra com a senha nova.
+//
+// "Esqueci minha senha" (`password-resets/request`): 202 sempre igual, sem
+// corpo, para qualquer identificador bem formado. Não revela se a conta
+// existe nem espera o e-mail (ver password-reset-requests.ts).
 import { Body, Controller, Header, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { parseClientIpSource, parseProxySecret, resolveClientIp } from '../config/client-ip.js';
 import { SESSION_COOKIE_NAME, buildSessionCookieOptions } from '../config/session-cookie.config.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
-import { acceptInviteSchema, completeResetSchema, tokenOnlySchema } from './accounts.dto.js';
+import { acceptInviteSchema, completeResetSchema, passwordResetRequestSchema, tokenOnlySchema } from './accounts.dto.js';
 import { InvitesService } from './invites.service.js';
+import { PasswordResetRequests } from './password-reset-requests.js';
 import { PasswordResetsService } from './password-resets.service.js';
 
 @Controller()
@@ -20,6 +25,7 @@ export class PublicAccountsController {
   constructor(
     private readonly invites: InvitesService,
     private readonly resets: PasswordResetsService,
+    private readonly resetRequests: PasswordResetRequests,
     private readonly config: ConfigService,
   ) {}
 
@@ -53,6 +59,13 @@ export class PublicAccountsController {
       buildSessionCookieOptions(this.config.getOrThrow<string>('NODE_ENV')),
     );
     return { destination: result.destination };
+  }
+
+  @Post('password-resets/request')
+  @HttpCode(202)
+  @Header('Cache-Control', 'private, no-store')
+  async requestReset(@Body(new ZodValidationPipe(passwordResetRequestSchema)) dto: { identifier: string }): Promise<void> {
+    await this.resetRequests.enqueue(dto.identifier);
   }
 
   @Post('password-resets/preview')

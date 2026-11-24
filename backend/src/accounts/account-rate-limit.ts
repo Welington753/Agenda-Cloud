@@ -4,6 +4,8 @@
 //
 // - aceite de convite e redefinição: 10 tentativas a cada 15 minutos;
 // - consulta de link (sem escrita): 30 a cada 15 minutos;
+// - "Esqueci minha senha": 5 pedidos a cada 15 minutos. Conta todo pedido,
+//   exista a conta ou não: o 429 nunca depende da conta;
 // - reconfirmação de senha na administração: 5 a cada 15 minutos;
 // - criação de acesso e convite de equipe: 10 RECUSAS a cada 15 minutos (as
 //   criações aceitas não contam). Um login ou e-mail já usado é recusado com
@@ -15,6 +17,7 @@ export const ACCOUNT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 export const ACCOUNT_SUBMIT_LIMIT = 10;
 export const ACCOUNT_PREVIEW_LIMIT = 30;
 export const REAUTH_LIMIT = 5;
+export const PASSWORD_RESET_REQUEST_LIMIT = 5;
 export const TEAM_CREATION_FAILURE_LIMIT = 10;
 
 export function createAccountRateLimiter(

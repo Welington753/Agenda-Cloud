@@ -196,8 +196,9 @@ export interface RedefinicaoParaEmail {
   validityMs: number;
 }
 
-/** Redefinição pedida pela ADMINISTRAÇÃO (não há "esqueci minha senha"): o
- * texto nunca diz que a própria pessoa pediu. */
+/** Redefinição pedida pela ADMINISTRAÇÃO: o texto nunca diz que a própria
+ * pessoa pediu. O pedido em "Esqueci minha senha" usa
+ * `emailDeRedefinicaoSolicitada`. */
 export function emailDeRedefinicao(pessoa: RedefinicaoParaEmail, link: string): EmailMessage {
   return mensagem({
     to: { email: pessoa.email, name: pessoa.name },
@@ -211,6 +212,25 @@ export function emailDeRedefinicao(pessoa: RedefinicaoParaEmail, link: string): 
     acao: { rotulo: 'Criar nova senha', link },
     validade: `O link vale por ${descreverValidade(pessoa.validityMs)} e pode ser usado uma única vez. Se ele expirar, peça um novo à administração.`,
     aviso: `Não esperava esta mensagem? Ignore este e-mail: sua senha atual continua valendo. Se achar que há algo errado com a sua conta, fale com a administração do ${MARCA.nome}.`,
+  });
+}
+
+/** Redefinição pedida em "Esqueci minha senha". Vai só para o e-mail
+ * CONFIRMADO da conta. O pedido é anônimo, então o texto não afirma que foi
+ * a própria pessoa e diz o que fazer se não foi. Nenhuma senha no e-mail. */
+export function emailDeRedefinicaoSolicitada(pessoa: RedefinicaoParaEmail, link: string): EmailMessage {
+  return mensagem({
+    to: { email: pessoa.email, name: pessoa.name },
+    assunto: `Recuperação de senha no ${MARCA.nome}`,
+    previa: 'Recebemos um pedido para criar uma nova senha.',
+    titulo: 'Criar uma nova senha',
+    corpo: (meio) => [
+      `Recebemos um pedido em "Esqueci minha senha" para esta conta do ${MARCA.nome}. Para criar uma nova senha, use o ${meio} abaixo.`,
+      'Quando a nova senha for criada, as sessões abertas com a senha anterior serão encerradas. A verificação em duas etapas, se estiver ativa, continua sendo pedida.',
+    ],
+    acao: { rotulo: 'Criar nova senha', link },
+    validade: `O link vale por ${descreverValidade(pessoa.validityMs)} e pode ser usado uma única vez. Se ele expirar, peça outro em "Esqueci minha senha", na tela de entrada.`,
+    aviso: 'Não foi você? Ignore este e-mail: sua senha atual continua valendo, e ninguém entra na conta só com este pedido.',
   });
 }
 

@@ -2,7 +2,7 @@
 // desconhecida é recusada (ninguém consegue mandar `platformRole` num campo
 // que não o aceita). E-mail com a mesma normalização do login.
 import { z } from 'zod';
-import { emailSchema } from '../auth/login.dto.js';
+import { emailSchema, usernameSchema } from '../auth/login.dto.js';
 import { normalizePhone } from '../auth/phone-normalizer.js';
 import { BusinessCategory } from '../entities/enums/business-category.enum.js';
 import { PlatformRole } from '../entities/enums/platform-role.enum.js';
@@ -187,3 +187,18 @@ export const reauthSchema = z.object({ password: passwordSchema }).strict();
 export const tokenOnlySchema = z.object({ token: tokenSchema }).strict();
 export const acceptInviteSchema = z.object({ token: tokenSchema, password: passwordSchema }).strict();
 export const completeResetSchema = z.object({ token: tokenSchema, password: passwordSchema }).strict();
+
+/** "Esqueci minha senha": o e-mail ou login digitado, com a mesma
+ * normalização do login (aparar e minúsculas). A forma é conferida aqui, igual
+ * para todo mundo; se a conta existe, nunca (ver password-reset-requests.ts). */
+export const passwordResetRequestSchema = z
+  .object({ identifier: z.string().trim().min(1).max(254) })
+  .strict()
+  .transform((valor, ctx): { identifier: string } => {
+    const comoEmail = emailSchema.safeParse(valor.identifier);
+    const comoUsuario = usernameSchema.safeParse(valor.identifier);
+    if (comoEmail.success) return { identifier: comoEmail.data };
+    if (comoUsuario.success) return { identifier: comoUsuario.data };
+    ctx.addIssue({ code: 'custom', path: ['identifier'], message: 'Informe um e-mail ou um login válido.' });
+    return z.NEVER;
+  });

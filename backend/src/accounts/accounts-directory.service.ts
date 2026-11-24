@@ -18,7 +18,7 @@ import { EFFECTIVE_PLATFORM_PERMISSIONS, platformCapabilities } from '../platfor
 import type { AuditQuery, InvitesQuery, UsersQuery } from './accounts.dto.js';
 import { canManageAccount, loadActor, platformDataVisibility, requireCapability, type Actor } from './actor.js';
 import { INVITE_COLUMNS, INVITE_FROM, INVITE_STATUS_SQL, type InviteView } from './invite-views.js';
-import { PASSWORD_RESET_COLUMNS, type PasswordResetView } from './password-resets.service.js';
+import { PASSWORD_RESET_COLUMNS, PASSWORD_RESET_FROM, type PasswordResetView } from './password-resets.service.js';
 import {
   EFFECTIVE_TENANT_PERMISSIONS,
   EFFECTIVE_TENANT_ROLES,
@@ -310,7 +310,7 @@ export class AccountsDirectoryService {
         [userId],
       );
       const [reset] = await manager.query<{ reset: PasswordResetView }[]>(
-        `SELECT ${PASSWORD_RESET_COLUMNS} FROM password_resets r JOIN users req ON req.id = r.requested_by_user_id
+        `SELECT ${PASSWORD_RESET_COLUMNS} FROM ${PASSWORD_RESET_FROM}
           WHERE r.user_id = $1 ORDER BY r.created_at DESC, r.id DESC LIMIT 1`,
         [userId],
       );

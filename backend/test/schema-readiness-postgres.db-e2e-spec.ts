@@ -115,32 +115,45 @@ describe.skipIf(!url)('conferência das migrations exigidas contra PostgreSQL de
     const erro = await problemaDe(checkRequiredMigrations(db));
     expect(erro.problem).toMatchObject({
       reason: 'missing-migrations',
-      missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000'],
-      required: 25,
+      missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
+      required: 26,
     });
 
     await registrar(REQUIRED_MIGRATIONS.slice(0, 22));
     const depois = await problemaDe(checkRequiredMigrations(db));
     expect(depois.problem).toMatchObject({
       reason: 'missing-migrations',
-      missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000'],
+      missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
     });
   });
 
   // A API do manifesto até 24 (PR 1) sobe com a 25 aplicada: provado no
-  // commit dela. Esta versão exige a 25.
-  it('2c. clientes: em 24 (sem ConsumerSharedPhone) recusa a inicialização; em 25, aprova', async () => {
-    expect(REQUIRED_MIGRATIONS.slice(-3)).toEqual([
+  // commit dela.
+  it('2c. clientes: em 24 (sem ConsumerSharedPhone) recusa a inicialização', async () => {
+    expect(REQUIRED_MIGRATIONS.slice(-4, -1)).toEqual([
       'ConsumerAuditActions1794182400000',
       'ConsumerIdentity1794268800000',
       'ConsumerSharedPhone1794355200000',
     ]);
     await registrar(REQUIRED_MIGRATIONS.slice(0, 24));
     const erro = await problemaDe(checkRequiredMigrations(db));
-    expect(erro.problem).toMatchObject({ reason: 'missing-migrations', missing: ['ConsumerSharedPhone1794355200000'], required: 25 });
+    expect(erro.problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
+      required: 26,
+    });
+  });
+
+  // A API anterior (manifesto até 25) sobe com a 26 aplicada (extra): a
+  // migration só acrescenta. Esta versão exige a 26.
+  it('2d. recuperação de senha: em 25 recusa a inicialização; em 26, aprova', async () => {
+    expect(REQUIRED_MIGRATIONS.at(-1)).toBe('SelfServicePasswordReset1794441600000');
+    await registrar(REQUIRED_MIGRATIONS.slice(0, 25));
+    const erro = await problemaDe(checkRequiredMigrations(db));
+    expect(erro.problem).toMatchObject({ reason: 'missing-migrations', missing: ['SelfServicePasswordReset1794441600000'], required: 26 });
 
     await registrar(REQUIRED_MIGRATIONS);
-    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 25, applied: 25, extra: [] });
+    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 26, applied: 26, extra: [] });
   });
 
   it('3. anterior ausente, com a última registrada: recusa', async () => {

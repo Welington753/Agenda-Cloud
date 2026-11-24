@@ -284,7 +284,7 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
     const banco = await novoBanco();
     await migrar(banco, IDENTIDADE);
     await semear(banco);
-    expect((await migrar(banco)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
+    expect((await migrar(banco, TELEFONE_COMPARTILHADO)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
     const restricoes = async () =>
       (await q<{ conname: string }>(banco, `SELECT conname FROM pg_constraint WHERE conname IN ('uq_consumers_tenant_whatsapp', 'uq_consumers_tenant_id') ORDER BY 1`)).map(
         (r) => r.conname,
@@ -300,6 +300,6 @@ describe.skipIf(!url)('migrations dos clientes contra PostgreSQL descartável (b
     await q(banco, `DELETE FROM consumers WHERE id = 'c9'`);
     await comDataSource(banco, (ds) => ds.undoLastMigration({ transaction: 'each' }));
     expect(await restricoes()).toEqual(['uq_consumers_tenant_id', 'uq_consumers_tenant_whatsapp']);
-    expect((await migrar(banco)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
+    expect((await migrar(banco, TELEFONE_COMPARTILHADO)).map((m) => m.name)).toEqual([TELEFONE_COMPARTILHADO]);
   }, 120_000);
 });

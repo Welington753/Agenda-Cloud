@@ -1,8 +1,9 @@
-import { ACCOUNT_LINK_TTL_MS } from './account-token.js';
+import { ACCOUNT_LINK_TTL_MS, SELF_SERVICE_LINK_TTL_MS } from './account-token.js';
 import {
   descreverValidade,
   emailDeConvite,
   emailDeRedefinicao,
+  emailDeRedefinicaoSolicitada,
   limparTexto,
   linkDeConvite,
   linkDeRedefinicao,
@@ -187,5 +188,36 @@ describe('e-mail de redefinição de senha', () => {
     expect(m.text).toContain('O link vale por 24 horas e pode ser usado uma única vez.');
     expect(m.text).toContain('as sessões abertas com a senha anterior serão encerradas');
     expect(m.text).toContain('Ignore este e-mail: sua senha atual continua valendo.');
+  });
+});
+
+describe('e-mail de "Esqueci minha senha"', () => {
+  const LINK_RESET = `https://agenda.example/redefinir-senha#t=${TOKEN}`;
+  const m = emailDeRedefinicaoSolicitada(
+    { name: 'João Pereira', email: 'joao@example.test', validityMs: SELF_SERVICE_LINK_TTL_MS },
+    LINK_RESET,
+  );
+
+  it('fala do pedido em "Esqueci minha senha" sem afirmar que foi a pessoa, e nunca cita a administração', () => {
+    expect(m.subject).toBe('Recuperação de senha no TimVix');
+    expect(m.to).toEqual({ email: 'joao@example.test', name: 'João Pereira' });
+    expect(m.text).toContain('Recebemos um pedido em "Esqueci minha senha" para esta conta do TimVix.');
+    expect(m.text).not.toMatch(/você (pediu|solicitou)|administração/i);
+    expect(m.text).toContain(`Criar nova senha:\n${LINK_RESET}`);
+  });
+
+  it('1 hora, uso único, sessões encerradas, 2FA mantido e o que fazer se não foi você', () => {
+    expect(m.text).toContain('O link vale por 1 hora e pode ser usado uma única vez.');
+    expect(m.text).toContain('peça outro em "Esqueci minha senha"');
+    expect(m.text).toContain('as sessões abertas com a senha anterior serão encerradas');
+    expect(m.text).toContain('A verificação em duas etapas, se estiver ativa, continua sendo pedida.');
+    expect(m.text).toContain('Não foi você? Ignore este e-mail: sua senha atual continua valendo');
+  });
+
+  it('nenhuma senha no e-mail; o token só aparece no link', () => {
+    expect(m.text).not.toMatch(/sua (nova )?senha é|senha (temporária|provisória)/i);
+    expect(m.text.split(TOKEN)).toHaveLength(2);
+    expect(m.subject).not.toContain(TOKEN);
+    expect(m.html.replaceAll(LINK_RESET, '')).not.toContain(TOKEN);
   });
 });
