@@ -17,6 +17,7 @@
 // Vive dentro do painel "Novo agendamento" (painel-nova-reserva.tsx), que o
 // monta limpo a cada abertura e o fecha depois do sucesso.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import clsx from "clsx";
 import { CalendarPlus, Info } from "lucide-react";
 import type {
   AgendamentoReal,
@@ -174,7 +175,7 @@ export function NovaReserva({
                 value={professionalId}
                 disabled={gravando}
                 onChange={(e) => setProfessionalId(e.target.value)}
-                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
+                className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink max-sm:min-h-11 sm:text-sm"
               >
                 {ativos.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -217,6 +218,7 @@ export function NovaReserva({
             <Botao
               type="button"
               variante="secundaria"
+              className="max-sm:min-h-11"
               disabled={gravando || consultando || serviceIds.length === 0}
               aria-busy={consultando}
               onClick={() => disponibilidade.consultar({ serviceIds, date })}
@@ -253,7 +255,14 @@ export function NovaReserva({
                       data-testid="horario-livre"
                       data-inicio={slot.startAt}
                       disabled={gravando}
-                      onClick={() => setStartAt(slot.startAt)}
+                      // Celular: o horário tocado sobe para cima do rodapé que
+                      // passa a ficar preso ao pé do painel (margem > rodapé).
+                      className="max-sm:scroll-mb-24"
+                      onClick={(e) => {
+                        const botao = e.currentTarget;
+                        setStartAt(slot.startAt);
+                        requestAnimationFrame(() => botao.scrollIntoView({ block: "nearest" }));
+                      }}
                     >
                       {slot.localStart}
                     </BotaoHorario>
@@ -291,27 +300,45 @@ export function NovaReserva({
         </Cartao>
       )}
 
-      {erro && (
-        <p
-          role="alert"
-          data-testid="erro-reserva"
-          className="text-sm text-[color:var(--color-danger)]"
-        >
-          {erro}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Botao type="submit" disabled={!podeConfirmar} aria-busy={gravando}>
-          <CalendarPlus size={16} className="mr-1" />
-          {gravando ? "Confirmando..." : "Confirmar agendamento"}
-        </Botao>
-        {!slotEscolhido && (
-          <span className="inline-flex items-center gap-1 text-xs text-ink-soft">
-            <Info size={12} />
-            Escolha um horário livre para confirmar.
-          </span>
+      {/* Celular, com horário escolhido: erro e confirmação presos ao pé da
+          área que rola (corpo do PainelLateral). `sticky`, não `fixed`: no fim
+          da rolagem ocupam o próprio lugar, sem cobrir nada. `-bottom-4`
+          desconta o `py-4` do corpo. Computador: sem mudança. */}
+      <div
+        data-testid="rodape-reserva"
+        className={clsx(
+          "space-y-4",
+          slotEscolhido &&
+            "max-sm:sticky max-sm:-bottom-4 max-sm:z-10 max-sm:-mx-4 max-sm:space-y-2 max-sm:border-t max-sm:border-border max-sm:bg-paper max-sm:px-4 max-sm:py-3",
         )}
+      >
+        {erro && (
+          <p
+            role="alert"
+            data-testid="erro-reserva"
+            className="text-sm text-[color:var(--color-danger)]"
+          >
+            {erro}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Botao
+            type="submit"
+            className="max-sm:min-h-11"
+            disabled={!podeConfirmar}
+            aria-busy={gravando}
+          >
+            <CalendarPlus size={16} className="mr-1" />
+            {gravando ? "Confirmando..." : "Confirmar agendamento"}
+          </Botao>
+          {!slotEscolhido && (
+            <span className="inline-flex items-center gap-1 text-xs text-ink-soft">
+              <Info size={12} />
+              Escolha um horário livre para confirmar.
+            </span>
+          )}
+        </div>
       </div>
     </form>
   );

@@ -15,7 +15,7 @@ import {
 import { Botao } from "@/components/ui/button";
 
 const CLASSE_CAMPO =
-  "min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink";
+  "min-h-11 w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink sm:text-sm";
 
 interface BarraAgendaProps {
   date: string;

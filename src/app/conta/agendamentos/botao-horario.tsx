@@ -16,7 +16,7 @@ export function BotaoHorario({
     <button
       type="button"
       aria-pressed={selecionado}
-      className={`inline-flex items-center gap-1 rounded-[var(--radius-control)] border px-3 py-1.5 text-sm ${
+      className={`inline-flex items-center gap-1 rounded-[var(--radius-control)] border px-3 py-1.5 text-sm max-sm:min-h-11 ${
         selecionado
           ? "border-accent bg-accent-soft font-semibold text-ink ring-1 ring-accent"
           : "border-border bg-card text-ink"

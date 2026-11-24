@@ -207,6 +207,50 @@ async function registrarDestaque(pagina: Page, lista: string, nome: string): Pro
   await pagina.getByTestId(lista).screenshot({ path: test.info().outputPath(`destaque-${nome}.png`) });
 }
 
+/** Celular, com um horário escolhido no painel: "Confirmar agendamento" fica
+ * à vista dentro da área que de fato rola (o corpo do painel, não a página) e,
+ * rolado até o fim, não fica por cima do resumo. Também confere os alvos de
+ * toque de 44 px, a fonte de 16 px nos campos e a falta de rolagem lateral. */
+async function conferirConfirmacaoNoCelular(pagina: Page): Promise<void> {
+  const painel = pagina.getByTestId("painel-novo-agendamento");
+  const confirmar = painel.locator('form button[type="submit"]');
+  const rolagem = await confirmar.evaluate((botao) => {
+    let el = botao.parentElement;
+    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    if (!el) return null;
+    const caixa = el.getBoundingClientRect();
+    return {
+      dentroDoPainel: !!el.closest('[data-testid="painel-novo-agendamento"]'),
+      rola: el.scrollHeight > el.clientHeight,
+      topo: caixa.top,
+      base: caixa.top + el.clientHeight,
+    };
+  });
+  expect(rolagem).not.toBeNull();
+  expect(rolagem!.dentroDoPainel).toBe(true);
+  expect(rolagem!.rola).toBe(true);
+  await expect(confirmar).toBeInViewport({ ratio: 1 });
+  const caixaBotao = (await confirmar.boundingBox())!;
+  expect(caixaBotao.y).toBeGreaterThanOrEqual(rolagem!.topo);
+  expect(caixaBotao.y + caixaBotao.height).toBeLessThanOrEqual(rolagem!.base);
+
+  for (const alvo of [confirmar, painel.getByTestId("horario-livre").first(), painel.getByLabel("Profissional", { exact: true })]) {
+    expect((await alvo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  for (const campo of [painel.getByLabel("Data do agendamento"), painel.getByLabel("Profissional", { exact: true })]) {
+    expect(await campo.evaluate((el) => getComputedStyle(el).fontSize)).toBe("16px");
+  }
+  expect(
+    await pagina.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+  ).toBe(true);
+
+  await painel.locator(".overflow-y-auto").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  const resumo = (await painel.getByTestId("resumo").boundingBox())!;
+  const rodape = (await painel.getByTestId("rodape-reserva").boundingBox())!;
+  expect(resumo.y + resumo.height).toBeLessThanOrEqual(rodape.y);
+  await pagina.screenshot({ path: test.info().outputPath("confirmacao-celular.png") });
+}
+
 test.describe("agendamentos reais", () => {
   test("consultar disponibilidade, agendar, recarregar e ver a reserva e a ocupação", async ({
     page,
@@ -555,7 +599,12 @@ test.describe("agendamentos reais", () => {
     await livre("09:00").click();
     await conferirSelecaoUnica(page, "horario-livre", instanteLocalDe("09:00"));
     await registrarDestaque(page, "horarios-livres", "criacao-celular");
+    await conferirConfirmacaoNoCelular(page);
     await page.setViewportSize(VIEWPORT_COMPUTADOR);
+    // No computador o rodapé do formulário fica onde sempre esteve.
+    expect(
+      await page.getByTestId("rodape-reserva").evaluate((el) => getComputedStyle(el).position),
+    ).toBe("static");
 
     await page.locator('form button[type="submit"]').click();
     await expect(page.getByTestId("confirmacao")).toBeVisible();
@@ -591,6 +640,10 @@ test.describe("agendamentos reais", () => {
     await opcao("10:00").click();
     await conferirSelecaoUnica(page, "horario-remarcacao", instanteLocalDe("10:00"));
     await registrarDestaque(page, "horarios-remarcacao", "remarcacao-celular");
+    // Alvos de toque de pelo menos 44 px no celular.
+    for (const alvo of [opcao("10:00"), page.getByTestId("confirmar-remarcacao"), page.getByLabel("Novo dia")]) {
+      expect((await alvo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
     await page.setViewportSize(VIEWPORT_COMPUTADOR);
 
     // O resumo mostra DE → PARA antes de confirmar, com cliente e serviço
