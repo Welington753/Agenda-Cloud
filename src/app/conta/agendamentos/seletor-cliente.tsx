@@ -114,7 +114,7 @@ export function SeletorCliente({
           // Alternância, não ação principal: escolhido fica marcado sem virar
           // o botão claro da tela.
           aria-pressed={modo === "buscar"}
-          className={modo === "buscar" ? "bg-accent-soft font-semibold" : undefined}
+          className={`max-sm:min-h-11 ${modo === "buscar" ? "bg-accent-soft font-semibold" : ""}`}
           disabled={desabilitado}
           onClick={() => {
             setModo("buscar");
@@ -129,7 +129,7 @@ export function SeletorCliente({
           variante="secundaria"
           tamanho="sm"
           aria-pressed={modo === "novo"}
-          className={modo === "novo" ? "bg-accent-soft font-semibold" : undefined}
+          className={`max-sm:min-h-11 ${modo === "novo" ? "bg-accent-soft font-semibold" : ""}`}
           disabled={desabilitado}
           onClick={() => setModo("novo")}
         >
@@ -166,11 +166,12 @@ export function SeletorCliente({
                 }
               }}
               placeholder="Nome ou telefone"
-              className="flex-1 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
+              className="flex-1 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink max-sm:min-h-11 sm:text-sm"
             />
             <Botao
               type="button"
               variante="secundaria"
+              className="max-sm:min-h-11"
               disabled={desabilitado || termo.trim().length < 2}
               onClick={(e) => void buscar(e)}
             >
@@ -195,7 +196,7 @@ export function SeletorCliente({
                       type="button"
                       disabled={desabilitado}
                       onClick={() => aoEscolherExistente(cliente)}
-                      className={`w-full rounded-[var(--radius-control)] border px-3 py-2 text-left text-sm ${
+                      className={`w-full rounded-[var(--radius-control)] border px-3 py-2 text-left text-sm max-sm:min-h-11 ${
                         escolhido ? "border-accent bg-paper-muted" : "border-border"
                       }`}
                     >
@@ -233,7 +234,7 @@ export function SeletorCliente({
               value={nome}
               disabled={desabilitado}
               onChange={(e) => setNome(e.target.value)}
-              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
+              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink max-sm:min-h-11 sm:text-sm"
             />
           </div>
           <div>
@@ -245,11 +246,13 @@ export function SeletorCliente({
             </label>
             <input
               id="cliente-whatsapp"
+              inputMode="tel"
+              autoComplete="tel"
               value={whatsapp}
               disabled={desabilitado}
               onChange={(e) => setWhatsapp(e.target.value)}
               placeholder="(11) 90000-0000"
-              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
+              className="w-full rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink max-sm:min-h-11 sm:text-sm"
             />
           </div>
           <p className="text-xs text-ink-soft sm:col-span-2">

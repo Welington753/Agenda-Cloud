@@ -116,7 +116,7 @@ export function PainelRemarcacao({
             value={date}
             disabled={gravando}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-sm text-ink"
+            className="rounded-[var(--radius-control)] border border-border-strong bg-card px-3 py-2 text-base text-ink max-sm:min-h-11 sm:text-sm"
           />
         </div>
 
@@ -174,6 +174,7 @@ export function PainelRemarcacao({
           <Botao
             type="button"
             data-testid="confirmar-remarcacao"
+            className="max-sm:min-h-11"
             disabled={gravando || !slotEscolhido}
             aria-busy={gravando}
             onClick={() => void confirmar()}
@@ -181,7 +182,13 @@ export function PainelRemarcacao({
             <CalendarClock size={14} className="mr-1" />
             {gravando ? "Remarcando..." : "Confirmar novo horário"}
           </Botao>
-          <Botao type="button" variante="secundaria" disabled={gravando} onClick={aoDesistir}>
+          <Botao
+            type="button"
+            variante="secundaria"
+            className="max-sm:min-h-11"
+            disabled={gravando}
+            onClick={aoDesistir}
+          >
             Desistir
           </Botao>
           {!slotEscolhido && (
