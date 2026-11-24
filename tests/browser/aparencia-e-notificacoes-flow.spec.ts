@@ -633,7 +633,7 @@ test("Azul e branco: escolha salva vale em /conta, login, recuperação, portal 
   await a.goto("/login");
   await a.evaluate((chave) => localStorage.setItem(chave, "azul"), CHAVE_APARENCIA);
   for (const [caminho, titulo] of [
-    ["/login", "Entrar"],
+    ["/login", "Acesse sua conta"],
     ["/redefinir-senha", null],
     ["/portal", "Entrar no portal"],
   ] as const) {
