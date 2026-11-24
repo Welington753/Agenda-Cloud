@@ -10,7 +10,7 @@
 // sozinho, então mandá-lo para um servidor ainda dormindo só geraria um erro.
 // O que foi digitado continua no formulário.
 import { useState, type FormEvent, type ReactNode } from "react";
-import { KeyRound } from "lucide-react";
+import { ChevronDown, KeyRound, Loader2 } from "lucide-react";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { useToast } from "@/components/ui/toast";
 import { Botao } from "@/components/ui/button";
@@ -26,13 +26,14 @@ export function FormularioLogin({
   aoEntrar,
   placeholder,
   dica,
-  extra,
+  acaoSenha,
 }: {
   aoEntrar: () => void;
   placeholder: string;
+  /** Orientação sobre o login, recolhida em "Qual login devo usar?". */
   dica?: string;
-  /** Entre a senha e o botão (ex.: "Esqueci minha senha"). */
-  extra?: ReactNode;
+  /** Ao lado do rótulo "Senha" (ex.: "Esqueci minha senha"). */
+  acaoSenha?: ReactNode;
 }) {
   const { login, estado, conexao, recarregar } = useRealAuth();
   const aguardandoServidor = conexao === "acordando" || conexao === "sem_internet";
@@ -76,9 +77,27 @@ export function FormularioLogin({
 
   return (
     <>
-      <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
+      {/* Na abertura, um aviso curto só deste formulário (login e portal); os
+          demais estados (sem internet, erro, "Tentar novamente") e as outras
+          telas continuam com a faixa comum. O envio segue bloqueado. */}
+      {conexaoExibida === "acordando" ? (
+        <div
+          role="status"
+          data-testid="faixa-conexao-acordando"
+          className="flex items-start gap-2.5 rounded-[var(--radius-control)] border border-border bg-paper-muted px-3 py-2.5 text-sm text-ink"
+        >
+          <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-ink-soft" aria-hidden="true" />
+          <p>
+            <span className="block font-medium">Preparando seu acesso…</span>
+            <span className="block text-ink-soft">Pode levar cerca de 1 min.</span>
+            <span className="block text-ink-soft">Continuamos automaticamente.</span>
+          </p>
+        </div>
+      ) : (
+        <FaixaConexao conexao={conexaoExibida} aoTentarDeNovo={recarregar} />
+      )}
 
-      <form onSubmit={(e) => void aoEnviar(e)} className="space-y-5">
+      <form onSubmit={(e) => void aoEnviar(e)} className="space-y-4">
         <div>
           <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-ink">
             E-mail ou login
@@ -94,19 +113,29 @@ export function FormularioLogin({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={placeholder}
-            aria-describedby={dica ? "dica-login" : undefined}
             className={CAMPO}
           />
+          {/* `<details>` nativo: abre por toque, Enter ou Espaço, e o leitor
+              de tela anuncia o estado (recolhido/expandido). */}
           {dica && (
-            <p id="dica-login" className="mt-1 text-xs text-ink-soft">
-              {dica}
-            </p>
+            <details className="group mt-1.5 text-sm">
+              <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] font-medium text-accent hover:underline [&::-webkit-details-marker]:hidden">
+                <ChevronDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+                Qual login devo usar?
+              </summary>
+              <p className="mt-1 text-ink-soft">{dica}</p>
+            </details>
           )}
         </div>
         <div>
-          <label htmlFor="senha" className="mb-1.5 block text-sm font-medium text-ink">
-            Senha
-          </label>
+          {/* Rótulo e ação na mesma linha; sem espaço, a ação desce para a
+              linha de baixo (flex-wrap) em vez de sobrepor. */}
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3">
+            <label htmlFor="senha" className="text-sm font-medium text-ink">
+              Senha
+            </label>
+            {acaoSenha}
+          </div>
           <input
             id="senha"
             type="password"
@@ -124,8 +153,6 @@ export function FormularioLogin({
             {erro}
           </p>
         )}
-
-        {extra}
 
         <Botao type="submit" tamanho="lg" className="min-h-12 w-full" disabled={entrando || aguardandoServidor}>
           <KeyRound size={18} aria-hidden="true" />

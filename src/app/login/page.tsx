@@ -7,7 +7,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { ChevronDown, ShieldCheck } from "lucide-react";
 import { ROTA_PADRAO_POS_LOGIN, sanitizarDestinoInterno } from "@/lib/auth/safe-redirect";
 import { useToast } from "@/components/ui/toast";
 import { FormularioLogin } from "@/components/auth/formulario-login";
@@ -52,29 +52,27 @@ function LoginPageConteudo() {
           <p className="mt-1 text-sm text-ink-soft">Acesso de gestores e equipe.</p>
         </div>
 
-        <Cartao className="space-y-5 p-5 sm:p-7">
+        <Cartao className="space-y-4 p-5 sm:p-7">
           <FormularioLogin
             aoEntrar={() => router.push(destinoPosLogin())}
             placeholder="voce@seuestabelecimento.com.br ou seu login"
             dica="Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um."
-            extra={
-              <div className="-mt-2 flex items-center justify-end text-sm">
-                <button
-                  type="button"
-                  onClick={() =>
-                    notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
-                  }
-                  className="inline-flex min-h-11 items-center font-medium text-accent hover:underline"
-                >
-                  Esqueci minha senha
-                </button>
-              </div>
+            acaoSenha={
+              <button
+                type="button"
+                onClick={() =>
+                  notificar("Peça à administração o envio de um link de redefinição para o seu e-mail.", "info")
+                }
+                className="inline-flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
+              >
+                Esqueci minha senha
+              </button>
             }
           />
 
           {/* Não há cadastro aberto: o acesso real vem do convite da
               administração. */}
-          <p className="border-t border-border pt-5 text-center text-sm text-ink-soft">
+          <p className="border-t border-border pt-4 text-center text-sm text-ink-soft">
             Ainda não tem acesso?{" "}
             <Link href="/cadastro" className="font-medium text-accent hover:underline">
               Saiba como obter
@@ -82,15 +80,20 @@ function LoginPageConteudo() {
           </p>
         </Cartao>
 
-        <div className="mt-6 space-y-3 text-center text-xs text-ink-soft">
-          <p className="mx-auto flex max-w-sm items-start justify-center gap-1.5 text-left">
-            <ShieldCheck size={14} aria-hidden="true" className="mt-px shrink-0" />
-            <span>
+        <div className="mt-4 space-y-2 text-center text-sm text-ink-soft">
+          {/* `<details>` nativo: toque, teclado e leitor de tela. */}
+          <details className="group mx-auto max-w-sm">
+            <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-control)] font-medium hover:text-ink [&::-webkit-details-marker]:hidden">
+              <ShieldCheck size={16} aria-hidden="true" className="shrink-0" />
+              Quem pode acessar?
+              <ChevronDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+            </summary>
+            <p className="mt-1 text-left text-xs">
               Acesso reservado à equipe de cada estabelecimento (donos, gerentes, recepcionistas e profissionais).
               Consumidores finais não precisam de login: agendam pela página pública do estabelecimento.
-            </span>
-          </p>
-          <p>
+            </p>
+          </details>
+          <p className="text-xs">
             <Link href="/" className="underline hover:text-ink">
               ← Voltar para a apresentação
             </Link>
