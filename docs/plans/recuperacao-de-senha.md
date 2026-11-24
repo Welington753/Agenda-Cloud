@@ -105,13 +105,54 @@ A recuperação assistida continua igual:
 - Ensaio de retorno com envios pendentes (API nova, depois `63f1cd6`, depois a nova): resultado e limites na seção P3 do runbook.
 - Runbook: `docs/runbooks/publicacao-recuperacao-senha.md`, com as combinações testadas e a configuração de e-mail conferida no Render (só leitura).
 
+**Merge:** #144 mesclado na integração como `59df5ba` (SHA_R do runbook), com CI verde em `5cb43b6`.
+
+**Publicação no piloto (24/11/2026, PC do trabalho, UTC), autorizada pelo responsável**
+
+- **Antes de começar:** às 16:59 houve deploys manuais de `59df5ba` na API e no web, fora deste roteiro e de autoria não confirmada.
+  - A API recusou subir, porque o banco não tinha a migration 26 (`SchemaReadiness`), e o Render manteve a API `63f1cd6`.
+  - O web `59df5ba` ficou no ar com a API `63f1cd6` de 17:02:48 a 17:08:16. A pedido do responsável, voltou para `63f1cd6` (`dep-dc2s7t97lnhs73fbdfi0`). Nesse intervalo o login funcionava e só "Esqueci minha senha" falhava.
+- **Configuração de e-mail:** conferida só em leitura e mantida como está, por decisão do responsável:
+  - `brevo`, com a chave presente;
+  - o remetente atual, o mesmo da confirmação de e-mail, com o nome "Agenda-Cloud";
+  - `FRONTEND_URL` no endereço público.
+- **Backup:** `%USERPROFILE%\AgendaCloud-operacoes\pre-mig26-25-backup-2026-11-24T17-34-18Z` (PG 17.12, 25 migrations, 62 tabelas).
+  - Restaurado num PostgreSQL 17 descartável com TLS, com contagem e md5 iguais em todas as tabelas (`restauracao-conferida.json` na mesma pasta).
+- **Passo 5, só agregados:** 1 link `USED` e 0 pendentes válidos.
+- **Ensaio na cópia restaurada:** todas as etapas OK, com a caixa de e-mail local no lugar do provedor e contas de ensaio `@example.test`.
+  - migration 26 aplicada com a API atual no ar;
+  - janelas 1, 2 e 3, pela API e pela tela;
+  - na janela 2, as 15 fichas do portal (7 reais e 8 de ensaio) no contrato do web anterior;
+  - o roteiro curto completo pela tela;
+  - o retorno da seção P3, com os casos X, Y, Z, a reemissão pela administração e W (nova tentativa que sai na volta).
+- **Piloto:**
+  1. Migration 26 aplicada com o kit de `59df5ba` (`aplicarSomenteAPendente`, 25 antes, nenhuma posterior).
+     - P2 depois: 26 migrations, `ADMIN/USED=1` (totais iguais ao passo 5), 0 envios agendados, 0 pedidos e as 4 constraints.
+     - Janela 1: `/health` e `/login` 200, sem erro no log.
+  2. API `59df5ba`: deploy `dep-dc2so3lg1s2s739pvi4g`, live às 17:41:43.
+     - `POST /password-resets/request` com corpo inválido respondeu 400.
+     - Com um endereço `@example.test` inexistente, respondeu 202 com `Cache-Control: private, no-store`. O pedido foi processado como `NO_MATCH`, sem e-mail.
+  3. Web `59df5ba`: deploy `dep-dc2sou8m7kps73er32e0`, live às 17:44:49.
+     - Login, portal, "Recuperar senha" (ida e volta pelo login e pelo portal) e `/redefinir-senha` sem link ("Link indisponível") conferidos pela tela, sem sessão.
+     - O proxy `/agenda_api/health` respondeu 200.
+- **Estado final:** API e web em `59df5ba`, banco com 26 migrations, fila vazia e 0 erros nos logs depois dos deploys. Auto-Deploy `off` nos dois serviços.
+
+**Limites do retorno** (seção P3 do runbook, ensaiada de novo na cópia de 24/11):
+
+- O banco fica em 26, e nunca se roda o `down` no piloto. A API `63f1cd6` roda no schema 26, e a API `15e2790` continua sendo o piso.
+- Voltar a API para `63f1cd6` não quebra telas nem dados, mas:
+  - para "Esqueci minha senha";
+  - deixa os pedidos e as novas tentativas parados até a `59df5ba` voltar, e então os e-mails saem atrasados.
+- Antes de voltar, rodar as consultas de fila da seção P2 e registrar os números.
+- O web volta junto com a API.
+
 **Não feito**
 
-- Merge do #144 e publicação.
-- Decisão do responsável sobre o remetente do e-mail (endereço gratuito, nome "Agenda-Cloud"); ver a seção E do runbook.
-- Teste real de e-mail e teste com teclado real no celular, depois da publicação.
+- Teste real de e-mail com uma conta do responsável (passo 8 do runbook): chegada, inclusive na pasta de spam, remetente, link e validade de 1 hora. Depois, o teste com teclado real no celular.
 
 **Próximo passo**
 
-1. Merge do #144 com o CI verde no head final.
-2. Publicar pelo runbook, com pedido explícito: backup, restauração conferida, ensaio, migration 26, API e web no mesmo SHA.
+1. O responsável executa o roteiro curto com a própria conta e informa o resultado.
+2. Se o e-mail não chegar ou cair no spam, conferir a seção E do runbook. O remetente de domínio próprio fica para decisão futura.
+
+**Só neste computador:** o backup acima, que deve ser guardado.
