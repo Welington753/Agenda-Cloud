@@ -118,7 +118,7 @@ export function FormularioLogin({
           {/* `<details>` nativo: abre por toque, Enter ou Espaço, e o leitor
               de tela anuncia o estado (recolhido/expandido). */}
           {dica && (
-            <details className="group mt-1.5 text-sm">
+            <details className="group mt-0.5 -mb-4 text-sm open:mb-0">
               <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] font-medium text-accent hover:underline [&::-webkit-details-marker]:hidden">
                 <ChevronDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
                 Qual login devo usar?

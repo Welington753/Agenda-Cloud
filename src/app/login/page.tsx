@@ -55,7 +55,7 @@ function LoginPageConteudo() {
         <Cartao className="space-y-4 p-5 sm:p-7">
           <FormularioLogin
             aoEntrar={() => router.push(destinoPosLogin())}
-            placeholder="voce@seuestabelecimento.com.br ou seu login"
+            placeholder="Seu e-mail ou login"
             dica="Equipe: use o login que o responsável criou para você. Ele pode parecer um e-mail sem ser um."
             acaoSenha={
               <button
@@ -73,8 +73,8 @@ function LoginPageConteudo() {
           {/* Não há cadastro aberto: o acesso real vem do convite da
               administração. */}
           <p className="border-t border-border pt-4 text-center text-sm text-ink-soft">
-            Ainda não tem acesso?{" "}
-            <Link href="/cadastro" className="font-medium text-accent hover:underline">
+            <span className="block">Ainda não tem acesso?</span>
+            <Link href="/cadastro" className="mt-0.5 inline-flex min-h-11 items-center font-medium text-accent hover:underline">
               Saiba como obter
             </Link>
           </p>
