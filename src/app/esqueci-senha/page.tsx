@@ -79,7 +79,7 @@ function EsqueciSenhaConteudo() {
         <div className="mb-5 flex flex-col items-center text-center sm:mb-6">
           <MarcaTimVix className="text-base text-ink" tamanho={24} />
           <h1 className="mt-4 text-xl font-bold text-ink sm:mt-5 sm:text-2xl">Recuperar senha</h1>
-          <p className="mt-1 text-sm text-ink-soft">Enviamos um link para o e-mail confirmado da conta.</p>
+          <p className="mt-1 text-sm text-ink-soft">Informe seu e-mail ou login para recuperar sua senha.</p>
         </div>
 
         <Cartao className="space-y-4 p-5 sm:p-7">

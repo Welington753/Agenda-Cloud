@@ -35,7 +35,7 @@ export function erroDoIdentificador(texto: string): string | null {
 
 /** Orientação fixa para quem entra com login sem e-mail (a mesma para todos). */
 export const ORIENTACAO_LOGIN_SEM_EMAIL =
-  "Entra com um login sem e-mail? O link não chega até você: peça uma nova senha ao responsável pelo estabelecimento.";
+  "Usa um login sem e-mail? Peça ao responsável pelo estabelecimento para redefinir sua senha.";
 
 /** Texto depois do pedido aceito: igual para qualquer conta. */
 export const CONFIRMACAO_DO_PEDIDO = [

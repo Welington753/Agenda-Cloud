@@ -134,11 +134,6 @@ export default function RedefinirSenhaPage() {
               <LinkBotao href={linkEsqueciSenha("login")} tamanho="lg" className="min-h-12 w-full">
                 Pedir um novo link
               </LinkBotao>
-              <p className="text-center text-sm">
-                <Link href="/login" className="inline-flex min-h-11 items-center font-medium text-accent hover:underline">
-                  Ir para o login
-                </Link>
-              </p>
             </>
           ) : (
             <form onSubmit={(e) => void salvar(e)} className="space-y-4">

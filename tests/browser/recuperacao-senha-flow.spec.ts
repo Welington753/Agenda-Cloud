@@ -90,14 +90,14 @@ test("esqueci minha senha: pedido genérico, link por e-mail confirmado, nova se
   await a.getByRole("link", { name: "Esqueci minha senha" }).click();
   await expect(a).toHaveURL(/\/esqueci-senha$/);
   await expect(a.getByRole("heading", { level: 1, name: "Recuperar senha" })).toBeVisible();
-  await expect(a.getByText("Entra com um login sem e-mail?")).toBeVisible();
+  await expect(a.getByText("Usa um login sem e-mail?")).toBeVisible();
 
   await a.getByLabel("E-mail ou login").fill(loginEquipe);
   await a.getByRole("button", { name: "Enviar link" }).click();
   const confirmacao = a.getByRole("status").filter({ hasText: "Pedido recebido." });
   await expect(confirmacao).toBeVisible();
   const textoParaEquipe = await confirmacao.textContent();
-  await expect(a.getByText("Entra com um login sem e-mail?")).toBeVisible();
+  await expect(a.getByText("Usa um login sem e-mail?")).toBeVisible();
 
   await a.getByRole("button", { name: "Usar outro e-mail ou login" }).click();
   await a.getByLabel("E-mail ou login").fill(email.toUpperCase());
