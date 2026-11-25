@@ -349,6 +349,17 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 ## 8. Estado e retomada
 
+**25/11/2026, PR 2 aberto (schema, integridade e acesso), sem merge.** Branch `feat/vendas-schema-acesso` (worktree `C:/wt/vendas-pr2`), a partir de `8ea862f` (#149 mesclado).
+
+- **Feito:**
+  - migrations 27 `SalesEnumValues1794528000000` e 28 `SalesModule1794614400000` (seção 5.6), manifesto com 28;
+  - gate com lista de recursos, `sales/sales-access.ts`, seis `VENDAS_*`, recepcionista criável em Equipe e acessos (sem profissional, vaga normal), áreas da sessão (nova venda e manutenção), `ADDON_REQUIRES`, `USE_VENDAS` e `BAIXA_DE_VENDA` no estoque, unificação com vendas;
+  - testes locais em PostgreSQL 18 descartável com TLS: unitários, e2e HTTP, `sales-migrations` e `sales-integrity-postgres` novos e a suíte db-e2e inteira num banco novo (45 arquivos, 503 testes).
+- **Diferença em relação à seção 3.2:** não existe rota de override de recurso fora da assinatura; a recusa `MODULO_DEPENDENTE` fica só em `quoteSubscription`, e o gate exige os dois recursos na nova venda.
+- **Não feito (PR 3 e 4):** rotas de venda e recebimento, preço sugerido na API do produto, telas, rótulos das permissões novas no portal, runbook. O preço do adicional e a primeira ativação continuam com o responsável.
+- **Próximo passo:** revisão do PR 2 e CI verde no head; depois o PR 3 a partir da integração com o PR 2 mesclado.
+- **Só neste computador:** a worktree `C:/wt/vendas-pr2` e o cluster descartável da sessão (pasta temporária).
+
 **25/11/2026, terceira versão:** recebimento e preço confirmados (seção 3), retorno pelo último SHA comprovadamente compatível e as duas validações separadas (seção 5.7). Plano aprovado; o PR 2 começa a partir da integração com este plano mesclado.
 
 **25/11/2026, segunda versão:** decisões de recepcionista, catálogo, clientes, recebimentos e comercial incorporadas, com manutenção sem o adicional, bloqueio da retirada do ESTOQUE, contingência e commit entre 27 e 28. Ainda sem código.
