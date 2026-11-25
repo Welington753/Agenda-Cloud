@@ -17,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { CommissionsModule } from './commissions/commissions.module.js';
 import { StockModule } from './stock/stock.module.js';
+import { SalesModule } from './sales/sales.module.js';
 import { SecondFactorModule } from './second-factor/second-factor.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AppController } from './app.controller.js';
@@ -42,6 +43,7 @@ import { DatabaseErrorFilter } from './common/database-error.filter.js';
     PaymentsModule,
     CommissionsModule,
     StockModule,
+    SalesModule,
     SecondFactorModule,
     HealthModule,
   ],
