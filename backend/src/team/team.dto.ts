@@ -40,6 +40,17 @@ export const staffPermissionsChangeSchema = z
   .strict();
 export type StaffPermissionsChangeDto = z.infer<typeof staffPermissionsChangeSchema>;
 
+type PerfilComProfissional = { role: string; professionalId?: string | null };
+type RegraDoPerfil = [(v: PerfilComProfissional) => boolean, { path: string[]; message: string }];
+const exigeProfissional: RegraDoPerfil = [
+  (v: PerfilComProfissional) => v.role !== 'PROFISSIONAL' || !!v.professionalId,
+  { path: ['professionalId'], message: 'Escolha o profissional deste acesso.' },
+];
+const recepcionistaSemProfissional: RegraDoPerfil = [
+  (v: PerfilComProfissional) => v.role !== 'RECEPCIONISTA' || !v.professionalId,
+  { path: ['professionalId'], message: 'O perfil Recepcionista não tem profissional ligado.' },
+];
+
 /** Acesso de equipe com login interno, sem e-mail. `password` é a senha
  * escolhida pelo dono, com a mesma política das outras senhas, e definitiva:
  * a pessoa entra com ela, sem troca obrigatória. Sem `password` (o corpo da
@@ -47,11 +58,11 @@ export type StaffPermissionsChangeDto = z.infer<typeof staffPermissionsChangeSch
  * resposta, com troca no primeiro acesso.
  *
  * `role` ausente é `PROFISSIONAL` (o corpo da tela anterior). Profissional
- * sempre tem profissional ligado; gerente pode não ter. */
+ * sempre tem profissional ligado; gerente pode ter; recepcionista nunca tem. */
 export const staffAccountSchema = z
   .object({
     requestKey: requestKeySchema,
-    role: z.enum(['PROFISSIONAL', 'GERENTE']).default('PROFISSIONAL'),
+    role: z.enum(TEAM_ROLES).default('PROFISSIONAL'),
     professionalId: idSchema.nullable().optional(),
     name: nameSchema,
     username: usernameSchema,
@@ -59,10 +70,8 @@ export const staffAccountSchema = z
     password: passwordSchema.optional(),
   })
   .strict()
-  .refine((v) => v.role === 'GERENTE' || !!v.professionalId, {
-    path: ['professionalId'],
-    message: 'Escolha o profissional deste acesso.',
-  });
+  .refine(...exigeProfissional)
+  .refine(...recepcionistaSemProfissional);
 export type StaffAccountDto = z.infer<typeof staffAccountSchema>;
 
 /** Troca do perfil e do profissional ligado de um acesso que já existe, com
@@ -84,10 +93,8 @@ export const staffAccessChangeSchema = z
     granted: staffPermissionsSchema,
   })
   .strict()
-  .refine((v) => v.role === 'GERENTE' || !!v.professionalId, {
-    path: ['professionalId'],
-    message: 'Escolha o profissional deste acesso.',
-  });
+  .refine(...exigeProfissional)
+  .refine(...recepcionistaSemProfissional);
 export type StaffAccessChangeDto = z.infer<typeof staffAccessChangeSchema>;
 
 /** Nova senha definida pelo dono para um acesso interno: definitiva. */

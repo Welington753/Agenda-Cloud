@@ -42,6 +42,14 @@ import { canManageServices, canViewServices } from '../services/service-access.j
 import { canViewPayments } from '../payments/payment-access.js';
 import { canViewCommissions } from '../commissions/commission-access.js';
 import { canManageStock, canViewStock } from '../stock/stock-access.js';
+import {
+  canCancelSales,
+  canOverrideSalePrice,
+  canReceiveSales,
+  canRefundSalePayments,
+  canRegisterSales,
+  canViewAllSales,
+} from '../sales/sales-access.js';
 import { MANAGER_PERMISSIONS, type ManagerPermission } from '../common/manager-permissions.js';
 
 /** Valores novos do enum `permission` (migrations TeamAccess1792886400000 e
@@ -92,8 +100,10 @@ function tem(overrides: readonly OverrideRow[], permission: string, mode: Permis
   return overrides.some((o) => o.permission === permission && o.mode === mode);
 }
 
-/** Papéis de equipe que o dono cria e administra em "Equipe e acessos". */
-export const TEAM_ROLES = ['PROFISSIONAL', 'GERENTE'] as const;
+/** Papéis de equipe que o dono cria e administra em "Equipe e acessos".
+ * RECEPCIONISTA (docs/plans/vendas-v1.md): sem profissional ligado, só com
+ * as concessões de vendas da lista dela; ocupa vaga como os demais. */
+export const TEAM_ROLES = ['PROFISSIONAL', 'GERENTE', 'RECEPCIONISTA'] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
 
 /** Agenda própria: o funcionário sempre; o gerente com profissional ligado só
@@ -161,6 +171,12 @@ const POLITICA_DO_DONO: Readonly<Record<ManagerPermission, PoliticaDoDono>> = {
   RECEBIMENTOS_ESTORNAR: canViewPayments,
   ESTOQUE_VISUALIZAR: canViewStock,
   ESTOQUE_GERENCIAR: canManageStock,
+  VENDAS_REGISTRAR: canRegisterSales,
+  VENDAS_RECEBER: canReceiveSales,
+  VENDAS_ALTERAR_PRECO: canOverrideSalePrice,
+  VENDAS_VISUALIZAR: canViewAllSales,
+  VENDAS_CANCELAR: canCancelSales,
+  VENDAS_ESTORNAR_RECEBIMENTO: canRefundSalePayments,
 };
 
 /** Concessões de gerente que ESTE dono pode dar. */

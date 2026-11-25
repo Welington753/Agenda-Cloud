@@ -128,12 +128,13 @@ export async function featureEnabled(manager: EntityManager, tenantId: string, f
 }
 
 /** Vencido: 403 `ACESSO_VENCIDO`. Recurso fora do plano: 403
- * `RECURSO_NAO_CONTRATADO`. Quem chama já provou vínculo e situação
+ * `RECURSO_NAO_CONTRATADO`. Uma lista exige TODOS os recursos (ex.: nova
+ * venda pede VENDAS e ESTOQUE). Quem chama já provou vínculo e situação
  * administrativa. */
 export async function requireCommercialAccess(
   manager: EntityManager,
   tenantId: string,
-  feature: FeatureKey | null,
+  feature: FeatureKey | readonly FeatureKey[] | null,
   now = new Date(),
 ): Promise<void> {
   const situacao = await tenantAccessSituation(manager, tenantId, now);
@@ -144,7 +145,10 @@ export async function requireCommercialAccess(
       expiredAt: situacao.expiredAt?.toISOString() ?? null,
     });
   }
-  if (feature && !(await featureEnabled(manager, tenantId, feature))) {
-    throw new ForbiddenException({ code: FEATURE_NOT_CONTRACTED_CODE, message: FEATURE_NOT_CONTRACTED_MESSAGE });
+  const exigidos: readonly FeatureKey[] = feature === null ? [] : typeof feature === 'string' ? [feature] : feature;
+  for (const recurso of exigidos) {
+    if (!(await featureEnabled(manager, tenantId, recurso))) {
+      throw new ForbiddenException({ code: FEATURE_NOT_CONTRACTED_CODE, message: FEATURE_NOT_CONTRACTED_MESSAGE });
+    }
   }
 }

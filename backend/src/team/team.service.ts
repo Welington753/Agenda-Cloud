@@ -28,9 +28,10 @@
 //   nada sozinha. Trocar o PERFIL só vale para a conta que é só deste
 //   estabelecimento (sem papel na plataforma e sem outro vínculo).
 //
-// Só vínculos PROFISSIONAL e GERENTE passam por aqui: o dono não altera outro
-// dono nem a si mesmo, e nada aqui concede papel de plataforma. RECEPCIONISTA
-// (papel antigo, sem área) aparece na lista, sem ações.
+// Só vínculos PROFISSIONAL, GERENTE e RECEPCIONISTA passam por aqui: o dono
+// não altera outro dono nem a si mesmo, e nada aqui concede papel de
+// plataforma. RECEPCIONISTA (docs/plans/vendas-v1.md) não tem profissional
+// ligado e só recebe as concessões de vendas da lista dela.
 //
 // Mudanças de acesso exigem senha confirmada há pouco NESTA sessão (a mesma
 // reautenticação da administração), e o histórico entra na mesma transação.
@@ -49,7 +50,9 @@ import {
   MANAGER_PERMISSIONS,
   MANAGER_PERMISSION_META,
   MANAGER_PERMISSION_REQUIRES,
+  RECEPTIONIST_PERMISSIONS,
   managerGrantedPermissions,
+  receptionistGrantedPermissions,
 } from '../common/manager-permissions.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import {
@@ -75,7 +78,17 @@ import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js'
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 const ACCESS_NOT_FOUND_MESSAGE = 'Acesso não encontrado. Ele pode já ter sido removido.';
-const ROLE_LABEL: Readonly<Record<TeamRole, string>> = { PROFISSIONAL: 'profissional', GERENTE: 'gerente' };
+const ROLE_LABEL: Readonly<Record<TeamRole, string>> = {
+  PROFISSIONAL: 'profissional',
+  GERENTE: 'gerente',
+  RECEPCIONISTA: 'recepcionista',
+};
+
+const PAPEIS_DE_EQUIPE: readonly string[] = [
+  EstablishmentRole.PROFISSIONAL,
+  EstablishmentRole.GERENTE,
+  EstablishmentRole.RECEPCIONISTA,
+];
 
 interface StaffMembershipRow {
   id: string;
@@ -102,6 +115,7 @@ export function grantedTeamPermissions(
   permissionsConfirmed: boolean,
   overrides: readonly OverrideRow[],
 ): TeamPermission[] {
+  if (role === EstablishmentRole.RECEPCIONISTA) return receptionistGrantedPermissions(role, overrides);
   if (role !== EstablishmentRole.PROFISSIONAL && role !== EstablishmentRole.GERENTE) return [];
   const valem = effectiveOverrides(role, permissionsConfirmed, overrides);
   return [...staffGrantedPermissions(role as EstablishmentRole, valem), ...managerGrantedPermissions(role, valem)];
@@ -196,7 +210,7 @@ export class TeamService {
 
       const acessoDe = (v: (typeof vinculos)[number]) => {
         const ehDono = v.role === EstablishmentRole.DONO;
-        const deEquipe = v.role === EstablishmentRole.PROFISSIONAL || v.role === EstablishmentRole.GERENTE;
+        const deEquipe = PAPEIS_DE_EQUIPE.includes(v.role);
         return {
           membershipId: v.id,
           role: v.role,
@@ -227,7 +241,7 @@ export class TeamService {
       };
       const situacaoDe = (v: (typeof vinculos)[number], profissionalAtivo: boolean | null) => {
         if (v.role === EstablishmentRole.DONO) return 'OWNER';
-        if (v.role !== EstablishmentRole.PROFISSIONAL && v.role !== EstablishmentRole.GERENTE) return 'LEGACY_ROLE';
+        if (!PAPEIS_DE_EQUIPE.includes(v.role)) return 'LEGACY_ROLE';
         if (v.status !== 'ACTIVE') return 'SUSPENDED';
         if (v.role === EstablishmentRole.PROFISSIONAL && !v.professional_id) return 'PROFESSIONAL_INACTIVE';
         if (v.professional_id && profissionalAtivo === false) return 'PROFESSIONAL_INACTIVE';
@@ -255,6 +269,9 @@ export class TeamService {
           /** Depende de um adicional que o estabelecimento não contratou. */
           addonMissing: gestor.managerWithoutFeature.includes(p),
         })),
+        /** As áreas que o perfil Recepcionista pode receber (subconjunto do
+         * catálogo acima). */
+        receptionistPermissions: RECEPTIONIST_PERMISSIONS,
         maxInviteSends: MAX_INVITE_SENDS,
         /** Todos os acessos que não são do dono, com ou sem profissional. */
         accesses: vinculos
@@ -472,6 +489,9 @@ export class TeamService {
         ) {
           throw conflito('ALTERADO_POR_OUTRA_TELA', 'Este acesso mudou desde que você abriu a tela. Recarregue.');
         }
+        if (dto.role === 'RECEPCIONISTA' && dto.professionalId) {
+          throw conflito('PERFIL_SEM_PROFISSIONAL', 'O perfil Recepcionista não tem profissional ligado.');
+        }
         const trocaPerfil = dto.role !== vinculo.role;
         const trocaProfissional = dto.professionalId !== vinculo.professional_id;
         if (trocaPerfil && (vinculo.papel_plataforma || vinculo.vinculos !== 1)) {
@@ -611,7 +631,7 @@ export class TeamService {
     return { gravadas, remover, acrescentar };
   }
 
-  /** Trava um vínculo de EQUIPE (profissional ou gerente) deste
+  /** Trava um vínculo de EQUIPE (profissional, gerente ou recepcionista) deste
    * estabelecimento. Vínculo de dono, de outro estabelecimento ou inexistente:
    * 404 (indistinguíveis). */
   private async lockStaffMembership(
@@ -633,7 +653,7 @@ export class TeamService {
            FROM memberships m
            JOIN users u ON u.id = m.user_id
            LEFT JOIN professionals p ON p.tenant_id = m.tenant_id AND p.id = m.professional_id
-          WHERE m.id = $1 AND m.tenant_id = $2 AND m.role IN ('PROFISSIONAL', 'GERENTE')
+          WHERE m.id = $1 AND m.tenant_id = $2 AND m.role IN ('PROFISSIONAL', 'GERENTE', 'RECEPCIONISTA')
           FOR UPDATE OF m`,
         [membershipId, tenantId],
       ),

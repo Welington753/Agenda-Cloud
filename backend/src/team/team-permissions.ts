@@ -4,15 +4,18 @@
 //
 // - as três ações sobre os PRÓPRIOS atendimentos: quem tem profissional
 //   ligado (todo PROFISSIONAL; o GERENTE só se tiver);
-// - as áreas do estabelecimento (common/manager-permissions.ts): só GERENTE,
-//   e só com as dependências de cada uma junto, para o dono ver e confirmar
-//   o conjunto que de fato vale;
+// - as áreas do estabelecimento (common/manager-permissions.ts): GERENTE
+//   todas; RECEPCIONISTA só as de `RECEPTIONIST_PERMISSIONS` (vender, receber
+//   as próprias vendas e alterar o preço numa venda nova). Sempre com as
+//   dependências de cada uma junto, para o dono ver e confirmar o conjunto
+//   que de fato vale;
 // - só o que o próprio dono pode fazer (conferido para o que ENTRA: retirar
 //   é sempre possível, mesmo que o dono tenha perdido a permissão depois).
 import { ConflictException } from '@nestjs/common';
 import {
   MANAGER_PERMISSION_META,
   isManagerPermission,
+  isReceptionistPermission,
   missingManagerRequirements,
   type ManagerPermission,
 } from '../common/manager-permissions.js';
@@ -40,14 +43,21 @@ export function validarConcessoes(
       'As ações sobre os próprios atendimentos valem só para um acesso com profissional ligado.',
     );
   }
-  if (areas.length && alvo.role !== 'GERENTE') {
+  if (alvo.role === 'RECEPCIONISTA') {
+    if (areas.some((p) => !isReceptionistPermission(p))) {
+      throw conflito(
+        'PERMISSAO_NAO_SE_APLICA',
+        'Ao perfil Recepcionista só se concedem: registrar vendas, receber vendas e alterar o preço numa venda nova.',
+      );
+    }
+  } else if (areas.length && alvo.role !== 'GERENTE') {
     throw conflito('PERMISSAO_NAO_SE_APLICA', 'As áreas do estabelecimento só podem ser concedidas ao perfil Gerente.');
   }
   const semAdicional = novas.filter((p) => gestor.managerWithoutFeature?.includes(p as ManagerPermission));
   if (semAdicional.length) {
     throw conflito(
       'RECURSO_NAO_CONTRATADO',
-      'Esta área depende de um adicional que o estabelecimento não contratou (ex.: Estoque).',
+      'Esta área depende de um adicional que o estabelecimento não contratou (ex.: Estoque ou Vendas).',
     );
   }
   const indevidas = novas.filter((p) =>

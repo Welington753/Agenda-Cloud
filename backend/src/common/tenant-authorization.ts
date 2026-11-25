@@ -95,8 +95,10 @@ export interface PoliticaDeAcesso {
   /** Mensagem do 403 — cada módulo fala da sua área. */
   mensagemProibido: string;
   /** Recurso do plano que a área usa (ver commercial/feature-areas.ts).
-   * Sem recurso: núcleo, presente em todo plano. */
-  recurso?: FeatureKey | null;
+   * Sem recurso: núcleo, presente em todo plano. Uma lista exige todos (a
+   * nova venda pede VENDAS e ESTOQUE; a manutenção das vendas já
+   * registradas não pede recurso, ver sales/sales-access.ts). */
+  recurso?: FeatureKey | readonly FeatureKey[] | null;
   /** Só para operação que apenas DESLIGA algo do próprio usuário (ex.:
    * desativar avisos neste aparelho): dispensa a validade comercial e o
    * recurso do plano. Vínculo, situação do vínculo, situação administrativa

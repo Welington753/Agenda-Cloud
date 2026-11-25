@@ -5,8 +5,9 @@
 //
 // CRIAR (dono, senha confirmada há pouco nesta sessão): numa transação só,
 // com o estabelecimento travado (mesma fila das vagas, ver seats.ts):
-// estabelecimento em operação; perfil PROFISSIONAL (sempre com profissional)
-// ou GERENTE (com ou sem profissional); o profissional, quando há, ativo, sem
+// estabelecimento em operação; perfil PROFISSIONAL (sempre com profissional),
+// GERENTE (com ou sem profissional) ou RECEPCIONISTA (nunca com profissional,
+// só com as concessões de vendas da lista dela); o profissional, quando há, ativo, sem
 // acesso e sem convite pendente; vaga livre no plano; login livre na
 // plataforma (também contra os e-mails, ver migration TeamManagerAccess); e
 // só as permissões que o dono pode conceder, com as dependências junto (ver
@@ -16,7 +17,8 @@
 // nunca sobra conta sem vínculo, e nunca uma conta existente é ligada ou
 // assumida: login em uso é recusado.
 //
-// Gerente sem profissional ocupa vaga de equipe, mas NÃO cria profissional.
+// Gerente sem profissional e recepcionista ocupam vaga de equipe, mas NÃO
+// criam profissional.
 //
 // SENHA: a tela atual manda a senha escolhida pelo dono, que é DEFINITIVA
 // (sem troca obrigatória) e nunca volta na resposta. O corpo da tela
@@ -113,6 +115,9 @@ export class StaffAccountsService {
         // Sem perfil (quem chama sem passar pelo DTO, como a tela anterior): profissional.
         const role = dto.role ?? 'PROFISSIONAL';
         if (!(TEAM_ROLES as readonly string[]).includes(role)) throw conflito('PERFIL_INVALIDO', 'Perfil inválido.');
+        if (role === 'RECEPCIONISTA' && dto.professionalId) {
+          throw conflito('PERFIL_SEM_PROFISSIONAL', 'O perfil Recepcionista não tem profissional ligado.');
+        }
         await expireStaleStaffInvites(manager, tenant.id, now);
         let profissional: { id: string; name: string } | null = null;
         if (dto.professionalId) {
@@ -282,7 +287,7 @@ export class StaffAccountsService {
                   u.platform_role::text AS platform_role,
                   (SELECT count(*)::int FROM memberships o WHERE o.user_id = u.id) AS vinculos
              FROM memberships m JOIN users u ON u.id = m.user_id
-            WHERE m.id = $1 AND m.tenant_id = $2 AND m.role IN ('PROFISSIONAL', 'GERENTE')
+            WHERE m.id = $1 AND m.tenant_id = $2 AND m.role IN ('PROFISSIONAL', 'GERENTE', 'RECEPCIONISTA')
             FOR UPDATE OF u`,
           [membershipId, gestor.tenantId],
         ),

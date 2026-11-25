@@ -5,7 +5,7 @@
 //
 // A versão da prévia é o hash (SHA-256) do CONTEÚDO apresentado, calculado
 // pela mesma função na prévia e na confirmação. Uma mudança em agendamento,
-// recebimento, comissão ou pedido público do secundário, ou nos dados dos
+// recebimento, comissão, pedido público ou compra (venda) do secundário, ou nos dados dos
 // dois cadastros, muda a versão: a confirmação com a versão antiga é
 // recusada (409 `PREVIA_DESATUALIZADA`) sem transferir nada.
 import { createHash } from 'node:crypto';
@@ -64,6 +64,15 @@ export interface ComissaoNaPrevia {
   status: string;
 }
 
+/** Venda do secundário (docs/plans/vendas-v1.md, seção 5.4): vai para o
+ * principal junto com o cadastro, pelo gatilho `consumers_move_sales`. */
+export interface CompraNaPrevia {
+  id: string;
+  status: string;
+  totalCents: number;
+  recordedAt: string;
+}
+
 /** Tudo o que a prévia mostra e a confirmação confere. */
 export interface ConteudoDaUnificacao {
   principal: CadastroNaPrevia;
@@ -72,6 +81,7 @@ export interface ConteudoDaUnificacao {
   recebimentos: RecebimentoNaPrevia[];
   comissoes: ComissaoNaPrevia[];
   pedidosPublicos: string[];
+  compras: CompraNaPrevia[];
 }
 
 const porId = <T extends { id: string }>(lista: readonly T[]): T[] =>
@@ -88,6 +98,7 @@ export function versaoDaPrevia(conteudo: ConteudoDaUnificacao): string {
     porId(conteudo.recebimentos).map((r) => [r.id, r.appointmentId, r.amountCents, r.method, r.receivedOn, r.refunded]),
     porId(conteudo.comissoes).map((c) => [c.id, c.appointmentId, c.professionalCents, c.establishmentCents, c.status]),
     [...conteudo.pedidosPublicos].sort(),
+    porId(conteudo.compras).map((c) => [c.id, c.status, c.totalCents, c.recordedAt]),
   ];
   return createHash('sha256').update(JSON.stringify(canonico)).digest('hex');
 }
@@ -102,6 +113,8 @@ export interface ResumoDaTransferencia {
   recebimentos: number;
   comissoes: number;
   pedidosPublicos: number;
+  /** Vendas do secundário (ativas ou canceladas). */
+  compras: number;
 }
 
 export function resumoDaTransferencia(conteudo: ConteudoDaUnificacao): ResumoDaTransferencia {
@@ -118,6 +131,7 @@ export function resumoDaTransferencia(conteudo: ConteudoDaUnificacao): ResumoDaT
     recebimentos: conteudo.recebimentos.length,
     comissoes: conteudo.comissoes.length,
     pedidosPublicos: conteudo.pedidosPublicos.length,
+    compras: conteudo.compras.length,
   };
 }
 

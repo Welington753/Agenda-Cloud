@@ -25,6 +25,7 @@ const BASE: ConteudoDaUnificacao = {
   recebimentos: [{ id: 'r1', appointmentId: 'a2', amountCents: 5000, method: 'PIX', receivedOn: '2026-11-01', refunded: false }],
   comissoes: [{ id: 'c1', appointmentId: 'a2', professionalCents: 2000, establishmentCents: 3000, status: 'CONFIRMED' }],
   pedidosPublicos: ['b1'],
+  compras: [{ id: 'v1', status: 'ATIVA', totalCents: 4590, recordedAt: '2026-11-02T12:00:00.000Z' }],
 };
 
 describe('relacoesEntre', () => {
@@ -67,6 +68,8 @@ describe('versaoDaPrevia', () => {
     ['comissão apurada', { ...BASE, comissoes: [...BASE.comissoes, { ...BASE.comissoes[0], id: 'c2' }] }],
     ['comissão revertida', { ...BASE, comissoes: [{ ...BASE.comissoes[0], status: 'REVERSED' }] }],
     ['pedido público', { ...BASE, pedidosPublicos: [] }],
+    ['compra nova', { ...BASE, compras: [...BASE.compras, { ...BASE.compras[0], id: 'v2' }] }],
+    ['compra cancelada', { ...BASE, compras: [{ ...BASE.compras[0], status: 'CANCELADA' }] }],
   ])('muda quando muda: %s', (_rotulo, outro) => {
     expect(versaoDaPrevia(outro)).not.toBe(versaoDaPrevia(BASE));
   });
@@ -83,6 +86,7 @@ describe('resumo e prévia', () => {
       recebimentos: 1,
       comissoes: 1,
       pedidosPublicos: 1,
+      compras: 1,
     });
   });
 

@@ -34,8 +34,26 @@ describe('acesso efetivo de um vínculo', () => {
     expect(allowed(EstablishmentRole.DONO, GRANTED_DE_FUNCIONARIO)).toEqual(AREAS_DO_DONO);
   });
 
-  it('RECEPCIONISTA não tem área nenhuma, nem com GRANTED (as rotas não ampliam)', () => {
-    expect(allowed(EstablishmentRole.RECEPCIONISTA, [...GRANTED_DE_DONO, ...GRANTED_DE_FUNCIONARIO, ...GRANTED_DE_GERENTE])).toEqual([]);
+  it('RECEPCIONISTA sem concessão não tem área nenhuma', () => {
+    expect(allowed(EstablishmentRole.RECEPCIONISTA)).toEqual([]);
+  });
+
+  it('RECEPCIONISTA com tudo GRANTED só tem vender, receber as próprias vendas e alterar o preço: nunca consulta geral, cancelamento, estorno ou estoque', () => {
+    expect(allowed(EstablishmentRole.RECEPCIONISTA, [...GRANTED_DE_DONO, ...GRANTED_DE_FUNCIONARIO, ...GRANTED_DE_GERENTE])).toEqual([
+      'VENDAS_NOVA',
+      'VENDAS_ALTERAR_PRECO',
+      'VENDAS_HISTORICO',
+      'VENDAS_RECEBER',
+    ]);
+  });
+
+  it('RECEPCIONISTA: receber exige registrar concedido, e um DENIED vence', () => {
+    const g = (p: string, mode = PermissionMode.GRANTED) => ({ permission: p as Permission, mode });
+    expect(allowed(EstablishmentRole.RECEPCIONISTA, [g('VENDAS_RECEBER')])).toEqual([]);
+    expect(allowed(EstablishmentRole.RECEPCIONISTA, [g('VENDAS_REGISTRAR')])).toEqual(['VENDAS_NOVA', 'VENDAS_HISTORICO']);
+    expect(
+      allowed(EstablishmentRole.RECEPCIONISTA, [g('VENDAS_REGISTRAR'), g('VENDAS_REGISTRAR', PermissionMode.DENIED)]),
+    ).toEqual([]);
   });
 
   it('GERENTE sem concessão não tem área nenhuma: o nome do papel não libera nada', () => {

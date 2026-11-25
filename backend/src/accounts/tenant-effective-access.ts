@@ -12,7 +12,8 @@
 //   política de dono consulta (`EFFECTIVE_TENANT_PERMISSIONS`);
 // - GERENTE (migration TeamManagerAccess) só tem as áreas que o dono
 //   concedeu e confirmou em "Equipe e acessos"; sem isso, nenhuma;
-// - RECEPCIONISTA aparece com "nenhuma área liberada".
+// - RECEPCIONISTA só tem as áreas de vendas que o dono concedeu (vender,
+//   receber as próprias vendas, alterar o preço numa venda nova).
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import type { PermissionMode } from '../entities/enums/permission-mode.enum.js';
@@ -33,6 +34,15 @@ import { canManageServices, canViewServices } from '../services/service-access.j
 import { canManageTeam, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
 import { canManageCommissionRules, canViewCommissions } from '../commissions/commission-access.js';
 import { canManageStock, canViewStock } from '../stock/stock-access.js';
+import {
+  canAccessSalesHistory,
+  canCancelSales,
+  canOverrideSalePrice,
+  canReceiveSales,
+  canRefundSalePayments,
+  canRegisterSales,
+  canViewAllSales,
+} from '../sales/sales-access.js';
 
 export interface OverrideLike {
   permission: Permission;
@@ -68,6 +78,16 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
   { key: 'PROFISSIONAIS_GERENCIAR', label: 'Gerenciar profissionais e horários', policy: canManageProfessionals },
   { key: 'ESTOQUE_VER', label: 'Ver o estoque', policy: canViewStock },
   { key: 'ESTOQUE_GERENCIAR', label: 'Operar o estoque', policy: canManageStock },
+  // Vendas (docs/plans/vendas-v1.md, seção 3.1): VENDAS_NOVA e
+  // VENDAS_ALTERAR_PRECO pedem os adicionais VENDAS e ESTOQUE; as demais são
+  // a manutenção das vendas já registradas (auth/session-areas.ts).
+  { key: 'VENDAS_NOVA', label: 'Registrar vendas', policy: canRegisterSales },
+  { key: 'VENDAS_ALTERAR_PRECO', label: 'Alterar o preço numa venda nova', policy: canOverrideSalePrice },
+  { key: 'VENDAS_HISTORICO', label: 'Consultar as próprias vendas', policy: canAccessSalesHistory },
+  { key: 'VENDAS_VER_TODAS', label: 'Consultar todas as vendas', policy: canViewAllSales },
+  { key: 'VENDAS_RECEBER', label: 'Receber vendas', policy: canReceiveSales },
+  { key: 'VENDAS_CANCELAR', label: 'Cancelar vendas', policy: canCancelSales },
+  { key: 'VENDAS_ESTORNAR_RECEBIMENTO', label: 'Estornar recebimentos de vendas', policy: canRefundSalePayments },
   { key: 'AGENDAMENTO_ONLINE', label: 'Configurar o agendamento online', policy: canManagePublicBooking },
   { key: 'EQUIPE', label: 'Gerenciar equipe e acessos', policy: canManageTeam },
   { key: 'AGENDA_PROPRIA_VER', label: 'Ver a própria agenda (funcionário)', policy: (role) => canViewOwnAgenda(role) },
@@ -98,6 +118,7 @@ export const EFFECTIVE_TENANT_ROLES: readonly EstablishmentRole[] = [
   EstablishmentRole.DONO,
   EstablishmentRole.GERENTE,
   EstablishmentRole.PROFISSIONAL,
+  EstablishmentRole.RECEPCIONISTA,
 ];
 
 /** Papéis cujas áreas a administração RESTRINGE com `DENIED`. Funcionário e
@@ -123,6 +144,12 @@ export const EFFECTIVE_TENANT_PERMISSIONS: readonly Permission[] = [
   Permission.COMISSOES_GERENCIAR,
   Permission.ESTOQUE_VISUALIZAR,
   Permission.ESTOQUE_GERENCIAR,
+  Permission.VENDAS_REGISTRAR,
+  Permission.VENDAS_RECEBER,
+  Permission.VENDAS_ALTERAR_PRECO,
+  Permission.VENDAS_VISUALIZAR,
+  Permission.VENDAS_CANCELAR,
+  Permission.VENDAS_ESTORNAR_RECEBIMENTO,
 ];
 
 export interface AreaAccess {
