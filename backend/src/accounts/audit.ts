@@ -64,7 +64,12 @@ export type AdminAuditAction =
   | 'STOCK_PRODUCT_CHANGED'
   // Cadastro de clientes (migration ConsumerAuditActions).
   | 'CONSUMER_UPDATED'
-  | 'CONSUMER_MERGED';
+  | 'CONSUMER_MERGED'
+  // Vendas e recebimentos de vendas (migration SalesEnumValues).
+  | 'SALE_RECORDED'
+  | 'SALE_CANCELLED'
+  | 'SALE_PAYMENT_RECORDED'
+  | 'SALE_PAYMENT_REFUNDED';
 
 export interface AuditEntry {
   action: AdminAuditAction;

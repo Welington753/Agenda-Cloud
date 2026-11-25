@@ -61,6 +61,8 @@ const MIGRATIONS_POSTERIORES_AO_6B2 = [
   'ConsumerIdentity1794268800000',
   'ConsumerSharedPhone1794355200000',
   'SelfServicePasswordReset1794441600000',
+  'SalesEnumValues1794528000000',
+  'SalesModule1794614400000',
 ] as const;
 const TODAS_AS_MIGRATIONS = [...EXPECTED_LOTE_6B2_MIGRATION_NAMES, ...MIGRATIONS_POSTERIORES_AO_6B2];
 const PENDENTES_APOS_O_BASELINE = [
@@ -210,7 +212,8 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // (ConsumerIdentity; ConsumerAuditActions e ConsumerSharedPhone não
       // criam tabela).
       // 63 com password_reset_requests (SelfServicePasswordReset).
-      expect(Number(tables.rows[0]?.n)).toBe(63);
+      // 66 com sales, sale_items e sale_payments (SalesModule).
+      expect(Number(tables.rows[0]?.n)).toBe(66);
       expect(migrations.rows.map((r) => r.name).sort()).toEqual([...TODAS_AS_MIGRATIONS].sort());
       expect(extensions.rows.map((r) => r.extname).sort()).toEqual(['btree_gist', 'citext']);
       expect(priceNullable.rows[0]?.is_nullable).toBe('YES');
@@ -220,7 +223,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
       // ar, a lista de planos dela continua aceita pelo web anterior.
       const listaAnterior = await client.query(LISTA_DE_PLANOS_DA_API_ANTERIOR);
       expect(ehPlanos(listaAnterior.rows)).toBe(true);
-      expect(Number(features.rows[0]?.n)).toBe(14); // + feat_estoque (StockModule)
+      expect(Number(features.rows[0]?.n)).toBe(15); // + feat_estoque (StockModule) + feat_vendas (SalesModule)
       // 22 do catálogo inicial + 4 da CommercialAccess (o que o código já usava)
       // + 1 da ProfessionalCommissions (comissões no Pro) + 1 da
       // ModularSubscription (RELATORIOS no Básico; o Pro já tinha).

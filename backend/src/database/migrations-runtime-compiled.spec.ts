@@ -35,10 +35,12 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(existsSync(path.join(distMigrationsDir, 'database/migrations-data-source.js'))).toBe(true);
   });
 
-  it('descobre as vinte e seis migrations no dist (nunca specs)', () => {
+  it('descobre as vinte e oito migrations no dist (nunca specs)', () => {
     const files = readdirSync(path.join(distMigrationsDir, 'migrations'));
     const migrationJsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('.spec.'));
-    expect(migrationJsFiles).toHaveLength(26);
+    expect(migrationJsFiles).toHaveLength(28);
+    expect(migrationJsFiles.some((f) => f.includes('SalesEnumValues'))).toBe(true);
+    expect(migrationJsFiles.some((f) => f.includes('SalesModule'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('ModularSubscription'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('CatalogItemEdit'))).toBe(true);
     expect(migrationJsFiles.some((f) => f.includes('StockEnumValues'))).toBe(true);
