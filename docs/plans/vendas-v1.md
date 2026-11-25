@@ -148,7 +148,7 @@ Branch do plano: `docs/plano-vendas`, a partir de `96c8ba1`. Lote C1 + B2 do `pl
   - `stock_products.sale_price_cents` (nulo = sem preço sugerido), editado no cadastro de produto, com `ESTOQUE_GERENCIAR`;
   - o item congela `product_name`, `unit` e `unit_price_cents`;
   - preço diferente do sugerido, ou produto sem sugerido, sem `VENDAS_ALTERAR_PRECO`: 403 com `code: PRECO_NAO_AUTORIZADO`;
-  - o corpo leva o preço visto (`expectedUnitPriceCents`). Se o sugerido mudou, 409 `PRECO_ALTERADO` com o preço atual, e nada é gravado.
+  - cada item leva o preço sugerido que a tela mostrou (`expectedSuggestedPriceCents`, nulo quando não havia) e o preço aplicado (`unitPriceCents`). Se o sugerido mudou, 409 `PRECO_ALTERADO` com o preço atual, e nada é gravado.
 - **Quantidade e unidade:**
   - milésimos, com as regras atuais (inteiro, exceto `KG` e `L` com 3 casas);
   - o corpo leva `expectedUnit`;
@@ -348,6 +348,21 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 - **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, o limite `0 | 0 | 0` deixa de existir e o retorno é só para frente desde a 28.
 
 ## 8. Estado e retomada
+
+**25/11/2026, PR 3 aberto (API de vendas e recebimentos), sem merge.** Branch `feat/vendas-api` (worktree `C:/wt/vendas-pr3`), a partir de `420c904` (#150 mesclado).
+
+- **Antes do merge do #150:** head `17d79ab` conferido, os dois workflows verdes e a cobertura pedida já existia em `test/sales-integrity-postgres.db-e2e-spec.ts`: `USE_VENDAS` com VENDAS e ESTOQUE ligados ("saída manual de venda com o adicional"), nova venda contra manutenção depois de desligar VENDAS ("gate: nova venda contra manutenção", dono e recepcionista, com as áreas da sessão). A exclusão de `feat_vendas` da fixture dos testes antigos é explícita em `test/support/plano-de-teste.ts` (`SEMPRE_FORA_DO_PLANO`, com o motivo). Sem mudança de código, a bateria não foi repetida.
+- **Endpoints entregues** (`backend/src/sales/`, prefixo `tenants/:tenantId`):
+  - nova venda (VENDAS e ESTOQUE, `VENDAS_REGISTRAR`): `GET sales/catalog`, `GET sales/consumers?q=`, `POST sales`;
+  - manutenção (sem recurso, permissão da matriz): `GET sales?scope=mine|all`, `GET sales/:saleId`, `POST sales/:saleId/cancel`, `POST sales/:saleId/payments`, `GET sales/payments?scope=mine|all`, `POST sales/payments/:paymentId/refund`, `GET consumers/:consumerId/purchases`;
+  - produto: `salePriceCents` em `POST`/`PATCH stock/products` e nas leituras. Omitido na edição mantém o preço; `null` tira; zero é recusado.
+- **Idempotência:** venda pela chave com impressão digital (itens ordenados por produto); recebimento pela chave comparando venda, forma, data e observação (a tabela não tem impressão); cancelamento e estorno pelo estado: o mesmo motivo devolve o que está gravado, outro motivo recebe 409 `JA_CANCELADA`/`JA_ESTORNADO`. Nenhuma repetição cria lançamento.
+- **Concorrência:** produtos travados por ordem de id; receber, estornar e cancelar travam a venda primeiro. Os gatilhos do PR 2 ficaram como estavam.
+- **Testes locais** (PostgreSQL 18.6 descartável com TLS, dados fictícios): typecheck, lint, unitários (155 arquivos, 2.316 testes), e2e HTTP (19 arquivos, 216 testes), `sales-postgres` (22) e `sales-access-postgres` (10) novos e a suíte db-e2e inteira num banco novo.
+- **Versões do PostgreSQL:** local 18.6; CI `postgres:17` (`test-frontend-auth.yml`); piloto 17 (Neon, pelos runbooks; não conferido nesta etapa, sem acesso ao banco real). O ensaio na cópia restaurada (seção 5.7) usa a versão do piloto.
+- **Não feito (PR 4):** telas, `vendas-api.ts`, cálculo do web com os mesmos vetores de `sale-math.spec.ts`, rótulos das permissões e ações de auditoria no portal, rótulo "Recebido em atendimentos" no Início, runbook. Preço do adicional e primeira ativação continuam com o responsável.
+- **Próximo passo:** revisão do PR 3 e CI verde no head; depois o PR 4 a partir da integração com o PR 3 mesclado.
+- **Só neste computador:** a worktree `C:/wt/vendas-pr3` e o cluster descartável da sessão (pasta temporária).
 
 **25/11/2026, PR 2 aberto (schema, integridade e acesso), sem merge.** Branch `feat/vendas-schema-acesso` (worktree `C:/wt/vendas-pr2`), a partir de `8ea862f` (#149 mesclado).
 
