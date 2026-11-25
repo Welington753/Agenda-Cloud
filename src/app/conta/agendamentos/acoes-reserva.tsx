@@ -23,6 +23,14 @@ import { Botao } from "@/components/ui/button";
 import { ConfirmarAcao, type AcaoConfirmada, type ConfirmacaoPendente } from "./confirmar-acao";
 import { PainelRemarcacao } from "./painel-remarcacao";
 
+// No celular (abaixo de `sm`) os botões ficam mais estreitos para caberem lado
+// a lado: menos recuo lateral e sem o `mr-1` do ícone, que somava ao `gap` do
+// Botao. Altura (44 px) e textos não mudam; o computador fica como estava.
+const BOTAO = "min-h-11 max-sm:px-2.5";
+/** Sem borda: o recuo menor não muda o desenho, só a largura. */
+const BOTAO_FANTASMA = "min-h-11 max-sm:px-2";
+const ICONE = "mr-1 max-sm:mr-0";
+
 interface AcoesReservaProps {
   tenantId: string;
   agendamento: AgendamentoReal;
@@ -112,12 +120,12 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-11"
+          className={BOTAO}
           data-testid="confirmar-reserva"
           disabled={gravando}
           onClick={imediata("confirm")}
         >
-          <ThumbsUp size={14} className="mr-1" />
+          <ThumbsUp size={14} className={ICONE} />
           Confirmar
         </Botao>
       )}
@@ -126,12 +134,12 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-11"
+          className={BOTAO}
           data-testid="iniciar-atendimento"
           disabled={gravando}
           onClick={imediata("start")}
         >
-          <Play size={14} className="mr-1" />
+          <Play size={14} className={ICONE} />
           Iniciar atendimento
         </Botao>
       )}
@@ -140,12 +148,12 @@ export function AcoesReserva({
           type="button"
           variante="secundaria"
           tamanho="sm"
-          className="min-h-11"
+          className={BOTAO}
           data-testid="abrir-conclusao"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("complete")}
         >
-          <CheckCircle2 size={14} className="mr-1" />
+          <CheckCircle2 size={14} className={ICONE} />
           Concluir
         </Botao>
       )}
@@ -154,12 +162,12 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-11 text-ink-soft hover:text-ink"
+          className={`${BOTAO_FANTASMA} text-ink-soft hover:text-ink`}
           data-testid="abrir-falta"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("no-show")}
         >
-          <UserX size={14} className="mr-1" />
+          <UserX size={14} className={ICONE} />
           Registrar falta
         </Botao>
       )}
@@ -168,12 +176,12 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-11 text-ink-soft hover:text-ink"
+          className={`${BOTAO_FANTASMA} text-ink-soft hover:text-ink`}
           data-testid="abrir-remarcacao"
           disabled={gravando}
           onClick={() => setRemarcando(true)}
         >
-          <CalendarClock size={14} className="mr-1" />
+          <CalendarClock size={14} className={ICONE} />
           Remarcar
         </Botao>
       )}
@@ -182,12 +190,12 @@ export function AcoesReserva({
           type="button"
           variante="fantasma"
           tamanho="sm"
-          className="min-h-11 text-[color:var(--color-danger)]!"
+          className={`${BOTAO_FANTASMA} text-[color:var(--color-danger)]!`}
           data-testid="abrir-cancelamento"
           disabled={gravando}
           onClick={() => aoAbrirConfirmacao("cancel")}
         >
-          <XCircle size={14} className="mr-1" />
+          <XCircle size={14} className={ICONE} />
           Cancelar
         </Botao>
       )}

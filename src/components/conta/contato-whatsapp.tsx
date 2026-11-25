@@ -15,6 +15,10 @@ import { linkWhatsapp, mensagemCombinarOutroHorario } from "@/lib/contato/whatsa
 const CLASSE_LINK =
   "inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-control)] border border-border-control bg-transparent px-3 text-sm font-medium text-ink hover:bg-paper-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
+/** No cartão da agenda, abaixo de `sm`: recuo menor para "WhatsApp" e
+ * "Combinar outro horário" caberem lado a lado num celular de 390 px. */
+const CLASSE_LINK_COMPACTO = "max-sm:px-2.5";
+
 /** Só faz sentido combinar outro horário de reserva que ainda vai acontecer. */
 const STATUS_COMBINAVEIS: ReadonlySet<AgendamentoReal["status"]> = new Set([
   "PENDING",
@@ -76,15 +80,15 @@ export function ContatoDaReserva({ agendamento, estabelecimento }: ContatoDaRese
   const hrefCombinar = mensagem ? linkWhatsapp(telefone, mensagem) : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="contato-reserva">
-      <LinkWhatsappCliente nome={consumer.name} telefone={telefone} />
+    <div className="flex flex-wrap items-center gap-2 max-sm:gap-1.5" data-testid="contato-reserva">
+      <LinkWhatsappCliente nome={consumer.name} telefone={telefone} className={CLASSE_LINK_COMPACTO} />
       {hrefCombinar && (
         <a
           href={hrefCombinar}
           target="_blank"
           rel="noopener noreferrer"
           data-testid="combinar-outro-horario"
-          className={CLASSE_LINK}
+          className={clsx(CLASSE_LINK, CLASSE_LINK_COMPACTO)}
         >
           <CalendarClock size={16} aria-hidden="true" />
           Combinar outro horário
