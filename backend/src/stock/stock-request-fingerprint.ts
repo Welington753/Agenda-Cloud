@@ -8,7 +8,7 @@
 // ordem alfabética. sha256 do JSON canônico, em hexadecimal (64 caracteres).
 import { createHash } from 'node:crypto';
 
-type Valor = string | number | boolean | null | Valor[] | { [chave: string]: Valor };
+export type Valor = string | number | boolean | null | Valor[] | { [chave: string]: Valor };
 
 export function textoNormalizado(valor: string | null | undefined): string | null {
   if (valor === null || valor === undefined) return null;
@@ -27,7 +27,8 @@ function canonico(valor: Valor): string {
   return JSON.stringify(valor);
 }
 
-function impressao(dados: { [chave: string]: Valor }): string {
+/** sha256 do JSON canônico (também usado pelas vendas, sales/sale-request-fingerprint.ts). */
+export function impressao(dados: { [chave: string]: Valor }): string {
   return createHash('sha256').update(canonico(dados)).digest('hex');
 }
 
@@ -62,8 +63,12 @@ export function impressaoDoProduto(d: {
   unit: string;
   minQuantityMilli: number;
   initialQuantityMilli?: number | null;
+  salePriceCents?: number | null;
 }): string {
-  return impressao({
+  // O preço sugerido de venda (docs/plans/vendas-v1.md) só entra quando
+  // informado: um envio sem preço tem a mesma impressão de antes do campo
+  // existir, e o reenvio de um cadastro antigo continua sendo reconhecido.
+  const dados: { [chave: string]: Valor } = {
     op: 'product',
     name: textoNormalizado(d.name),
     description: textoNormalizado(d.description),
@@ -74,7 +79,9 @@ export function impressaoDoProduto(d: {
     unit: d.unit,
     minQuantityMilli: d.minQuantityMilli,
     initialQuantityMilli: d.initialQuantityMilli ?? 0,
-  });
+  };
+  if (d.salePriceCents !== null && d.salePriceCents !== undefined) dados.salePriceCents = d.salePriceCents;
+  return impressao(dados);
 }
 
 export function impressaoDaConferencia(d: {
