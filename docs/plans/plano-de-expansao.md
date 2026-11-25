@@ -271,7 +271,7 @@ lançamento. Nada disso se chama lucro.
 | Lote | Entrega | Migration |
 |---|---|---|
 | **C0 — Relatório por período** | Previsto, realizado, recebido, estornado e a receber, por dia, profissional, serviço e forma de pagamento, sobre o que já existe. Exportação CSV | Nenhuma (talvez o índice de E3) |
-| **C1 — Vendas** (produto e serviço avulso) | `= C1` do plano anterior | `sales`, `sale_items` |
+| **C1 — Vendas** (produto e serviço avulso) | `= C1` do plano anterior. Primeira versão (produtos + recebimento manual, adicional VENDAS): `docs/plans/vendas-v1.md` | `sales`, `sale_items`, `sale_payments` |
 | **C2 — Recebimento parcial** | Hoje o recebimento é só integral. Permitir mais de um recebimento por atendimento até o total e estorno por registro | Mudar `uq_appointment_payments_active` (migration nova; a antiga não é editada) |
 | **C3 — Despesas e contas a pagar** | Despesa com categoria, vencimento, pagamento, recorrência simples | `expenses`, `expense_categories` |
 | **C4 — Fluxo de caixa** | Entradas (recebimentos) − saídas (despesas pagas) por dia; abertura e fechamento de caixa conferido | `cash_sessions` |
