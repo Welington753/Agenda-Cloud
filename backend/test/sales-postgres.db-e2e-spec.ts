@@ -217,7 +217,7 @@ describe.skipIf(!url)('vendas, PR 3: API contra PostgreSQL descartável', () => 
       const ok = resultados.filter((r) => r.status === 'fulfilled');
       const recusa = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       expect(ok).toHaveLength(1);
-      expect((recusa?.reason as { response?: { code?: string } }).response?.code).toBe('SALDO_INSUFICIENTE');
+      expect((recusa!.reason as { response?: { code?: string } }).response?.code).toBe('SALDO_INSUFICIENTE');
       expect([await v.saldo(a), await v.saldo(outro)]).toEqual([0, 9_000]);
     });
   });

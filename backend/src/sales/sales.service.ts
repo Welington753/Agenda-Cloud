@@ -245,9 +245,8 @@ export class SalesService {
     // Produtos travados por ordem de id: duas vendas com os mesmos produtos
     // fazem fila sem impasse, e a segunda vê o saldo que a primeira deixou.
     const produtos = new Map<string, ProdutoTravado>();
+    // Produto de outro estabelecimento ou inexistente: 404 sem ecoar o id.
     for (const productId of dto.items.map((i) => i.productId).sort()) {
-      const [existe] = await tx.query<unknown[]>(`SELECT 1 FROM stock_products WHERE tenant_id = $1 AND id = $2`, [t, productId]);
-      if (!existe) throw new NotFoundException({ code: 'PRODUTO_NAO_ENCONTRADO', message: 'Produto não encontrado.', productId });
       produtos.set(productId, await travarProduto(tx, t, productId));
     }
     const de = (productId: string) => produtos.get(productId)!;

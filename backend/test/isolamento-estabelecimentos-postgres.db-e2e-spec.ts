@@ -219,6 +219,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         unit: 'UN',
         minQuantityMilli: 2000,
         initialQuantityMilli: 50000,
+        salePriceCents: 2000,
       }).expect(ok)
     ).body.product.id as string;
     const produtoExtra = (
@@ -247,6 +248,23 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         items: [{ productId, expectedBalanceVersion: 2, expectedUnit: 'UN', countedMilli: 60000 }],
       }).expect(ok)
     ).body.count.id as string;
+    // Vendas: o adicional VENDAS fica fora do plano de teste
+    // (`SEMPRE_FORA_DO_PLANO`) e é ligado por override, como a assinatura
+    // liga. Uma venda para cancelar, uma para receber e uma recebida (estorno),
+    // todas do cliente (compras na ficha).
+    await q(`INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled) VALUES ($1, $2, 'feat_vendas', true)`, [id(), tenantId]);
+    const vender = async () =>
+      (
+        await chamar(dono, 'post', `${t}/sales`, {
+          requestKey: `chave-${id()}`,
+          consumerId,
+          items: [{ productId, quantityMilli: 1000, expectedUnit: 'UN', expectedSuggestedPriceCents: 2000, unitPriceCents: 2000 }],
+        }).expect(ok)
+      ).body.sale.id as string;
+    const vendas = { cancelar: await vender(), receber: await vender(), recebida: await vender(), salePaymentId: '' };
+    vendas.salePaymentId = (
+      await chamar(dono, 'post', `${t}/sales/${vendas.recebida}/payments`, { requestKey: `chave-${id()}`, method: 'PIX', receivedOn: dia(0) }).expect(ok)
+    ).body.payment.id as string;
     const estoque = {
       categoryId: categoria.id,
       subcategoryId: subcategoria(`Cabelo ${letra}`),
@@ -329,6 +347,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
       proprias,
       paymentId,
       estoque,
+      vendas,
       membershipId: staff.membershipId,
       inviteId,
       endpoint,
@@ -686,7 +705,7 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         'POST /tenants/:tenantId/stock/movements',
         'dono',
         (t) => `${p(t)}/stock/movements`,
-        (_t, r) => ({ requestKey: chave(), productId: r.estoque.productId, kind: 'SAIDA_VENDA', quantityMilli: 1000, expectedUnit: 'UN' }),
+        (_t, r) => ({ requestKey: chave(), productId: r.estoque.productId, kind: 'SAIDA_CONSUMO', quantityMilli: 1000, expectedUnit: 'UN' }),
         200,
         true,
       ],
@@ -699,6 +718,49 @@ describe.skipIf(!url)('isolamento entre estabelecimentos pela API contra Postgre
         true,
       ],
       ['GET /tenants/:tenantId/stock/counts', 'dono', (t) => `${p(t)}/stock/counts`, null, 200, false],
+      // Vendas: nova venda (VENDAS e ESTOQUE) e manutenção (sem recurso).
+      ['GET /tenants/:tenantId/sales/catalog', 'dono', (t) => `${p(t)}/sales/catalog`, null, 200, false],
+      ['GET /tenants/:tenantId/sales/consumers', 'dono', (t) => `${p(t)}/sales/consumers?q=Cliente`, null, 200, false],
+      [
+        'POST /tenants/:tenantId/sales',
+        'dono',
+        (t) => `${p(t)}/sales`,
+        (_t, r) => ({
+          requestKey: chave(),
+          consumerId: null,
+          items: [{ productId: r.estoque.productId, quantityMilli: 1000, expectedUnit: 'UN', expectedSuggestedPriceCents: 2000, unitPriceCents: 2000 }],
+        }),
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/sales', 'dono', (t) => `${p(t)}/sales?scope=all`, null, 200, false],
+      ['GET /tenants/:tenantId/sales/:saleId', 'dono', (t, r) => `${p(t)}/sales/${r.vendas.cancelar}`, null, 200, true],
+      [
+        'POST /tenants/:tenantId/sales/:saleId/payments',
+        'dono',
+        (t, r) => `${p(t)}/sales/${r.vendas.receber}/payments`,
+        () => ({ requestKey: chave(), method: 'DINHEIRO', receivedOn: dia(0) }),
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/sales/payments', 'dono', (t) => `${p(t)}/sales/payments?scope=all`, null, 200, false],
+      [
+        'POST /tenants/:tenantId/sales/payments/:paymentId/refund',
+        'dono',
+        (t, r) => `${p(t)}/sales/payments/${r.vendas.salePaymentId}/refund`,
+        () => ({ reason: 'Pagamento em duplicidade' }),
+        200,
+        true,
+      ],
+      [
+        'POST /tenants/:tenantId/sales/:saleId/cancel',
+        'dono',
+        (t, r) => `${p(t)}/sales/${r.vendas.cancelar}/cancel`,
+        () => ({ reason: 'Cliente desistiu da compra' }),
+        200,
+        true,
+      ],
+      ['GET /tenants/:tenantId/consumers/:consumerId/purchases', 'dono', (t, r) => `${p(t)}/consumers/${r.consumerId}/purchases`, null, 200, true],
       [
         'POST /tenants/:tenantId/stock/counts',
         'dono',
