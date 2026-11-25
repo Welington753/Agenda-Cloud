@@ -61,8 +61,8 @@ Branch do plano: `docs/plano-vendas`, a partir de `96c8ba1`. Lote C1 + B2 do `pl
 | Permissão | Dá | Exige |
 |---|---|---|
 | `VENDAS_REGISTRAR` | Abrir o catálogo de venda, procurar o cliente para a venda, confirmar a venda e consultar as próprias operações (vendas e recebimentos que a pessoa registrou) | — |
-| `VENDAS_RECEBER` | Registrar o recebimento de uma venda: das próprias vendas, ou de qualquer venda com `VENDAS_VISUALIZAR` | `VENDAS_REGISTRAR` |
-| `VENDAS_ALTERAR_PRECO` | Vender por preço diferente do sugerido, ou vender produto sem preço sugerido | `VENDAS_REGISTRAR` |
+| `VENDAS_RECEBER` | Registrar o recebimento de uma venda que a própria pessoa registrou. Para vendas de outras pessoas, só junto com `VENDAS_VISUALIZAR` (a consulta geral sozinha não recebe) | `VENDAS_REGISTRAR` |
+| `VENDAS_ALTERAR_PRECO` | Ao registrar uma venda nova, aplicar preço diferente do sugerido, ou vender produto sem preço sugerido. Nunca edita venda concluída: os valores ficam congelados nos itens, com quem registrou | `VENDAS_REGISTRAR` |
 | `VENDAS_VISUALIZAR` | Consultar todas as vendas e os recebimentos de vendas, com totais do período, e as compras na ficha do cliente | — |
 | `VENDAS_CANCELAR` | Cancelar uma venda | `VENDAS_VISUALIZAR` |
 | `VENDAS_ESTORNAR_RECEBIMENTO` | Estornar o recebimento de uma venda | `VENDAS_VISUALIZAR` |
@@ -70,7 +70,7 @@ Branch do plano: `docs/plano-vendas`, a partir de `96c8ba1`. Lote C1 + B2 do `pl
 - Dono: tem todas, e `DENIED` só tira (`algumaNegada`).
 - Gerente: só `GRANTED` confirmado dá. As dependências seguem `MANAGER_PERMISSION_REQUIRES`, e a tela mostra o conjunto final.
 - Recepcionista:
-  - só `VENDAS_REGISTRAR`, `VENDAS_RECEBER` e `VENDAS_ALTERAR_PRECO` são concedíveis, cada uma explícita. Vender não traz preço;
+  - só `VENDAS_REGISTRAR`, `VENDAS_RECEBER` e `VENDAS_ALTERAR_PRECO` são concedíveis, cada uma explícita e separada pelo dono (decisão de 25/11/2026). Vender não traz preço;
   - o servidor recusa as outras três e qualquer `ESTOQUE_*` ou permissão de outra área.
 - Funcionário (PROFISSIONAL): nunca.
 - A exigência dos adicionais por rota está na seção 3.1.
@@ -80,7 +80,8 @@ Branch do plano: `docs/plano-vendas`, a partir de `96c8ba1`. Lote C1 + B2 do `pl
 | | Dono | Gerente | Recepcionista | Funcionário |
 |---|---|---|---|---|
 | Registrar venda | sim | `VENDAS_REGISTRAR` | `VENDAS_REGISTRAR` | não |
-| Registrar recebimento | sim | `VENDAS_RECEBER` | `VENDAS_RECEBER`, só das próprias vendas | não |
+| Registrar recebimento da própria venda | sim | `VENDAS_RECEBER` | `VENDAS_RECEBER` | não |
+| Registrar recebimento de venda de outra pessoa | sim | `VENDAS_RECEBER` **e** `VENDAS_VISUALIZAR` | nunca | não |
 | Alterar preço na venda | sim | `VENDAS_ALTERAR_PRECO` | `VENDAS_ALTERAR_PRECO` | não |
 | Consultar as próprias operações | sim | `VENDAS_REGISTRAR` | `VENDAS_REGISTRAR` | não |
 | Consultar todas as vendas, recebimentos de vendas e compras na ficha | sim | `VENDAS_VISUALIZAR` | nunca | não |
@@ -296,7 +297,9 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 **Ordem:**
 
 1. backup;
-2. restauração e ensaio na cópia (27, 28, a API anterior nos dois estados e as janelas como no estoque);
+2. duas validações, nesta ordem:
+   - **banco descartável** (CI e local, dados fictícios): migrations a partir do schema vazio e a partir de 26, o modo `all` recusado, gatilhos e suítes. Prova o código, não o piloto;
+   - **ensaio numa cópia restaurada do backup do piloto**, depois e separado: 27 e 28 aplicadas uma por vez com `aplicarSomenteAPendente`, a API anterior e a nova sobre a cópia nos dois estados, e as janelas como no estoque. Só este ensaio prova a compatibilidade com os dados reais;
 3. 27 no piloto;
 4. 28 no piloto;
 5. API nova;
@@ -306,7 +309,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 **Limites do retorno:**
 
 - antes da 28: livre;
-- depois da 28, sem nenhuma contratação, concessão ou venda (`0 | 0 | 0`): a API anterior, se o ensaio provar que ela sobe e opera em 28;
+- depois da 28, sem nenhuma contratação, concessão ou venda (`0 | 0 | 0`): a API anterior, se o ensaio na cópia restaurada provar que ela sobe e opera em 28;
 - depois: **só correção para frente**.
 
 **Retirar o adicional não é rollback.** Só para novas vendas: o código novo, as tabelas e as vendas ficam. Serve para conter um defeito do fluxo de venda, não da manutenção, do estoque ou do resto da API.
@@ -320,7 +323,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 3. **Corrigir:** PR de correção a partir da integração, com o teste que reproduz o defeito, CI verde e publicação de API e web no mesmo SHA pelo runbook.
    - Se o defeito estiver no schema, migration NOVA, sem `down` e sem editar a 27 ou a 28.
    - Se houver dado errado, a correção é um lançamento, nunca edição: cancelamento ou estorno pelo fluxo, ou uma migration de dados revisada, com backup e conferência antes e depois.
-4. **API nova não sobe** (manifesto, configuração): republicar o último deploy da mesma release que funcionou. Se nenhum funcionou, a API anterior só dentro do limite `0 | 0 | 0`; fora dele, correção para frente com o web parado na versão nova.
+4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API atual (anterior às vendas): ela só é candidata dentro do limite `0 | 0 | 0` e com o ensaio aprovado.
 5. **Registrar** no "Estado e retomada" o que foi contido, o backup e o SHA da correção.
 
 Antes do preço definido, o adicional não pode ser contratado. A primeira ativação real é decisão do responsável, depois do H2. Roteiro: `docs/runbooks/publicacao-vendas-v1.md`, no PR 4.
@@ -339,12 +342,14 @@ Antes do preço definido, o adicional não pode ser contratado. A primeira ativa
 
 ## 7. Pendências
 
+Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vendas, com `VENDAS_RECEBER`) e `VENDAS_ALTERAR_PRECO` concedível à recepcionista em separado.
+
 - **Preço do adicional e primeira ativação real:** decisão do responsável. Até lá, VENDAS fica no catálogo sem preço e não contratável.
-- **Recebimento sem consulta geral:** sem `VENDAS_VISUALIZAR`, a pessoa recebe só as vendas que ela mesma registrou (dedução de "consulta as próprias operações"). Uma venda de balcão registrada por outra pessoa só é recebida por quem tem a consulta geral. Confirmar.
-- **Recepcionista com `VENDAS_ALTERAR_PRECO`:** o plano permite conceder em separado (vender não traz preço). Se a intenção é "nunca", tirar da lista concedível.
 - **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, o limite `0 | 0 | 0` deixa de existir e o retorno é só para frente desde a 28.
 
 ## 8. Estado e retomada
+
+**25/11/2026, terceira versão:** recebimento e preço confirmados (seção 3), retorno pelo último SHA comprovadamente compatível e as duas validações separadas (seção 5.7). Plano aprovado; o PR 2 começa a partir da integração com este plano mesclado.
 
 **25/11/2026, segunda versão:** decisões de recepcionista, catálogo, clientes, recebimentos e comercial incorporadas, com manutenção sem o adicional, bloqueio da retirada do ESTOQUE, contingência e commit entre 27 e 28. Ainda sem código.
 
