@@ -327,6 +327,65 @@ test.describe("clientes do estabelecimento", () => {
     await expect(painel.getByTestId("resultados-clientes")).toContainText(nomeMaria);
     await painel.getByTestId("resultados-clientes").getByRole("button", { name: new RegExp(nomeMaria) }).click();
     await expect(painel.getByText("Cliente selecionado:")).toContainText(nomeMaria);
+
+    // Escolhido: a lista recolhe; ficam nome, telefone e "Trocar", com o foco.
+    const resultadosSeletor = painel.getByTestId("resultados-clientes");
+    const cartaoEscolhido = painel.getByTestId("cliente-escolhido");
+    const telefoneEscolhido = painel.getByTestId("telefone-cliente-escolhido");
+    const trocar = painel.getByRole("button", { name: /^Trocar cliente / });
+    const campoSeletor = painel.getByLabel("Buscar cliente por nome ou telefone");
+    await expect(resultadosSeletor).toHaveCount(0);
+    await expect(campoSeletor).toHaveCount(0);
+    await expect(cartaoEscolhido).toContainText(nomeMaria);
+    await expect(telefoneEscolhido).not.toBeEmpty();
+    await expect(trocar).toBeFocused();
+    await cartaoEscolhido.screenshot({ path: test.info().outputPath("cliente-escolhido-computador.png") });
+
+    // Homônimos com telefones diferentes: a escolha e a marcação vão pelo id.
+    const nomeDora = `Dora Seletor ${marca}`;
+    for (const tel of [`(41) 97${sufixo.slice(0, 3)}-0404`, `(51) 96${sufixo.slice(0, 3)}-0505`]) {
+      expect((await chamar(request, "POST", `/tenants/${a.tenantId}/consumers`, { name: nomeDora, whatsapp: tel })).status).toBe(201);
+    }
+    // "Trocar" reabre a busca de antes, com o escolhido ainda marcado.
+    await trocar.click();
+    await expect(campoSeletor).toBeFocused();
+    await expect(campoSeletor).toHaveValue(nomeMaria);
+    await expect(resultadosSeletor.getByRole("button", { name: new RegExp(nomeMaria) })).toHaveAttribute("aria-pressed", "true");
+    await expect(painel.getByText("Cliente selecionado:")).toContainText(nomeMaria);
+    await campoSeletor.fill(nomeDora);
+    await campoSeletor.press("Enter");
+    const doras = resultadosSeletor.getByRole("button", { name: new RegExp(nomeDora) });
+    await expect(doras).toHaveCount(2);
+    const telefoneDe = async (i: number) => (await doras.nth(i).locator("span").nth(1).textContent())!.trim();
+    const [telPrimeira, telSegunda] = [await telefoneDe(0), await telefoneDe(1)];
+    expect(telPrimeira).not.toBe(telSegunda);
+    await doras.nth(1).click();
+    await expect(resultadosSeletor).toHaveCount(0);
+    await expect(cartaoEscolhido).toContainText(nomeDora);
+    await expect(telefoneEscolhido).toHaveText(telSegunda);
+    await painel.getByRole("button", { name: /^Trocar cliente / }).click();
+    await expect(doras.nth(1)).toHaveAttribute("aria-pressed", "true");
+    await expect(doras.nth(0)).toHaveAttribute("aria-pressed", "false");
+    await painel.getByTestId("resultados-clientes").screenshot({ path: test.info().outputPath("busca-reaberta-computador.png") });
+    await doras.nth(0).click();
+    await expect(telefoneEscolhido).toHaveText(telPrimeira);
+
+    // Celular: alvos de 44 px no escolhido e na busca reaberta.
+    await page.setViewportSize(CELULAR);
+    expect((await trocar.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await cartaoEscolhido.screenshot({ path: test.info().outputPath("cliente-escolhido-celular.png") });
+    await trocar.click();
+    expect((await doras.nth(0).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await painel.screenshot({ path: test.info().outputPath("busca-reaberta-celular.png") });
+    await doras.nth(0).click();
+    await page.setViewportSize(COMPUTADOR);
+
+    // "Cadastrar novo" segue disponível; voltar à busca mostra o escolhido.
+    await painel.getByRole("button", { name: "Cadastrar novo" }).click();
+    await expect(painel.getByLabel("Nome do cliente")).toBeVisible();
+    await painel.getByRole("button", { name: "Buscar cliente", exact: true }).click();
+    await expect(cartaoEscolhido).toContainText(nomeDora);
+    await expect(telefoneEscolhido).toHaveText(telPrimeira);
     await page.keyboard.press("Escape");
   });
 
