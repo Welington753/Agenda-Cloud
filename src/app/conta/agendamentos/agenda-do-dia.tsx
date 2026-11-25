@@ -185,7 +185,7 @@ export function AgendaDoDia({
         recemCriada={agendamento.id === recemCriadaId}
         destacada={agendamento.id === destacadaId}
       >
-        <div className="space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           {/* Contato pelo WhatsApp: links para o wa.me, sem efeito nenhum na
             reserva. Ficam separados das ações, que falam com o servidor. */}
           <ContatoDaReserva agendamento={agendamento} estabelecimento={estabelecimento} />
