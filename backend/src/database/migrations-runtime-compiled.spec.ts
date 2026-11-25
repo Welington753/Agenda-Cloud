@@ -67,9 +67,9 @@ describe('runtime de migrations compilado (dist-migrations)', () => {
     expect(migrationJsFiles.some((f) => f.includes('AppointmentPayments'))).toBe(true);
     // As três mais recentes, na ordem do carimbo (a ordem de aplicação).
     expect([...migrationJsFiles].sort().slice(-3)).toEqual([
-      '1794268800000-ConsumerIdentity.js',
-      '1794355200000-ConsumerSharedPhone.js',
       '1794441600000-SelfServicePasswordReset.js',
+      '1794528000000-SalesEnumValues.js',
+      '1794614400000-SalesModule.js',
     ]);
     // Nenhum `.spec.js` deve escapar para o dist — só código de migration real.
     expect(files.some((f) => f.includes('.spec.'))).toBe(false);
