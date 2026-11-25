@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCountSchema, createMovementSchema, createProductSchema, reverseMovementSchema, updateProductSchema } from './stock.dto.js';
+import { impressaoDoProduto } from './stock-request-fingerprint.js';
 
 const chave = 'chave_de_teste_0001';
 
@@ -31,6 +32,27 @@ describe('corpos do estoque (zod estrito)', () => {
     expect(updateProductSchema.safeParse(base).success).toBe(true);
     expect(updateProductSchema.safeParse({ ...base, balanceMilli: 9000 }).success).toBe(false);
     expect(updateProductSchema.safeParse({ ...base, unit: 'XX' }).success).toBe(false);
+  });
+
+  it('preço sugerido de venda: opcional, inteiro e positivo; nulo = sem preço, nunca zero', () => {
+    expect(createProductSchema.parse(produto).salePriceCents).toBeNull();
+    expect(createProductSchema.parse({ ...produto, salePriceCents: 1990 }).salePriceCents).toBe(1990);
+    expect(createProductSchema.safeParse({ ...produto, salePriceCents: 0 }).success).toBe(false);
+    expect(createProductSchema.safeParse({ ...produto, salePriceCents: 19.9 }).success).toBe(false);
+    expect(createProductSchema.safeParse({ ...produto, salePriceCents: 100_000_001 }).success).toBe(false);
+    const { requestKey: _r, ...edicao } = produto;
+    const base = { ...edicao, expectedUpdatedAt: '2026-11-18T10:00:00.000Z' };
+    // Omitido na edição (tela anterior ao campo): fica `undefined`, e o
+    // serviço mantém o preço gravado; `null` tira o preço.
+    expect('salePriceCents' in updateProductSchema.parse(base)).toBe(false);
+    expect(updateProductSchema.parse({ ...base, salePriceCents: null }).salePriceCents).toBeNull();
+    expect(updateProductSchema.safeParse({ ...base, salePriceCents: 0 }).success).toBe(false);
+  });
+
+  it('impressão do produto: sem preço sugerido, a mesma de antes do campo existir', () => {
+    const semPreco = impressaoDoProduto({ ...produto, name: 'Pomada modeladora' });
+    expect(impressaoDoProduto({ ...produto, name: 'Pomada modeladora', salePriceCents: null })).toBe(semPreco);
+    expect(impressaoDoProduto({ ...produto, name: 'Pomada modeladora', salePriceCents: 1990 })).not.toBe(semPreco);
   });
 
   it('movimentação: quantidade positiva e inteira em milésimos, motivo obrigatório na perda', () => {

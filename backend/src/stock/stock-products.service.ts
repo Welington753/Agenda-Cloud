@@ -11,6 +11,10 @@
 // Unidade: só muda antes da primeira movimentação (`balance_version = 0`).
 // Edição: a tela manda o `updatedAt` que leu; se outra tela mudou o cadastro
 // depois, 409 `TELA_DESATUALIZADA`.
+//
+// Preço sugerido de venda (`sale_price_cents`, docs/plans/vendas-v1.md):
+// nulo = sem preço sugerido, nunca zero. Na edição, o campo omitido mantém o
+// preço gravado (a tela anterior ao campo não o apaga); `null` tira.
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
@@ -49,6 +53,8 @@ export interface ProductView {
   purpose: StockPurpose;
   unit: StockUnit;
   minQuantityMilli: number;
+  /** Preço sugerido de venda; `null` = sem preço sugerido (nunca zero). */
+  salePriceCents: number | null;
   balanceMilli: number;
   balanceVersion: number;
   low: boolean;
@@ -69,6 +75,7 @@ interface ProdutoRow {
   purpose: StockPurpose;
   unit: StockUnit;
   min_quantity_milli: string;
+  sale_price_cents: string | null;
   balance_milli: string;
   balance_version: number;
   archived_at: Date | null;
@@ -78,7 +85,7 @@ interface ProdutoRow {
 
 const SELECT_PRODUTO = `SELECT p.id, p.name, p.description, p.internal_code, p.category_id, c.name AS category_name,
     p.subcategory_id, s.name AS subcategory_name, p.purpose, p.unit, p.min_quantity_milli::text AS min_quantity_milli,
-    p.balance_milli::text AS balance_milli, p.balance_version, p.archived_at, p.created_at, p.updated_at
+    p.sale_price_cents::text AS sale_price_cents, p.balance_milli::text AS balance_milli, p.balance_version, p.archived_at, p.created_at, p.updated_at
   FROM stock_products p
   JOIN stock_categories c ON c.tenant_id = p.tenant_id AND c.id = p.category_id
   LEFT JOIN stock_subcategories s ON s.tenant_id = p.tenant_id AND s.id = p.subcategory_id`;
@@ -98,6 +105,7 @@ export function toProductView(l: ProdutoRow): ProductView {
     purpose: l.purpose,
     unit: l.unit,
     minQuantityMilli: minimo,
+    salePriceCents: l.sale_price_cents === null ? null : Number(l.sale_price_cents),
     balanceMilli: saldo,
     balanceVersion: Number(l.balance_version),
     low: estoqueBaixo(saldo, minimo),
@@ -163,8 +171,8 @@ export class StockProductsService {
         const novo = generateId();
         await manager.query(
           `INSERT INTO stock_products (id, tenant_id, category_id, subcategory_id, name, description, internal_code, purpose,
-              unit, min_quantity_milli, created_at, updated_at, created_by_user_id, request_key, request_fingerprint)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, $14)`,
+              unit, min_quantity_milli, created_at, updated_at, created_by_user_id, request_key, request_fingerprint, sale_price_cents)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, $14, $15)`,
           [
             novo,
             t,
@@ -180,6 +188,7 @@ export class StockProductsService {
             userId,
             dto.requestKey,
             impressao,
+            dto.salePriceCents ?? null,
           ],
         );
         if (dto.initialQuantityMilli) {
@@ -228,11 +237,14 @@ export class StockProductsService {
         if (dto.categoryId !== atual.category_id || dto.subcategoryId !== atual.subcategory_id) {
           await this.conferirVinculo(manager, tenant, dto.categoryId, dto.subcategoryId);
         }
+        // Preço sugerido: omitido no corpo (tela anterior ao campo) mantém o
+        // gravado; `null` tira. Ausência de preço nunca vira zero.
+        const preco = dto.salePriceCents === undefined ? cadastroDaLinha(atual).salePriceCents : dto.salePriceCents;
         await manager.query(
           `UPDATE stock_products SET name = $3, description = $4, internal_code = $5, category_id = $6, subcategory_id = $7,
-              purpose = $8, unit = $9, min_quantity_milli = $10, updated_at = $11
+              purpose = $8, unit = $9, min_quantity_milli = $10, updated_at = $11, sale_price_cents = $12
             WHERE tenant_id = $1 AND id = $2`,
-          [tenant, productId, dto.name, dto.description, dto.internalCode, dto.categoryId, dto.subcategoryId, dto.purpose, dto.unit, dto.minQuantityMilli, now],
+          [tenant, productId, dto.name, dto.description, dto.internalCode, dto.categoryId, dto.subcategoryId, dto.purpose, dto.unit, dto.minQuantityMilli, now, preco],
         );
         await this.auditar(
           manager,
@@ -241,7 +253,7 @@ export class StockProductsService {
           now,
           `Cadastro do produto de estoque "${dto.name}" alterado.`,
           { productId, ...camposAuditados(cadastroDaLinha(atual)) },
-          { productId, ...camposAuditados(dto) },
+          { productId, ...camposAuditados({ ...dto, salePriceCents: preco }) },
         );
         return tenant;
       });
@@ -353,6 +365,7 @@ interface Cadastro {
   purpose: string;
   unit: string;
   minQuantityMilli: number;
+  salePriceCents?: number | null;
 }
 
 function cadastroDaLinha(l: ProdutoRow): Cadastro {
@@ -365,6 +378,7 @@ function cadastroDaLinha(l: ProdutoRow): Cadastro {
     purpose: l.purpose,
     unit: l.unit,
     minQuantityMilli: numero(l.min_quantity_milli),
+    salePriceCents: l.sale_price_cents === null ? null : Number(l.sale_price_cents),
   };
 }
 
@@ -377,5 +391,6 @@ function camposAuditados(c: Cadastro) {
     purpose: c.purpose,
     unit: c.unit,
     minQuantityMilli: c.minQuantityMilli,
+    salePriceCents: c.salePriceCents ?? null,
   };
 }

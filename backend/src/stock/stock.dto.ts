@@ -4,6 +4,7 @@
 // unidade vem no corpo e, no serviço, contra a unidade gravada do produto.
 import { z } from 'zod';
 import { idSchema, requestKeySchema } from '../accounts/accounts.dto.js';
+import { MAX_UNIT_PRICE_CENTS } from '../migrations/1794614400000-SalesModule.js';
 import {
   MANUAL_MOVEMENT_KINDS,
   MAX_BALANCE_MILLI,
@@ -32,6 +33,9 @@ const unidade = z.enum(STOCK_UNITS);
 const quantidadeDeMovimento = z.number().int().positive().max(MAX_MOVEMENT_MILLI);
 const quantidadeDeSaldo = z.number().int().min(0).max(MAX_BALANCE_MILLI);
 const expectedUpdatedAt = z.iso.datetime({ offset: true });
+/** Preço sugerido de venda em centavos inteiros (docs/plans/vendas-v1.md).
+ * `null` = sem preço sugerido, nunca zero nem gratuito. */
+const precoSugerido = z.number().int().positive().max(MAX_UNIT_PRICE_CENTS);
 
 export const stockIdSchema = idSchema;
 
@@ -70,13 +74,18 @@ export const createProductSchema = z
     requestKey: requestKeySchema,
     ...camposDoProduto,
     initialQuantityMilli: quantidadeDeMovimento.nullable().optional().transform((v) => v ?? null),
+    salePriceCents: precoSugerido.nullable().optional().transform((v) => v ?? null),
   })
   .strict()
   .superRefine(casasDaUnidade(['minQuantityMilli', 'initialQuantityMilli']));
-export type CreateProductDto = z.infer<typeof createProductSchema>;
+/** O preço sugerido é opcional também para quem chama o serviço direto
+ * (testes e rotinas anteriores ao campo): ausente = sem preço sugerido. */
+export type CreateProductDto = Omit<z.infer<typeof createProductSchema>, 'salePriceCents'> & { salePriceCents?: number | null };
 
 export const updateProductSchema = z
-  .object({ ...camposDoProduto, expectedUpdatedAt })
+  // `salePriceCents` omitido mantém o preço gravado (a tela anterior não
+  // conhece o campo e não pode apagá-lo); `null` tira o preço sugerido.
+  .object({ ...camposDoProduto, expectedUpdatedAt, salePriceCents: precoSugerido.nullable().optional() })
   .strict()
   .superRefine(casasDaUnidade(['minQuantityMilli']));
 export type UpdateProductDto = z.infer<typeof updateProductSchema>;

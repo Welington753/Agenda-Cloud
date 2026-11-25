@@ -23,6 +23,8 @@ export interface ProdutoTravado {
   balanceMilli: number;
   balanceVersion: number;
   archived: boolean;
+  /** Preço sugerido de venda no momento da trava (`null` = sem sugerido). */
+  salePriceCents: number | null;
 }
 
 export async function travarProduto(manager: EntityManager, tenantId: string, productId: string): Promise<ProdutoTravado> {
@@ -34,9 +36,11 @@ export async function travarProduto(manager: EntityManager, tenantId: string, pr
     balance_milli: string;
     balance_version: number;
     archived_at: Date | null;
+    sale_price_cents: string | null;
   }>(
     await manager.query(
-      `SELECT id, name, unit, purpose, balance_milli::text AS balance_milli, balance_version, archived_at
+      `SELECT id, name, unit, purpose, balance_milli::text AS balance_milli, balance_version, archived_at,
+              sale_price_cents::text AS sale_price_cents
          FROM stock_products WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
       [tenantId, productId],
     ),
@@ -50,6 +54,7 @@ export async function travarProduto(manager: EntityManager, tenantId: string, pr
     balanceMilli: numero(linha.balance_milli),
     balanceVersion: Number(linha.balance_version),
     archived: linha.archived_at !== null,
+    salePriceCents: linha.sale_price_cents === null ? null : Number(linha.sale_price_cents),
   };
 }
 
@@ -73,12 +78,18 @@ export interface NovaMovimentacao {
   countId?: string | null;
   requestKey?: string | null;
   requestFingerprint?: string | null;
+  /** Venda dona da baixa ou da devolução (sales/sales.service.ts). Os
+   * gatilhos da migration SalesModule conferem o vínculo. */
+  saleId?: string | null;
+  /** Só a devolução do cancelamento de venda: o produto arquivado recebe o
+   * estorno e continua arquivado (docs/plans/vendas-v1.md, seção 4). */
+  devolucaoDeVenda?: boolean;
 }
 
 /** Grava a movimentação e o saldo novo. Atualiza `produto` em memória para
  * quem continuar na mesma transação. */
 export async function registrarMovimentacao(manager: EntityManager, m: NovaMovimentacao): Promise<string> {
-  if (m.produto.archived) throw PRODUTO_ARQUIVADO();
+  if (m.produto.archived && !(m.devolucaoDeVenda && m.kind === 'ESTORNO' && m.saleId)) throw PRODUTO_ARQUIVADO();
   const antes = m.produto.balanceMilli;
   const depois = antes + m.deltaMilli;
   if (depois < 0) throw SALDO_INSUFICIENTE(m.produto);
@@ -89,8 +100,8 @@ export async function registrarMovimentacao(manager: EntityManager, m: NovaMovim
   await manager.query(
     `INSERT INTO stock_movements (id, tenant_id, product_id, kind, quantity_milli, delta_milli, balance_before_milli,
         balance_after_milli, unit, reason, reverses_movement_id, count_id, recorded_by_user_id, recorded_at,
-        request_key, request_fingerprint)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        request_key, request_fingerprint, sale_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       id,
       m.tenantId,
@@ -108,6 +119,7 @@ export async function registrarMovimentacao(manager: EntityManager, m: NovaMovim
       m.now,
       m.requestKey ?? null,
       m.requestFingerprint ?? null,
+      m.saleId ?? null,
     ],
   );
   await manager.query(
