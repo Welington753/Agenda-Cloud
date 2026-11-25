@@ -20,6 +20,44 @@ const codigo = (fn: () => unknown) => {
   return null;
 };
 
+// Catálogo depois da migration SalesModule: ESTOQUE disponível com preço,
+// VENDAS disponível sem preço (o estado em que a migration o deixa) e com.
+const comVendas = (precoVendas: number | null): AddonModule[] => [
+  { code: 'ESTOQUE', name: 'Controle de estoque', description: '', featureKey: FeatureKey.ESTOQUE, availability: 'AVAILABLE', priceCents: 1490 },
+  { code: 'VENDAS', name: 'Vendas', description: '', featureKey: FeatureKey.VENDAS, availability: 'AVAILABLE', priceCents: precoVendas },
+];
+
+describe('dependência VENDAS → ESTOQUE e preço ausente', () => {
+  it('VENDAS sem ESTOQUE é recusado, com o que falta nos detalhes', () => {
+    try {
+      quoteSubscription(2990, comVendas(990), { addons: ['VENDAS'], teamUserLimit: 1 });
+      expect.unreachable();
+    } catch (e) {
+      expect((e as SubscriptionRuleError).code).toBe('MODULO_DEPENDENTE');
+      expect((e as SubscriptionRuleError).details).toEqual({ module: 'VENDAS', requires: ['ESTOQUE'] });
+      expect((e as Error).message).toMatch(/Vendas exige Controle de estoque/);
+    }
+  });
+
+  it('retirar só o ESTOQUE de quem tem os dois é a mesma versão recusada; tirar os dois juntos passa', () => {
+    expect(codigo(() => quoteSubscription(2990, comVendas(990), { addons: ['VENDAS'], teamUserLimit: 1 }))).toBe('MODULO_DEPENDENTE');
+    expect(quoteSubscription(2990, comVendas(990), { addons: [], teamUserLimit: 1 }).items).toEqual([]);
+    expect(quoteSubscription(2990, comVendas(990), { addons: ['ESTOQUE'], teamUserLimit: 1 }).items).toHaveLength(1);
+  });
+
+  it('VENDAS sem preço nunca é gratuito: PRECO_PENDENTE, mesmo com ESTOQUE', () => {
+    expect(codigo(() => quoteSubscription(2990, comVendas(null), { addons: ['ESTOQUE', 'VENDAS'], teamUserLimit: 1 }))).toBe(
+      'PRECO_PENDENTE',
+    );
+  });
+
+  it('com preço e ESTOQUE junto, soma os dois', () => {
+    const q = quoteSubscription(2990, comVendas(990), { addons: ['VENDAS', 'ESTOQUE'], teamUserLimit: 1 });
+    expect(q.items.map((i) => i.code)).toEqual(['ESTOQUE', 'VENDAS']);
+    expect(q.catalogTotalCents).toBe(2990 + 1490 + 990);
+  });
+});
+
 describe('quoteSubscription', () => {
   it('soma base + adicionais disponíveis em centavos', () => {
     const q = quoteSubscription(2990, catalogo, { addons: ['INDICADORES'], teamUserLimit: 5 });

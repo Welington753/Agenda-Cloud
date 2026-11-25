@@ -15,6 +15,12 @@
 // as dependências, e a tela mostra ao dono exatamente o conjunto final:
 // nenhuma permissão entra calada.
 //
+// RECEPCIONISTA (docs/plans/vendas-v1.md, seção 3): recebe do dono só as
+// concessões de `RECEPTIONIST_PERMISSIONS` (registrar vendas, receber as
+// próprias vendas e alterar o preço numa venda nova), cada uma explícita.
+// Nunca consulta todas as vendas, cancela, estorna ou opera o estoque, nem
+// com `GRANTED` gravado: `receptionistCan` só olha a lista dela.
+//
 // FORA DESTA LISTA, e portanto só do dono neste lote: o Início (resumo com
 // plano, vagas e dinheiro), as configurações do estabelecimento, o
 // agendamento online, os avisos no aparelho, a equipe e as credenciais de
@@ -40,6 +46,12 @@ export const MANAGER_PERMISSIONS = [
   'RECEBIMENTOS_ESTORNAR',
   'ESTOQUE_VISUALIZAR',
   'ESTOQUE_GERENCIAR',
+  'VENDAS_REGISTRAR',
+  'VENDAS_RECEBER',
+  'VENDAS_ALTERAR_PRECO',
+  'VENDAS_VISUALIZAR',
+  'VENDAS_CANCELAR',
+  'VENDAS_ESTORNAR_RECEBIMENTO',
 ] as const;
 export type ManagerPermission = (typeof MANAGER_PERMISSIONS)[number];
 
@@ -50,7 +62,8 @@ export type ManagerArea =
   | 'SERVICOS'
   | 'PROFISSIONAIS'
   | 'RECEBIMENTOS'
-  | 'ESTOQUE';
+  | 'ESTOQUE'
+  | 'VENDAS';
 
 export const MANAGER_AREA_LABELS: Readonly<Record<ManagerArea, string>> = {
   AGENDA: 'Agenda do estabelecimento',
@@ -60,6 +73,7 @@ export const MANAGER_AREA_LABELS: Readonly<Record<ManagerArea, string>> = {
   PROFISSIONAIS: 'Profissionais',
   RECEBIMENTOS: 'Recebimentos',
   ESTOQUE: 'Estoque',
+  VENDAS: 'Vendas',
 };
 
 export const MANAGER_PERMISSION_META: Readonly<
@@ -155,6 +169,38 @@ export const MANAGER_PERMISSION_META: Readonly<
     label: 'Operar estoque',
     detail: 'Cadastra produtos e categorias, registra movimentações e confirma conferências. Inclui ver estoque.',
   },
+  VENDAS_REGISTRAR: {
+    area: 'VENDAS',
+    label: 'Registrar vendas',
+    detail:
+      'Vende produtos do catálogo pelo preço sugerido e consulta as próprias vendas e recebimentos. Não dá acesso ao estoque. Depende do adicional Vendas.',
+  },
+  VENDAS_RECEBER: {
+    area: 'VENDAS',
+    label: 'Receber vendas',
+    detail:
+      'Registra o recebimento das vendas que a própria pessoa registrou; de vendas de outras pessoas, só junto com consultar todas as vendas.',
+  },
+  VENDAS_ALTERAR_PRECO: {
+    area: 'VENDAS',
+    label: 'Alterar o preço numa venda nova',
+    detail: 'Aplica um preço diferente do sugerido ao registrar uma venda. Nunca edita uma venda já registrada.',
+  },
+  VENDAS_VISUALIZAR: {
+    area: 'VENDAS',
+    label: 'Consultar todas as vendas',
+    detail: 'Vê todas as vendas, os recebimentos de vendas com os totais do período e as compras na ficha do cliente.',
+  },
+  VENDAS_CANCELAR: {
+    area: 'VENDAS',
+    label: 'Cancelar vendas',
+    detail: 'Cancela uma venda inteira, com motivo e senha confirmada, devolvendo os itens ao estoque.',
+  },
+  VENDAS_ESTORNAR_RECEBIMENTO: {
+    area: 'VENDAS',
+    label: 'Estornar recebimentos de vendas',
+    detail: 'Estorna o recebimento de uma venda, com motivo e senha confirmada.',
+  },
 };
 
 /** O que cada permissão exige junto (fechamento já calculado: a lista de
@@ -181,16 +227,39 @@ export const MANAGER_PERMISSION_REQUIRES: Readonly<Record<ManagerPermission, rea
   // Operar estoque inclui ver estoque.
   ESTOQUE_VISUALIZAR: [],
   ESTOQUE_GERENCIAR: ['ESTOQUE_VISUALIZAR'],
+  // Receber e mudar o preço acontecem sobre a própria venda; cancelar e
+  // estornar pedem achar a venda entre todas.
+  VENDAS_REGISTRAR: [],
+  VENDAS_RECEBER: ['VENDAS_REGISTRAR'],
+  VENDAS_ALTERAR_PRECO: ['VENDAS_REGISTRAR'],
+  VENDAS_VISUALIZAR: [],
+  VENDAS_CANCELAR: ['VENDAS_VISUALIZAR'],
+  VENDAS_ESTORNAR_RECEBIMENTO: ['VENDAS_VISUALIZAR'],
 };
 
 /** Concessões que só valem com o adicional contratado: sem o recurso, o
  * catálogo as mostra como não concedíveis e o servidor recusa a concessão
  * (`RECURSO_NAO_CONTRATADO`). Uma concessão gravada antes da retirada fica
  * guardada, sem efeito, até a recontratação (o gate comercial vem antes). */
-export const MANAGER_PERMISSION_FEATURE: Readonly<Partial<Record<ManagerPermission, 'ESTOQUE'>>> = {
+export const MANAGER_PERMISSION_FEATURE: Readonly<Partial<Record<ManagerPermission, 'ESTOQUE' | 'VENDAS'>>> = {
   ESTOQUE_VISUALIZAR: 'ESTOQUE',
   ESTOQUE_GERENCIAR: 'ESTOQUE',
+  // VENDAS só é contratável com ESTOQUE (commercial/subscription.ts).
+  VENDAS_REGISTRAR: 'VENDAS',
+  VENDAS_RECEBER: 'VENDAS',
+  VENDAS_ALTERAR_PRECO: 'VENDAS',
+  VENDAS_VISUALIZAR: 'VENDAS',
+  VENDAS_CANCELAR: 'VENDAS',
+  VENDAS_ESTORNAR_RECEBIMENTO: 'VENDAS',
 };
+
+/** O que o dono pode conceder à RECEPCIONISTA, cada uma separada. */
+export const RECEPTIONIST_PERMISSIONS = ['VENDAS_REGISTRAR', 'VENDAS_RECEBER', 'VENDAS_ALTERAR_PRECO'] as const;
+export type ReceptionistPermission = (typeof RECEPTIONIST_PERMISSIONS)[number];
+
+export function isReceptionistPermission(valor: string): valor is ReceptionistPermission {
+  return (RECEPTIONIST_PERMISSIONS as readonly string[]).includes(valor);
+}
 
 export function isManagerPermission(valor: string): valor is ManagerPermission {
   return (MANAGER_PERMISSIONS as readonly string[]).includes(valor);
@@ -224,6 +293,29 @@ export function managerGranted(role: string, overrides: readonly AjusteLike[], p
  * concedidas. É o que as políticas dos módulos perguntam. */
 export function managerCan(role: string, overrides: readonly AjusteLike[], permissao: ManagerPermission): boolean {
   return managerGranted(role, overrides, [permissao, ...MANAGER_PERMISSION_REQUIRES[permissao]]);
+}
+
+/** RECEPCIONISTA com TODAS estas permissões concedidas e nenhuma negada, e
+ * só dentro da lista dela. Para qualquer outro papel, `false`. */
+export function receptionistGranted(role: string, overrides: readonly AjusteLike[], permissoes: readonly string[]): boolean {
+  if (role !== 'RECEPCIONISTA') return false;
+  return permissoes.every(
+    (p) =>
+      isReceptionistPermission(p) &&
+      overrides.some((o) => o.permission === p && o.mode === PermissionMode.GRANTED) &&
+      !overrides.some((o) => o.permission === p && o.mode === PermissionMode.DENIED),
+  );
+}
+
+/** RECEPCIONISTA pode a ação desta permissão: ela e as dependências dela
+ * concedidas, todas da lista da recepcionista. */
+export function receptionistCan(role: string, overrides: readonly AjusteLike[], permissao: ManagerPermission): boolean {
+  return receptionistGranted(role, overrides, [permissao, ...MANAGER_PERMISSION_REQUIRES[permissao]]);
+}
+
+/** Concessões de recepcionista que valem neste vínculo. */
+export function receptionistGrantedPermissions(role: string, overrides: readonly AjusteLike[]): ReceptionistPermission[] {
+  return RECEPTIONIST_PERMISSIONS.filter((p) => receptionistGranted(role, overrides, [p]));
 }
 
 /** Concessões de gerente que valem neste vínculo, na ordem do catálogo. */

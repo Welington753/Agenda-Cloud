@@ -40,6 +40,8 @@ import { ConsumerAuditActions1794182400000 } from '../migrations/1794182400000-C
 import { ConsumerIdentity1794268800000 } from '../migrations/1794268800000-ConsumerIdentity.js';
 import { ConsumerSharedPhone1794355200000 } from '../migrations/1794355200000-ConsumerSharedPhone.js';
 import { SelfServicePasswordReset1794441600000 } from '../migrations/1794441600000-SelfServicePasswordReset.js';
+import { SalesEnumValues1794528000000 } from '../migrations/1794528000000-SalesEnumValues.js';
+import { SalesModule1794614400000 } from '../migrations/1794614400000-SalesModule.js';
 
 const MIGRATION_CLASSES = [
   InitialSchema1788782400000,
@@ -68,6 +70,8 @@ const MIGRATION_CLASSES = [
   ConsumerIdentity1794268800000,
   ConsumerSharedPhone1794355200000,
   SelfServicePasswordReset1794441600000,
+  SalesEnumValues1794528000000,
+  SalesModule1794614400000,
 ] as const;
 
 /** Nomes exigidos, na ordem de aplicação. Mesma regra do TypeORM para o nome

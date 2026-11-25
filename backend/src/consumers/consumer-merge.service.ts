@@ -21,7 +21,14 @@
 // 2. todos os agendamentos do secundário (`FOR UPDATE`). Quem grava
 //    recebimento, estorno, conclusão (com a comissão) ou muda a situação
 //    trava o agendamento antes; quem já estava gravando termina antes e
-//    entra na versão recalculada.
+//    entra na versão recalculada;
+// 3. todas as vendas do secundário (`FOR UPDATE`, docs/plans/vendas-v1.md,
+//    seção 5.4). O gatilho `trg_sales_consumer_active` pede `FOR SHARE` no
+//    cadastro: a venda que chegou antes termina e entra na prévia
+//    recalculada; a que chega depois encontra a lápide (409
+//    `CLIENTE_UNIFICADO`). As vendas mudam de cliente pelo gatilho
+//    `consumers_move_sales`, na mesma transação em que o secundário vira
+//    lápide (o mesmo caminho da API anterior).
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
@@ -81,6 +88,7 @@ const RESUMO_VAZIO: ResumoDaTransferencia = {
   recebimentos: 0,
   comissoes: 0,
   pedidosPublicos: 0,
+  compras: 0,
 };
 
 function naPrevia(linha: LinhaDoCadastro): CadastroNaPrevia {
@@ -174,6 +182,10 @@ export class ConsumerMergeService {
         `SELECT id FROM appointments WHERE tenant_id = $1 AND consumer_id = $2 ORDER BY id FOR UPDATE`,
         [tenant, secundarioId],
       );
+      await tx.query(`SELECT id FROM sales WHERE tenant_id = $1 AND consumer_id = $2 ORDER BY id FOR UPDATE`, [
+        tenant,
+        secundarioId,
+      ]);
       // Depois das travas: o conteúdo de agora contra o que a pessoa revisou.
       const conteudo = await this.lerConteudo(tx, tenant, principal, secundario);
       if (versaoDaPrevia(conteudo) !== dto.versaoDaPrevia) throw previaDesatualizada(previaDe(conteudo, relacoes));
@@ -302,6 +314,14 @@ export class ConsumerMergeService {
         [tenantId, secundario.id],
       ),
     );
+    const compras = linhasDe<{ id: string; status: string; total_cents: string; recorded_at: Date }>(
+      await manager.query(
+        `SELECT id, status, total_cents::text AS total_cents, recorded_at FROM sales
+          WHERE tenant_id = $1 AND consumer_id = $2
+          ORDER BY id`,
+        [tenantId, secundario.id],
+      ),
+    );
     const pedidos = linhasDe<{ id: string }>(
       await manager.query(
         `SELECT id FROM public_booking_requests
@@ -335,6 +355,12 @@ export class ConsumerMergeService {
         status: c.status,
       })),
       pedidosPublicos: pedidos.map((p) => p.id),
+      compras: compras.map((c) => ({
+        id: c.id,
+        status: c.status,
+        totalCents: Number(c.total_cents),
+        recordedAt: new Date(c.recorded_at).toISOString(),
+      })),
     };
   }
 

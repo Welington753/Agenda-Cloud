@@ -6,11 +6,13 @@
 // retirada vale na próxima requisição mesmo que o menu ainda a mostre.
 //
 // Áreas de recurso fora do plano do estabelecimento também ficam de fora
-// (commercial/feature-areas.ts).
+// (commercial/feature-areas.ts). A nova venda pede VENDAS e ESTOQUE; a
+// manutenção das vendas já registradas aparece com VENDAS ligado ou, depois
+// de uma retirada, enquanto houver alguma venda no estabelecimento.
 import type { EntityManager } from 'typeorm';
 import { tenantEffectiveAccess, type OverrideLike } from '../accounts/tenant-effective-access.js';
 import { effectiveOverrides, permissionsConfirmed } from '../common/tenant-authorization.js';
-import { areaFeature, ENABLED_FEATURES_SQL } from '../commercial/feature-areas.js';
+import { areaFeatures, ENABLED_FEATURES_SQL, SALES_MAINTENANCE_AREAS } from '../commercial/feature-areas.js';
 import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { canViewOwnAgenda } from '../team/staff-access.js';
 
@@ -33,8 +35,11 @@ export async function sessionAreas(
   const ligados = new Set(
     (await manager.query<{ key: string }[]>(ENABLED_FEATURES_SQL, [membership.tenantId])).map((l) => l.key),
   );
-  return areas.filter((area) => {
-    const recurso = areaFeature(area);
-    return !recurso || ligados.has(recurso);
-  });
+  const comRecurso = areas.filter((area) => areaFeatures(area).every((recurso) => ligados.has(recurso)));
+  if (ligados.has('VENDAS') || !comRecurso.some((area) => SALES_MAINTENANCE_AREAS.includes(area))) return comRecurso;
+  const [vendas] = await manager.query<{ existe: boolean }[]>(
+    'SELECT EXISTS (SELECT 1 FROM sales WHERE tenant_id = $1) AS existe',
+    [membership.tenantId],
+  );
+  return vendas?.existe === true ? comRecurso : comRecurso.filter((area) => !SALES_MAINTENANCE_AREAS.includes(area));
 }

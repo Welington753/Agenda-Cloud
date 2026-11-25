@@ -6,6 +6,12 @@
 //   Centavos inteiros, nunca float.
 // - Só entra adicional DISPONÍVEL e com preço; "em desenvolvimento" e
 //   "planejado" nunca são contratados nem somados.
+// - Adicional que depende de outro (`ADDON_REQUIRES`: VENDAS exige ESTOQUE)
+//   só entra junto dele. Vale para contratar e para retirar: uma versão com
+//   VENDAS e sem ESTOQUE é recusada (`MODULO_DEPENDENTE`), e tirar os dois
+//   juntos é permitido.
+// - Preço ausente nunca é gratuito: o adicional sem preço é recusado
+//   (`PRECO_PENDENTE`).
 // - Valor contratado diferente do catálogo exige motivo.
 // - Vigência imediata, sem cobrança retroativa nem proporcional: a versão só
 //   define o valor recorrente dos PRÓXIMOS períodos registrados.
@@ -20,6 +26,11 @@ export class SubscriptionRuleError extends Error {
     super(message);
   }
 }
+
+/** Adicionais que só entram junto de outros (código do catálogo). */
+export const ADDON_REQUIRES: Readonly<Record<string, readonly string[]>> = {
+  VENDAS: ['ESTOQUE'],
+};
 
 export interface SubscriptionChoice {
   addons: readonly string[];
@@ -53,6 +64,18 @@ export function quoteSubscription(
     );
   }
   const codigos = [...new Set(choice.addons)].sort();
+  for (const code of codigos) {
+    const faltam = (ADDON_REQUIRES[code] ?? []).filter((exigido) => !codigos.includes(exigido));
+    if (faltam.length) {
+      const nome = (c: string) => catalog.find((m) => m.code === c)?.name ?? c;
+      throw new SubscriptionRuleError(
+        'MODULO_DEPENDENTE',
+        `${nome(code)} exige ${faltam.map(nome).join(', ')} na mesma assinatura. ` +
+          'Para retirar o que é exigido, retire também o que depende dele.',
+        { module: code, requires: faltam },
+      );
+    }
+  }
   const items: SubscriptionQuote['items'] = [];
   for (const code of codigos) {
     const modulo = catalog.find((m) => m.code === code);

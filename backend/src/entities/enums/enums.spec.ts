@@ -54,9 +54,11 @@ describe('enums do domínio', () => {
     expect(Object.keys(ALL_ENUMS)).toHaveLength(18);
   });
 
-  it('Permission tem os 17 valores originais, os 2 de comissão e os 2 de estoque (21 no total)', () => {
+  it('Permission tem os 17 valores originais, os 2 de comissão, os 2 de estoque e os 6 de vendas (27 no total)', () => {
     const valores = Object.values(Permission);
-    expect(valores).toHaveLength(21);
+    expect(valores).toHaveLength(27);
+    expect(valores).toContain('VENDAS_REGISTRAR');
+    expect(valores).toContain('VENDAS_ESTORNAR_RECEBIMENTO');
     expect(valores).toContain('ESTOQUE_VISUALIZAR');
     expect(valores).toContain('ESTOQUE_GERENCIAR');
     expect(valores).toContain('COMISSOES_VISUALIZAR');
@@ -81,9 +83,10 @@ describe('enums do domínio', () => {
     ]);
   });
 
-  it('FeatureKey tem as 13 features do schema.prisma original e ESTOQUE (migration StockEnumValues)', () => {
-    expect(Object.values(FeatureKey)).toHaveLength(14);
+  it('FeatureKey tem as 13 features do schema.prisma original, ESTOQUE e VENDAS (migrations StockEnumValues e SalesEnumValues)', () => {
+    expect(Object.values(FeatureKey)).toHaveLength(15);
     expect(FeatureKey.ESTOQUE).toBe('ESTOQUE');
+    expect(FeatureKey.VENDAS).toBe('VENDAS');
   });
 
   it('PlatformRole inclui MASTER_OWNER — papel de plataforma, nunca amarrado a um tenant', () => {

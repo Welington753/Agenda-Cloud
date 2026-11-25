@@ -115,22 +115,22 @@ describe.skipIf(!url)('conferência das migrations exigidas contra PostgreSQL de
     const erro = await problemaDe(checkRequiredMigrations(db));
     expect(erro.problem).toMatchObject({
       reason: 'missing-migrations',
-      missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
-      required: 26,
+      missing: ['StockModule1794096000000', 'ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000', 'SalesEnumValues1794528000000', 'SalesModule1794614400000'],
+      required: 28,
     });
 
     await registrar(REQUIRED_MIGRATIONS.slice(0, 22));
     const depois = await problemaDe(checkRequiredMigrations(db));
     expect(depois.problem).toMatchObject({
       reason: 'missing-migrations',
-      missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
+      missing: ['ConsumerAuditActions1794182400000', 'ConsumerIdentity1794268800000', 'ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000', 'SalesEnumValues1794528000000', 'SalesModule1794614400000'],
     });
   });
 
   // A API do manifesto até 24 (PR 1) sobe com a 25 aplicada: provado no
   // commit dela.
   it('2c. clientes: em 24 (sem ConsumerSharedPhone) recusa a inicialização', async () => {
-    expect(REQUIRED_MIGRATIONS.slice(-4, -1)).toEqual([
+    expect(REQUIRED_MIGRATIONS.slice(-6, -3)).toEqual([
       'ConsumerAuditActions1794182400000',
       'ConsumerIdentity1794268800000',
       'ConsumerSharedPhone1794355200000',
@@ -139,21 +139,44 @@ describe.skipIf(!url)('conferência das migrations exigidas contra PostgreSQL de
     const erro = await problemaDe(checkRequiredMigrations(db));
     expect(erro.problem).toMatchObject({
       reason: 'missing-migrations',
-      missing: ['ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000'],
-      required: 26,
+      missing: ['ConsumerSharedPhone1794355200000', 'SelfServicePasswordReset1794441600000', 'SalesEnumValues1794528000000', 'SalesModule1794614400000'],
+      required: 28,
     });
   });
 
   // A API anterior (manifesto até 25) sobe com a 26 aplicada (extra): a
-  // migration só acrescenta. Esta versão exige a 26.
-  it('2d. recuperação de senha: em 25 recusa a inicialização; em 26, aprova', async () => {
-    expect(REQUIRED_MIGRATIONS.at(-1)).toBe('SelfServicePasswordReset1794441600000');
+  // migration só acrescenta.
+  it('2d. recuperação de senha: em 25 recusa a inicialização', async () => {
+    expect(REQUIRED_MIGRATIONS.at(-3)).toBe('SelfServicePasswordReset1794441600000');
     await registrar(REQUIRED_MIGRATIONS.slice(0, 25));
     const erro = await problemaDe(checkRequiredMigrations(db));
-    expect(erro.problem).toMatchObject({ reason: 'missing-migrations', missing: ['SelfServicePasswordReset1794441600000'], required: 26 });
+    expect(erro.problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['SelfServicePasswordReset1794441600000', 'SalesEnumValues1794528000000', 'SalesModule1794614400000'],
+      required: 28,
+    });
+  });
+
+  // Vendas (docs/plans/vendas-v1.md, seção 5.6): esta versão exige a 28. Se
+  // a API anterior (manifesto até 26) sobe em 27 e 28 é o ensaio na cópia
+  // restaurada do piloto que prova, não este teste.
+  it('2e. vendas: em 26 e em 27 recusa a inicialização; em 28, aprova', async () => {
+    expect(REQUIRED_MIGRATIONS.slice(-2)).toEqual(['SalesEnumValues1794528000000', 'SalesModule1794614400000']);
+    await registrar(REQUIRED_MIGRATIONS.slice(0, 26));
+    expect((await problemaDe(checkRequiredMigrations(db))).problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['SalesEnumValues1794528000000', 'SalesModule1794614400000'],
+      required: 28,
+    });
+    await registrar(REQUIRED_MIGRATIONS.slice(0, 27));
+    expect((await problemaDe(checkRequiredMigrations(db))).problem).toMatchObject({
+      reason: 'missing-migrations',
+      missing: ['SalesModule1794614400000'],
+      required: 28,
+    });
 
     await registrar(REQUIRED_MIGRATIONS);
-    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 26, applied: 26, extra: [] });
+    await expect(checkRequiredMigrations(db)).resolves.toEqual({ required: 28, applied: 28, extra: [] });
   });
 
   it('3. anterior ausente, com a última registrada: recusa', async () => {

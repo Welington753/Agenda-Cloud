@@ -7,7 +7,30 @@
 // novo a cada requisição.
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
+/** Áreas de nova venda: pedem os dois adicionais (VENDAS exige ESTOQUE). */
+export const NEW_SALE_AREAS: readonly string[] = ['VENDAS_NOVA', 'VENDAS_ALTERAR_PRECO'];
+
+/** Manutenção das vendas já registradas: sem recurso, mas só aparecem com
+ * VENDAS ligado ou com alguma venda no estabelecimento (session-areas.ts). */
+export const SALES_MAINTENANCE_AREAS: readonly string[] = [
+  'VENDAS_HISTORICO',
+  'VENDAS_VER_TODAS',
+  'VENDAS_RECEBER',
+  'VENDAS_CANCELAR',
+  'VENDAS_ESTORNAR_RECEBIMENTO',
+];
+
+/** Todos os recursos que a área exige (a nova venda pede dois). */
+export function areaFeatures(area: string): FeatureKey[] {
+  if (NEW_SALE_AREAS.includes(area)) return [FeatureKey.VENDAS, FeatureKey.ESTOQUE];
+  if (SALES_MAINTENANCE_AREAS.includes(area)) return [];
+  const recurso = areaFeature(area);
+  return recurso ? [recurso] : [];
+}
+
 export function areaFeature(area: string): FeatureKey | null {
+  if (NEW_SALE_AREAS.includes(area)) return FeatureKey.VENDAS;
+  if (SALES_MAINTENANCE_AREAS.includes(area)) return null;
   // As próprias comissões pedem os dois recursos; o menu usa o de comissões.
   if (area === 'AGENDA_PROPRIA_COMISSOES' || area.startsWith('COMISSOES_')) return FeatureKey.COMISSOES;
   if (area.startsWith('AGENDA_PROPRIA_')) return FeatureKey.EQUIPE;
