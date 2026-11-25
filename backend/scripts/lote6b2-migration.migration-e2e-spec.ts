@@ -262,7 +262,7 @@ describe.skipIf(!DIRECT_URL)('Lote 6B.2 — integração real com PostgreSQL des
 
       expect(Number(migrations.rows[0]?.n)).toBe(TODAS_AS_MIGRATIONS.length);
       expect(Number(plans.rows[0]?.n)).toBe(3);
-      expect(Number(features.rows[0]?.n)).toBe(14); // + feat_estoque (StockModule)
+      expect(Number(features.rows[0]?.n)).toBe(15); // + feat_estoque (StockModule) + feat_vendas (SalesModule)
       // 22 do catálogo inicial + 4 da CommercialAccess + 1 da
       // ProfessionalCommissions + 1 da ModularSubscription, sem duplicar.
       expect(Number(planFeatures.rows[0]?.n)).toBe(28);
