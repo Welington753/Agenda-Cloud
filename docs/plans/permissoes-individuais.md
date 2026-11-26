@@ -595,12 +595,36 @@ O protótipo ainda mostra a versão anterior destes pontos. Ele não foi alterad
 
 Atualizado em 26/11/2026.
 
-- **Branch:** `refactor/permissoes-base-vendas`, a partir de `integration/nestjs-typeorm-frontend` em `2bb961f`. Worktree local: `C:/wt/perm-base` (os `node_modules` são junções para `C:/wt/vendas-pr4`; só existem neste computador).
-- **Feito (etapa 1, parcial):**
+A etapa 1 sai em PRs encadeados, um por área. Cada um parte do head do anterior e só é mesclado depois dele.
+
+| PR | Branch | Base do PR | Worktree local | Head | CI |
+|---|---|---|---|---|---|
+| #154 Vendas | `refactor/permissoes-base-vendas` | `integration/nestjs-typeorm-frontend` (`2bb961f`) | `C:/wt/perm-base` | `01a3c86` | run 45882016137 verde no head |
+| Estoque | `refactor/permissoes-base-estoque` | `refactor/permissoes-base-vendas` (`01a3c86`), até o #154 ser mesclado | `C:/wt/perm-estoque` | ver o PR | ver o PR |
+
+As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. Depois que o #154 for mesclado, a base do PR de Estoque muda para a integração e o diff fica só com o que é de Estoque.
+
+### PR #154: base comum e Vendas
+
+- **Feito:**
   - `backend/src/common/access-evaluation.ts`: base comum do modelo LEGADO (`effectiveAccess`, `accessCan`, `legacyGrantedPermissions`, `requiredFor`), sem mudança de regra;
   - `backend/src/sales/sales-access.ts` passa a decidir só pela base comum, com as mesmas assinaturas;
   - `backend/src/common/access-evaluation.spec.ts`: a base reproduz `managerCan`, `receptionistCan` e o `algumaNegada` do dono para todas as permissões de gerente;
   - `backend/src/sales/sales-access.equivalence.spec.ts`: referência congelada de `4e0d841`, com equivalência por ação e alcance (própria, de outra pessoa, todas) nas 4 × 2 × 4⁶ combinações e num lote de 20.000 casos com concessões ignoradas pelo papel. Uma guarda reprova política `can*` nova sem caso. Um teste de mutação manual (receber de outra pessoa sem a consulta geral) foi detectado.
-- **Testes executados localmente:** `vitest run src/common src/sales src/team src/accounts src/stock` (20 arquivos, 202 testes), `test:e2e` de vendas (12), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou.
-- **Não feito na etapa 1:** converter estoque, agenda, recebimentos, clientes, serviços, profissionais, comissões e equipe para a base comum; a impressão de acesso geral (`accessFingerprint`) para todas as áreas; o `db-e2e` de alcance real sobre a cópia.
-- **Próximo passo concreto:** aplicar `accessCan` em `backend/src/stock/stock-access.ts`, com spec de equivalência no mesmo molde de `sales-access.equivalence.spec.ts`; depois as demais políticas que usam `managerCan`/`receptionistCan` (procure por `managerCan(` em `backend/src`).
+- **Testes executados localmente:** `vitest run src/common src/sales src/team src/accounts src/stock` (20 arquivos, 202 testes), `test:e2e` de vendas (12), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou. O CI do PR passou no head `01a3c86`.
+
+### PR de Estoque (depende do #154)
+
+- **Feito:**
+  - `backend/src/stock/stock-access.ts` passa a decidir só pela base comum (`accessCan(effectiveAccess(role, overrides), …)`), com as mesmas assinaturas, mensagens e padrão `overrides = []`. `ESTOQUE_GERENCIAR` continua uma permissão só; a divisão dela é da etapa do modelo individual;
+  - `backend/src/stock/stock-access.equivalence.spec.ts`: referência congelada de `stock-access.ts` em `01a3c86` (igual a `8f71335`, o piloto), só com listas literais. Compara consultar e operar nas 4 × 2 × 4⁴ combinações das duas permissões de estoque e de duas vizinhas (`VENDAS_REGISTRAR`, da lista da recepcionista, e `VENDAS_VISUALIZAR`), e num lote de 20.000 casos de semente fixa com todas as permissões, concessões conflitantes e ignoradas, gerente confirmado ou não. Uma guarda reprova política `can*` nova sem caso;
+  - o mesmo spec roda cinco mutantes da política (recepcionista passa a ver, operar sem a consulta, GRANTED vencendo DENIED, dono ignorando DENIED na dependência, funcionário passando a operar) e a política lida sem `effectiveOverrides`; todos precisam ser apanhados. Uma mutação manual no arquivo real (`canManageStock` exigindo só a consulta) também reprovou o spec e foi desfeita;
+  - `backend/src/common/access-evaluation.spec.ts`: o lote sorteado agora acumula as diferenças e afirma uma vez. Antes, com um `expect` por comparação, ele passava de 5 s quando toda a bateria rodava em paralelo neste computador. A cobertura e a semente são as mesmas.
+- **Sem mudança:** o adicional `ESTOQUE` e o isolamento seguem em `resolveAuthorizedTenant` (`stock-common.ts`). As recusas da saída manual por venda com Vendas ligado (409 `USE_VENDAS`) e do estorno de baixa ligada a venda (409 `BAIXA_DE_VENDA`) seguem em `stock-movements.service.ts`. Nenhum desses arquivos mudou.
+- **Testes executados localmente:** `vitest run src/stock src/common src/sales src/team src/accounts src/auth` (39 arquivos, 361 testes, inclusive a equivalência de Vendas), `test:e2e` de estoque e vendas (30), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou.
+- **CI:** um PR com base em outra branch não dispara o workflow sozinho; ele é disparado por `workflow_dispatch` na branch de Estoque. O resultado fica registrado no PR.
+
+### Resto da etapa 1
+
+- **Não feito:** converter agenda (`appointments/appointment-access.ts`, `appointments.service.ts`, `availability.service.ts`), recebimentos (`payments/payment-access.ts`), clientes (`consumers/consumer-access.ts`, `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe; a impressão de acesso geral (`accessFingerprint`) para todas as áreas; o `db-e2e` de alcance real sobre a cópia.
+- **Próximo passo concreto:** depois da revisão do PR de Estoque, a próxima área num PR próprio, a partir do head dele, com spec de equivalência no mesmo molde (`grep -rln "managerCan(\|receptionistCan(" backend/src`).
