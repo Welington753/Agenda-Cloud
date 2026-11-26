@@ -354,6 +354,17 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 ## 8. Estado e retomada
 
+**26/11/2026, ajustes da revisão visual no #152, sem merge.**
+
+- **Cliente cadastrado sem seleção:** o modo do cliente passou para a nova venda e a regra para `clienteDoPedido` (`src/lib/vendas/apresentacao.ts`). Com "Cliente cadastrado" marcado e nenhum resultado tocado, o resumo mostra "Selecione um cliente.", o botão fica desligado e `confirmar` não monta corpo (o envio não sai nem por clique forçado). Nenhum resultado é escolhido pela tela; venda sem cliente só com "Venda de balcão" marcada (o padrão da tela continua balcão marcado). "Trocar cliente" volta à busca, com o bloqueio.
+- **Recusa desatualizada:** `descartarRecusa` (`src/lib/vendas/envio.ts`) apaga a mensagem da recusa definitiva quando produtos ou cliente mudam; a chave continua. Resultado desconhecido e envio em curso não são tocados (mesma chave, mesmo corpo, formulário travado).
+- **Textos:** "Valor da venda", "Total da venda" e o subtítulo "Registre vendas de produtos e acompanhe os recebimentos."; a orientação de que confirmar baixa o estoque e o recebimento vem depois ficou.
+- **Rolagem no celular:** sem obstrução real; o CSS não mudou. O cabeçalho é `sticky` e o menu inferior é `fixed`, com `pb-28` no conteúdo; nas capturas `fullPage` o Playwright desenha os dois sobre o conteúdo emendado, e é só isso. A suíte confere agora em 360×640 e 390×664 (área visível do navegador): seleção de cliente, resultado, "Confirmar venda" e "Estornar recebimento", rolados até o meio da tela, recebem o toque (`elementFromPoint`), e o fim do conteúdo fica pelo menos 16 px acima do menu.
+- **Cobertura:** unitários de `clienteDoPedido` (sem seleção, seleção por ID, balcão explícito) e de `descartarRecusa`; no navegador, a tentativa sem seleção (botão desligado, clique forçado e Enter sem POST), a escolha pelo ID, "Trocar cliente", a troca explícita para balcão e a remoção do produto recusado (mensagem e aviso somem). Casos A, B e C sem mudança.
+- **Capturas da área visível (sem fullPage):** `vendas-cliente-sem-selecao-390-visivel.png` e `vendas-detalhe-estornar-390-visivel.png`, no artefato `vendas-*` do run.
+- **Validação local** (PostgreSQL 18 descartável com TLS, web e API compilados do head): `test:browser:vendas` com os quatro casos verdes; Vitest de `src/lib/vendas` (65); `eslint`, `lint:types`, `tsc`.
+- **Próximo passo:** CI do novo head e decisão de merge pelo responsável.
+
 **26/11/2026, lacunas do PR 4 completadas no #152, sem merge.** Pedidas na conferência antes do merge:
 
 - **Três casos de navegador novos** em `tests/browser/vendas-flow.spec.ts`, cada um com o próprio estabelecimento, API real e PostgreSQL descartável:
