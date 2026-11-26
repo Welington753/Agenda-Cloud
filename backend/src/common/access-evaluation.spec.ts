@@ -45,6 +45,9 @@ describe('access-evaluation (modelo LEGADO)', () => {
   it('lote pseudoaleatório de semente fixa com todas as permissões do enum', () => {
     const sortear = sorteador(1126);
     const universo = Object.values(Permission);
+    // Acumula as diferenças e afirma uma vez: um `expect` por comparação
+    // passava de 5 s com a bateria inteira rodando em paralelo.
+    const diferencas: string[] = [];
     for (let i = 0; i < 5_000; i++) {
       const role = PAPEIS[Math.floor(sortear() * PAPEIS.length)];
       const ov: PermissionOverrideLike[] = [];
@@ -55,8 +58,11 @@ describe('access-evaluation (modelo LEGADO)', () => {
         else if (r < 0.5) ov.push({ permission, mode: PermissionMode.GRANTED }, { permission, mode: PermissionMode.DENIED });
       }
       const acesso = effectiveAccess(role, ov);
-      for (const p of MANAGER_PERMISSIONS) expect(accessCan(acesso, p)).toBe(antes(role, ov, p));
+      for (const p of MANAGER_PERMISSIONS) {
+        if (accessCan(acesso, p) !== antes(role, ov, p) && diferencas.length < 5) diferencas.push(`${role} caso ${i} ${p}`);
+      }
     }
+    expect(diferencas).toEqual([]);
   });
 
   it('concessões fora do papel são ignoradas', () => {
