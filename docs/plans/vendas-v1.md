@@ -354,6 +354,21 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 ## 8. Estado e retomada
 
+**26/11/2026, PR 4 aberto (#152: telas, navegador e roteiro), sem merge.** Branch `feat/vendas-web` (worktree `C:/wt/vendas-pr4`), a partir de `d836994` (#151 mesclado). A sessão anterior foi interrompida pelo limite de uso com todo o primeiro bloco sem commit; nada foi descartado, e o bloco foi commitado como estava (as validações relatadas valiam para aqueles arquivos).
+
+- **Feito (commits `6229cf2` a `8f88058`):**
+  - vetores do arredondamento em `backend/src/sales/sale-math-vectors.json`, lidos pelo spec da API e por `src/lib/vendas/calculo.test.ts`;
+  - `vendas-api.ts`, `src/lib/vendas/` (cálculo, carrinho, envio sem chave nova para resultado incerto, apresentação), telas de `/conta/vendas` (Nova venda, Minhas operações, Vendas, Recebimentos de vendas, detalhe com recebimento, estorno e cancelamento), compras na ficha, preço sugerido no produto, recepcionista em Equipe e acessos, menu pelas áreas (ícone próprio), rótulos "Recebido em atendimentos" e "Recebimentos de atendimentos";
+  - estoque: baixa de venda com "Venda" e sem "Estornar"; textos próprios para `USE_VENDAS` e `BAIXA_DE_VENDA`, escolhidos pelo `code`;
+  - `test:browser:vendas` (passo próprio no CI, com capturas), Vendas em `layout-temas`, `configuracoes-navegacao` com o rótulo novo;
+  - roteiro `docs/runbooks/publicacao-vendas-v1.md` (seção 5.7 detalhada) e o lado web no mapa técnico.
+- **Testes locais** (PostgreSQL 18 descartável com TLS, dados fictícios): web `tsc`, `lint`, `lint:types` e Vitest (135 arquivos, 1.295 testes); backend `sale-math.spec.ts` (21, sessão anterior, arquivos sem mudança depois); navegador `vendas`, `configuracoes-navegacao`, `layout-temas`, `estoque`, `equipe`, `gerente`, `acesso-usuario`, `recebimentos` e `clients`, todos verdes (antes do commit do ícone, que só troca o desenho do item no menu).
+- **CI no head `8f88058`:** `test-frontend-auth.yml` (run 45807715584) verde, com a suíte de vendas e as capturas. `test-migration-lote6b2.yml` não dispara (sem migration, `database` ou `scripts`). A execução em `b5b1eba` foi cancelada pela seguinte.
+- **Capturas** (dados fictícios, 1280 e 390 px; Vendas em escuro e azul pelo `layout-temas`): `%USERPROFILE%\AgendaCloud-operacoes\capturas-vendas-pr4-2026-11-26` (só neste computador; feitas antes do ícone próprio) e o artefato `vendas-*` do run.
+- **Não feito (fora do PR 4, decisão do responsável):** preço do adicional e primeira ativação real; ensaio na cópia restaurada e publicação pelo roteiro.
+- **Próximo passo:** revisão e merge do #152 com o CI verde no head final; depois, a publicação pelo roteiro (backup, ensaio da seção V, 27 e 28 uma por vez, API e web no mesmo SHA). Este registro é só documental e não dispara workflow; o CI verde de `8f88058` vale para o código.
+- **Só neste computador:** a worktree `C:/wt/vendas-pr4`, as capturas e o cluster descartável da sessão (pasta temporária).
+
 **25/11/2026, PR 3 aberto (API de vendas e recebimentos), sem merge.** Branch `feat/vendas-api` (worktree `C:/wt/vendas-pr3`), a partir de `420c904` (#150 mesclado).
 
 - **Antes do merge do #150:** head `17d79ab` conferido, os dois workflows verdes e a cobertura pedida já existia em `test/sales-integrity-postgres.db-e2e-spec.ts`: `USE_VENDAS` com VENDAS e ESTOQUE ligados ("saída manual de venda com o adicional"), nova venda contra manutenção depois de desligar VENDAS ("gate: nova venda contra manutenção", dono e recepcionista, com as áreas da sessão). A exclusão de `feat_vendas` da fixture dos testes antigos é explícita em `test/support/plano-de-teste.ts` (`SEMPRE_FORA_DO_PLANO`, com o motivo). Sem mudança de código, a bateria não foi repetida.
