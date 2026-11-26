@@ -3,6 +3,7 @@
 // ligados como a assinatura liga (override do recurso; o preço do adicional
 // continua pendente e não é definido aqui).
 //
+// Fluxo completo:
 // - dono: catálogo com saldo numérico, sem produto de consumo interno; cliente
 //   ambíguo (dois cadastros com o mesmo nome lado a lado, nada escolhido sem
 //   toque); produto sem saldo recusa a venda inteira sem gravar; venda
@@ -19,11 +20,22 @@
 // - VENDAS retirado: a nova venda some (e a API recusa) e a manutenção segue:
 //   o dono estorna e cancela, a recepcionista consulta as próprias operações.
 //
+// Falhas de rede (cada caso com o próprio estabelecimento):
+// - A: venda gravada e recebimento que falha antes de chegar à API: a tela
+//   mantém a venda e repete só o recebimento;
+// - B: a criação da venda chega à API e é gravada, e só a resposta se perde:
+//   "Enviar de novo" repete a mesma chave e o mesmo corpo e recebe a mesma
+//   venda, sem baixa duplicada;
+// - C: o mesmo com o recebimento: mesmo recebimento, nenhum lançamento a mais.
+// Nos casos B e C a requisição vai à API real (`route.fetch`), a gravação é
+// conferida no banco e só então a resposta é bloqueada (`route.abort`).
+//
 // Capturas (1280 e 390 px) em PLAYWRIGHT_OUTPUT_DIR; sem rolagem lateral
-// também em 360 px. Invocação própria (`npm run test:browser:vendas`): 1
-// aceite de convite e 2 logins.
+// também em 360 px. Invocação própria (`npm run test:browser:vendas`): 4
+// aceites de convite e 2 logins.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import type { Client } from "pg";
 import { API_DE_TESTE, conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
 import { entrarPeloFormulario, navConta, semRolagemHorizontal } from "./support/portal";
 
@@ -34,6 +46,27 @@ const id = () => randomUUID().replaceAll("-", "").slice(0, 24);
 const chave = () => randomUUID().replaceAll("-", "");
 /** Valor em reais como `formatarMoeda` escreve (espaço inseparável). */
 const reais = (valor: string) => new RegExp(`R\\$\\s${valor}$`);
+
+/** Estabelecimentos criados por esta suíte. O banco descartável é o mesmo das
+ * suítes do backend que rodam depois no CI, e o levantamento de
+ * `pilot-team-manager-check` lista só os primeiros estabelecimentos com
+ * gerente ativo: o `afterEach` suspende os gerentes destes estabelecimentos
+ * (e só destes), também quando o teste falha ou estoura o tempo. Um
+ * encerramento forçado do processo continua sem garantia de limpeza. */
+const estabelecimentosDaSuite: string[] = [];
+
+test.afterEach(async () => {
+  if (estabelecimentosDaSuite.length === 0) return;
+  const db = await conectarBancoDeTeste();
+  try {
+    await db.query("UPDATE memberships SET status = 'SUSPENDED' WHERE tenant_id = ANY($1::text[]) AND role = 'GERENTE' AND status = 'ACTIVE'", [
+      estabelecimentosDaSuite,
+    ]);
+  } finally {
+    estabelecimentosDaSuite.length = 0;
+    await db.end();
+  }
+});
 
 async function confirmarSenhaSePedir(page: Page, senha: string) {
   const apareceu = await page
@@ -56,6 +89,14 @@ async function capturar(page: Page, nome: string) {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
+/** Uma captura numa largura só. */
+async function capturarEm(page: Page, nome: string, width: number) {
+  await page.setViewportSize({ width, height: 900 });
+  await semRolagemHorizontal(page);
+  await page.screenshot({ path: test.info().outputPath(`vendas-${nome}-${width}.png`), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 async function novaPagina(browser: Browser) {
   const contexto = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   return { contexto, page: await contexto.newPage() };
@@ -73,52 +114,85 @@ async function corrigir(page: Page, botao: "estornar-recebimento-venda" | "cance
   await expect(page.getByTestId("motivo-correcao")).toHaveCount(0);
 }
 
+/** Dono novo com VENDAS e ESTOQUE ligados e uma categoria; `page.request`
+ * fica com a sessão do dono. */
+async function prepararLoja(page: Page, db: Client, nomeDoDono: string) {
+  const marca = `vendas-${id().slice(0, 10)}`;
+  const dono = await criarContaDeTeste(page.request, {
+    ownerName: nomeDoDono,
+    businessName: `${marca} Barbearia`,
+    email: `${marca}@example.test`,
+    password: SENHA,
+  });
+  const tenantId = dono.tenant.id;
+  estabelecimentosDaSuite.push(tenantId);
+  for (const recurso of ["feat_estoque", "feat_vendas"]) {
+    await db.query(`INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled) VALUES ($1, $2, $3, true)`, [id(), tenantId, recurso]);
+  }
+  const api = (caminho: string) => `${API_DE_TESTE}/tenants/${tenantId}${caminho}`;
+  const categoria = await page.request.post(api("/stock/categories"), { data: { name: "Cabelo" } });
+  expect(categoria.status(), await categoria.text()).toBe(200);
+  const categoryId = ((await categoria.json()) as { id: string }).id;
+  const produto = async (name: string, purpose: string, saldo: number | null, preco: number | null) => {
+    const r = await page.request.post(api("/stock/products"), {
+      data: { requestKey: chave(), name, description: null, internalCode: null, categoryId, purpose, unit: "UN", minQuantityMilli: 1000, initialQuantityMilli: saldo, salePriceCents: preco },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    return ((await r.json()) as { product: { id: string } }).product.id;
+  };
+  const contar = async (sql: string, params: unknown[] = [tenantId]) => (await db.query(sql, params)).rows[0].n as number;
+  const saldo = async (productId: string) => Number((await db.query("SELECT balance_milli FROM stock_products WHERE id = $1", [productId])).rows[0].balance_milli);
+  return { marca, tenantId, api, produto, contar, saldo };
+}
+
+/** Os POST de criação de venda que a página enviou (corpo de cada um). */
+function criacoesDeVenda(page: Page, tenantId: string): string[] {
+  const corpos: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && new URL(r.url()).pathname === `/tenants/${tenantId}/sales`) corpos.push(r.postData() ?? "");
+  });
+  return corpos;
+}
+
+const ehCriacaoDeVenda = (tenantId: string) => (url: URL) => url.pathname === `/tenants/${tenantId}/sales`;
+const ehRecebimento = (tenantId: string) => (url: URL) => new RegExp(`^/tenants/${tenantId}/sales/[^/]+/payments$`).test(url.pathname);
+
+/** Venda de balcão pela tela, com Pomada (2) e Shampoo (1): R$ 80,00. */
+async function montarVendaDeBalcao(page: Page) {
+  await page.goto("/conta/vendas");
+  await expect(page.getByTestId("catalogo").getByTestId("produto-venda")).toHaveCount(2);
+  await page.getByRole("button", { name: "Adicionar Pomada modeladora" }).click();
+  await page.getByTestId("linha-venda").filter({ hasText: "Pomada modeladora" }).getByTestId("quantidade-linha").fill("2");
+  await page.getByRole("button", { name: "Adicionar Shampoo" }).click();
+  await expect(page.getByTestId("total-previa")).toHaveText(reais("80,00"));
+}
+
+/** Contagens de uma loja dos casos de rede, direto no banco. */
+async function retrato(loja: Awaited<ReturnType<typeof prepararLoja>>, pomada: string, shampoo: string) {
+  return {
+    vendas: await loja.contar("SELECT count(*)::int AS n FROM sales WHERE tenant_id = $1"),
+    baixas: await loja.contar("SELECT count(*)::int AS n FROM stock_movements WHERE tenant_id = $1 AND kind = 'SAIDA_VENDA' AND sale_id IS NOT NULL"),
+    itens: await loja.contar("SELECT count(*)::int AS n FROM sale_items WHERE tenant_id = $1"),
+    recebimentos: await loja.contar("SELECT count(*)::int AS n FROM sale_payments WHERE tenant_id = $1"),
+    auditoriaDoRecebimento: await loja.contar("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = $1 AND action::text = 'SALE_PAYMENT_RECORDED'"),
+    saldoPomada: await loja.saldo(pomada),
+    saldoShampoo: await loja.saldo(shampoo),
+  };
+}
+
 test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenção ativa", async ({ page, browser }) => {
   test.setTimeout(360_000);
   const erros: string[] = [];
   page.on("pageerror", (e) => erros.push(e.message));
-  const marca = `vendas-${id().slice(0, 10)}`;
   const db = await conectarBancoDeTeste();
   const abertos: { contexto: { close: () => Promise<void> } }[] = [];
-  let tenantDoTeste: string | null = null;
   try {
     // ------------------------------------------------------------- cenário
-    const dono = await criarContaDeTeste(page.request, {
-      ownerName: "Dona Fictícia das Vendas",
-      businessName: `${marca} Barbearia`,
-      email: `${marca}@example.test`,
-      password: SENHA,
-    });
-    const tenantId = dono.tenant.id;
-    tenantDoTeste = tenantId;
-    for (const recurso of ["feat_estoque", "feat_vendas"]) {
-      await db.query(`INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled) VALUES ($1, $2, $3, true)`, [id(), tenantId, recurso]);
-    }
-    const api = (caminho: string) => `${API_DE_TESTE}/tenants/${tenantId}${caminho}`;
-    const categoria = await page.request.post(api("/stock/categories"), { data: { name: "Cabelo" } });
-    expect(categoria.status(), await categoria.text()).toBe(200);
-    const categoryId = ((await categoria.json()) as { id: string }).id;
-    const produto = async (name: string, purpose: string, saldo: number | null, preco: number | null) => {
-      const r = await page.request.post(api("/stock/products"), {
-        data: {
-          requestKey: chave(),
-          name,
-          description: null,
-          internalCode: null,
-          categoryId,
-          purpose,
-          unit: "UN",
-          minQuantityMilli: 1000,
-          initialQuantityMilli: saldo,
-          salePriceCents: preco,
-        },
-      });
-      expect(r.status(), await r.text()).toBe(200);
-      return ((await r.json()) as { product: { id: string } }).product.id;
-    };
-    const pomada = await produto("Pomada modeladora", "VENDA", 10_000, 2500);
-    await produto("Óleo para barba", "VENDA", null, null);
-    await produto("Álcool 70", "CONSUMO_INTERNO", 5_000, null);
+    const loja = await prepararLoja(page, db, "Dona Fictícia das Vendas");
+    const { marca, tenantId, api } = loja;
+    const pomada = await loja.produto("Pomada modeladora", "VENDA", 10_000, 2500);
+    await loja.produto("Óleo para barba", "VENDA", null, null);
+    await loja.produto("Álcool 70", "CONSUMO_INTERNO", 5_000, null);
     const maria1 = id();
     const maria2 = id();
     for (const [consumerId, telefone] of [
@@ -132,8 +206,8 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
         `55${telefone.replace(/\D/g, "")}`,
       ]);
     }
-    const saldo = async () => Number((await db.query("SELECT balance_milli FROM stock_products WHERE id = $1", [pomada])).rows[0].balance_milli);
-    const vendasNoBanco = async () => (await db.query("SELECT count(*)::int AS n FROM sales WHERE tenant_id = $1", [tenantId])).rows[0].n as number;
+    const saldo = () => loja.saldo(pomada);
+    const vendasNoBanco = () => loja.contar("SELECT count(*)::int AS n FROM sales WHERE tenant_id = $1");
 
     // ------------------------------------------- dono: nova venda
     await page.goto("/conta/visao-geral");
@@ -199,8 +273,10 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     await expect(page.getByTestId("detalhe-total")).toHaveText(reais("50,00"));
     await expect(page.getByTestId("detalhe-recebido")).toHaveText(reais("50,00"));
     await expect(page.getByTestId("situacao-recebimento")).toHaveText("Recebida");
+    await expect(page.getByTestId("recebimento-da-venda")).toContainText("Recebido");
     await expect(page.getByTestId("cancelar-venda")).toHaveCount(0);
     await expect(page.getByTestId("cancelar-depende-de-estorno")).toBeVisible();
+    await capturarEm(page, "detalhe-recebida", 390);
     await corrigir(page, "estornar-recebimento-venda", "Cliente desistiu da compra", SENHA);
     await expect(page.getByTestId("situacao-recebimento")).toHaveText("Recebimento estornado");
     await expect(page.getByTestId("detalhe-recebido")).toHaveText(reais("0,00"));
@@ -236,7 +312,7 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     const baixa = historico.locator("tbody tr").filter({ hasText: "Saída por venda" }).first();
     await expect(baixa.getByText("Venda", { exact: true })).toBeVisible();
     await expect(baixa.getByRole("button", { name: /^Ações da movimentação/ })).toHaveCount(0);
-    const movimentos = async () => (await db.query("SELECT count(*)::int AS n FROM stock_movements WHERE tenant_id = $1", [tenantId])).rows[0].n as number;
+    const movimentos = () => loja.contar("SELECT count(*)::int AS n FROM stock_movements WHERE tenant_id = $1");
     const antes = await movimentos();
     await page.getByRole("button", { name: "Registrar movimentação" }).click();
     const form = page.getByTestId("painel-movimentacao");
@@ -323,6 +399,15 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     expect(await saldo()).toBe(9_000);
     const [vendaR] = (await db.query("SELECT id FROM sales WHERE tenant_id = $1 AND status = 'ATIVA'", [tenantId])).rows;
 
+    // Recebimentos de vendas com dados: o recebimento estornado do dono e o
+    // ativo da recepcionista, com os totais do período.
+    await page.goto("/conta/vendas?aba=recebimentos");
+    await expect(page.getByTestId("lista-recebimentos-vendas").getByTestId("recebimento-venda")).toHaveCount(2);
+    await expect(page.getByTestId("resumo-recebido-vendas-valor")).toHaveText(reais("75,00"));
+    await expect(page.getByTestId("resumo-estornado-vendas-valor")).toHaveText(reais("50,00"));
+    await expect(page.getByTestId("resumo-liquido-vendas-valor")).toHaveText(reais("25,00"));
+    await capturarEm(page, "recebimentos-de-vendas", 1280);
+
     // ------------------------------------------- gerente
     const g = await novaPagina(browser);
     abertos.push(g);
@@ -362,12 +447,160 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     expect(erros).toEqual([]);
   } finally {
     for (const a of abertos) await a.contexto.close();
-    // O banco descartável é o mesmo das suítes do backend que rodam depois no
-    // CI: o levantamento de `pilot-team-manager-check` lista só os primeiros
-    // estabelecimentos com gerente ativo. Gerente suspenso não entra nele.
-    if (tenantDoTeste) {
-      await db.query("UPDATE memberships SET status = 'SUSPENDED' WHERE tenant_id = $1 AND role = 'GERENTE'", [tenantDoTeste]);
-    }
+    await db.end();
+  }
+});
+
+test("A: venda gravada e recebimento que falha antes de chegar à API: a tela repete só o recebimento", async ({ page }) => {
+  test.setTimeout(120_000);
+  const db = await conectarBancoDeTeste();
+  try {
+    const loja = await prepararLoja(page, db, "Dona Fictícia do Recebimento que Falha");
+    const pomada = await loja.produto("Pomada modeladora", "VENDA", 10_000, 2500);
+    const shampoo = await loja.produto("Shampoo", "VENDA", 5_000, 3000);
+    const criacoes = criacoesDeVenda(page, loja.tenantId);
+    await montarVendaDeBalcao(page);
+    await page.getByTestId("confirmar-venda").click();
+    const concluida = page.getByTestId("venda-concluida");
+    await expect(concluida.getByTestId("total-confirmado")).toHaveText(reais("80,00"));
+
+    // A primeira tentativa de recebimento cai na rede: não chega à API.
+    let tentativas = 0;
+    await page.route(ehRecebimento(loja.tenantId), async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      tentativas += 1;
+      return tentativas === 1 ? route.abort("failed") : route.continue();
+    });
+    await concluida.getByTestId("forma-recebimento-venda").selectOption("PIX");
+    await concluida.getByTestId("confirmar-recebimento-venda").click();
+    await expect(concluida.getByTestId("recebimento-incerto")).toBeVisible();
+    // A venda continua na tela, confirmada e a receber; só o recebimento se repete.
+    await expect(concluida.getByTestId("total-confirmado")).toHaveText(reais("80,00"));
+    await expect(concluida.getByTestId("situacao-recebimento-concluida")).toHaveText("A receber");
+    await expect(page.getByTestId("confirmar-venda")).toHaveCount(0);
+    await expect(concluida.getByTestId("confirmar-recebimento-venda")).toHaveText("Enviar de novo");
+    expect(await retrato(loja, pomada, shampoo)).toMatchObject({ vendas: 1, recebimentos: 0 });
+
+    await concluida.getByTestId("confirmar-recebimento-venda").click();
+    await expect(concluida.getByTestId("recebimento-registrado")).toContainText("80,00");
+    expect(tentativas).toBe(2);
+    expect(criacoes).toHaveLength(1);
+    expect(await retrato(loja, pomada, shampoo)).toEqual({
+      vendas: 1,
+      baixas: 2,
+      itens: 2,
+      recebimentos: 1,
+      auditoriaDoRecebimento: 1,
+      saldoPomada: 8_000,
+      saldoShampoo: 4_000,
+    });
+  } finally {
+    await db.end();
+  }
+});
+
+test("B: resposta da criação da venda perdida depois de gravada: mesma chave, mesmo corpo, mesma venda", async ({ page }) => {
+  test.setTimeout(120_000);
+  const db = await conectarBancoDeTeste();
+  try {
+    const loja = await prepararLoja(page, db, "Dona Fictícia da Venda sem Resposta");
+    const pomada = await loja.produto("Pomada modeladora", "VENDA", 10_000, 2500);
+    const shampoo = await loja.produto("Shampoo", "VENDA", 5_000, 3000);
+    const criacoes = criacoesDeVenda(page, loja.tenantId);
+    await montarVendaDeBalcao(page);
+
+    // A primeira criação vai à API real e é gravada; só então a resposta é
+    // bloqueada antes de chegar ao navegador.
+    const primeira: { gravada: { sale: { id: string }; created: boolean } | null; vendasAoBloquear: number } = { gravada: null, vendasAoBloquear: -1 };
+    await page.route(ehCriacaoDeVenda(loja.tenantId), async (route) => {
+      if (route.request().method() !== "POST" || primeira.gravada) return route.continue();
+      const resposta = await route.fetch();
+      expect(resposta.status()).toBe(200);
+      primeira.gravada = (await resposta.json()) as { sale: { id: string }; created: boolean };
+      primeira.vendasAoBloquear = await loja.contar("SELECT count(*)::int AS n FROM sales WHERE tenant_id = $1");
+      return route.abort("failed");
+    });
+    await page.getByTestId("confirmar-venda").click();
+    await expect(page.getByTestId("venda-incerta")).toBeVisible();
+    expect(primeira.gravada?.created).toBe(true);
+    expect(primeira.vendasAoBloquear).toBe(1);
+    await expect(page.getByTestId("confirmar-venda")).toHaveText("Enviar de novo");
+    // O formulário fica travado: nada muda o pedido repetido.
+    await expect(page.getByRole("button", { name: "Remover Shampoo" })).toBeDisabled();
+
+    const segunda = page.waitForResponse((r) => r.request().method() === "POST" && ehCriacaoDeVenda(loja.tenantId)(new URL(r.url())));
+    await page.getByTestId("confirmar-venda").click();
+    const repetida = (await (await segunda).json()) as { sale: { id: string }; created: boolean };
+    await expect(page.getByTestId("venda-concluida")).toContainText("Esta venda já estava registrada");
+    await expect(page.getByTestId("total-confirmado")).toHaveText(reais("80,00"));
+
+    expect(criacoes).toHaveLength(2);
+    expect(criacoes[1]).toBe(criacoes[0]);
+    const [primeiroCorpo, segundoCorpo] = criacoes.map((c) => JSON.parse(c) as { requestKey: string });
+    expect(segundoCorpo.requestKey).toBe(primeiroCorpo.requestKey);
+    expect(repetida).toMatchObject({ created: false, sale: { id: primeira.gravada?.sale.id } });
+    expect(await retrato(loja, pomada, shampoo)).toMatchObject({ vendas: 1, baixas: 2, itens: 2, recebimentos: 0, saldoPomada: 8_000, saldoShampoo: 4_000 });
+  } finally {
+    await db.end();
+  }
+});
+
+test("C: resposta do recebimento perdida depois de gravado: mesma chave, mesmo corpo, mesmo recebimento", async ({ page }) => {
+  test.setTimeout(120_000);
+  const db = await conectarBancoDeTeste();
+  try {
+    const loja = await prepararLoja(page, db, "Dona Fictícia do Recebimento sem Resposta");
+    const pomada = await loja.produto("Pomada modeladora", "VENDA", 10_000, 2500);
+    const shampoo = await loja.produto("Shampoo", "VENDA", 5_000, 3000);
+    const criacoes = criacoesDeVenda(page, loja.tenantId);
+    await montarVendaDeBalcao(page);
+    await page.getByTestId("confirmar-venda").click();
+    const concluida = page.getByTestId("venda-concluida");
+    await expect(concluida.getByTestId("total-confirmado")).toHaveText(reais("80,00"));
+
+    const corpos: string[] = [];
+    const primeiro: { gravado: { payment: { id: string }; created: boolean } | null; recebimentosAoBloquear: number } = {
+      gravado: null,
+      recebimentosAoBloquear: -1,
+    };
+    await page.route(ehRecebimento(loja.tenantId), async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      corpos.push(route.request().postData() ?? "");
+      if (primeiro.gravado) return route.continue();
+      const resposta = await route.fetch();
+      expect(resposta.status()).toBe(200);
+      primeiro.gravado = (await resposta.json()) as { payment: { id: string }; created: boolean };
+      primeiro.recebimentosAoBloquear = await loja.contar("SELECT count(*)::int AS n FROM sale_payments WHERE tenant_id = $1");
+      return route.abort("failed");
+    });
+    await concluida.getByTestId("forma-recebimento-venda").selectOption("CARTAO_DEBITO");
+    await concluida.getByTestId("confirmar-recebimento-venda").click();
+    await expect(concluida.getByTestId("recebimento-incerto")).toBeVisible();
+    expect(primeiro.gravado?.created).toBe(true);
+    expect(primeiro.recebimentosAoBloquear).toBe(1);
+    await expect(concluida.getByTestId("forma-recebimento-venda")).toBeDisabled();
+
+    const segunda = page.waitForResponse((r) => r.request().method() === "POST" && ehRecebimento(loja.tenantId)(new URL(r.url())));
+    await concluida.getByTestId("confirmar-recebimento-venda").click();
+    const repetido = (await (await segunda).json()) as { payment: { id: string }; created: boolean };
+    await expect(concluida.getByTestId("recebimento-registrado")).toContainText("80,00");
+
+    expect(corpos).toHaveLength(2);
+    expect(corpos[1]).toBe(corpos[0]);
+    const [primeiroCorpo, segundoCorpo] = corpos.map((c) => JSON.parse(c) as { requestKey: string });
+    expect(segundoCorpo.requestKey).toBe(primeiroCorpo.requestKey);
+    expect(repetido).toMatchObject({ created: false, payment: { id: primeiro.gravado?.payment.id } });
+    expect(criacoes).toHaveLength(1);
+    expect(await retrato(loja, pomada, shampoo)).toEqual({
+      vendas: 1,
+      baixas: 2,
+      itens: 2,
+      recebimentos: 1,
+      auditoriaDoRecebimento: 1,
+      saldoPomada: 8_000,
+      saldoShampoo: 4_000,
+    });
+  } finally {
     await db.end();
   }
 });

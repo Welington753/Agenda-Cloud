@@ -797,7 +797,9 @@ jobs:
       # cliente ambíguo escolhido por toque, sem saldo, recebimento, estorno e
       # cancelamento com senha, compras na ficha, aviso USE_VENDAS no estoque),
       # recepcionista e gerente pela matriz, e VENDAS retirado com a manutenção
-      # ativa. Invocação própria (1 aceite de convite, 2 logins).
+      # ativa; falha de rede no recebimento e respostas perdidas depois da
+      # gravação (venda e recebimento). Invocação própria (4 aceites de
+      # convite, 2 logins).
       - name: Run sales flow (owner, receptionist, manager, add-on removed; 2 logins)
         id: browser_vendas
         env:
@@ -989,7 +991,8 @@ jobs:
           retention-days: 7
 
       # Capturas das vendas: nova venda, cliente ambíguo, venda concluída,
-      # detalhe e a recepcionista (1280 e 390 px).
+      # detalhe (recebido em 390 px; cancelado em 1280 e 390), Recebimentos de
+      # vendas com totais (1280 px) e a recepcionista (1280 e 390 px).
       - name: Upload sales screenshots
         if: always() && steps.browser_vendas.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
