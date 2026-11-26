@@ -23,9 +23,10 @@ import {
   ROTA_RECEBIMENTOS,
   ROTA_SERVICOS,
   ROTA_SOLICITACOES,
+  ROTA_VENDAS,
   emAreaSobConfiguracoes,
 } from "./rotas";
-import { temArea, type AreaDoEstabelecimento, type PerfilDaArea } from "./papel";
+import { AREAS_DE_VENDAS, temAlgumaAreaDeVendas, temArea, type AreaDoEstabelecimento, type PerfilDaArea } from "./papel";
 import { rotuloDosProfissionais } from "./termos";
 import type { TenantContextReal } from "@/lib/api/auth-api";
 
@@ -39,6 +40,11 @@ export interface ItemNavegacaoConta {
 // o menu lateral. Nenhuma área fica só no menu da conta.
 
 const ITEM_CONFIGURACOES: ItemNavegacaoConta = { href: ROTA_CONFIGURACOES, rotulo: "Configurações" };
+
+/** Vendas (adicional VENDAS): nova venda com o adicional; as próprias
+ * operações e a consulta geral também depois da retirada, enquanto houver
+ * vendas registradas (o servidor calcula as áreas). */
+const ITEM_VENDAS: ItemNavegacaoConta = { href: ROTA_VENDAS, rotulo: "Vendas" };
 
 /** Seção Estoque (adicional ESTOQUE): grupo "Estoque" do menu. */
 const ITENS_DO_ESTOQUE: readonly ItemNavegacaoConta[] = [
@@ -74,6 +80,8 @@ export function itensDoDono(contexto?: ContextoDoMenu | null): ItemNavegacaoCont
     { href: ROTA_PROFISSIONAIS, rotulo: rotuloDosProfissionais(contexto?.tenantCategory) },
     { href: ROTA_SERVICOS, rotulo: "Serviços" },
     { href: ROTA_CLIENTES, rotulo: "Clientes" },
+    // Sem a lista de áreas (API anterior), não entra: a tela não presume o adicional.
+    ...(contexto?.areas?.some((area) => (AREAS_DE_VENDAS as readonly string[]).includes(area)) ? [ITEM_VENDAS] : []),
     { href: ROTA_EQUIPE, rotulo: "Equipe e acessos" },
   ];
   if (contexto?.areas?.includes("COMISSOES_VER")) {
@@ -99,7 +107,8 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
   else if (tem("SOLICITACOES_VER")) itens.push({ href: ROTA_SOLICITACOES, rotulo: "Solicitações" });
   if (tem("AGENDA_PROPRIA_VER")) itens.push({ href: ROTA_MINHA_AGENDA, rotulo: "Minha agenda" });
   if (tem("CLIENTES_VER")) itens.push({ href: ROTA_CLIENTES, rotulo: "Clientes" });
-  if (tem("RECEBIMENTOS_VER")) itens.push({ href: ROTA_RECEBIMENTOS, rotulo: "Recebimentos" });
+  if (temAlgumaAreaDeVendas(contexto)) itens.push(ITEM_VENDAS);
+  if (tem("RECEBIMENTOS_VER")) itens.push({ href: ROTA_RECEBIMENTOS, rotulo: "Recebimentos de atendimentos" });
   if (tem("SERVICOS_VER")) itens.push({ href: ROTA_SERVICOS, rotulo: "Serviços" });
   if (tem("PROFISSIONAIS_VER")) itens.push({ href: ROTA_PROFISSIONAIS, rotulo: "Profissionais" });
   // O estoque vem depois das áreas do dia a dia.
@@ -113,7 +122,9 @@ export function itensDoGerente(contexto: Pick<TenantContextReal, "role" | "areas
  * - Dono com estabelecimento ativo: ver `itensDoDono`.
  * - Funcionário: "Minha agenda" e "Configurações".
  * - Gerente: as áreas concedidas pelo dono (ver `itensDoGerente`).
- * - Papel sem área (RECEPCIONISTA antigo): só "Configurações".
+ * - Recepcionista: "Vendas" (com alguma área de vendas concedida) e
+ *   "Configurações".
+ * - Sem área: só "Configurações".
  * - Sem estabelecimento (ou com o acesso vencido): sem menu.
  */
 export function itensDaNavegacao({
@@ -130,6 +141,7 @@ export function itensDaNavegacao({
   if (!comEstabelecimento) return [];
   if (perfil === "gerente") return itensDoGerente(contexto);
   if (perfil === "funcionario") return ITENS_NAVEGACAO_FUNCIONARIO;
+  if (perfil === "recepcionista") return temAlgumaAreaDeVendas(contexto) ? [ITEM_VENDAS, ITEM_CONFIGURACOES] : [ITEM_CONFIGURACOES];
   if (perfil === "sem-area") return [ITEM_CONFIGURACOES];
   return itensDoDono(contexto);
 }
@@ -144,7 +156,7 @@ export interface GrupoNavegacaoConta {
  * grupo, a ordem dos endereços abaixo. Endereço fora da lista fica no grupo
  * de entrada, sem título. */
 const GRUPOS: readonly { titulo: string; hrefs: readonly string[] }[] = [
-  { titulo: "Atendimento", hrefs: [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES] },
+  { titulo: "Atendimento", hrefs: [ROTA_AGENDA, ROTA_SOLICITACOES, ROTA_MINHA_AGENDA, ROTA_CLIENTES, ROTA_VENDAS] },
   { titulo: "Gestão do negócio", hrefs: [ROTA_PROFISSIONAIS, ROTA_SERVICOS, ROTA_COMISSOES, ROTA_RECEBIMENTOS] },
   { titulo: "Estoque", hrefs: ITENS_DO_ESTOQUE.map((i) => i.href) },
   { titulo: "Administração", hrefs: [ROTA_EQUIPE, ROTA_CONFIGURACOES] },

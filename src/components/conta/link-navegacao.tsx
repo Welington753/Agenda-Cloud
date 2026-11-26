@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Package,
   Settings,
+  ShoppingBag,
   Users,
   Wallet,
   type LucideIcon,
@@ -38,6 +39,7 @@ import {
   ROTA_RECEBIMENTOS,
   ROTA_SERVICOS,
   ROTA_SOLICITACOES,
+  ROTA_VENDAS,
 } from "@/lib/conta/rotas";
 
 export const ICONE_POR_HREF: Record<string, LucideIcon> = {
@@ -56,6 +58,7 @@ export const ICONE_POR_HREF: Record<string, LucideIcon> = {
   [ROTA_ESTOQUE_CONFERENCIA]: ClipboardCheck,
   [ROTA_SOLICITACOES]: Inbox,
   [ROTA_RECEBIMENTOS]: Wallet,
+  [ROTA_VENDAS]: ShoppingBag,
 };
 
 /** `<li>` de cada área. No celular, uma coluna da faixa que rola na

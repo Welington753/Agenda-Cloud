@@ -5,7 +5,7 @@
 // disponíveis (marcáveis), os em desenvolvimento e planejados (desativados,
 // fora do total), o limite de usuários e o resumo do valor. Só desenham: o
 // cálculo vem de src/lib/administracao/assinatura.ts e o servidor confere.
-import { BarChart3, CalendarDays, Coins, MessageCircle, Megaphone, Package, Store, type LucideIcon } from "lucide-react";
+import { BarChart3, CalendarDays, Coins, MessageCircle, Megaphone, Package, ShoppingCart, Store, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge-base";
 import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { ROTULO_DISPONIBILIDADE, type Adicional, type Escolha, type ItemEssencial } from "@/lib/administracao/assinatura";
@@ -16,6 +16,7 @@ const ICONES: Record<string, LucideIcon> = {
   COMISSOES: Coins,
   WHATSAPP: MessageCircle,
   ESTOQUE: Package,
+  VENDAS: ShoppingCart,
   GESTAO_FINANCEIRA: Coins,
   MARKETING: Megaphone,
 };
@@ -24,6 +25,11 @@ const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] bord
 
 const preco = (centavos: number | null, prefixo = "") =>
   centavos === null ? "Preço a definir" : `${prefixo}${reais(centavos)} / mês`;
+
+/** Dependência entre adicionais (ADDON_REQUIRES da API): Vendas só com
+ * Estoque. O servidor recusa a versão que quebra a regra. */
+const EXIGE: Record<string, string> = { VENDAS: "Estoque" };
+const exigeDe = (code: string): string | null => EXIGE[code] ?? null;
 
 function Icone({ code }: { code: string }) {
   const Componente = ICONES[code] ?? Package;
@@ -100,8 +106,18 @@ export function EscolhaDeAdicionais({
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold">{a.name}</span>
                     <span className="block text-sm text-ink-soft">{a.description}</span>
+                    {exigeDe(a.code) && <span className="block text-xs text-ink-soft">Exige o adicional {exigeDe(a.code)}.</span>}
                   </span>
-                  <span className="w-full text-right font-bold sm:w-auto">{preco(a.priceCents, "+ ")}</span>
+                  <span className="w-full text-right font-bold sm:w-auto" data-testid={`preco-adicional-${a.code}`}>
+                    {a.priceCents === null ? (
+                      <>
+                        <span className="block">Indisponível para contratação</span>
+                        <span className="block text-xs font-normal text-ink-soft">Preço a definir (não é gratuito)</span>
+                      </>
+                    ) : (
+                      preco(a.priceCents, "+ ")
+                    )}
+                  </span>
                 </label>
               </li>
             );

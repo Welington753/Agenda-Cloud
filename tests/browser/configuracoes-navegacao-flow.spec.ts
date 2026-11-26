@@ -24,9 +24,10 @@ import { criarContaDeTeste } from "./support/contas-de-teste";
 
 const SENHA = "senha-de-configuracoes-e2e-1";
 // O que não tem entrada própria no menu do dono, na ordem dos grupos do
-// índice (Estabelecimento, Financeiro e Sua conta). Recebimentos mora fora de
-// `/conta/configuracoes`, no endereço de sempre.
-const SECOES = ["Estabelecimento", "Notificações", "Recebimentos", "Aparência", "Perfil e segurança"];
+// índice (Estabelecimento, Financeiro e Sua conta). Recebimentos de
+// atendimentos mora fora de `/conta/configuracoes`, no endereço de sempre
+// (os de vendas ficam em Vendas).
+const SECOES = ["Estabelecimento", "Notificações", "Recebimentos de atendimentos", "Aparência", "Perfil e segurança"];
 const CAMINHOS = [
   "/conta/configuracoes/estabelecimento",
   "/conta/configuracoes/notificacoes",

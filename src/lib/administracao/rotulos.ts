@@ -59,6 +59,12 @@ export const PERMISSOES_ESTABELECIMENTO: Record<string, string> = {
   EQUIPE_GERENCIAR: "Gerenciar equipe e acessos",
   ESTOQUE_VISUALIZAR: "Ver estoque",
   ESTOQUE_GERENCIAR: "Operar estoque",
+  VENDAS_REGISTRAR: "Registrar vendas e consultar as próprias",
+  VENDAS_RECEBER: "Receber vendas",
+  VENDAS_ALTERAR_PRECO: "Alterar o preço numa venda nova",
+  VENDAS_VISUALIZAR: "Consultar todas as vendas e recebimentos de vendas",
+  VENDAS_CANCELAR: "Cancelar vendas",
+  VENDAS_ESTORNAR_RECEBIMENTO: "Estornar recebimentos de vendas",
 };
 
 export const ACOES_HISTORICO: Record<string, string> = {
@@ -85,8 +91,8 @@ export const ACOES_HISTORICO: Record<string, string> = {
   STAFF_ACCESS_CREATED: "Acesso de funcionário criado com usuário e senha",
   STAFF_PASSWORD_RESET: "Senha de acesso da equipe redefinida",
   PASSWORD_CHANGED: "Senha trocada pela própria pessoa",
-  PAYMENT_RECORDED: "Recebimento registrado",
-  PAYMENT_REFUNDED: "Recebimento estornado",
+  PAYMENT_RECORDED: "Recebimento de atendimento registrado",
+  PAYMENT_REFUNDED: "Recebimento de atendimento estornado",
   ACCESS_PAID_PERIOD_RECORDED: "Pagamento confirmado manualmente",
   ACCESS_TRIAL_EXTENDED: "Teste prorrogado",
   ACCESS_COURTESY_GRANTED: "Cortesia concedida",
@@ -98,6 +104,10 @@ export const ACOES_HISTORICO: Record<string, string> = {
   CATALOG_ITEM_CHANGED: "Catálogo modular alterado",
   STOCK_CATEGORY_CHANGED: "Categoria de estoque alterada",
   STOCK_PRODUCT_CHANGED: "Produto de estoque alterado",
+  SALE_RECORDED: "Venda registrada",
+  SALE_CANCELLED: "Venda cancelada",
+  SALE_PAYMENT_RECORDED: "Recebimento de venda registrado",
+  SALE_PAYMENT_REFUNDED: "Recebimento de venda estornado",
 };
 
 /** O que dizer sobre o envio do e-mail. "Enviado" é só "o provedor aceitou". */

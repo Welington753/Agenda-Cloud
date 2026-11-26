@@ -13,7 +13,7 @@ describe("Configurações", () => {
     expect(secoesDisponiveis(true).map((s) => s.rotulo)).toEqual([
       "Estabelecimento",
       "Notificações",
-      "Recebimentos",
+      "Recebimentos de atendimentos",
       "Aparência",
       "Perfil e segurança",
     ]);

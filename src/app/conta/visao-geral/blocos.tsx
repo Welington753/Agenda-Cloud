@@ -143,8 +143,8 @@ export function Periodo({ painel }: { painel: PainelComIndicadores }) {
   );
 }
 
-/** Dinheiro do período: só os recebimentos registrados à mão em
- * Recebimentos. Sem registro, mostra zero recebido e ticket "—" (nunca um
+/** Dinheiro do período: só os recebimentos de ATENDIMENTOS registrados à
+ * mão em Recebimentos de atendimentos (vendas ficam em Vendas). Sem registro, mostra zero recebido e ticket "—" (nunca um
  * valor tirado do preço das reservas). */
 export function Financeiro({ painel }: { painel: PainelComIndicadores }) {
   const { finance, period } = painel;
@@ -154,7 +154,7 @@ export function Financeiro({ painel }: { painel: PainelComIndicadores }) {
     <div className="space-y-2" data-testid="financeiro">
       {/* Uma coluna no celular: valores em reais não cabem em meia largura. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <EstatisticaCard icone={Wallet} rotulo="Recebido no período" valor={formatarMoeda(finance.receivedCents)} corIcone="neutro" testId="indicador-recebido" />
+        <EstatisticaCard icone={Wallet} rotulo="Recebido em atendimentos" valor={formatarMoeda(finance.receivedCents)} corIcone="neutro" testId="indicador-recebido" />
         <EstatisticaCard icone={Undo2} rotulo="Estornado no período" valor={formatarMoeda(finance.refundedCents)} corIcone="neutro" testId="indicador-estornado" />
         <EstatisticaCard icone={Wallet} rotulo="Líquido no período" valor={formatarMoeda(finance.netCents)} testId="indicador-liquido" />
         <EstatisticaCard
@@ -314,8 +314,9 @@ export function ComoCalculamos() {
           esperam sua confirmação, de qualquer data.
         </li>
         <li>
-          <strong className="text-ink">Recebido</strong>: soma dos recebimentos registrados em Recebimentos com data no
-          período. <strong className="text-ink">Estornado</strong>: soma dos estornos feitos no período, mesmo de um
+          <strong className="text-ink">Recebido em atendimentos</strong>: soma dos recebimentos de atendimentos registrados
+          em Recebimentos de atendimentos com data no período. Vendas de produtos não entram aqui: o que foi vendido e
+          recebido em vendas fica em Vendas. <strong className="text-ink">Estornado</strong>: soma dos estornos feitos no período, mesmo de um
           recebimento antigo. <strong className="text-ink">Líquido</strong>: recebido menos estornado.
         </li>
         <li>

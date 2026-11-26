@@ -51,6 +51,9 @@ export function motivoObrigatorio(tipo: TipoMovimentacao): boolean {
 }
 
 /** Movimentação que ainda pode ser estornada pela tela. */
-export function podeEstornar(m: { kind: TipoMovimentacao; reversedByMovementId: string | null }): boolean {
+export function podeEstornar(m: { kind: TipoMovimentacao; reversedByMovementId: string | null; saleId?: string | null }): boolean {
+  // Baixa de uma venda só volta ao estoque pelo cancelamento da venda
+  // (a API recusa com BAIXA_DE_VENDA).
+  if (m.saleId) return false;
   return m.reversedByMovementId === null && m.kind !== "AJUSTE_CONFERENCIA" && m.kind !== "ESTORNO";
 }

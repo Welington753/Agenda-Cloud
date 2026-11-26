@@ -35,6 +35,14 @@ export const ROTA_COMISSOES = "/conta/comissoes";
 /** As próprias comissões (funcionário, quando o dono libera). */
 export const ROTA_MINHAS_COMISSOES = "/conta/minha-agenda/comissoes";
 
+/** Vendas (adicional VENDAS; docs/plans/vendas-v1.md). Nova venda com o
+ * adicional; a manutenção das vendas já registradas continua sem ele. */
+export const ROTA_VENDAS = "/conta/vendas";
+/** Detalhe de uma venda (dentro de Vendas: o menu destaca Vendas). */
+export function rotaDaVenda(id: string): string {
+  return `${ROTA_VENDAS}/${encodeURIComponent(id)}`;
+}
+
 /** Estoque (adicional ESTOQUE; dono e gerente com a concessão). */
 export const ROTA_ESTOQUE = "/conta/estoque";
 export const ROTA_ESTOQUE_PRODUTOS = `${ROTA_ESTOQUE}/produtos`;
@@ -110,8 +118,8 @@ export const SECOES_CONFIGURACOES: readonly SecaoDeConfiguracoes[] = [
   },
   {
     href: ROTA_RECEBIMENTOS,
-    rotulo: "Recebimentos",
-    descricao: "O que foi recebido por atendimento, com registro e estorno.",
+    rotulo: "Recebimentos de atendimentos",
+    descricao: "O que foi recebido por atendimento, com registro e estorno. Os de vendas ficam em Vendas.",
     alcance: "estabelecimento",
     grupo: "financeiro",
   },

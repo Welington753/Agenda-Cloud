@@ -793,6 +793,26 @@ jobs:
           PLAYWRIGHT_OUTPUT_DIR: test-results/estoque
         run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:estoque
 
+      # Vendas v1 (adicional VENDAS, docs/plans/vendas-v1.md): dono (venda,
+      # cliente ambíguo escolhido por toque, sem saldo, recebimento, estorno e
+      # cancelamento com senha, compras na ficha, aviso USE_VENDAS no estoque),
+      # recepcionista e gerente pela matriz, e VENDAS retirado com a manutenção
+      # ativa; falha de rede no recebimento e respostas perdidas depois da
+      # gravação (venda e recebimento). Invocação própria (4 aceites de
+      # convite, 2 logins).
+      - name: Run sales flow (owner, receptionist, manager, add-on removed; 2 logins)
+        id: browser_vendas
+        env:
+          NODE_ENV: development
+          DATABASE_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          DIRECT_URL: "postgresql://disposable_user:disposable_pass@127.0.0.1:55433/disposable_db"
+          FRONTEND_URL: "http://localhost:3000"
+          NEXT_PUBLIC_API_URL: "http://localhost:3001"
+          NODE_EXTRA_CA_CERTS: /tmp/frontend-auth-e2e-certs/server.crt
+          CI: "true"
+          PLAYWRIGHT_OUTPUT_DIR: test-results/vendas
+        run: bash .github/scripts/playwright-na-imagem.sh npm run test:browser:vendas
+
       # Invocação SEPARADA do Playwright, mesmo motivo das anteriores
       # (orçamento de POST /auth/register por IP): a visualização da agenda
       # real — ordem, filtro, navegação de dias, estados de carregamento, erro
@@ -967,6 +987,18 @@ jobs:
         with:
           name: estoque-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/estoque/**/estoque-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # Capturas das vendas: nova venda, cliente ambíguo, venda concluída,
+      # detalhe (recebido em 390 px; cancelado em 1280 e 390), Recebimentos de
+      # vendas com totais (1280 px) e a recepcionista (1280 e 390 px).
+      - name: Upload sales screenshots
+        if: always() && steps.browser_vendas.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vendas-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/vendas/**/vendas-*.png
           if-no-files-found: error
           retention-days: 7
 
@@ -1172,6 +1204,7 @@ jobs:
             steps.browser_visao_geral.outcome == 'failure' ||
             steps.browser_layout_temas.outcome == 'failure' ||
             steps.browser_estoque.outcome == 'failure' ||
+            steps.browser_vendas.outcome == 'failure' ||
             steps.browser_proxy.outcome == 'failure'
           )
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -37,6 +37,8 @@ import { Cartao, CartaoCorpo } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EdicaoCliente } from "./edicao-cliente";
 import { UnificacaoClientes } from "./unificacao-clientes";
+import { ComprasDoCliente } from "./compras-do-cliente";
+import { useAreas } from "@/lib/conta/use-areas";
 
 function rotuloDoStatus(status: string): string {
   return (ROTULO_STATUS as Record<string, string>)[status] ?? status;
@@ -75,6 +77,9 @@ export default function FichaDoClientePage() {
   const [editando, setEditando] = useState(false);
   const [unificarCom, setUnificarCom] = useState<OutroCadastro | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Compras: consulta geral de vendas e clientes (o servidor confere de novo).
+  const tem = useAreas();
+  const verCompras = tem("VENDAS_VER_TODAS") && tem("CLIENTES_VER");
 
   // Trocar de estabelecimento ou de cliente fecha o que estava aberto.
   useEffect(() => {
@@ -280,6 +285,8 @@ export default function FichaDoClientePage() {
           </CartaoCorpo>
         </Cartao>
       )}
+
+      {verCompras && tenantId && <ComprasDoCliente tenantId={tenantId} consumerId={consumer.id} />}
 
       <Cartao>
         <CartaoCorpo className="space-y-2" data-testid="ficha-historico">

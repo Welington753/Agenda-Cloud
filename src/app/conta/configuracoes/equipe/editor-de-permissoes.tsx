@@ -14,7 +14,7 @@ import type {
   PermissaoFuncionario,
   VisaoDaEquipe,
 } from "@/lib/equipe/contratos";
-import { alternarArea, areasDoCatalogo, exigidaPor, resumoDasPermissoes } from "@/lib/equipe/permissoes";
+import { alternarArea, areasDoCatalogo, catalogoDoPerfil, exigidaPor, resumoDasPermissoes } from "@/lib/equipe/permissoes";
 
 export function EditorDePermissoes({
   visao,
@@ -32,9 +32,10 @@ export function EditorDePermissoes({
   /** Distingue os ids quando há vários editores na página. */
   prefixo: string;
 }) {
-  const catalogo = visao.managerPermissions ?? [];
+  // Gerente: o catálogo inteiro; Recepcionista: só as áreas de vendas dela.
+  const catalogo = catalogoDoPerfil(visao, perfil);
   const podeConcederPropria = (p: PermissaoFuncionario) => visao.grantablePermissions.some((g) => g.permission === p);
-  const resumo = resumoDasPermissoes(perfil === "GERENTE" ? catalogo : [], visao.permissionLabels, marcadas);
+  const resumo = resumoDasPermissoes(catalogo, visao.permissionLabels, marcadas);
 
   return (
     <div className="space-y-4" data-testid="editor-permissoes">
@@ -71,7 +72,12 @@ export function EditorDePermissoes({
         </fieldset>
       )}
 
-      {perfil === "GERENTE" &&
+      {perfil === "RECEPCIONISTA" && catalogo.length === 0 && (
+        <p className="text-sm text-ink-soft" data-testid="recepcionista-sem-catalogo">
+          Nenhuma área de vendas disponível para conceder agora.
+        </p>
+      )}
+      {perfil !== "PROFISSIONAL" &&
         areasDoCatalogo(catalogo).map((grupo) => (
           <fieldset key={grupo.area} className="space-y-1" data-testid={`area-${grupo.area}`}>
             <legend className="text-sm font-semibold text-ink">{grupo.rotulo}</legend>
@@ -126,6 +132,12 @@ export function EditorDePermissoes({
               <li key={linha}>{linha}</li>
             ))}
           </ul>
+        )}
+        {perfil === "RECEPCIONISTA" && (
+          <p className="mt-2 text-xs text-ink-soft" data-testid="limites-recepcionista">
+            Recepcionista vende e recebe só as próprias vendas, conforme o que você marcar. Não vê o estoque, a agenda, os clientes
+            nem as vendas de outras pessoas, e nunca cancela nem estorna.
+          </p>
         )}
         {perfil === "GERENTE" && (
           <p className="mt-2 text-xs text-ink-soft">

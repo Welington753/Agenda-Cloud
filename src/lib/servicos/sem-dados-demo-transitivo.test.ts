@@ -40,6 +40,7 @@ const PONTOS_DE_ENTRADA = [
   "src/lib/agendamento-publico",
   "src/lib/administracao",
   "src/lib/estoque",
+  "src/lib/vendas",
 ];
 
 /** Domínio da demonstração: sessão simulada, dados locais e o acesso deles. */

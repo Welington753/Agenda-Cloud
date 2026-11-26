@@ -313,7 +313,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 **Limites do retorno:**
 
 - antes da 28: livre;
-- depois da 28, sem nenhuma contratação, concessão ou venda (`0 | 0 | 0`): a API anterior, se o ensaio na cópia restaurada provar que ela sobe e opera em 28;
+- depois da 28, enquanto valer a **condição de retorno** (as sete contagens de uso de VENDAS, todas zero; definição única e consulta em `docs/runbooks/publicacao-vendas-v1.md`, seção V3): a API anterior, **somente** se o ensaio na cópia restaurada provar que ela sobe e opera em 28. Contagens zeradas não provam essa compatibilidade;
 - depois: **só correção para frente**.
 
 **Retirar o adicional não é rollback.** Só para novas vendas: o código novo, as tabelas e as vendas ficam. Serve para conter um defeito do fluxo de venda, não da manutenção, do estoque ou do resto da API.
@@ -327,7 +327,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 3. **Corrigir:** PR de correção a partir da integração, com o teste que reproduz o defeito, CI verde e publicação de API e web no mesmo SHA pelo runbook.
    - Se o defeito estiver no schema, migration NOVA, sem `down` e sem editar a 27 ou a 28.
    - Se houver dado errado, a correção é um lançamento, nunca edição: cancelamento ou estorno pelo fluxo, ou uma migration de dados revisada, com backup e conferência antes e depois.
-4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API atual (anterior às vendas): ela só é candidata dentro do limite `0 | 0 | 0` e com o ensaio aprovado.
+4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API atual (anterior às vendas): ela só é candidata com a condição de retorno valendo **e** o ensaio aprovado.
 5. **Registrar** no "Estado e retomada" o que foi contido, o backup e o SHA da correção.
 
 Antes do preço definido, o adicional não pode ser contratado. A primeira ativação real é decisão do responsável, depois do H2. Roteiro: `docs/runbooks/publicacao-vendas-v1.md`, no PR 4.
@@ -350,9 +350,52 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 - **Preço do adicional e primeira ativação real:** decisão do responsável. Até lá, VENDAS fica no catálogo sem preço e não contratável.
 - **Teste instável `src/config/env.validation.spec.ts` (backend), fora deste lote:** o teste gera a chave VAPID com `createECDH` aleatório; quando a chave privada começa com o byte zero (cerca de 1 em 256), `getPrivateKey()` devolve 31 bytes e a validação recusa. Falhou assim no CI do PR 3 (`50805e2`, tentativa 1) e passou na reexecução. Correção em PR separado, sem mistura com as vendas.
-- **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, o limite `0 | 0 | 0` deixa de existir e o retorno é só para frente desde a 28.
+- **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, não há retorno à API anterior nem com a condição de retorno valendo: o retorno é só para frente desde a 28.
 
 ## 8. Estado e retomada
+
+**26/11/2026, ajustes da revisão visual no #152, sem merge.**
+
+- **Cliente cadastrado sem seleção:** o modo do cliente passou para a nova venda e a regra para `clienteDoPedido` (`src/lib/vendas/apresentacao.ts`). Com "Cliente cadastrado" marcado e nenhum resultado tocado, o resumo mostra "Selecione um cliente.", o botão fica desligado e `confirmar` não monta corpo (o envio não sai nem por clique forçado). Nenhum resultado é escolhido pela tela; venda sem cliente só com "Venda de balcão" marcada (o padrão da tela continua balcão marcado). "Trocar cliente" volta à busca, com o bloqueio.
+- **Recusa desatualizada:** `descartarRecusa` (`src/lib/vendas/envio.ts`) apaga a mensagem da recusa definitiva quando produtos ou cliente mudam; a chave continua. Resultado desconhecido e envio em curso não são tocados (mesma chave, mesmo corpo, formulário travado).
+- **Textos:** "Valor da venda", "Total da venda" e o subtítulo "Registre vendas de produtos e acompanhe os recebimentos."; a orientação de que confirmar baixa o estoque e o recebimento vem depois ficou.
+- **Rolagem no celular:** sem obstrução real; o CSS não mudou. O cabeçalho é `sticky` e o menu inferior é `fixed`, com `pb-28` no conteúdo; nas capturas `fullPage` o Playwright desenha os dois sobre o conteúdo emendado, e é só isso. A suíte confere agora em 360×640 e 390×664 (área visível do navegador): seleção de cliente, resultado, "Confirmar venda" e "Estornar recebimento", rolados até o meio da tela, recebem o toque (`elementFromPoint`), e o fim do conteúdo fica pelo menos 16 px acima do menu.
+- **Cobertura:** unitários de `clienteDoPedido` (sem seleção, seleção por ID, balcão explícito) e de `descartarRecusa`; no navegador, a tentativa sem seleção (botão desligado, clique forçado e Enter sem POST), a escolha pelo ID, "Trocar cliente", a troca explícita para balcão e a remoção do produto recusado (mensagem e aviso somem). Casos A, B e C sem mudança.
+- **Capturas da área visível (sem fullPage):** `vendas-cliente-sem-selecao-390-visivel.png` e `vendas-detalhe-estornar-390-visivel.png`, no artefato `vendas-*` do run.
+- **Validação local** (PostgreSQL 18 descartável com TLS, web e API compilados do head): `test:browser:vendas` com os quatro casos verdes; Vitest de `src/lib/vendas` (65); `eslint`, `lint:types`, `tsc`.
+- **Próximo passo:** CI do novo head e decisão de merge pelo responsável.
+
+**26/11/2026, lacunas do PR 4 completadas no #152, sem merge.** Pedidas na conferência antes do merge:
+
+- **Três casos de navegador novos** em `tests/browser/vendas-flow.spec.ts`, cada um com o próprio estabelecimento, API real e PostgreSQL descartável:
+  - **A** "venda gravada e recebimento que falha antes de chegar à API: a tela repete só o recebimento": a primeira tentativa de recebimento é abortada antes da API; a tela mantém a venda (a receber) e oferece só "Enviar de novo" do recebimento. Banco: uma venda, uma baixa por item (2), saldo descontado uma vez, um recebimento; um único POST de criação de venda;
+  - **B** "resposta da criação da venda perdida depois de gravada": a criação vai à API real (`route.fetch`), a gravação é conferida no banco e só então a resposta é bloqueada. A repetição pela tela leva a mesma chave e o mesmo corpo e devolve a mesma venda (`created: false`), sem venda nem baixa duplicada;
+  - **C** "resposta do recebimento perdida depois de gravado": o mesmo com o recebimento; mesmo recebimento, um só registro e uma só auditoria `SALE_PAYMENT_RECORDED`.
+  - Nenhum caso revelou defeito de produto: o fluxo não mudou.
+- **Duas capturas novas** no cenário existente: `vendas-detalhe-recebida-390.png` (detalhe do dono com recebimento ativo) e `vendas-recebimentos-de-vendas-1280.png` (aba Recebimentos de vendas com dois lançamentos e os totais R$ 75,00, R$ 50,00 e R$ 25,00). As anteriores foram mantidas.
+- **Condição de retorno:** definição única na seção V3 do roteiro, com as sete contagens identificadas e a exigência do ensaio do par anterior; o plano (seções 5.7 e 7) remete a ela, sem a referência ambígua a três contagens.
+- **Limpeza da suíte:** a suspensão dos gerentes passou para `test.afterEach`, restrita aos estabelecimentos criados pela própria suíte; vale também em falha ou tempo esgotado. Encerramento forçado do processo continua sem garantia de limpeza.
+- **Validação local** (PostgreSQL 18 descartável com TLS; web do build anterior, que só difere no ícone do menu): `test:browser:vendas` com os quatro casos verdes (fluxo completo, A, B e C); nenhum gerente ativo no banco depois; `eslint`, `lint:types` e `tsc` do arquivo. Nenhuma outra suíte foi repetida (só o spec, a documentação e comentários do workflow mudaram).
+- **Próximo passo:** CI do novo head e decisão de merge pelo responsável.
+
+**26/11/2026, PR 4 aberto (#152: telas, navegador e roteiro), sem merge.** Branch `feat/vendas-web` (worktree `C:/wt/vendas-pr4`), a partir de `d836994` (#151 mesclado). A sessão anterior foi interrompida pelo limite de uso com todo o primeiro bloco sem commit; nada foi descartado, e o bloco foi commitado como estava (as validações relatadas valiam para aqueles arquivos).
+
+- **Feito (commits `6229cf2` a `31879da`):**
+  - vetores do arredondamento em `backend/src/sales/sale-math-vectors.json`, lidos pelo spec da API e por `src/lib/vendas/calculo.test.ts`;
+  - `vendas-api.ts`, `src/lib/vendas/` (cálculo, carrinho, envio sem chave nova para resultado incerto, apresentação), telas de `/conta/vendas` (Nova venda, Minhas operações, Vendas, Recebimentos de vendas, detalhe com recebimento, estorno e cancelamento), compras na ficha, preço sugerido no produto, recepcionista em Equipe e acessos, menu pelas áreas (ícone próprio), rótulos "Recebido em atendimentos" e "Recebimentos de atendimentos";
+  - estoque: baixa de venda com "Venda" e sem "Estornar"; textos próprios para `USE_VENDAS` e `BAIXA_DE_VENDA`, escolhidos pelo `code`;
+  - `test:browser:vendas` (passo próprio no CI, com capturas), Vendas em `layout-temas`, `configuracoes-navegacao` com o rótulo novo;
+  - roteiro `docs/runbooks/publicacao-vendas-v1.md` (seção 5.7 detalhada) e o lado web no mapa técnico.
+- **Testes locais** (PostgreSQL 18 descartável com TLS, dados fictícios): web `tsc`, `lint`, `lint:types` e Vitest (135 arquivos, 1.295 testes); backend `sale-math.spec.ts` (21, sessão anterior, arquivos sem mudança depois); navegador `vendas`, `configuracoes-navegacao`, `layout-temas`, `estoque`, `equipe`, `gerente`, `acesso-usuario`, `recebimentos` e `clients`, todos verdes (antes do commit do ícone, que só troca o desenho do item no menu).
+- **CI** (`test-frontend-auth.yml`; `test-migration-lote6b2.yml` não dispara, porque o PR não toca migrations, `database` nem `scripts`):
+  - `b5b1eba`: cancelado pela execução seguinte;
+  - `8f88058` (run 45807715584): verde, com a suíte de vendas e as capturas;
+  - `f96bed3` (registro só documental; o filtro de caminho do PR olha o diff inteiro contra a base, então dispara): falha em `pilot-team-manager-check` na segunda passada do db-e2e, que roda **depois** das suítes de navegador no mesmo banco. O gerente deixado ativo por `test:browser:vendas` empurrou o estabelecimento da conferência para fora do levantamento limitado a 50. Corrigido em `31879da`: a suíte suspende o próprio gerente no fim, como as outras suítes desfazem o papel de gerente;
+  - `31879da` (run 45814866342): verde.
+- **Capturas** (dados fictícios, 1280 e 390 px; Vendas em escuro e azul pelo `layout-temas`): `%USERPROFILE%\AgendaCloud-operacoes\capturas-vendas-pr4-2026-11-26` (só neste computador; feitas antes do ícone próprio) e o artefato `vendas-*` do run.
+- **Não feito (fora do PR 4, decisão do responsável):** preço do adicional e primeira ativação real; ensaio na cópia restaurada e publicação pelo roteiro.
+- **Próximo passo:** revisão e merge do #152 com o CI verde no head final (este registro dispara o CI de novo); depois, a publicação pelo roteiro (backup, ensaio da seção V, 27 e 28 uma por vez, API e web no mesmo SHA).
+- **Só neste computador:** a worktree `C:/wt/vendas-pr4`, as capturas e o cluster descartável da sessão (pasta temporária).
 
 **25/11/2026, PR 3 aberto (API de vendas e recebimentos), sem merge.** Branch `feat/vendas-api` (worktree `C:/wt/vendas-pr3`), a partir de `420c904` (#150 mesclado).
 

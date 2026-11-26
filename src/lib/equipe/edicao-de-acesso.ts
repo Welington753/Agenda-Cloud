@@ -73,7 +73,7 @@ export function ehAcessoEditado(
   const o = v as Record<string, unknown>;
   return (
     typeof o.membershipId === "string" &&
-    (o.role === "PROFISSIONAL" || o.role === "GERENTE") &&
+    (o.role === "PROFISSIONAL" || o.role === "GERENTE" || o.role === "RECEPCIONISTA") &&
     (o.professionalId === null || typeof o.professionalId === "string") &&
     Array.isArray(o.grantedPermissions)
   );

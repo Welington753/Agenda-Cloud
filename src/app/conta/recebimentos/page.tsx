@@ -1,7 +1,9 @@
 "use client";
 
-// Recebimentos (dono): o registro manual do dinheiro que entrou por
-// atendimento, que alimenta os números financeiros do Início.
+// Recebimentos de atendimentos (dono): o registro manual do dinheiro que
+// entrou por atendimento, que alimenta os números financeiros do Início.
+// Recebimentos de vendas são outra coisa e ficam em Vendas
+// (docs/plans/vendas-v1.md, seção 3).
 //
 // - Resumo do período (mesmo cálculo do Início, feito no servidor):
 //   recebido, estornado, líquido e ticket médio.
@@ -86,8 +88,8 @@ export default function RecebimentosPage() {
   return (
     <ReautenticacaoProvider>
       <PaginaConta
-        titulo="Recebimentos"
-        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores da Visão geral."
+        titulo="Recebimentos de atendimentos"
+        descricao="O dinheiro que entrou por atendimento, registrado por você. É daqui que vêm os valores da Visão geral. Os recebimentos de vendas ficam em Vendas."
         voltar={retornoDeRecebimentos(perfilDoPapel(encontrarContextoPorTenantId(sessao.sessao, tenantId)?.role))}
         acoes={
           <Botao type="button" variante="secundaria" className="min-h-11" onClick={recarregar}>

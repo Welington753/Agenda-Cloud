@@ -39,6 +39,9 @@ export interface ProdutoEstoque {
   purpose: FinalidadeEstoque;
   unit: UnidadeEstoque;
   minQuantityMilli: number;
+  /** Preço sugerido de venda em centavos (`null`: sem preço; nunca zero).
+   * Ausente numa API anterior às vendas. */
+  salePriceCents?: number | null;
   balanceMilli: number;
   balanceVersion: number;
   low: boolean;
@@ -61,6 +64,9 @@ export interface MovimentacaoEstoque {
   reversesMovementId: string | null;
   reversedByMovementId: string | null;
   countId: string | null;
+  /** Venda que gerou a baixa (ou a devolveu ao cancelar). Ausente numa API
+   * anterior às vendas. */
+  saleId?: string | null;
   recordedBy: { id: string; name: string };
   recordedAt: string;
 }
@@ -137,6 +143,7 @@ export function ehProduto(v: unknown): v is ProdutoEstoque {
     texto(v.purpose) &&
     texto(v.unit) &&
     inteiro(v.minQuantityMilli) &&
+    (v.salePriceCents === undefined || talvez(inteiro)(v.salePriceCents)) &&
     inteiro(v.balanceMilli) &&
     inteiro(v.balanceVersion) &&
     typeof v.low === "boolean" &&
@@ -160,6 +167,7 @@ export function ehMovimentacao(v: unknown): v is MovimentacaoEstoque {
     talvez(texto)(v.reason) &&
     talvez(texto)(v.reversesMovementId) &&
     talvez(texto)(v.reversedByMovementId) &&
+    (v.saleId === undefined || talvez(texto)(v.saleId)) &&
     objeto(v.recordedBy) &&
     texto(v.recordedBy.name) &&
     texto(v.recordedAt)
@@ -261,6 +269,9 @@ export interface DadosDoProduto {
   purpose: FinalidadeEstoque;
   unit: UnidadeEstoque;
   minQuantityMilli: number;
+  /** Preço sugerido de venda. Omitido na edição, o servidor mantém o
+   * gravado; `null` tira o preço. */
+  salePriceCents?: number | null;
 }
 
 export function listarProdutos(tenantId: string, consulta: string, signal?: AbortSignal) {

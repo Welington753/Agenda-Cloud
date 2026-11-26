@@ -21,12 +21,12 @@ import {
   rotuloDaPermissao,
   type EstadoDoAcesso,
 } from "@/lib/equipe/edicao-de-acesso";
-import { resumoDasPermissoes } from "@/lib/equipe/permissoes";
+import { catalogoDoPerfil, ofereceRecepcionista, resumoDasPermissoes } from "@/lib/equipe/permissoes";
 import { EditorDePermissoes } from "./editor-de-permissoes";
 
 const CAMPO = "mt-1 min-h-11 w-full min-w-0 rounded-[var(--radius-control)] border border-border-strong bg-card px-3 text-sm";
 const SEM_PROFISSIONAL = "";
-const ROTULO: Record<PerfilDaEquipe, string> = { PROFISSIONAL: "Profissional", GERENTE: "Gerente" };
+const ROTULO: Record<PerfilDaEquipe, string> = { PROFISSIONAL: "Profissional", GERENTE: "Gerente", RECEPCIONISTA: "Recepcionista" };
 
 export function EditarAcesso({
   visao,
@@ -44,7 +44,7 @@ export function EditarAcesso({
 }) {
   const executarSensivel = useAcaoSensivel();
   const atual: EstadoDoAcesso = {
-    role: acesso.role === "GERENTE" ? "GERENTE" : "PROFISSIONAL",
+    role: acesso.role === "GERENTE" || acesso.role === "RECEPCIONISTA" ? acesso.role : "PROFISSIONAL",
     professionalId: acesso.professional?.id ?? null,
     granted: acesso.grantedPermissions,
   };
@@ -72,7 +72,10 @@ export function EditarAcesso({
   const r = resultadoDaEdicao(atual, escolha);
   const nomeDoProfissional = (id: string | null) =>
     id ? (opcoes.find((p) => p.id === id)?.name ?? "outro profissional") : "nenhum";
-  const resumoDepois = resumoDasPermissoes(perfil === "GERENTE" ? (visao.managerPermissions ?? []) : [], visao.permissionLabels, r.valem);
+  const resumoDepois = resumoDasPermissoes(catalogoDoPerfil(visao, perfil), visao.permissionLabels, r.valem);
+  const perfis = (["PROFISSIONAL", "GERENTE", "RECEPCIONISTA"] as const).filter(
+    (p) => p !== "RECEPCIONISTA" || ofereceRecepcionista(visao) || atual.role === "RECEPCIONISTA",
+  );
 
   // Qualquer mudança no formulário pede nova conferência.
   function mudar<T>(set: (v: T) => void) {
@@ -84,6 +87,7 @@ export function EditarAcesso({
   }
   const trocarPerfil = mudar((novo: PerfilDaEquipe) => {
     setPerfil(novo);
+    if (novo === "RECEPCIONISTA") setProfissionalId(SEM_PROFISSIONAL);
     if (novo === "PROFISSIONAL" && !profissionalId && opcoes[0]) setProfissionalId(opcoes[0].id);
   });
 
@@ -117,7 +121,7 @@ export function EditarAcesso({
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold text-ink">Perfil</legend>
           <div className="grid gap-2 sm:grid-cols-2">
-            {(["PROFISSIONAL", "GERENTE"] as const).map((valor) => (
+            {perfis.map((valor) => (
               <label
                 key={valor}
                 className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border p-3 text-sm has-[:checked]:border-[color:var(--color-accent)]"
@@ -142,6 +146,8 @@ export function EditarAcesso({
           )}
         </fieldset>
 
+        {perfil !== "RECEPCIONISTA" && (
+        <>
         <label className="block min-w-0 text-sm font-medium">
           Profissional vinculado
           <select
@@ -164,13 +170,15 @@ export function EditarAcesso({
             ? "O perfil Profissional precisa de um profissional ligado sem outro acesso. Cadastre em Profissionais."
             : "Só aparecem profissionais ativos sem acesso e sem convite pendente. Os agendamentos continuam com o profissional de cada um: nada é transferido."}
         </p>
+        </>
+        )}
 
         <div className="space-y-2">
           <p className="text-sm font-semibold text-ink">Permissões</p>
           <EditorDePermissoes
             visao={visao}
             perfil={perfil}
-            comProfissional={!!profissionalId}
+            comProfissional={perfil !== "RECEPCIONISTA" && !!profissionalId}
             marcadas={r.valem}
             aoMudar={mudar(setMarcadas)}
             prefixo={`editar-${acesso.membershipId}`}

@@ -33,7 +33,7 @@ import {
   type SituacaoNaEquipe,
   type VisaoDaEquipe,
 } from "@/lib/equipe/contratos";
-import { mesmasPermissoes, resumoDasPermissoes } from "@/lib/equipe/permissoes";
+import { catalogoDoPerfil, mesmasPermissoes, resumoDasPermissoes } from "@/lib/equipe/permissoes";
 import { EditorDePermissoes } from "./editor-de-permissoes";
 import { DefinirSenha } from "./definir-senha";
 import { EditarAcesso } from "./editar-acesso";
@@ -100,12 +100,12 @@ export function AcessoEquipe({
   const [editandoAcesso, setEditandoAcesso] = useState(false);
   const [marcadas, setMarcadas] = useState<PermissaoDaEquipe[]>(acesso.grantedPermissions);
   const base = `/tenants/${encodeURIComponent(visao.tenant.id)}/team`;
-  const deEquipe = acesso.role === "PROFISSIONAL" || acesso.role === "GERENTE";
-  const perfil = (acesso.role === "GERENTE" ? "GERENTE" : "PROFISSIONAL") as PerfilDaEquipe;
+  const deEquipe = acesso.role === "PROFISSIONAL" || acesso.role === "GERENTE" || acesso.role === "RECEPCIONISTA";
+  const perfil = (acesso.role === "GERENTE" || acesso.role === "RECEPCIONISTA" ? acesso.role : "PROFISSIONAL") as PerfilDaEquipe;
   const comProfissional = !!acesso.professional;
   const mudou = !mesmasPermissoes(marcadas, acesso.grantedPermissions);
   const efetivas = resumoDasPermissoes(
-    perfil === "GERENTE" ? (visao.managerPermissions ?? []) : [],
+    catalogoDoPerfil(visao, perfil),
     visao.permissionLabels,
     acesso.grantedPermissions,
   );

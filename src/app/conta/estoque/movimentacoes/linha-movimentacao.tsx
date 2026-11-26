@@ -46,6 +46,7 @@ export function LinhaMovimentacao({
         <span className="flex flex-wrap items-center gap-1.5">
           <Badge cor={corDoTipo(m.kind)}>{ROTULO_TIPO[m.kind]}</Badge>
           {m.reversedByMovementId && <Badge>Estornada</Badge>}
+          {m.saleId && <Badge>Venda</Badge>}
         </span>
       </td>
       <td className={clsx(TABELA.td, "text-right max-md:col-start-2 max-md:row-start-1")}>
