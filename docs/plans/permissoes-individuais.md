@@ -624,6 +624,21 @@ As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; is
 - **Testes executados localmente:** `vitest run src/stock src/common src/sales src/team src/accounts src/auth` (39 arquivos, 361 testes, inclusive a equivalência de Vendas), `test:e2e` de estoque e vendas (30), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou.
 - **CI:** um PR com base em outra branch não dispara o workflow sozinho; ele é disparado por `workflow_dispatch` na branch de Estoque. O resultado fica registrado no PR.
 
+- **CI de Estoque:** o run 45886146355 passou no head `90b9857`. O resultado está num comentário no #155.
+
+### Pendência antes de mesclar o #154
+
+A correção do teste lento (`5ab2316`) só existe no #155. Sem ela, o lote sorteado de `access-evaluation.spec.ts` pode passar de 5 s no #154 e reprovar.
+
+Ordem para resolver:
+
+1. Incorporar `5ab2316` na branch `refactor/permissoes-base-vendas` e fazer push.
+2. Conferir o CI do #154 no head novo.
+3. Ajustar `refactor/permissoes-base-estoque` sobre esse head, sem repetir a correção no diff do #155.
+4. Conferir o estado e o CI do #155 de novo.
+
+Só depois disso mesclar o #154, mudar a base do #155 para a integração e seguir para a próxima área.
+
 ### Resto da etapa 1
 
 - **Não feito:** converter agenda (`appointments/appointment-access.ts`, `appointments.service.ts`, `availability.service.ts`), recebimentos (`payments/payment-access.ts`), clientes (`consumers/consumer-access.ts`, `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe; a impressão de acesso geral (`accessFingerprint`) para todas as áreas; o `db-e2e` de alcance real sobre a cópia.
