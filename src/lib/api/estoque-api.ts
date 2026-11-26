@@ -64,6 +64,9 @@ export interface MovimentacaoEstoque {
   reversesMovementId: string | null;
   reversedByMovementId: string | null;
   countId: string | null;
+  /** Venda que gerou a baixa (ou a devolveu ao cancelar). Ausente numa API
+   * anterior às vendas. */
+  saleId?: string | null;
   recordedBy: { id: string; name: string };
   recordedAt: string;
 }
@@ -164,6 +167,7 @@ export function ehMovimentacao(v: unknown): v is MovimentacaoEstoque {
     talvez(texto)(v.reason) &&
     talvez(texto)(v.reversesMovementId) &&
     talvez(texto)(v.reversedByMovementId) &&
+    (v.saleId === undefined || talvez(texto)(v.saleId)) &&
     objeto(v.recordedBy) &&
     texto(v.recordedBy.name) &&
     texto(v.recordedAt)

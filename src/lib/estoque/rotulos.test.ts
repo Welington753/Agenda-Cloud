@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { motivoObrigatorio, podeEstornar, tiposPermitidos } from "./rotulos";
-import { falhaDeAcesso, mensagemDaFalha, MENSAGEM_NAO_CONTRATADO } from "./mensagens";
+import { falhaDeAcesso, mensagemDaFalha, MENSAGEM_BAIXA_DE_VENDA, MENSAGEM_NAO_CONTRATADO, MENSAGEM_USE_VENDAS } from "./mensagens";
 
 describe("regras de tela do estoque", () => {
   it("tipos de saída pela finalidade (espelha a API)", () => {
@@ -16,6 +16,14 @@ describe("regras de tela do estoque", () => {
     expect(podeEstornar({ kind: "SAIDA_VENDA", reversedByMovementId: "x" })).toBe(false);
     expect(podeEstornar({ kind: "AJUSTE_CONFERENCIA", reversedByMovementId: null })).toBe(false);
     expect(podeEstornar({ kind: "ESTORNO", reversedByMovementId: null })).toBe(false);
+    // Baixa ligada a uma venda: só o cancelamento da venda devolve.
+    expect(podeEstornar({ kind: "SAIDA_VENDA", reversedByMovementId: null, saleId: "v1" })).toBe(false);
+    expect(podeEstornar({ kind: "SAIDA_VENDA", reversedByMovementId: null, saleId: null })).toBe(true);
+  });
+
+  it("recusas das vendas no estoque têm texto próprio, pelo code", () => {
+    expect(mensagemDaFalha({ tipo: "conflito", code: "USE_VENDAS", mensagem: "outro texto", dados: {} })).toBe(MENSAGEM_USE_VENDAS);
+    expect(mensagemDaFalha({ tipo: "conflito", code: "BAIXA_DE_VENDA", mensagem: null, dados: {} })).toBe(MENSAGEM_BAIXA_DE_VENDA);
   });
 
   it("mensagens: sem adicional tem texto próprio; conflito usa o texto da API", () => {
