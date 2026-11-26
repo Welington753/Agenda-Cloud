@@ -19,16 +19,16 @@ Plano do lote: `docs/plans/vendas-v1.md` (seções 3.1, 3.2 e 5.7). Este roteiro
    1. `aplicarSomenteAPendente` (`backend/scripts/operacao-piloto.mjs`) com `esperadasAntes` = as 26, `pendente` = `SalesEnumValues1794528000000` e `posteriores` = `["SalesModule1794614400000"]`. Conferir: 27 registradas e os onze valores novos presentes (`feature_key.VENDAS`, seis `permission.VENDAS_*`, quatro `audit_action.SALE_*`).
    2. Numa conexão nova, a mesma função com `esperadasAntes` = as 27 e `pendente` = `SalesModule1794614400000`. Conferir:
       - 28 registradas;
-      - consultas da seção V2, com `0 | 0 | 0 | 0 | 0 | 0 | 0`;
+      - a consulta da condição de retorno (seção V3), com as sete contagens zero;
       - o adicional ESTOQUE (nome, descrição, preço) igual ao do backup.
    3. Rodar as janelas da seção V0 com verificação por navegador.
-   4. **Par anterior em 28** (seção V3): subir API e web do par anterior sobre a cópia em 28 e conferir login do dono e do gerente, agenda, "Equipe e acessos" (abrir e salvar uma concessão existente), estoque (abrir e editar um produto), portal "Plano e adicionais" (abrir, sem contratar) e agendamento público. Se falhar, o limite `0 | 0 | 0` deixa de existir e o retorno é só para frente desde a 28.
+   4. **Par anterior em 28** (seção V3): subir API e web do par anterior sobre a cópia em 28 e conferir login do dono e do gerente, agenda, "Equipe e acessos" (abrir e salvar uma concessão existente), estoque (abrir e editar um produto), portal "Plano e adicionais" (abrir, sem contratar) e agendamento público. Se falhar, não há retorno ao par anterior depois da 28, nem com as sete contagens zero: só correção para frente.
 5. **Piloto:** repetir os passos 4.1 e 4.2 contra o banco do piloto, em duas execuções separadas, conferindo depois de cada uma.
 6. **Publicar a API** no SHA do merge do PR 4 e esperar o log "28 de 28" e o `/health`. Depois, **publicar o web** no mesmo SHA.
 7. **Seção V2.** Se tudo passar, declarar a publicação concluída. A liberação comercial (preço e primeira ativação) continua com o responsável.
 8. **Registrar:**
    - SHAs, ids de deploy e estado do banco;
-   - o limite de retorno da seção V3 que valeu;
+   - o resultado das sete contagens da seção V3 e do passo 4.4 (se o retorno ao par anterior ficou disponível ou não);
    - "Estado e retomada" do plano e memória.
 
 ## V0. Intervalos entre migration, API e web
@@ -59,8 +59,8 @@ Verificação em cada janela: login de dono e de gerente, agenda, "Equipe e aces
   - A API nova **não** pode ser publicada, porque recusa subir em 27.
   - Corrigir num PR novo, ensaiar de novo e reaplicar só a 28.
 - **Deploy da API falha:** o Render mantém a API anterior (janela 1b, ensaiada). Não publicar o web. Conferir a versão live e o `/health`.
-- **Deploy do web falha:** fica a janela 2 (ensaiada). Se não resolver numa tentativa, voltar a API ao par anterior (dentro do limite da seção V3).
-- **Verificação de V2 falha:** não liberar. Se afetar agendamento, login, estoque ou portal, API e web voltam ao par anterior (dentro do limite da seção V3). Se for só Vendas, ficam no ar sem preço nem ativação até a correção.
+- **Deploy do web falha:** fica a janela 2 (ensaiada). Se não resolver numa tentativa, voltar a API ao par anterior (só com a condição de retorno da seção V3 atendida).
+- **Verificação de V2 falha:** não liberar. Se afetar agendamento, login, estoque ou portal, API e web voltam ao par anterior (só com a condição de retorno da seção V3 atendida). Se for só Vendas, ficam no ar sem preço nem ativação até a correção.
 - **Schema:** nunca há `down` das migrations 27 e 28 no piloto. A correção é sempre para frente.
 
 ## V2. Conferências só de leitura
@@ -74,6 +74,32 @@ SELECT count(*) FROM typeorm_migrations;                       -- 28
 SELECT name FROM typeorm_migrations ORDER BY id DESC LIMIT 2;  -- SalesModule…, SalesEnumValues…
 SELECT code, feature_key, availability
   FROM addon_modules WHERE code = 'VENDAS';                    -- VENDAS | VENDAS | AVAILABLE
+```
+
+4. A consulta da condição de retorno (seção V3): as sete contagens zero.
+
+5. HTTP sem sessão:
+   - `GET /tenants/x/sales/catalog` responde 401;
+   - `/conta/vendas` carrega o shell;
+   - login, agenda e agendamento público respondem como antes.
+
+## V3. Condição de retorno ao par anterior
+
+Esta é a **única definição** das condições de retorno do lote (o plano remete a ela). Antes da 28, o retorno é livre. Depois da 28, o par anterior só é candidato quando **as duas** condições valem:
+
+1. **As sete contagens de uso de VENDAS são zero**, lidas na consulta abaixo:
+   - `precos`: preços gravados para o adicional Vendas;
+   - `contratos`: itens de assinatura modular com Vendas;
+   - `overrides`: exceções de recurso com `feat_vendas`, ligadas ou desligadas;
+   - `planos`: planos com `feat_vendas`;
+   - `concessoes`: concessões `VENDAS_*` de gerente ou recepcionista;
+   - `vendas`: vendas mais recebimentos de vendas;
+   - `precos_sugeridos`: produtos com preço sugerido de venda.
+2. **O passo 4.4 da seção V aprovou** o par anterior sobre a cópia restaurada em 28.
+
+Contagens zeradas **não provam** que a API e o web anteriores sobem e operam em 28: isso só o ensaio do passo 4.4 prova. Sem o ensaio aprovado, não há retorno depois da 28, mesmo com tudo zero.
+
+```sql
 SELECT
   (SELECT count(*) FROM addon_module_prices WHERE module_code = 'VENDAS') AS precos,
   (SELECT count(*) FROM tenant_subscription_items WHERE module_code = 'VENDAS') AS contratos,
@@ -82,19 +108,10 @@ SELECT
   (SELECT count(*) FROM membership_permission_overrides WHERE permission::text LIKE 'VENDAS_%') AS concessoes,
   (SELECT count(*) FROM sales) + (SELECT count(*) FROM sale_payments) AS vendas,
   (SELECT count(*) FROM stock_products WHERE sale_price_cents IS NOT NULL) AS precos_sugeridos;
-  -- 0 | 0 | 0 | 0 | 0 | 0 | 0
+-- todas as sete colunas: 0
 ```
 
-4. HTTP sem sessão:
-   - `GET /tenants/x/sales/catalog` responde 401;
-   - `/conta/vendas` carrega o shell;
-   - login, agenda e agendamento público respondem como antes.
-
-## V3. Até quando o retorno ao par anterior é seguro
-
-- **Antes da 28:** livre.
-- **Depois da 28, enquanto a consulta da seção V2 der `0 | 0 | 0 | 0 | 0 | 0 | 0`** (nenhum preço, contratação, concessão, venda ou preço sugerido): o par anterior, **somente se** o passo 4.4 da seção V aprovou que ele sobe e opera em 28.
-- **Depois da primeira contratação, concessão `VENDAS_*`, preço sugerido ou venda: somente correção para frente.** A API anterior:
+- **Qualquer contagem acima de zero: somente correção para frente.** A API anterior:
   - grava `SAIDA_VENDA` manual com VENDAS ativo (sem passar pela venda);
   - apaga concessões que não conhece ao salvar o acesso do gerente (como no estoque, H3 de `publicacao-estoque-v1.md`);
   - não mostra vendas, recebimentos de vendas nem compras;
@@ -111,7 +128,7 @@ SELECT
 3. **Corrigir:** PR de correção a partir da integração, com o teste que reproduz o defeito, CI verde e publicação de API e web no mesmo SHA por este roteiro.
    - Defeito no schema: migration NOVA, sem `down` e sem editar a 27 ou a 28.
    - Dado errado: a correção é um lançamento, nunca edição. Cancelamento ou estorno pelo fluxo, ou uma migration de dados revisada, com backup e conferência antes e depois.
-4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API anterior às vendas: ela só é candidata dentro do limite da seção V3 e com o passo 4.4 aprovado.
+4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API anterior às vendas: ela só é candidata com a condição de retorno da seção V3 atendida (sete contagens zero **e** passo 4.4 aprovado).
 5. **Registrar** no "Estado e retomada" do plano o que foi contido, o backup e o SHA da correção.
 
 ## Roteiro curto de teste (depois da decisão de preço e ativação pelo responsável)

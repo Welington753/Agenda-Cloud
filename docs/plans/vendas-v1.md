@@ -313,7 +313,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 **Limites do retorno:**
 
 - antes da 28: livre;
-- depois da 28, sem nenhuma contratação, concessão ou venda (`0 | 0 | 0`): a API anterior, se o ensaio na cópia restaurada provar que ela sobe e opera em 28;
+- depois da 28, enquanto valer a **condição de retorno** (as sete contagens de uso de VENDAS, todas zero; definição única e consulta em `docs/runbooks/publicacao-vendas-v1.md`, seção V3): a API anterior, **somente** se o ensaio na cópia restaurada provar que ela sobe e opera em 28. Contagens zeradas não provam essa compatibilidade;
 - depois: **só correção para frente**.
 
 **Retirar o adicional não é rollback.** Só para novas vendas: o código novo, as tabelas e as vendas ficam. Serve para conter um defeito do fluxo de venda, não da manutenção, do estoque ou do resto da API.
@@ -327,7 +327,7 @@ Senão, `RAISE EXCEPTION` com um `CONSTRAINT` próprio, que a API traduz em 409 
 3. **Corrigir:** PR de correção a partir da integração, com o teste que reproduz o defeito, CI verde e publicação de API e web no mesmo SHA pelo runbook.
    - Se o defeito estiver no schema, migration NOVA, sem `down` e sem editar a 27 ou a 28.
    - Se houver dado errado, a correção é um lançamento, nunca edição: cancelamento ou estorno pelo fluxo, ou uma migration de dados revisada, com backup e conferência antes e depois.
-4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API atual (anterior às vendas): ela só é candidata dentro do limite `0 | 0 | 0` e com o ensaio aprovado.
+4. **API nova não sobe ou falha** (manifesto, configuração, defeito): republicar o **último SHA comprovadamente compatível com o schema e os dados já existentes**, isto é, um SHA cujo manifesto aceita o banco atual e que passou pelo ensaio na cópia restaurada com os mesmos tipos de dado (vendas, recebimentos, concessões). Se não existir versão assim, manter a contenção e corrigir para frente. Nunca voltar automaticamente à API atual (anterior às vendas): ela só é candidata com a condição de retorno valendo **e** o ensaio aprovado.
 5. **Registrar** no "Estado e retomada" o que foi contido, o backup e o SHA da correção.
 
 Antes do preço definido, o adicional não pode ser contratado. A primeira ativação real é decisão do responsável, depois do H2. Roteiro: `docs/runbooks/publicacao-vendas-v1.md`, no PR 4.
@@ -350,9 +350,22 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 - **Preço do adicional e primeira ativação real:** decisão do responsável. Até lá, VENDAS fica no catálogo sem preço e não contratável.
 - **Teste instável `src/config/env.validation.spec.ts` (backend), fora deste lote:** o teste gera a chave VAPID com `createECDH` aleatório; quando a chave privada começa com o byte zero (cerca de 1 em 256), `getPrivateKey()` devolve 31 bytes e a validação recusa. Falhou assim no CI do PR 3 (`50805e2`, tentativa 1) e passou na reexecução. Correção em PR separado, sem mistura com as vendas.
-- **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, o limite `0 | 0 | 0` deixa de existir e o retorno é só para frente desde a 28.
+- **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, não há retorno à API anterior nem com a condição de retorno valendo: o retorno é só para frente desde a 28.
 
 ## 8. Estado e retomada
+
+**26/11/2026, lacunas do PR 4 completadas no #152, sem merge.** Pedidas na conferência antes do merge:
+
+- **Três casos de navegador novos** em `tests/browser/vendas-flow.spec.ts`, cada um com o próprio estabelecimento, API real e PostgreSQL descartável:
+  - **A** "venda gravada e recebimento que falha antes de chegar à API: a tela repete só o recebimento": a primeira tentativa de recebimento é abortada antes da API; a tela mantém a venda (a receber) e oferece só "Enviar de novo" do recebimento. Banco: uma venda, uma baixa por item (2), saldo descontado uma vez, um recebimento; um único POST de criação de venda;
+  - **B** "resposta da criação da venda perdida depois de gravada": a criação vai à API real (`route.fetch`), a gravação é conferida no banco e só então a resposta é bloqueada. A repetição pela tela leva a mesma chave e o mesmo corpo e devolve a mesma venda (`created: false`), sem venda nem baixa duplicada;
+  - **C** "resposta do recebimento perdida depois de gravado": o mesmo com o recebimento; mesmo recebimento, um só registro e uma só auditoria `SALE_PAYMENT_RECORDED`.
+  - Nenhum caso revelou defeito de produto: o fluxo não mudou.
+- **Duas capturas novas** no cenário existente: `vendas-detalhe-recebida-390.png` (detalhe do dono com recebimento ativo) e `vendas-recebimentos-de-vendas-1280.png` (aba Recebimentos de vendas com dois lançamentos e os totais R$ 75,00, R$ 50,00 e R$ 25,00). As anteriores foram mantidas.
+- **Condição de retorno:** definição única na seção V3 do roteiro, com as sete contagens identificadas e a exigência do ensaio do par anterior; o plano (seções 5.7 e 7) remete a ela, sem a referência ambígua a três contagens.
+- **Limpeza da suíte:** a suspensão dos gerentes passou para `test.afterEach`, restrita aos estabelecimentos criados pela própria suíte; vale também em falha ou tempo esgotado. Encerramento forçado do processo continua sem garantia de limpeza.
+- **Validação local** (PostgreSQL 18 descartável com TLS; web do build anterior, que só difere no ícone do menu): `test:browser:vendas` com os quatro casos verdes (fluxo completo, A, B e C); nenhum gerente ativo no banco depois; `eslint`, `lint:types` e `tsc` do arquivo. Nenhuma outra suíte foi repetida (só o spec, a documentação e comentários do workflow mudaram).
+- **Próximo passo:** CI do novo head e decisão de merge pelo responsável.
 
 **26/11/2026, PR 4 aberto (#152: telas, navegador e roteiro), sem merge.** Branch `feat/vendas-web` (worktree `C:/wt/vendas-pr4`), a partir de `d836994` (#151 mesclado). A sessão anterior foi interrompida pelo limite de uso com todo o primeiro bloco sem commit; nada foi descartado, e o bloco foi commitado como estava (as validações relatadas valiam para aqueles arquivos).
 
