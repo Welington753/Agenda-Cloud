@@ -22,14 +22,9 @@
 //   do acesso. Retirar VENDAS bloqueia novas vendas sem prender as antigas.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
-import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import {
-  MANAGER_PERMISSION_REQUIRES,
-  managerCan,
-  receptionistCan,
-  type ManagerPermission,
-} from '../common/manager-permissions.js';
+import { accessCan, effectiveAccess } from '../common/access-evaluation.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import type { ManagerPermission } from '../common/manager-permissions.js';
 
 export const SALES_NEW_SALE_FEATURES: readonly FeatureKey[] = [FeatureKey.VENDAS, FeatureKey.ESTOQUE];
 export const SALES_MAINTENANCE_FEATURES = null;
@@ -38,12 +33,11 @@ export const SALES_FORBIDDEN_MESSAGE = 'Você não tem permissão para esta oper
 
 type SalesPermission = Extract<ManagerPermission, `VENDAS_${string}`>;
 
+// Toda decisão passa pela base comum (common/access-evaluation.ts), que
+// calcula o acesso efetivo pelo modelo LEGADO: as mesmas regras por papel de
+// antes (managerCan, receptionistCan e algumaNegada do dono).
 function pode(role: EstablishmentRole, overrides: readonly PermissionOverrideLike[], permissao: SalesPermission): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, permissao);
-  if (role === EstablishmentRole.RECEPCIONISTA) return receptionistCan(role, overrides, permissao);
-  if (role !== EstablishmentRole.DONO) return false;
-  const exigidas = [permissao, ...MANAGER_PERMISSION_REQUIRES[permissao]] as string[] as Permission[];
-  return !algumaNegada(overrides, exigidas);
+  return accessCan(effectiveAccess(role, overrides), permissao);
 }
 
 /** Abrir o catálogo de venda, procurar o cliente, confirmar a venda e
