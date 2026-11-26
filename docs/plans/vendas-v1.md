@@ -350,9 +350,52 @@ Respondidas em 25/11/2026: recebimento sem consulta geral (só as próprias vend
 
 - **Preço do adicional e primeira ativação real:** decisão do responsável. Até lá, VENDAS fica no catálogo sem preço e não contratável.
 - **Teste instável `src/config/env.validation.spec.ts` (backend), fora deste lote:** o teste gera a chave VAPID com `createECDH` aleatório; quando a chave privada começa com o byte zero (cerca de 1 em 256), `getPrivateKey()` devolve 31 bytes e a validação recusa. Falhou assim no CI do PR 3 (`50805e2`, tentativa 1) e passou na reexecução. Correção em PR separado, sem mistura com as vendas.
-- **Ensaio da API anterior em 28:** só a cópia restaurada prova que a API atual sobe com os valores novos de enum e com o adicional VENDAS no catálogo (o web anterior lê `addon_modules`). Se falhar, não há retorno à API anterior nem com a condição de retorno valendo: o retorno é só para frente desde a 28.
+- **Ensaio da API anterior em 28:** feito em 26/11/2026 na cópia restaurada (passo 4.4 aprovado: API `59df5ba` e web `96c8ba1` sobem e operam em 28). O retorno a esse par continua dependendo das sete contagens da seção V3 em zero no momento da decisão.
 
 ## 8. Estado e retomada
+
+**26/11/2026, publicação no piloto (PC do trabalho, UTC), autorizada pelo responsável: API e web em `8f71335`, banco em 28.**
+
+Origem do lote: as migrations 27 (`SalesEnumValues1794528000000`) e 28 (`SalesModule1794614400000`) vieram do #150; o #151 entregou a API; o #152 entregou o web, sem tocar migrations. `8f71335` é o merge do #152.
+
+- **Merge:** #152 mesclado na integração como `8f71335` (árvore igual ao head `4e0d841`), com CI verde no head final. O CI não foi repetido.
+- **Ensaio na cópia restaurada** (antes da publicação, só leituras no piloto):
+  - backup `pre-mig27-26-backup-2026-11-26T15-10-57Z` (PG 17.12, 26 migrations, 63 tabelas), restaurado num PostgreSQL 17.12 descartável com TLS, com contagem e md5 iguais;
+  - e-mail para uma caixa local, push desligado, sem `.env`. Escritas só num estabelecimento fictício (`is_test`, contas `@example.test`);
+  - 27 e 28 aplicadas uma por vez com `aplicarSomenteAPendente`, cada uma confirmada antes da seguinte. Só objetos novos apareceram, e as sete contagens da seção V3 ficaram em zero;
+  - janelas 1a, 1b, 2 e 3 da seção V0, por HTTP e por navegador. Na janela 2, `VENDAS_*` aparecem como não concedíveis, e o preço sugerido gravado pela API nova continuou depois de duas edições do produto pelo web anterior;
+  - **passo 4.4 aprovado:** API `59df5ba` e web `96c8ba1` sobre a cópia em 28, depois da API nova ter rodado;
+  - venda de balcão de um produto anterior às migrations (repetição sem duplicar, recebimento, estorno com senha, cancelamento com o saldo devolvido), `USE_VENDAS` na saída manual, 403 na nova venda com o adicional retirado e `test:browser:vendas` (4 casos) sobre a cópia;
+  - as 574 linhas do backup comparadas com uma segunda restauração migrada sem aplicação rodando: nenhuma diferença.
+- **Publicação:**
+  1. **Ambiente** (15:36): API `59df5ba` (`dep-dc2so3lg1s2s739pvi4g`) e web `96c8ba1` (`dep-dc3em72jnfac73ai2bu0`) live; Auto-Deploy `no`/`off` nos dois; `/health`, `/login` e `/agenda_api/health` 200; PostgreSQL 17.12 com as 26 migrations iguais às do par anterior.
+  2. **Backup novo** `pre-mig27-26-backup-2026-11-26T15-37-35Z` (63 tabelas, SHA-256 `4b1374e8…65b94f62`). A restauração num PostgreSQL 17.12 descartável deu 0 diferenças. O md5 de cada tabela era igual ao do backup de 15:10, ou seja, o ensaio valeu para os mesmos dados.
+  3. **Migration 27** (15:38:46 a 15:38:52), com o kit compilado de `4e0d841`: 26 antes, a 28 fora da etapa, mesma sessão com `lock_timeout` de 10 s. Lida depois numa conexão nova: 27 registradas e os onze valores novos (`audit_action` 4, `feature_key` 1, `permission` 6).
+  4. **Migration 28**, em execução separada (15:39:08 a 15:39:17): 28 registradas; tabelas `sales` e `sale_payments` presentes; adicional VENDAS `AVAILABLE`, sem preço; ESTOQUE igual (nome, disponibilidade, um preço); as sete contagens em zero. `/health` e `/login` continuaram 200 com o par anterior (janela 1b).
+  5. **API `8f71335`:** deploy `dep-dc455f7lk1mc739lkrj0`, live às 15:40:40. Log: "Migrations exigidas por este código: 28 de 28 registradas no banco." `/health` 200.
+  6. **Web `8f71335`:** deploy `dep-dc4564sipgvc738lqeng`, live às 15:44:26 ("Ready in 1395ms").
+- **Seção V2** (15:45):
+  - os dois serviços live em `8f71335`, com Auto-Deploy ainda `no`/`off`;
+  - banco com 28 migrations, as duas últimas `SalesEnumValues…` e `SalesModule…`; VENDAS | VENDAS | AVAILABLE;
+  - sete contagens da seção V3: `precos` 0, `contratos` 0, `overrides` 0, `planos` 0, `concessoes` 0, `vendas` 0, `precos_sugeridos` 0;
+  - sem sessão: `GET /tenants/x/sales/catalog` 401, direto e pelo proxy do web; `/conta/vendas`, `/conta/agendamentos`, `/conta/estoque`, `/login` e `/portal` carregam o shell (200); `POST /auth/login` com corpo vazio 400;
+  - agendamento público: os dois estabelecimentos com agendamento ligado respondem 200 na API (`/public/<slug>`) e no web (`/agendar/<slug>`); o que está desligado responde 404 nos dois;
+  - nenhuma linha de erro ou aviso nos logs da API e do web depois dos deploys.
+- **Retorno:** o par anterior (`59df5ba`/`96c8ba1`) continua candidato enquanto as sete contagens estiverem em zero no momento da decisão, porque o passo 4.4 foi aprovado. Qualquer contagem acima de zero significa só correção para frente (seções V3 e V4 do roteiro). Nunca há `down`, e nunca se restaura backup antigo sobre o piloto.
+- **Nada comercial foi feito:** nenhum preço, contrato, override, concessão `VENDAS_*` ou preço sugerido, e nenhuma operação no piloto. As configurações de e-mail e integrações não foram tocadas.
+- **Correção de um registro do ensaio:** os três estabelecimentos do piloto estão marcados `is_test`. Por isso o ensaio, que procurava agendamento público num estabelecimento com `is_test` falso, não achou nenhum e conferiu o agendamento público só no estabelecimento fictício. No piloto, dois deles têm o agendamento ligado e foram conferidos depois da publicação (acima).
+
+**Não verificado**
+
+- Fluxos com sessão no piloto (login real, agenda com dados, "Equipe e acessos", estoque, portal autenticado): só sem sessão no piloto; com sessão, só na cópia restaurada.
+- Uma linha de base das respostas públicas antes do deploy não foi gravada. As respostas depois foram comparadas com a regra (ligado 200, desligado 404).
+- Logs por requisição do Render (`--type request` não devolve nada neste computador).
+- Aparelho real (celular).
+- Vendas de verdade no piloto: dependem do preço e da primeira ativação.
+
+**Próximo passo:** decisão do responsável sobre o preço do adicional Vendas e a primeira ativação. Depois, o roteiro curto de teste do roteiro, num estabelecimento de teste.
+
+**Só neste computador:** os backups `pre-mig27-26-backup-2026-11-26T15-10-57Z` e `pre-mig27-26-backup-2026-11-26T15-37-35Z` e o registro do ensaio com os scripts (`%USERPROFILE%\AgendaCloud-operacoes\ensaio-vendas-2026-11-26`). Os dois backups devem ser guardados.
 
 **26/11/2026, ajustes da revisão visual no #152, sem merge.**
 
