@@ -1,0 +1,41 @@
+{
+  "_comment": "Rounding vectors for a sale (docs/plans/vendas-v1.md, section 4). Read by backend/src/sales/sale-math.spec.ts and by src/lib/vendas/calculo.test.ts: the API and the web check the same table.",
+  "lines": [
+    { "unitPriceCents": 1, "quantityMilli": 1, "lineTotalCents": 0, "case": "0,001 KG a R$ 0,01: menos de meio centavo" },
+    { "unitPriceCents": 1, "quantityMilli": 500, "lineTotalCents": 1, "case": "meio centavo exato sobe" },
+    { "unitPriceCents": 1, "quantityMilli": 499, "lineTotalCents": 0, "case": "logo abaixo de meio centavo desce" },
+    { "unitPriceCents": 3, "quantityMilli": 500, "lineTotalCents": 2, "case": "1,5 centavo sobe para 2" },
+    { "unitPriceCents": 1999, "quantityMilli": 1000, "lineTotalCents": 1999, "case": "1 UN a R$ 19,99" },
+    { "unitPriceCents": 1999, "quantityMilli": 3000, "lineTotalCents": 5997, "case": "3 UN a R$ 19,99" },
+    { "unitPriceCents": 4590, "quantityMilli": 1250, "lineTotalCents": 5738, "case": "1,250 KG a R$ 45,90 (5737,5 sobe)" },
+    { "unitPriceCents": 4590, "quantityMilli": 333, "lineTotalCents": 1528, "case": "0,333 KG a R$ 45,90 (1528,47 desce)" },
+    { "unitPriceCents": 100000000, "quantityMilli": 1000000000, "lineTotalCents": 100000000000000, "case": "teto de preço × teto de quantidade (1e17 no meio da conta)" },
+    { "unitPriceCents": 99999999, "quantityMilli": 999999999, "lineTotalCents": 99999998900000, "case": "perto do teto, sem perder precisão" }
+  ],
+  "sales": [
+    {
+      "items": [
+        { "unitPriceCents": 1, "quantityMilli": 500 },
+        { "unitPriceCents": 1, "quantityMilli": 500 }
+      ],
+      "totalCents": 2,
+      "case": "duas linhas de meio centavo: cada uma sobe; o total é 2, sem novo arredondamento"
+    },
+    {
+      "items": [
+        { "unitPriceCents": 1999, "quantityMilli": 2000 },
+        { "unitPriceCents": 4590, "quantityMilli": 1250 }
+      ],
+      "totalCents": 9736,
+      "case": "2 UN a R$ 19,99 e 1,250 KG a R$ 45,90"
+    }
+  ],
+  "outOfRange": [
+    { "unitPriceCents": 0, "quantityMilli": 1000 },
+    { "unitPriceCents": 100000001, "quantityMilli": 1000 },
+    { "unitPriceCents": 1.5, "quantityMilli": 1000 },
+    { "unitPriceCents": 100, "quantityMilli": 0 },
+    { "unitPriceCents": 100, "quantityMilli": 1000000001 },
+    { "unitPriceCents": 100, "quantityMilli": 1.5 }
+  ]
+}
