@@ -80,6 +80,7 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
   const marca = `vendas-${id().slice(0, 10)}`;
   const db = await conectarBancoDeTeste();
   const abertos: { contexto: { close: () => Promise<void> } }[] = [];
+  let tenantDoTeste: string | null = null;
   try {
     // ------------------------------------------------------------- cenário
     const dono = await criarContaDeTeste(page.request, {
@@ -89,6 +90,7 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
       password: SENHA,
     });
     const tenantId = dono.tenant.id;
+    tenantDoTeste = tenantId;
     for (const recurso of ["feat_estoque", "feat_vendas"]) {
       await db.query(`INSERT INTO tenant_feature_overrides (id, tenant_id, feature_id, enabled) VALUES ($1, $2, $3, true)`, [id(), tenantId, recurso]);
     }
@@ -360,6 +362,12 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     expect(erros).toEqual([]);
   } finally {
     for (const a of abertos) await a.contexto.close();
+    // O banco descartável é o mesmo das suítes do backend que rodam depois no
+    // CI: o levantamento de `pilot-team-manager-check` lista só os primeiros
+    // estabelecimentos com gerente ativo. Gerente suspenso não entra nele.
+    if (tenantDoTeste) {
+      await db.query("UPDATE memberships SET status = 'SUSPENDED' WHERE tenant_id = $1 AND role = 'GERENTE'", [tenantDoTeste]);
+    }
     await db.end();
   }
 });
