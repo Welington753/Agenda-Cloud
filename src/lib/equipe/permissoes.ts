@@ -6,14 +6,42 @@
 //   agenda, profissionais, serviços e clientes), sempre visíveis na tela.
 // - Desmarcar uma área tira junto o que dependia dela.
 // - As três ações sobre os próprios atendimentos e a consulta das próprias
-//   comissões valem só com profissional ligado; as áreas do estabelecimento, só no perfil Gerente.
+//   comissões valem só com profissional ligado; as áreas do estabelecimento,
+//   todas no perfil Gerente.
+// - Recepcionista: só registrar vendas, receber as próprias vendas e alterar
+//   o preço numa venda nova, cada uma marcada em separado. Nunca estoque,
+//   agenda, clientes ou consulta geral de vendas (o servidor recusa).
 import type {
   PerfilDaEquipe,
   PermissaoDaEquipe,
   PermissaoDeGerenteNoCatalogo,
   PermissaoFuncionario,
   PermissaoGerente,
+  VisaoDaEquipe,
 } from "./contratos";
+
+/** O que o perfil Recepcionista pode receber (RECEPTIONIST_PERMISSIONS da
+ * API). A lista que vale é a do servidor, quando vem na visão. */
+export const PERMISSOES_DA_RECEPCIONISTA: readonly PermissaoGerente[] = ["VENDAS_REGISTRAR", "VENDAS_RECEBER", "VENDAS_ALTERAR_PRECO"];
+
+/** A API oferece o perfil Recepcionista (versão com vendas). */
+export function ofereceRecepcionista(visao: Pick<VisaoDaEquipe, "receptionistPermissions">): boolean {
+  return Array.isArray(visao.receptionistPermissions);
+}
+
+/** As áreas do catálogo que o perfil pode receber, na ordem do servidor. */
+export function catalogoDoPerfil(
+  visao: Pick<VisaoDaEquipe, "managerPermissions" | "receptionistPermissions">,
+  perfil: PerfilDaEquipe,
+): PermissaoDeGerenteNoCatalogo[] {
+  const catalogo = visao.managerPermissions ?? [];
+  if (perfil === "GERENTE") return catalogo;
+  if (perfil === "RECEPCIONISTA") {
+    const lista: readonly string[] = visao.receptionistPermissions ?? PERMISSOES_DA_RECEPCIONISTA;
+    return catalogo.filter((c) => lista.includes(c.permission));
+  }
+  return [];
+}
 
 export const PERMISSOES_PROPRIAS: readonly PermissaoFuncionario[] = [
   "ATENDIMENTO_PROPRIO_INICIAR",
@@ -69,7 +97,11 @@ export function ajustarAoPerfil(
   perfil: PerfilDaEquipe,
   comProfissional: boolean,
 ): PermissaoDaEquipe[] {
-  return marcadas.filter((p) => (ehPermissaoPropria(p) ? comProfissional : perfil === "GERENTE"));
+  return marcadas.filter((p) =>
+    ehPermissaoPropria(p)
+      ? comProfissional && perfil !== "RECEPCIONISTA"
+      : perfil === "GERENTE" || (perfil === "RECEPCIONISTA" && (PERMISSOES_DA_RECEPCIONISTA as readonly string[]).includes(p)),
+  );
 }
 
 /** Catálogo agrupado por área, na ordem do servidor. */

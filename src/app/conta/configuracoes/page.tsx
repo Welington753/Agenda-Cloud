@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRealAuth } from "@/lib/auth/real-auth-context";
 import { encontrarContextoPorTenantId } from "@/lib/auth/real-session-state";
-import { perfilDoPapel } from "@/lib/conta/papel";
+import { perfilDoPapel, temAlgumaAreaDeVendas } from "@/lib/conta/papel";
 import { PaginaConta } from "@/components/conta/pagina-conta";
 import { ListaDeSecoes, useSecoesDeConfiguracoes } from "@/components/conta/configuracoes";
 
@@ -44,7 +44,7 @@ export default function ConfiguracoesPage() {
           Sua conta não tem acesso ativo a um estabelecimento agora. Se você trabalha em um, fale com o responsável.
         </p>
       )}
-      {contexto && perfil === "sem-area" && (
+      {contexto && (perfil === "sem-area" || (perfil === "recepcionista" && !temAlgumaAreaDeVendas(contexto))) && (
         <p className="rounded-[var(--radius-card)] border border-border bg-card p-4 text-sm text-ink-soft" data-testid="papel-sem-area">
           Este papel não tem área liberada neste estabelecimento. Fale com o responsável.
         </p>

@@ -28,12 +28,14 @@ export type PermissaoGerente =
   | "PROFISSIONAIS_GERENCIAR"
   | "RECEBIMENTOS_VISUALIZAR"
   | "RECEBIMENTOS_REGISTRAR"
-  | "RECEBIMENTOS_ESTORNAR";
+  | "RECEBIMENTOS_ESTORNAR"
+  | `ESTOQUE_${"VISUALIZAR" | "GERENCIAR"}`
+  | `VENDAS_${"REGISTRAR" | "RECEBER" | "ALTERAR_PRECO" | "VISUALIZAR" | "CANCELAR" | "ESTORNAR_RECEBIMENTO"}`;
 
 /** Tudo o que a tela de equipe concede. */
 export type PermissaoDaEquipe = PermissaoFuncionario | PermissaoGerente;
 
-export type PerfilDaEquipe = "PROFISSIONAL" | "GERENTE";
+export type PerfilDaEquipe = "PROFISSIONAL" | "GERENTE" | "RECEPCIONISTA";
 
 export interface PermissaoDeGerenteNoCatalogo {
   permission: PermissaoGerente;
@@ -120,6 +122,7 @@ export interface VisaoDaEquipe {
   maxInviteSends: number;
   /** Ausentes numa API anterior: a tela trata como lista vazia. */
   managerPermissions?: PermissaoDeGerenteNoCatalogo[];
+  receptionistPermissions?: PermissaoGerente[]; // áreas da Recepcionista; ausente numa API anterior
   accesses?: AcessoNaLista[];
   members: MembroDaEquipe[];
 }
@@ -241,7 +244,8 @@ export function ehVisaoDaEquipe(v: unknown): v is VisaoDaEquipe {
     lista(v.members) &&
     v.members.every(ehMembro) &&
     (v.accesses === undefined || (lista(v.accesses) && v.accesses.every(ehAcessoNaLista))) &&
-    (v.managerPermissions === undefined || (lista(v.managerPermissions) && v.managerPermissions.every(ehPermissaoDoCatalogo)))
+    (v.managerPermissions === undefined || (lista(v.managerPermissions) && v.managerPermissions.every(ehPermissaoDoCatalogo))) &&
+    (v.receptionistPermissions === undefined || (lista(v.receptionistPermissions) && v.receptionistPermissions.every(texto)))
   );
 }
 
@@ -317,7 +321,7 @@ export const ROTULO_PERFIL: Record<string, string> = {
   DONO: "Dono(a)",
   GERENTE: "Gerente",
   PROFISSIONAL: "Profissional",
-  RECEPCIONISTA: "Recepcionista (papel antigo)",
+  RECEPCIONISTA: "Recepcionista",
 };
 
 /** Texto das vagas ("3 de 5 acessos utilizados"), sempre com os números que o

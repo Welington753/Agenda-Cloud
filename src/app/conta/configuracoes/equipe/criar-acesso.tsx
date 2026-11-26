@@ -24,7 +24,7 @@ import {
   type AcessoCriado,
 } from "@/lib/equipe/acesso-por-usuario";
 import type { PerfilDaEquipe, PermissaoDaEquipe, VisaoDaEquipe } from "@/lib/equipe/contratos";
-import { ajustarAoPerfil } from "@/lib/equipe/permissoes";
+import { ajustarAoPerfil, ofereceRecepcionista } from "@/lib/equipe/permissoes";
 import { senhaPronta } from "@/lib/equipe/senha-do-acesso";
 import { CamposDeSenha } from "./campos-de-senha";
 import { EditorDePermissoes } from "./editor-de-permissoes";
@@ -48,6 +48,11 @@ const PERFIS: { valor: PerfilDaEquipe; rotulo: string; descricao: string }[] = [
     valor: "GERENTE",
     rotulo: "Gerente",
     descricao: "Ajuda a cuidar do estabelecimento. Só acessa as áreas que você marcar; pode não atender clientes.",
+  },
+  {
+    valor: "RECEPCIONISTA",
+    rotulo: "Recepcionista",
+    descricao: "Registra vendas e recebe as próprias vendas, conforme você marcar. Não atende clientes nem vê o estoque.",
   },
 ];
 
@@ -78,7 +83,9 @@ export function CriarAcesso({
   const [confirmacao, setConfirmacao] = useState("");
   const [marcadas, setMarcadas] = useState<PermissaoDaEquipe[]>([]);
   const [fase, setFase] = useState<Fase>({ tipo: "editando", erro: null });
-  const comProfissional = profissionalId !== SEM_PROFISSIONAL;
+  const comProfissional = perfil !== "RECEPCIONISTA" && profissionalId !== SEM_PROFISSIONAL;
+  // Recepcionista só aparece com a API que a conhece.
+  const perfis = PERFIS.filter((p) => p.valor !== "RECEPCIONISTA" || ofereceRecepcionista(visao));
   const problemaDoUsuario = erroDoUsuario(usuario);
   const faltaProfissional = perfil === "PROFISSIONAL" && !comProfissional;
   // Sem resposta ("incerto"), o formulário fica travado: "Conferir" repete
@@ -89,7 +96,8 @@ export function CriarAcesso({
 
   function trocarPerfil(novo: PerfilDaEquipe) {
     setPerfil(novo);
-    if (novo === "PROFISSIONAL" && !comProfissional && profissionaisLivres[0]) setProfissionalId(profissionaisLivres[0].id);
+    if (novo === "RECEPCIONISTA") setProfissionalId(SEM_PROFISSIONAL);
+    if (novo === "PROFISSIONAL" && profissionalId === SEM_PROFISSIONAL && profissionaisLivres[0]) setProfissionalId(profissionaisLivres[0].id);
   }
 
   function trocarNome(valor: string) {
@@ -180,7 +188,7 @@ export function CriarAcesso({
           <fieldset className="space-y-2">
             <legend className="text-sm font-semibold text-ink">Perfil</legend>
             <div className="grid gap-2 sm:grid-cols-2">
-              {PERFIS.map((p) => (
+              {perfis.map((p) => (
                 <label
                   key={p.valor}
                   className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 text-sm has-[:checked]:border-[color:var(--color-accent)]"
@@ -202,6 +210,8 @@ export function CriarAcesso({
           </fieldset>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            {perfil !== "RECEPCIONISTA" && (
+            <>
             <label className="min-w-0 text-sm font-medium">
               Profissional vinculado
               <select
@@ -228,6 +238,8 @@ export function CriarAcesso({
                   ? "Escolha um profissional só se esta pessoa também atende. Nenhum profissional novo é criado."
                   : "O acesso mostra a agenda deste profissional."}
             </p>
+            </>
+            )}
             <label className="min-w-0 text-sm font-medium">
               Nome da pessoa
               <input

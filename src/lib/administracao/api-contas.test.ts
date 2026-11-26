@@ -20,7 +20,9 @@ describe("ações da gestão de contas", () => {
     responder(403, { code: "REAUTENTICACAO_NECESSARIA", message: "Confirme" });
     expect(await acaoAdministrativa("/x", "POST", {})).toEqual({ tipo: "reautenticar" });
     responder(403, { message: "Sem permissão" });
-    expect(await acaoAdministrativa("/x", "POST", {})).toEqual({ tipo: "proibido", mensagem: "Sem permissão" });
+    expect(await acaoAdministrativa("/x", "POST", {})).toEqual({ tipo: "proibido", codigo: null, mensagem: "Sem permissão" });
+    responder(403, { code: "RECURSO_NAO_CONTRATADO", message: "Não contratado" });
+    expect(await acaoAdministrativa("/x", "POST", {})).toEqual({ tipo: "proibido", codigo: "RECURSO_NAO_CONTRATADO", mensagem: "Não contratado" });
   });
 
   it("conflito e convite encerrado trazem código e mensagem do servidor", async () => {

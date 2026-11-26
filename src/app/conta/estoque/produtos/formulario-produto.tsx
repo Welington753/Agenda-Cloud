@@ -21,6 +21,8 @@ import type { CategoriaEstoque, DadosDoProduto, ProdutoEstoque } from "@/lib/api
 import { lerQuantidade, MAIOR_SALDO_MILLI, quantidadeParaCampo, UNIDADES, type UnidadeEstoque } from "@/lib/estoque/quantidade";
 import { FINALIDADES, type FinalidadeEstoque } from "@/lib/estoque/rotulos";
 import { subcategoriaCompativel } from "@/lib/estoque/filtros";
+import { lerPrecoSugerido } from "@/lib/estoque/preco-sugerido";
+import { centavosParaCampo } from "@/lib/servicos/dinheiro";
 import type { ModeloDeProduto } from "@/lib/estoque/atalhos-produto";
 import { Botao } from "@/components/ui/button";
 import { Campo, CLASSE_CAMPO, ErroDoFormulario, NotaInformativa } from "@/components/estoque/comum";
@@ -65,6 +67,7 @@ export function FormularioProduto({
   const [finalidade, setFinalidade] = useState<FinalidadeEstoque>(base?.purpose ?? "AMBOS");
   const [unidade, setUnidade] = useState<UnidadeEstoque>(base?.unit ?? "UN");
   const [minimo, setMinimo] = useState(base ? quantidadeParaCampo(base.minQuantityMilli) : "0");
+  const [precoSugerido, setPrecoSugerido] = useState(centavosParaCampo(produto?.salePriceCents ?? null));
   const [atalho, setAtalho] = useState<"categoria" | "subcategoria" | null>(null);
   const [inicial, setInicial] = useState("");
   const [erros, setErros] = useState<Record<string, string>>({});
@@ -132,6 +135,11 @@ export function FormularioProduto({
       if (!lido.ok) novos.inicial = lido.erro;
       else inicialMilli = lido.milli > 0 ? lido.milli : null;
     }
+    // Preço sugerido só para o que se vende. Consumo interno não manda o
+    // campo: o servidor mantém o que estava gravado.
+    const vende = finalidade !== "CONSUMO_INTERNO";
+    const lidoPreco = lerPrecoSugerido(precoSugerido);
+    if (vende && !lidoPreco.ok) novos.preco = lidoPreco.erro;
     setErros(novos);
     if (Object.keys(novos).length || !lidoMinimo.ok) return;
     aoEnviar({
@@ -144,6 +152,7 @@ export function FormularioProduto({
         purpose: finalidade,
         unit: unidade,
         minQuantityMilli: lidoMinimo.milli,
+        ...(vende && lidoPreco.ok ? { salePriceCents: lidoPreco.centavos } : {}),
       },
       initialQuantityMilli: inicialMilli,
     }, continuar);
@@ -240,6 +249,16 @@ export function FormularioProduto({
         <Campo rotulo="Estoque mínimo" htmlFor="produto-minimo" erro={erros.minimo} ajuda="Abaixo ou igual a isto, o produto aparece com estoque baixo. 0 desliga o aviso.">
           <input id="produto-minimo" className={CLASSE_CAMPO} inputMode="decimal" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
         </Campo>
+        {finalidade !== "CONSUMO_INTERNO" && (
+          <Campo
+            rotulo="Preço sugerido de venda (opcional)"
+            htmlFor="produto-preco"
+            erro={erros.preco}
+            ajuda={`Usado em Vendas, por ${unidade}. Vazio: sem preço sugerido (nunca grátis); só quem pode alterar o preço vende.`}
+          >
+            <input id="produto-preco" className={CLASSE_CAMPO} inputMode="decimal" placeholder="0,00" value={precoSugerido} onChange={(e) => setPrecoSugerido(e.target.value)} />
+          </Campo>
+        )}
         {!produto && (
           <Campo rotulo="Saldo inicial (opcional)" htmlFor="produto-inicial" erro={erros.inicial} ajuda="Quantidade que você já tem ao cadastrar este produto.">
             <input id="produto-inicial" className={CLASSE_CAMPO} inputMode="decimal" value={inicial} onChange={(e) => setInicial(e.target.value)} />

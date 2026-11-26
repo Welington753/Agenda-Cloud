@@ -11,8 +11,10 @@
 //   no servidor pelas mesmas políticas das rotas), a própria agenda se tiver
 //   profissional ligado, e as configurações pessoais. Nunca o Início, as
 //   configurações do estabelecimento ou a equipe.
-// - RECEPCIONISTA: papel antigo sem área liberada; só as configurações
-//   pessoais. O mesmo vale para quem não tem estabelecimento.
+// - RECEPCIONISTA: só as vendas que o dono concedeu (registrar, receber as
+//   próprias vendas, alterar o preço numa venda nova) e as configurações
+//   pessoais. Sem concessão, só as configurações pessoais.
+// - Sem estabelecimento: só as configurações pessoais.
 import type { PapelEstabelecimentoReal, TenantContextReal } from "@/lib/api/auth-api";
 import {
   ROTA_AGENDA,
@@ -26,6 +28,7 @@ import {
   ROTA_SELECIONAR_ESTABELECIMENTO,
   ROTA_SERVICOS,
   ROTA_SOLICITACOES,
+  ROTA_VENDAS,
   emSecaoDoEstabelecimento,
 } from "./rotas";
 
@@ -33,7 +36,7 @@ export { ROTA_EQUIPE, ROTA_MINHA_AGENDA } from "./rotas";
 /** Mantido pelo nome antigo: o Início continua no mesmo endereço. */
 export const ROTA_VISAO_GERAL = ROTA_INICIO;
 
-export type PerfilDaArea = "dono" | "gerente" | "funcionario" | "sem-area";
+export type PerfilDaArea = "dono" | "gerente" | "funcionario" | "recepcionista" | "sem-area";
 
 /** Chaves de `TenantContext.areas` (backend/src/accounts/tenant-effective-access.ts). */
 export type AreaDoEstabelecimento =
@@ -64,12 +67,24 @@ export type AreaDoEstabelecimento =
   | "AGENDA_PROPRIA_FALTA"
   | "AGENDA_PROPRIA_COMISSOES"
   | "ESTOQUE_VER"
-  | "ESTOQUE_GERENCIAR";
+  | "ESTOQUE_GERENCIAR"
+  | "VENDAS_NOVA"
+  | "VENDAS_ALTERAR_PRECO"
+  | "VENDAS_HISTORICO"
+  | "VENDAS_VER_TODAS"
+  | "VENDAS_RECEBER"
+  | "VENDAS_CANCELAR"
+  | "VENDAS_ESTORNAR_RECEBIMENTO";
+
+/** Áreas que abrem `/conta/vendas`: a nova venda (com o adicional) ou a
+ * manutenção das vendas já registradas (mesmo depois de retirado). */
+export const AREAS_DE_VENDAS: readonly AreaDoEstabelecimento[] = ["VENDAS_NOVA", "VENDAS_HISTORICO", "VENDAS_VER_TODAS"];
 
 export function perfilDoPapel(papel: PapelEstabelecimentoReal | null | undefined): PerfilDaArea {
   if (papel === "DONO") return "dono";
   if (papel === "GERENTE") return "gerente";
   if (papel === "PROFISSIONAL") return "funcionario";
+  if (papel === "RECEPCIONISTA") return "recepcionista";
   return "sem-area";
 }
 
@@ -86,30 +101,39 @@ export function temArea(
   return false;
 }
 
-/** Páginas do gerente e a área que cada uma exige, na ordem de preferência
- * para onde ele começa. */
-const PAGINAS_DO_GERENTE: readonly { href: string; area: AreaDoEstabelecimento }[] = [
-  { href: ROTA_SOLICITACOES, area: "SOLICITACOES_VER" },
-  { href: ROTA_AGENDA, area: "AGENDA_VER" },
-  { href: ROTA_MINHA_AGENDA, area: "AGENDA_PROPRIA_VER" },
-  { href: ROTA_CLIENTES, area: "CLIENTES_VER" },
-  { href: ROTA_RECEBIMENTOS, area: "RECEBIMENTOS_VER" },
-  { href: ROTA_SERVICOS, area: "SERVICOS_VER" },
-  { href: ROTA_PROFISSIONAIS, area: "PROFISSIONAIS_VER" },
+/** Páginas do gerente e as áreas que abrem cada uma (basta uma), na ordem
+ * de preferência para onde ele começa. */
+const PAGINAS_DO_GERENTE: readonly { href: string; areas: readonly AreaDoEstabelecimento[] }[] = [
+  { href: ROTA_SOLICITACOES, areas: ["SOLICITACOES_VER"] },
+  { href: ROTA_AGENDA, areas: ["AGENDA_VER"] },
+  { href: ROTA_MINHA_AGENDA, areas: ["AGENDA_PROPRIA_VER"] },
+  { href: ROTA_CLIENTES, areas: ["CLIENTES_VER"] },
+  // Nova venda, as próprias operações ou a consulta geral: a página mostra
+  // só as abas das áreas concedidas.
+  { href: ROTA_VENDAS, areas: AREAS_DE_VENDAS },
+  { href: ROTA_RECEBIMENTOS, areas: ["RECEBIMENTOS_VER"] },
+  { href: ROTA_SERVICOS, areas: ["SERVICOS_VER"] },
+  { href: ROTA_PROFISSIONAIS, areas: ["PROFISSIONAIS_VER"] },
   // Todo o estoque (produtos, categorias, movimentações e conferência) com a
   // mesma área: a página esconde o que precisa de ESTOQUE_GERENCIAR.
-  { href: ROTA_ESTOQUE, area: "ESTOQUE_VER" },
+  { href: ROTA_ESTOQUE, areas: ["ESTOQUE_VER"] },
 ];
 const ORDEM_DE_INICIO_DO_GERENTE = [
   ROTA_AGENDA,
   ROTA_SOLICITACOES,
   ROTA_MINHA_AGENDA,
   ROTA_CLIENTES,
+  ROTA_VENDAS,
   ROTA_RECEBIMENTOS,
   ROTA_SERVICOS,
   ROTA_PROFISSIONAIS,
   ROTA_ESTOQUE,
 ];
+
+/** A sessão abre alguma aba de `/conta/vendas`. */
+export function temAlgumaAreaDeVendas(contexto: Pick<TenantContextReal, "role" | "areas"> | null | undefined): boolean {
+  return AREAS_DE_VENDAS.some((area) => temArea(contexto, area));
+}
 
 /** Onde cada perfil começa (depois de entrar ou trocar de estabelecimento).
  * Quem administra a plataforma sem estabelecimento é levado à administração
@@ -123,9 +147,10 @@ export function inicioDoPerfil(
   if (perfil === "gerente") {
     for (const href of ORDEM_DE_INICIO_DO_GERENTE) {
       const pagina = PAGINAS_DO_GERENTE.find((p) => p.href === href)!;
-      if (temArea(contexto, pagina.area)) return href;
+      if (pagina.areas.some((area) => temArea(contexto, area))) return href;
     }
   }
+  if (perfil === "recepcionista" && temAlgumaAreaDeVendas(contexto)) return ROTA_VENDAS;
   return ROTA_CONFIGURACOES;
 }
 
@@ -168,8 +193,14 @@ export function redirecionamentoDoPerfil(
     const pagina = [...PAGINAS_DO_GERENTE]
       .sort((a, b) => b.href.length - a.href.length)
       .find((p) => dentro(caminho, p.href));
-    if (pagina && temArea(contexto, pagina.area)) return null;
+    if (pagina && pagina.areas.some((area) => temArea(contexto, area))) return null;
     const inicio = inicioDoPerfil("gerente", contexto);
+    return inicio === caminho ? null : inicio;
+  }
+  if (perfil === "recepcionista") {
+    // Só Vendas (com alguma área concedida) e as configurações pessoais.
+    if (dentro(caminho, ROTA_VENDAS) && temAlgumaAreaDeVendas(contexto)) return null;
+    const inicio = inicioDoPerfil("recepcionista", contexto);
     return inicio === caminho ? null : inicio;
   }
   if (emSecaoDoEstabelecimento(caminho)) return ROTA_CONFIGURACOES;

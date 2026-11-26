@@ -39,6 +39,9 @@ export interface ProdutoEstoque {
   purpose: FinalidadeEstoque;
   unit: UnidadeEstoque;
   minQuantityMilli: number;
+  /** Preço sugerido de venda em centavos (`null`: sem preço; nunca zero).
+   * Ausente numa API anterior às vendas. */
+  salePriceCents?: number | null;
   balanceMilli: number;
   balanceVersion: number;
   low: boolean;
@@ -137,6 +140,7 @@ export function ehProduto(v: unknown): v is ProdutoEstoque {
     texto(v.purpose) &&
     texto(v.unit) &&
     inteiro(v.minQuantityMilli) &&
+    (v.salePriceCents === undefined || talvez(inteiro)(v.salePriceCents)) &&
     inteiro(v.balanceMilli) &&
     inteiro(v.balanceVersion) &&
     typeof v.low === "boolean" &&
@@ -261,6 +265,9 @@ export interface DadosDoProduto {
   purpose: FinalidadeEstoque;
   unit: UnidadeEstoque;
   minQuantityMilli: number;
+  /** Preço sugerido de venda. Omitido na edição, o servidor mantém o
+   * gravado; `null` tira o preço. */
+  salePriceCents?: number | null;
 }
 
 export function listarProdutos(tenantId: string, consulta: string, signal?: AbortSignal) {

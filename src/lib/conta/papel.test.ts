@@ -8,7 +8,7 @@ describe("perfil da área real por papel", () => {
     expect(perfilDoPapel("DONO")).toBe("dono");
     expect(perfilDoPapel("PROFISSIONAL")).toBe("funcionario");
     expect(perfilDoPapel("GERENTE")).toBe("gerente");
-    expect(perfilDoPapel("RECEPCIONISTA")).toBe("sem-area");
+    expect(perfilDoPapel("RECEPCIONISTA")).toBe("recepcionista");
     expect(perfilDoPapel(null)).toBe("sem-area");
   });
 
@@ -88,7 +88,7 @@ describe("gerente: só as áreas que o servidor liberou", () => {
     const g = gerente(["AGENDA_VER", "PROFISSIONAIS_VER", "SOLICITACOES_VER", "RECEBIMENTOS_VER", "AGENDA_PROPRIA_VER"]);
     expect(inicioDoPerfil("gerente", g)).toBe("/conta/agendamentos");
     const itens = itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: g });
-    expect(itens.map((i) => i.rotulo)).toEqual(["Agenda", "Minha agenda", "Recebimentos", "Profissionais", "Configurações"]);
+    expect(itens.map((i) => i.rotulo)).toEqual(["Agenda", "Minha agenda", "Recebimentos de atendimentos", "Profissionais", "Configurações"]);
     for (const livre of ["/conta/agendamentos", "/conta/agendamentos/solicitacoes", "/conta/recebimentos", "/conta/minha-agenda"]) {
       expect(redirecionamentoDoPerfil("gerente", livre, g), livre).toBeNull();
     }
@@ -147,5 +147,58 @@ describe("estoque: acesso pelo endereço", () => {
 
   it("gerente só com estoque começa por ele", () => {
     expect(inicioDoPerfil("gerente", { role: "GERENTE", areas: ["ESTOQUE_VER"] })).toBe("/conta/estoque");
+  });
+});
+
+describe("vendas no menu e no começo", () => {
+  const recepcionista = (areas: string[]) => ({ role: "RECEPCIONISTA" as const, areas });
+
+  it("recepcionista com vendas: começa em Vendas e só abre Vendas e as configurações pessoais", () => {
+    const r = recepcionista(["VENDAS_NOVA", "VENDAS_HISTORICO", "VENDAS_RECEBER"]);
+    expect(inicioDoPerfil("recepcionista", r)).toBe("/conta/vendas");
+    expect(itensDaNavegacao({ comEstabelecimento: true, perfil: "recepcionista", contexto: r }).map((i) => i.href)).toEqual([
+      "/conta/vendas",
+      "/conta/configuracoes",
+    ]);
+    expect(redirecionamentoDoPerfil("recepcionista", "/conta/vendas", r)).toBeNull();
+    expect(redirecionamentoDoPerfil("recepcionista", "/conta/vendas/abc", r)).toBeNull();
+    expect(redirecionamentoDoPerfil("recepcionista", "/conta/configuracoes/perfil", r)).toBeNull();
+    for (const fechada of ["/conta/estoque/produtos", "/conta/clientes", "/conta/agendamentos", "/conta/recebimentos", "/conta/visao-geral"]) {
+      expect(redirecionamentoDoPerfil("recepcionista", fechada, r), fechada).toBe("/conta/vendas");
+    }
+  });
+
+  it("recepcionista sem concessão: só Configurações", () => {
+    const r = recepcionista([]);
+    expect(inicioDoPerfil("recepcionista", r)).toBe("/conta/configuracoes");
+    expect(itensDaNavegacao({ comEstabelecimento: true, perfil: "recepcionista", contexto: r }).map((i) => i.href)).toEqual(["/conta/configuracoes"]);
+    expect(redirecionamentoDoPerfil("recepcionista", "/conta/vendas", r)).toBe("/conta/configuracoes");
+  });
+
+  it("depois da retirada do adicional, a manutenção mantém Vendas no menu", () => {
+    const r = recepcionista(["VENDAS_HISTORICO", "VENDAS_RECEBER"]);
+    expect(itensDaNavegacao({ comEstabelecimento: true, perfil: "recepcionista", contexto: r }).map((i) => i.rotulo)).toContain("Vendas");
+  });
+
+  it("gerente com vendas: Vendas no menu, depois de Clientes", () => {
+    const g = { role: "GERENTE" as const, areas: ["CLIENTES_VER", "VENDAS_VER_TODAS", "RECEBIMENTOS_VER"] };
+    expect(itensDaNavegacao({ comEstabelecimento: true, perfil: "gerente", contexto: g }).map((i) => i.rotulo)).toEqual([
+      "Clientes",
+      "Vendas",
+      "Recebimentos de atendimentos",
+      "Configurações",
+    ]);
+    expect(redirecionamentoDoPerfil("gerente", "/conta/vendas", g)).toBeNull();
+    const semVendas = { role: "GERENTE" as const, areas: ["CLIENTES_VER"] };
+    expect(redirecionamentoDoPerfil("gerente", "/conta/vendas", semVendas)).toBe("/conta/clientes");
+  });
+
+  it("dono: Vendas só com uma área de vendas na sessão; sem a lista (API anterior), não entra", () => {
+    const com = itensDaNavegacao({ comEstabelecimento: true, perfil: "dono", contexto: { role: "DONO", areas: ["VENDAS_NOVA", "VENDAS_HISTORICO"] } });
+    expect(com.map((i) => i.rotulo)).toContain("Vendas");
+    const sem = itensDaNavegacao({ comEstabelecimento: true, perfil: "dono", contexto: { role: "DONO", areas: [] } });
+    expect(sem.map((i) => i.rotulo)).not.toContain("Vendas");
+    const antiga = itensDaNavegacao({ comEstabelecimento: true, perfil: "dono", contexto: { role: "DONO" } });
+    expect(antiga.map((i) => i.rotulo)).not.toContain("Vendas");
   });
 });

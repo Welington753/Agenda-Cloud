@@ -12,7 +12,8 @@ export type ResultadoAcao<T> =
   | { tipo: "ok"; dados: T }
   | { tipo: "reautenticar" }
   | { tipo: "conflito"; codigo: string | null; mensagem: string; dados: unknown }
-  | { tipo: "proibido"; mensagem: string }
+  /** `codigo`: o `code` do 403 (ex.: RECURSO_NAO_CONTRATADO), quando houver. */
+  | { tipo: "proibido"; mensagem: string; codigo?: string | null }
   | { tipo: "invalido"; mensagem: string }
   | { tipo: "nao-encontrado"; mensagem: string }
   | { tipo: "sessao" }
@@ -49,7 +50,7 @@ export async function acaoAdministrativa<T>(
   const codigo = codigoDe(r.data);
   if (r.status === 401) return { tipo: "sessao" };
   if (r.status === 403 && codigo === REAUTENTICACAO) return { tipo: "reautenticar" };
-  if (r.status === 403) return { tipo: "proibido", mensagem: mensagemDe(r.data, "Sua conta não tem permissão para esta ação.") };
+  if (r.status === 403) return { tipo: "proibido", codigo, mensagem: mensagemDe(r.data, "Sua conta não tem permissão para esta ação.") };
   if (r.status === 404) return { tipo: "nao-encontrado", mensagem: mensagemDe(r.data, "Registro não encontrado.") };
   if (r.status === 409 || r.status === 410) {
     return { tipo: "conflito", codigo, mensagem: mensagemDe(r.data, "A operação não pôde ser feita agora."), dados: r.data };
