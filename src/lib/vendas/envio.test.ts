@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { concluirEnvio, formularioTravado, iniciarEnvio, novoEnvio, resultadoDesconhecido, type EstadoDoEnvio } from "./envio";
+import { concluirEnvio, descartarRecusa, formularioTravado, iniciarEnvio, novoEnvio, resultadoDesconhecido, type EstadoDoEnvio } from "./envio";
 
 type Corpo = { requestKey: string; valor: number };
 
@@ -45,5 +45,20 @@ describe("envio com chave de pedido", () => {
 
   it("uma chave nova só vem pedida explicitamente, depois do resultado confirmado", () => {
     expect(novoEnvio<Corpo>("outra")).toEqual({ fase: "pronto", chave: "outra" });
+  });
+
+  it("mudar o pedido depois de uma recusa descarta só a mensagem; a chave continua", () => {
+    const primeiro = iniciarEnvio(novoEnvio<Corpo>("chave-a"), (chave) => ({ requestKey: chave, valor: 1 }))!;
+    const recusado = concluirEnvio(primeiro.estado, { tipo: "conflito", mensagem: "Sem saldo.", codigo: "SALDO_INSUFICIENTE", dados: null });
+    expect(recusado.fase).toBe("recusado");
+    expect(descartarRecusa(recusado)).toEqual({ fase: "pronto", chave: "chave-a" });
+  });
+
+  it("resultado desconhecido não é descartado: mesma chave, mesmo corpo, formulário travado", () => {
+    const primeiro = iniciarEnvio(novoEnvio<Corpo>("chave-a"), (chave) => ({ requestKey: chave, valor: 1 }))!;
+    const incerto = concluirEnvio(primeiro.estado, { tipo: "rede" });
+    expect(descartarRecusa(incerto)).toBe(incerto);
+    expect(formularioTravado(descartarRecusa(incerto))).toBe(true);
+    expect(descartarRecusa(primeiro.estado)).toBe(primeiro.estado);
   });
 });

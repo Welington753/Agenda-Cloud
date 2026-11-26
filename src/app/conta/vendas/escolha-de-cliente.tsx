@@ -4,7 +4,9 @@
 // num resultado da busca limitada (nome e final do telefone; nunca e-mail
 // nem telefone inteiro). O texto digitado nunca escolhe ninguém, nem quando
 // há um resultado só; nomes iguais aparecem lado a lado, sem pré-seleção.
-// O pedido leva só o ID escolhido.
+// O pedido leva só o ID escolhido. O modo é da nova venda: com "Cliente
+// cadastrado" marcado e nada tocado, a venda não confirma (nunca vira balcão
+// sozinha).
 import { useEffect, useState } from "react";
 import { Search, UserRound, X } from "lucide-react";
 import clsx from "clsx";
@@ -13,20 +15,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CLASSE_CAMPO } from "@/components/estoque/comum";
 import { useLeituraPlataforma } from "@/lib/administracao/use-leitura-plataforma";
 import { caminhoBuscaDeClientes, ehBuscaDeClientes, type ClienteDaBusca } from "@/lib/api/vendas-api";
-import { buscaDeClientePronta, clienteTocado, idsComNomeRepetido, rotuloDoCliente } from "@/lib/vendas/apresentacao";
+import { buscaDeClientePronta, clienteTocado, idsComNomeRepetido, rotuloDoCliente, type ModoDoCliente } from "@/lib/vendas/apresentacao";
 
 export function EscolhaDeCliente({
   tenantId,
+  modo,
+  aoTrocarModo,
   cliente,
   aoEscolher,
   desativado,
 }: {
   tenantId: string;
+  modo: ModoDoCliente;
+  /** Balcão também apaga o cliente escolhido (quem chama decide). */
+  aoTrocarModo: (modo: ModoDoCliente) => void;
   cliente: ClienteDaBusca | null;
   aoEscolher: (cliente: ClienteDaBusca | null) => void;
   desativado: boolean;
 }) {
-  const [modo, setModo] = useState<"balcao" | "cliente">(cliente ? "cliente" : "balcao");
   const [busca, setBusca] = useState("");
   const [consulta, setConsulta] = useState("");
 
@@ -39,11 +45,6 @@ export function EscolhaDeCliente({
   const { estado } = useLeituraPlataforma(pronta ? caminhoBuscaDeClientes(tenantId, consulta) : null, ehBuscaDeClientes);
   const resultados = estado.status === "pronto" ? estado.dados.consumers : [];
   const repetidos = idsComNomeRepetido(resultados);
-
-  function trocarModo(novo: "balcao" | "cliente") {
-    setModo(novo);
-    if (novo === "balcao") aoEscolher(null);
-  }
 
   return (
     <fieldset disabled={desativado} className="space-y-3" data-testid="escolha-de-cliente">
@@ -59,7 +60,7 @@ export function EscolhaDeCliente({
             key={valor}
             className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 text-sm has-[:checked]:border-[color:var(--color-accent)]"
           >
-            <input type="radio" name="modo-cliente" className="mt-0.5 size-5 shrink-0" checked={modo === valor} onChange={() => trocarModo(valor)} data-testid={`modo-${valor}`} />
+            <input type="radio" name="modo-cliente" className="mt-0.5 size-5 shrink-0" checked={modo === valor} onChange={() => aoTrocarModo(valor)} data-testid={`modo-${valor}`} />
             <span className="min-w-0">
               <span className="font-medium text-ink">{rotulo}</span>
               <span className="block text-xs text-ink-soft">{descricao}</span>

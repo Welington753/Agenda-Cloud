@@ -10,6 +10,10 @@
 //    repetido (aqui ou depois, em Minhas operações).
 //
 // Os totais da tela são prévia; o que vale é a venda que o servidor devolve.
+// Cliente: com "Cliente cadastrado" marcado e nenhum resultado tocado, a venda
+// não confirma (botão desligado e `confirmar` sem corpo). Mudar produtos ou
+// cliente depois de uma recusa apaga a mensagem daquela tentativa; resultado
+// desconhecido não é apagado.
 // Resposta perdida: a tela trava e "Enviar de novo" repete a MESMA chave com o
 // MESMO conteúdo (lib/vendas/envio.ts). Nenhuma chave nova é gerada para
 // repetir uma venda de resultado desconhecido.
@@ -41,8 +45,8 @@ import {
   removerLinha,
   type LinhaDoCarrinho,
 } from "@/lib/vendas/carrinho";
-import { concluirEnvio, formularioTravado, iniciarEnvio, novoEnvio, type EstadoDoEnvio } from "@/lib/vendas/envio";
-import { hojeParaRecebimento, mensagemDaRecusa, rotuloDoCliente } from "@/lib/vendas/apresentacao";
+import { concluirEnvio, descartarRecusa, formularioTravado, iniciarEnvio, novoEnvio, type EstadoDoEnvio } from "@/lib/vendas/envio";
+import { clienteDoPedido, hojeParaRecebimento, mensagemDaRecusa, rotuloDoCliente, type ModoDoCliente } from "@/lib/vendas/apresentacao";
 import { CatalogoDeVenda } from "./catalogo-de-venda";
 import { EscolhaDeCliente } from "./escolha-de-cliente";
 import { LinhaDaVenda } from "./linha-da-venda";
@@ -63,6 +67,7 @@ export function NovaVenda({
   aoMudar: () => void;
 }) {
   const [linhas, setLinhas] = useState<LinhaDoCarrinho[]>([]);
+  const [modoCliente, setModoCliente] = useState<ModoDoCliente>("balcao");
   const [cliente, setCliente] = useState<ClienteDaBusca | null>(null);
   const [envio, setEnvio] = useState<EstadoDoEnvio<CorpoDaVenda>>(() => novoEnvio(novaChaveDeFormulario()));
   const [aviso, setAviso] = useState<string | null>(null);
@@ -70,16 +75,34 @@ export function NovaVenda({
   const emVoo = useRef(false);
   const travado = formularioTravado(envio);
   const avaliado = avaliarCarrinho(linhas, podeAlterarPreco);
+  const doCliente = clienteDoPedido(modoCliente, cliente);
+
+  /** Produtos mudaram: a recusa da tentativa anterior deixa de valer. */
+  function mudarLinhas(mudar: (atuais: LinhaDoCarrinho[]) => LinhaDoCarrinho[]) {
+    setLinhas(mudar);
+    setEnvio(descartarRecusa);
+  }
+
+  function escolherCliente(escolhido: ClienteDaBusca | null) {
+    setCliente(escolhido);
+    setEnvio(descartarRecusa);
+  }
+
+  function trocarModoCliente(modo: ModoDoCliente) {
+    setModoCliente(modo);
+    if (modo === "balcao") setCliente(null);
+    setEnvio(descartarRecusa);
+  }
 
   function adicionar(produto: ProdutoParaVenda) {
     const r = adicionarProduto(linhas, produto);
-    setLinhas(r.linhas);
+    mudarLinhas(() => r.linhas);
     setAviso(r.resultado === "ja-no-carrinho" ? `${produto.name} já está na venda: ajuste a quantidade na linha.` : r.resultado === "limite" ? "Uma venda aceita até 50 produtos." : null);
   }
 
   async function confirmar() {
     if (emVoo.current) return;
-    const inicio = iniciarEnvio(envio, (chave) => corpoDaVenda(avaliado, cliente?.id ?? null, chave));
+    const inicio = iniciarEnvio(envio, (chave) => (doCliente.ok ? corpoDaVenda(avaliado, doCliente.consumerId, chave) : null));
     if (!inicio) return;
     emVoo.current = true;
     setEnvio(inicio.estado);
@@ -106,6 +129,7 @@ export function NovaVenda({
   /** Só depois de um resultado confirmado: outra venda, com outra chave. */
   function novaVenda() {
     setLinhas([]);
+    setModoCliente("balcao");
     setCliente(null);
     setAviso(null);
     setConcluida(null);
@@ -125,7 +149,7 @@ export function NovaVenda({
             {!criada && <p className="text-sm text-ink-soft">O pedido repetido devolveu a venda original; nenhuma venda nova foi criada.</p>}
             <dl className="grid gap-2 text-sm sm:grid-cols-3">
               <div>
-                <dt className="text-ink-soft">Valor vendido (confirmado pelo servidor)</dt>
+                <dt className="text-ink-soft">Valor da venda</dt>
                 <dd className="text-lg font-bold text-ink tabular-nums" data-testid="total-confirmado">
                   {formatarMoeda(venda.totalCents)}
                 </dd>
@@ -209,27 +233,40 @@ export function NovaVenda({
                 linha={l}
                 desativado={travado}
                 podeAlterarPreco={podeAlterarPreco}
-                aoMudar={(m) => setLinhas((atuais) => alterarLinha(atuais, l.productId, m))}
-                aoRemover={() => setLinhas((atuais) => removerLinha(atuais, l.productId))}
+                aoMudar={(m) => mudarLinhas((atuais) => alterarLinha(atuais, l.productId, m))}
+                aoRemover={() => mudarLinhas((atuais) => removerLinha(atuais, l.productId))}
               />
             ))}
           </ul>
         )}
       </section>
 
-      <EscolhaDeCliente tenantId={tenantId} cliente={cliente} aoEscolher={setCliente} desativado={travado} />
+      <EscolhaDeCliente
+        tenantId={tenantId}
+        modo={modoCliente}
+        aoTrocarModo={trocarModoCliente}
+        cliente={cliente}
+        aoEscolher={escolherCliente}
+        desativado={travado}
+      />
 
       <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-4" aria-label="Confirmação">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm text-ink-soft">Total da venda (prévia; o servidor confirma)</p>
+          <p className="text-sm text-ink-soft">Total da venda</p>
           <p className="text-xl font-bold text-ink tabular-nums" data-testid="total-previa">
             {avaliado.totalCentavos === null ? "—" : formatarMoeda(avaliado.totalCentavos)}
           </p>
         </div>
-        <p className="text-xs text-ink-soft">
-          {cliente ? `Cliente: ${rotuloDoCliente(cliente)}.` : "Venda de balcão, sem cliente."} Confirmar registra a venda e baixa o
-          estoque; o recebimento é registrado depois, à parte.
-        </p>
+        {doCliente.ok ? (
+          <p className="text-xs text-ink-soft" data-testid="resumo-cliente">
+            {cliente && modoCliente === "cliente" ? `Cliente: ${rotuloDoCliente(cliente)}.` : "Venda de balcão, sem cliente."}
+          </p>
+        ) : (
+          <p className="text-sm font-medium text-ink" data-testid="cliente-pendente">
+            {doCliente.problema}
+          </p>
+        )}
+        <p className="text-xs text-ink-soft">Confirmar registra a venda e baixa o estoque; o recebimento é registrado depois, à parte.</p>
         {linhas.length > 0 && avaliado.problema && !travado && <p className="text-sm text-ink">{avaliado.problema}</p>}
         {envio.fase === "recusado" && (
           <p role="alert" className="text-sm text-ink" data-testid="erro-venda">
@@ -247,7 +284,7 @@ export function NovaVenda({
             type="button"
             className="min-h-11"
             onClick={() => void confirmar()}
-            disabled={envio.fase === "enviando" || (!travado && !!avaliado.problema)}
+            disabled={envio.fase === "enviando" || (!travado && (!!avaliado.problema || !doCliente.ok))}
             aria-busy={envio.fase === "enviando"}
             data-testid="confirmar-venda"
           >

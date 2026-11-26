@@ -31,9 +31,13 @@
 // conferida no banco e só então a resposta é bloqueada (`route.abort`).
 //
 // Capturas (1280 e 390 px) em PLAYWRIGHT_OUTPUT_DIR; sem rolagem lateral
-// também em 360 px. Invocação própria (`npm run test:browser:vendas`): 4
+// também em 360 px. No celular (360 e 390 px, com a área visível do
+// navegador) a seleção de cliente, a confirmação e "Estornar recebimento"
+// ficam acionáveis depois de rolar, e o fim da página fica acima da barra
+// inferior. Duas capturas só da área visível (sem fullPage): o bloqueio do
+// cliente não escolhido e o detalhe rolado até o estorno. Invocação própria (`npm run test:browser:vendas`): 4
 // aceites de convite e 2 logins.
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import type { Client } from "pg";
 import { API_DE_TESTE, conectarBancoDeTeste, criarContaDeTeste } from "./support/contas-de-teste";
@@ -94,6 +98,46 @@ async function capturarEm(page: Page, nome: string, width: number) {
   await page.setViewportSize({ width, height: 900 });
   await semRolagemHorizontal(page);
   await page.screenshot({ path: test.info().outputPath(`vendas-${nome}-${width}.png`), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+/** Captura só da área visível, com o alvo rolado até o meio da tela. */
+async function capturarAreaVisivel(page: Page, nome: string, alvo: Locator) {
+  await page.setViewportSize({ width: 390, height: 664 });
+  await alvo.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.screenshot({ path: test.info().outputPath(`vendas-${nome}-390-visivel.png`) });
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+/**
+ * Celular com a área visível do navegador (barras do navegador descontadas):
+ * cada alvo, rolado até o meio da tela, é o elemento que recebe o toque (nem
+ * o cabeçalho nem o menu inferior por cima), e o fim do conteúdo, com a
+ * página rolada até o fim, fica acima do menu inferior.
+ */
+async function alcancavelNoCelular(page: Page, alvos: Locator[]) {
+  for (const [width, height] of [
+    [360, 640],
+    [390, 664],
+  ]) {
+    await page.setViewportSize({ width, height });
+    for (const alvo of alvos) {
+      await alvo.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      const livre = await alvo.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const topo = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!topo && (topo === el || el.contains(topo));
+      });
+      expect(livre, `${alvo} coberto em ${width} px`).toBe(true);
+    }
+    const folga = await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      const menu = document.querySelector("nav[aria-label=\"Áreas da conta\"]")!.getBoundingClientRect();
+      const fim = document.querySelector("main")!.lastElementChild!.getBoundingClientRect();
+      return menu.top - fim.bottom;
+    });
+    expect(folga, `fim do conteúdo sob o menu em ${width} px`).toBeGreaterThanOrEqual(16);
+  }
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
@@ -208,6 +252,7 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     }
     const saldo = () => loja.saldo(pomada);
     const vendasNoBanco = () => loja.contar("SELECT count(*)::int AS n FROM sales WHERE tenant_id = $1");
+    const postsDeVenda = criacoesDeVenda(page, tenantId);
 
     // ------------------------------------------- dono: nova venda
     await page.goto("/conta/visao-geral");
@@ -230,14 +275,45 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     await expect(page.getByTestId("total-previa")).toHaveText(reais("50,00"));
 
     // Cliente ambíguo: os dois cadastros lado a lado, nada escolhido sozinho.
+    // Com "Cliente cadastrado" marcado e nada tocado, a venda não confirma
+    // (nem vira balcão sozinha).
+    const confirmarVenda = page.getByTestId("confirmar-venda");
+    await expect(page.getByTestId("resumo-cliente")).toHaveText("Venda de balcão, sem cliente.");
     await page.getByTestId("modo-cliente").check();
+    await expect(page.getByTestId("cliente-pendente")).toHaveText("Selecione um cliente.");
+    await expect(page.getByTestId("resumo-cliente")).toHaveCount(0);
+    await expect(confirmarVenda).toBeDisabled();
     await page.getByLabel("Procurar cliente").fill("Maria");
     const resultados = page.getByTestId("resultado-cliente");
     await expect(resultados).toHaveCount(2);
     for (const final of ["1111", "2222"]) await expect(resultados.filter({ hasText: `Maria Souza · final ${final}` })).toHaveCount(1);
     await expect(page.getByTestId("aviso-nomes-iguais")).toBeVisible();
     await expect(page.getByTestId("cliente-escolhido")).toHaveCount(0);
+    await expect(page.getByTestId("cliente-pendente")).toBeVisible();
+    await expect(confirmarVenda).toBeDisabled();
+    await confirmarVenda.click({ force: true });
+    await page.getByLabel("Procurar cliente").press("Enter");
+    expect(postsDeVenda).toHaveLength(0);
+    await alcancavelNoCelular(page, [page.getByTestId("modo-cliente"), resultados.first(), confirmarVenda]);
     await capturar(page, "cliente-ambiguo");
+    await capturarAreaVisivel(page, "cliente-sem-selecao", page.getByTestId("cliente-pendente"));
+
+    // Escolha pelo ID do resultado tocado; "Trocar cliente" volta ao bloqueio;
+    // balcão só quando marcado.
+    await resultados.filter({ hasText: "final 1111" }).click();
+    await expect(page.getByTestId("cliente-escolhido")).toContainText("Maria Souza · final 1111");
+    await expect(page.getByTestId("resumo-cliente")).toHaveText("Cliente: Maria Souza · final 1111.");
+    await expect(confirmarVenda).toBeEnabled();
+    await page.getByRole("button", { name: "Trocar cliente" }).click();
+    await expect(page.getByTestId("cliente-escolhido")).toHaveCount(0);
+    await expect(page.getByTestId("cliente-pendente")).toBeVisible();
+    await expect(confirmarVenda).toBeDisabled();
+    await page.getByTestId("modo-balcao").check();
+    await expect(page.getByTestId("resumo-cliente")).toHaveText("Venda de balcão, sem cliente.");
+    await expect(confirmarVenda).toBeEnabled();
+    await page.getByTestId("modo-cliente").check();
+    await expect(confirmarVenda).toBeDisabled();
+    await expect(resultados).toHaveCount(2);
     await resultados.filter({ hasText: "final 2222" }).click();
     await expect(page.getByTestId("cliente-escolhido")).toContainText("Maria Souza · final 2222");
 
@@ -250,7 +326,10 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     await expect(linha("Óleo para barba").getByTestId("aviso-linha")).toBeVisible();
     expect(await vendasNoBanco()).toBe(0);
     expect(await saldo()).toBe(10_000);
+    // Tirar o produto recusado apaga a mensagem daquela tentativa.
     await page.getByRole("button", { name: "Remover Óleo para barba" }).click();
+    await expect(page.getByTestId("erro-venda")).toHaveCount(0);
+    await expect(page.getByTestId("aviso-linha")).toHaveCount(0);
     await capturar(page, "nova-venda");
     await page.getByTestId("confirmar-venda").click();
     const concluida = page.getByTestId("venda-concluida");
@@ -277,6 +356,8 @@ test("vendas: dono, recepcionista, gerente e adicional retirado com a manutenç�
     await expect(page.getByTestId("cancelar-venda")).toHaveCount(0);
     await expect(page.getByTestId("cancelar-depende-de-estorno")).toBeVisible();
     await capturarEm(page, "detalhe-recebida", 390);
+    await alcancavelNoCelular(page, [page.getByTestId("estornar-recebimento-venda")]);
+    await capturarAreaVisivel(page, "detalhe-estornar", page.getByTestId("estornar-recebimento-venda"));
     await corrigir(page, "estornar-recebimento-venda", "Cliente desistiu da compra", SENHA);
     await expect(page.getByTestId("situacao-recebimento")).toHaveText("Recebimento estornado");
     await expect(page.getByTestId("detalhe-recebido")).toHaveText(reais("0,00"));

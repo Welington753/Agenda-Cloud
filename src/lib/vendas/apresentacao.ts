@@ -128,6 +128,27 @@ export function clienteTocado(resultados: readonly ClienteDaBusca[], id: string)
   return resultados.find((r) => r.id === id) ?? null;
 }
 
+/** Como a venda identifica o cliente: balcão (escolhido na tela) ou um
+ * cadastro tocado na busca. */
+export type ModoDoCliente = "balcao" | "cliente";
+
+export const MENSAGEM_SELECIONE_CLIENTE = "Selecione um cliente.";
+
+/**
+ * Cliente que vai no pedido. Venda sem cliente só existe com "Venda de
+ * balcão" marcada; com "Cliente cadastrado" marcado e nenhum resultado
+ * tocado, a venda não pode ser confirmada (nunca vira balcão sozinha, e
+ * nenhum resultado é escolhido pela tela).
+ */
+export function clienteDoPedido(
+  modo: ModoDoCliente,
+  cliente: Pick<ClienteDaBusca, "id"> | null,
+): { ok: true; consumerId: string | null } | { ok: false; problema: string } {
+  if (modo === "balcao") return { ok: true, consumerId: null };
+  if (!cliente) return { ok: false, problema: MENSAGEM_SELECIONE_CLIENTE };
+  return { ok: true, consumerId: cliente.id };
+}
+
 // ------------------------------------------------------------ recusas
 
 /** Mensagem de uma recusa das rotas de venda. O texto do servidor serve para

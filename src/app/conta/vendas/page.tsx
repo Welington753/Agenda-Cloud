@@ -60,7 +60,7 @@ export default function VendasPage() {
 
   return (
     <ReautenticacaoProvider>
-      <PaginaConta titulo="Vendas" descricao="Venda de produtos e o recebimento de cada venda, como operações separadas.">
+      <PaginaConta titulo="Vendas" descricao="Registre vendas de produtos e acompanhe os recebimentos.">
         {disponiveis.length === 0 ? (
           <Cartao>
             <CartaoCorpo>

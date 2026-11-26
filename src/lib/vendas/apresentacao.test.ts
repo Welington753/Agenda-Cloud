@@ -5,6 +5,7 @@ import {
   abasDisponiveis,
   acoesDaVenda,
   buscaDeClientePronta,
+  clienteDoPedido,
   clienteTocado,
   hojeParaRecebimento,
   idsComNomeRepetido,
@@ -111,6 +112,19 @@ describe("cliente da venda", () => {
     expect(clienteTocado(resultados, "c2")?.phoneLast4).toBe("9876");
     expect(clienteTocado(resultados, "Ana Souza")).toBeNull();
     expect(clienteTocado([resultados[0]], "c9")).toBeNull();
+  });
+
+  it("cliente cadastrado sem resultado tocado não confirma nem vira balcão", () => {
+    expect(clienteDoPedido("cliente", null)).toEqual({ ok: false, problema: "Selecione um cliente." });
+  });
+
+  it("o pedido leva o ID do resultado tocado", () => {
+    expect(clienteDoPedido("cliente", clienteTocado(resultados, "c2"))).toEqual({ ok: true, consumerId: "c2" });
+  });
+
+  it("venda sem cliente só com balcão escolhido, mesmo que haja cliente guardado", () => {
+    expect(clienteDoPedido("balcao", null)).toEqual({ ok: true, consumerId: null });
+    expect(clienteDoPedido("balcao", resultados[0])).toEqual({ ok: true, consumerId: null });
   });
 });
 

@@ -52,6 +52,16 @@ export function concluirEnvio<C>(estado: EstadoDoEnvio<C>, r: Exclude<ResultadoA
   return { fase: "recusado", chave: estado.chave, resultado: r };
 }
 
+/**
+ * A pessoa mudou o pedido depois de uma recusa definitiva: a mensagem daquela
+ * tentativa deixa de valer e some. Só a recusa é descartada (nada foi
+ * gravado; a chave continua a mesma). Resultado desconhecido ou envio em
+ * curso ficam como estão: chave, corpo e a trava contra duplicação.
+ */
+export function descartarRecusa<C>(estado: EstadoDoEnvio<C>): EstadoDoEnvio<C> {
+  return estado.fase === "recusado" ? { fase: "pronto", chave: estado.chave } : estado;
+}
+
 /** Enquanto o resultado é desconhecido ou o envio corre, o formulário não
  * muda (o que está na tela é o que foi enviado). */
 export function formularioTravado(estado: EstadoDoEnvio<unknown>): boolean {
