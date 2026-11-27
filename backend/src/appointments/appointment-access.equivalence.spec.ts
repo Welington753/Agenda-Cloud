@@ -32,8 +32,10 @@
 // Fora das políticas e intocados por esta etapa: o vínculo, a situação do
 // estabelecimento, o acesso comercial e o recurso `AGENDA` seguem em
 // `resolveAuthorizedTenant`; o motor de horários e as consultas de
-// disponibilidade seguem em `availability.service.ts`; a agenda própria segue
-// em `team/staff-access.ts` e `team/my-agenda.service.ts`.
+// disponibilidade seguem em `availability.service.ts`. A agenda própria e as
+// permissões de funcionário (`team/staff-access.ts` e
+// `team/my-agenda.service.ts`) NÃO foram convertidas: a impressão "próprios"
+// só as congela como guarda até a etapa de Equipe.
 import { describe, expect, it } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
@@ -43,6 +45,8 @@ import { MANAGER_PERMISSIONS } from '../common/manager-permissions.js';
 import { STAFF_PERMISSIONS, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
 import * as agenda from './appointment-access.js';
 import * as disponibilidade from '../availability/availability-access.js';
+import { recortarParaQuemPediu, type AppointmentView } from './appointments.service.js';
+import { precosParaQuemPediu } from '../availability/availability.service.js';
 
 const AV = 'AGENDA_VISUALIZAR';
 const AG = 'AGENDA_GERENCIAR';
@@ -509,5 +513,132 @@ describe('Agenda e disponibilidade: equivalência com a regra anterior à base c
     );
     expect(agenda.APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE).toBe('Você não tem permissão para remarcar agendamentos neste estabelecimento.');
     expect(disponibilidade.AVAILABILITY_FORBIDDEN_MESSAGE).toBe('Você não tem permissão para consultar a agenda deste estabelecimento.');
+  });
+});
+
+// ---- Campos devolvidos ----------------------------------------------------
+//
+// As políticas de recorte decidem só um booleano; aqui a resposta inteira é
+// comparada com a transformação congelada (be267cc = 8f71335) de
+// `recortarParaQuemPediu` e do preço da consulta de horários, campo a campo,
+// em todas as combinações das quatro permissões que o recorte do gerente lê.
+
+/** Cópia literal do recorte da agenda em be267cc. */
+function refRecorteDaVista(view: AppointmentView, role: string, ov: readonly PermissionOverrideLike[]): AppointmentView {
+  if (role !== 'GERENTE') return view;
+  const contato = refConcedida(ov, CV);
+  const dinheiro = [RV, AV, PV].every((p) => refConcedida(ov, p));
+  if (contato && dinheiro) return view;
+  const hidden: ('price' | 'contact')[] = [];
+  if (!dinheiro) hidden.push('price');
+  if (!contato) hidden.push('contact');
+  return {
+    ...view,
+    hidden,
+    priceCents: dinheiro ? view.priceCents : null,
+    services: dinheiro ? view.services : view.services.map((s) => ({ ...s, priceCents: null })),
+    notes: contato ? view.notes : null,
+    consumer: { ...view.consumer, whatsapp: contato ? view.consumer.whatsapp : null },
+  };
+}
+
+type ServicoDaConsulta = { id: string; name: string; durationMinutes: number; priceCents: number | null };
+
+/** Cópia literal do preço da consulta de horários em be267cc. */
+function refPrecosDaConsulta(servicos: readonly ServicoDaConsulta[], role: string, ov: readonly PermissionOverrideLike[]) {
+  const veDinheiro = role !== 'GERENTE' || [RV, AV, PV].every((p) => refConcedida(ov, p));
+  const itens = servicos.map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, priceCents: veDinheiro ? (s.priceCents ?? null) : null }));
+  return {
+    services: itens,
+    totalPriceCents: veDinheiro && itens.every((i) => i.priceCents !== null) ? itens.reduce((t, i) => t + (i.priceCents ?? 0), 0) : null,
+    priceHidden: !veDinheiro,
+  };
+}
+
+function vista(precos: readonly (number | null)[]): AppointmentView {
+  const services = precos.map((priceCents, i) => ({ id: `s${i}`, name: `Serviço ${i}`, durationMinutes: 30, priceCents }));
+  return {
+    id: 'a1',
+    startAt: '2026-12-01T13:00:00.000Z',
+    serviceEndAt: '2026-12-01T14:00:00.000Z',
+    occupancyEndAt: '2026-12-01T14:10:00.000Z',
+    localStart: '2026-12-01T10:00',
+    localServiceEnd: '2026-12-01T11:00',
+    timezone: 'America/Sao_Paulo',
+    status: 'CONFIRMED' as AppointmentView['status'],
+    durationMinutes: 30 * precos.length,
+    priceCents: precos.some((p) => p === null) ? null : precos.reduce<number>((t, p) => t + (p ?? 0), 0),
+    notes: 'observação interna',
+    professional: { id: 'p1', name: 'Profissional' },
+    service: { id: 's0', name: 'Serviço 0' },
+    services: services as AppointmentView['services'],
+    consumer: { id: 'c1', name: 'Cliente Fictício', whatsapp: '11999990000' },
+    unitId: 'u1',
+    createdAt: '2026-11-27T12:00:00.000Z',
+  };
+}
+
+function* casosDoRecorte(): Generator<Caso> {
+  const permissoes = [AV, PV, CV, RV];
+  for (const role of PAPEIS) {
+    for (const confirmado of [true, false]) {
+      for (const estados of combinacoes(permissoes.length)) {
+        yield { role, confirmado, prof: 'sem', gravados: ajustes(estados, permissoes), rotulo: `${role} ${confirmado} ${estados.join(',')}` };
+      }
+    }
+  }
+}
+
+describe('Agenda e disponibilidade: campos devolvidos iguais à regra anterior', () => {
+  it('recortarParaQuemPediu devolve os mesmos campos, sem alterar a vista original', () => {
+    const vistos = new Set<string>();
+    let casos = 0;
+    for (const caso of casosDoRecorte()) {
+      const ov = effectiveOverrides(caso.role, caso.confirmado, caso.gravados);
+      for (const precos of [[5000, 2500], [5000, null]]) {
+        const original = vista(precos);
+        const copia = structuredClone(original);
+        const depois = recortarParaQuemPediu(original, { role: caso.role, overrides: ov });
+        expect(depois, caso.rotulo).toEqual(refRecorteDaVista(copia, caso.role, ov));
+        expect(original, caso.rotulo).toEqual(copia);
+        vistos.add(JSON.stringify(depois.hidden ?? null));
+        casos++;
+      }
+    }
+    expect(casos).toBe(4 * 2 * 4 ** 4 * 2);
+    // Os quatro desfechos aparecem: nada escondido, só preço, só contato, os dois.
+    expect([...vistos].sort()).toEqual(['["contact"]', '["price","contact"]', '["price"]', 'null'].sort());
+  });
+
+  it('a consulta de horários devolve os mesmos preços, total e priceHidden', () => {
+    const vistos = new Set<boolean>();
+    const listas: ServicoDaConsulta[][] = [
+      [{ id: 's1', name: 'Corte', durationMinutes: 30, priceCents: 5000 }, { id: 's2', name: 'Barba', durationMinutes: 20, priceCents: 2500 }],
+      [{ id: 's1', name: 'Corte', durationMinutes: 30, priceCents: 5000 }, { id: 's3', name: 'Sob consulta', durationMinutes: 20, priceCents: null }],
+    ];
+    for (const caso of casosDoRecorte()) {
+      const ov = effectiveOverrides(caso.role, caso.confirmado, caso.gravados);
+      for (const servicos of listas) {
+        const depois = precosParaQuemPediu(servicos, { role: caso.role, overrides: ov });
+        expect(depois, caso.rotulo).toEqual(refPrecosDaConsulta(servicos, caso.role, ov));
+        vistos.add(depois.priceHidden);
+      }
+    }
+    expect([...vistos].sort()).toEqual([false, true]);
+  });
+
+  it('o dono vê contato e preço mesmo com DENIED; o gerente sem concessão vê o nome, nunca o telefone nem o preço', () => {
+    const D = (...ps: string[]) => ps.map((p) => ({ permission: p as Permission, mode: PermissionMode.DENIED }));
+    const dono = recortarParaQuemPediu(vista([5000]), { role: EstablishmentRole.DONO, overrides: D(CV, RV) });
+    expect(dono).toMatchObject({ priceCents: 5000, notes: 'observação interna', consumer: { whatsapp: '11999990000' } });
+    expect(dono.hidden).toBeUndefined();
+    const gerente = recortarParaQuemPediu(vista([5000]), { role: EstablishmentRole.GERENTE, overrides: [] });
+    expect(gerente).toMatchObject({ priceCents: null, notes: null, consumer: { name: 'Cliente Fictício', whatsapp: null }, hidden: ['price', 'contact'] });
+    expect(gerente.services.map((s) => s.priceCents)).toEqual([null]);
+    expect(precosParaQuemPediu([{ id: 's1', name: 'Corte', durationMinutes: 30, priceCents: 5000 }], { role: EstablishmentRole.GERENTE })).toEqual({
+      services: [{ id: 's1', name: 'Corte', durationMinutes: 30, priceCents: null }],
+      totalPriceCents: null,
+      priceHidden: true,
+    });
   });
 });

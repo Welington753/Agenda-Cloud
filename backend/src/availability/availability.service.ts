@@ -28,7 +28,7 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { DataSource, In, LessThan, MoreThan } from 'typeorm';
 import type { EntityManager } from 'typeorm';
-import { resolveAuthorizedTenant } from '../common/tenant-authorization.js';
+import { resolveAuthorizedTenant, type AuthorizedTenant } from '../common/tenant-authorization.js';
 import { Appointment } from '../entities/appointment.entity.js';
 import { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { BookingPolicy } from '../entities/booking-policy.entity.js';
@@ -188,6 +188,31 @@ export interface AvailabilityView {
   emptyReason: MotivoSemHorario | null;
 }
 
+/** Preços da consulta para quem pediu: só o GERENTE sem a consulta de
+ * recebimentos recebe os preços `null` e `priceHidden: true`
+ * (`canSeeAvailabilityPrices`). O total é `null` também quando algum serviço
+ * é sob consulta. */
+export function precosParaQuemPediu(
+  servicos: readonly Pick<Service, 'id' | 'name' | 'durationMinutes' | 'priceCents'>[],
+  quem: Pick<AuthorizedTenant, 'role' | 'overrides'>,
+): Pick<AvailabilityView, 'services' | 'totalPriceCents' | 'priceHidden'> {
+  const veDinheiro = canSeeAvailabilityPrices(quem.role, quem.overrides ?? []);
+  const itens = servicos.map((s) => ({
+    id: s.id,
+    name: s.name,
+    durationMinutes: s.durationMinutes,
+    priceCents: veDinheiro ? (s.priceCents ?? null) : null,
+  }));
+  return {
+    services: itens,
+    totalPriceCents:
+      veDinheiro && itens.every((i) => i.priceCents !== null)
+        ? itens.reduce((total, i) => total + (i.priceCents ?? 0), 0)
+        : null,
+    priceHidden: !veDinheiro,
+  };
+}
+
 @Injectable()
 export class AvailabilityService {
   constructor(
@@ -221,24 +246,15 @@ export class AvailabilityService {
       query.date,
     );
     const { professional, service, policy, resultado } = calculo;
-    const veDinheiro = canSeeAvailabilityPrices(authorized.role, authorized.overrides ?? []);
-    const itens = calculo.services.map((s) => ({
-      id: s.id,
-      name: s.name,
-      durationMinutes: s.durationMinutes,
-      priceCents: veDinheiro ? (s.priceCents ?? null) : null,
-    }));
+    const precos = precosParaQuemPediu(calculo.services, authorized);
 
     return {
       professionalId: professional.id,
       serviceId: service.id,
       serviceIds: calculo.services.map((s) => s.id),
-      services: itens,
-      totalPriceCents:
-        veDinheiro && itens.every((i) => i.priceCents !== null)
-          ? itens.reduce((total, i) => total + (i.priceCents ?? 0), 0)
-          : null,
-      priceHidden: !veDinheiro,
+      services: precos.services,
+      totalPriceCents: precos.totalPriceCents,
+      priceHidden: precos.priceHidden,
       date: query.date,
       timezone: calculo.timezone,
       durationMinutes: calculo.duracaoMinutos,
