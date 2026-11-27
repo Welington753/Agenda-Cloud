@@ -1,6 +1,6 @@
 # Plano: permissões individuais, autorização pontual e caixas independentes
 
-Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque, Agenda, Recebimentos e Clientes mesclados, Serviços e Profissionais em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
+Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque, Agenda, Recebimentos, Clientes, Serviços e Profissionais mesclados, Comissões em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
 
 Protótipo: `AgendaCloud-operacoes/prototipos/pdv-nova-venda/index.html`, fora do repositório (tela "Fluxo e decisões" e cenário de exemplo). A seção 9 lista o que o protótipo ainda mostra diferente desta revisão.
 
@@ -604,7 +604,8 @@ A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte
 | #156 Agenda e disponibilidade | `refactor/permissoes-base-agenda` | mesclado em 27/11/2026 como `9c904ea` (head `75eb8fe`, CI 45997938971) | `C:/wt/perm-agenda` |
 | #157 Recebimentos | `refactor/permissoes-base-recebimentos` | mesclado em 27/11/2026 como `1a973a9` (head `edd4df4`, CI 46007675376) | `C:/wt/perm-recebimentos` |
 | #158 Clientes | `refactor/permissoes-base-clientes` | mesclado em 27/11/2026 como `be1299c` (head `773d248`, CI 46014447370) | `C:/wt/perm-clientes` |
-| Serviços e Profissionais | `refactor/permissoes-base-servicos-profissionais` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`be1299c`); head e CI no PR | `C:/wt/perm-servicos` |
+| #159 Serviços e Profissionais | `refactor/permissoes-base-servicos-profissionais` | mesclado em 27/11/2026 como `7fec4f4` (head `c53bc67`, CI 46025123574) | `C:/wt/perm-servicos` |
+| Comissões | `refactor/permissoes-base-comissoes` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`7fec4f4`); head e CI no PR | `C:/wt/perm-comissoes` |
 
 As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
@@ -719,7 +720,17 @@ Revisado antes do merge: o histórico consultado pelo gerente ganhou `db-e2e` pe
 
   Tudo passou. Na revisão, o spec novo passou (2 testes) e, junto, os `db-e2e` de clientes, recebimentos, equipe, vendas, isolamento e os levantamentos `pilot-*` num banco novo (14 arquivos, 87 testes, o banco limpo depois, inclusive após as mutações). O resultado do CI no head fica registrado no PR.
 
-### PR de Serviços e Profissionais
+### Mesclado: #159 (Serviços e Profissionais)
+
+Revisado antes do merge. A equivalência das quatro funções, as dependências e as restrições do dono foram conferidas. Também foi conferida a diferença entre os ajustes gravados e os efetivos na rota de serviços, que foi registrada como inconsistência de autorização (abaixo). Cadastro, preço, duração, vagas e vínculo ficaram intocados, e os testes de isolamento e dos caminhos reais já existiam, sem lacuna concreta.
+
+A primeira tentativa do CI em `dd178ef` falhou em `tests/browser/same-origin-proxy-flow.spec.ts:474`:
+- **O que se observou:** o relé contou o pedido de partida, mas o teste não tinha registrado nenhuma resposta de `/agenda_api/auth/me`.
+- **Falha anterior:** a mesma asserção já tinha falhado em 24/11, em outra branch (run 45418114936).
+- **Hipótese não comprovada:** uma corrida entre o evento `response` do Playwright e a consulta ao relé.
+- **O que a reexecução prova:** a reexecução verde mostra só que a falha é intermitente.
+
+A correção do teste do proxy, se houver, vai em PR próprio.
 
 As duas áreas ficam num PR só: as políticas são espelho uma da outra, o diff é pequeno e o spec de equivalência é um só.
 
@@ -739,12 +750,74 @@ As duas áreas ficam num PR só: as políticas são espelho uma da outra, o diff
 
   Tudo passou. O resultado do CI no head fica registrado no PR.
 
+### PR de Comissões
+
+- **Feito:**
+  - `commissions/commission-access.ts`: as políticas decidem pela base comum.
+    - `canViewCommissions` (consulta de todos) e `canManageCommissionRules` (regras, configuração e aplicação em massa) usam `accessAllows` com `grants: null`, então só o dono chega a elas. A lista do dono é literal, como estava: a consulta de todos olha `COMISSOES_VISUALIZAR` e `AGENDA_VISUALIZAR` (a consulta de recebimentos do dono); a configuração soma `COMISSOES_GERENCIAR`, `PROFISSIONAIS_VISUALIZAR` e `SERVICOS_VISUALIZAR`.
+    - `canViewOwnCommissions` é nova e decide a concessão das próprias por `accessCanOwn`. Ela substitui `staffPermissionGranted(…, 'COMISSOES_PROPRIAS_VISUALIZAR')` nos dois lugares que a usavam: `team/my-agenda.service.ts` (`resolveStaffAccess`) e a área `AGENDA_PROPRIA_COMISSOES` da sessão (`accounts/tenant-effective-access.ts`).
+  - Base comum (`common/access-evaluation.ts`), mudança aditiva:
+    - `EffectiveAccess` ganha, no lado `GRANTS`, as permissões de funcionário efetivas (`own`, por `legacyOwnPermissions`: só PROFISSIONAL e GERENTE, `GRANTED` sem `DENIED`, como `staffPermissionGranted`);
+    - `accessCanOwn(acesso, permissão)` responde pelo alcance próprio, e o dono nunca o tem;
+    - `accessCan` e `accessAllows` não mudaram.
+  - `common/staff-permissions.ts` (novo): `STAFF_PERMISSIONS`, `StaffPermission` e `OWN_COMMISSIONS_PERMISSION` saíram de `team/staff-access.ts`, que os reexporta. A mudança existe para a base comum poder usar a lista sem importar políticas de área, o que criaria um ciclo de imports.
+  - Equivalência: `commissions/commission-access.equivalence.spec.ts`.
+    - **Referência:** cópia congelada das regras em `be1299c` (iguais a `8f71335`, o piloto), só com listas literais. Inclui a consulta das próprias como `resolveStaffAccess` decide: agenda própria, profissional ligado e ativo, e a concessão.
+    - **Impressão:** compara os pares (ação, alcance) `comissoes.ver:todos`, `comissoes.configurar:todos` e `comissoes.ver:proprias`. Como guarda, entram o que o dono pode conceder (`grantableStaffPermissions`) e as áreas `COMISSOES_VER`, `COMISSOES_CONFIGURAR` e `AGENDA_PROPRIA_COMISSOES` da sessão.
+    - **Casos:** os quatro papéis, o gerente confirmado ou não, e a situação do vínculo (sem profissional, inativo, ativo). São dois grupos exaustivos (4⁶ e 4⁴ com os três vínculos; 38.912 casos) e 10.000 casos de semente fixa com todas as permissões.
+    - **Mutantes apanhados:** dezesseis, entre eles:
+      - consulta de todos liberada ao gerente ou ao funcionário;
+      - dono sem olhar a agenda;
+      - configuração sem ver serviços ou profissionais;
+      - próprias sem a concessão, pela permissão do dono ou com GRANTED vencendo DENIED;
+      - recepcionista ou gerente não confirmado com as próprias;
+      - profissional inativo;
+      - concessão indevida.
+    - **Outros testes:** a confirmação deixar de ser aplicada também é apanhada. A base ganhou casos de `accessCanOwn` contra `staffPermissionGranted` nas 256 combinações das permissões de funcionário, em todos os papéis.
+  - `test/commissions-postgres.db-e2e-spec.ts`, lacuna fechada: a consulta das próprias pelo GERENTE com profissional ligado não tinha teste com banco. O caso novo cobre:
+    - o gerente confirmado, com a concessão, recebe só as comissões, os atendimentos e os totais da profissional ligada a ele. O mesmo estabelecimento tem outra profissional com apuração, e nada dela aparece; o recebimento do cliente também não aparece;
+    - a concessão das próprias não dá o relatório de todos;
+    - sem a confirmação, a consulta é recusada pela agenda própria;
+    - com `DENIED`, é recusada pela concessão;
+    - com a profissional inativa, é recusada.
+
+    O gerente é removido no `finally`, porque `pilot-team-manager-check` usa o mesmo banco. A funcionária (PROFISSIONAL) e o isolamento entre estabelecimentos já tinham cobertura no mesmo arquivo. Pela rota HTTP real, `isolamento-estabelecimentos-postgres` cobre `GET /tenants/:tenantId/my-agenda/commissions` com 200 no próprio estabelecimento e 404 no outro.
+- **Sem mudança:**
+  - `commissions.service.ts`, `commission-report.ts`, `commission-accrual.ts`, `commission-calculation.ts` e `commission-bulk.ts`;
+  - o cálculo, os percentuais e valores fixos, a precedência (exceção, regra geral), as apurações, as fotografias e a relação com os recebimentos;
+  - o alcance e os campos de cada consulta: a de todos com o recebimento do cliente e a das próprias filtrada pelo profissional do vínculo, sem o recebimento;
+  - o recurso `COMISSOES` (e `EQUIPE` nas próprias), o vínculo e o isolamento;
+  - nenhuma migration.
+
+  A consulta de todos continua só do dono. A concessão dela a funcionários e gerentes pertence à implantação do modelo INDIVIDUAL (escolha 2).
+- **Fica para o bloco de Equipe e agenda própria:** `canViewOwnAgenda`, as três ações sobre os próprios atendimentos (`staffPermissionGranted` com `ATENDIMENTO_PROPRIO_*`), `staffGrantedPermissions`, `canManageTeam`, `grantableStaffPermissions` e `grantableManagerPermissions`.
+- **Testes executados localmente:**
+  - `vitest run` de `src/services`, `professionals`, `commissions`, `team`, `accounts`, `auth`, `availability`, `appointments`, `consumers`, `payments`, `sales`, `stock`, `common`, `dashboard` e `push`: 77 arquivos, 1.183 testes, inclusive as equivalências das áreas já convertidas (a base comum mudou);
+  - o spec de equivalência também passou contra a implementação anterior (com `canViewOwnCommissions` provisória por `staffPermissionGranted`);
+  - cinco mutações manuais nos arquivos reais foram apanhadas pelos specs e desfeitas:
+    - a consulta de todos sem a agenda;
+    - a configuração sem ver serviços;
+    - as próprias pela permissão errada;
+    - GRANTED vencendo DENIED no alcance próprio;
+    - a recepcionista com alcance próprio.
+  - duas mutações apanhadas pelo `db-e2e` novo e desfeitas:
+    - as próprias sem o filtro do profissional (o total passou a 2.500 em vez de 800);
+    - o gerente sempre com as próprias.
+  - `test:e2e` de contas, cadastro, sessão, comissões e equipe: 48 testes;
+  - `db-e2e` num PostgreSQL 18 descartável com TLS, banco novo: `commissions-postgres`, `team-access-postgres`, `team-manager-postgres`, `isolamento-estabelecimentos-postgres`, `operacao-diaria-postgres`, `senha-do-dono-postgres`, `payments-manager-postgres`, `consumers-history-manager-postgres`, `services-postgres`, `professionals-postgres` e os levantamentos `pilot-team-manager-check`, `pilot-comissoes-profissionais-check`, `pilot-regra-geral-comissoes-check` e `pilot-accounts-check` (14 arquivos, 115 testes). Nenhum gerente do teste novo ficou no banco, nem depois das execuções que falharam durante o ajuste;
+  - `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`.
+
+  Tudo passou. O resultado do CI no head fica registrado no PR.
+- **Limitações:**
+  - o teste novo chama o serviço (`MyAgendaService.commissions`) contra o banco, como o resto do arquivo. Pela rota HTTP real, a consulta das próprias tem só o 200 e o 404 de `isolamento-estabelecimentos-postgres`;
+  - a tabela de ajustes guarda um modo por permissão, então "GRANTED e DENIED juntos" só existe nos testes puros.
+
 ### Resto da etapa 1
 
 - **Não feito:**
-  - converter comissões e equipe, incluindo a agenda própria e `staffCan`;
+  - converter equipe e agenda própria: `canViewOwnAgenda`, as três ações sobre os próprios atendimentos, `staffGrantedPermissions`, `canManageTeam` e o que o dono concede (`grantableStaffPermissions`, `grantableManagerPermissions`), usando `accessCanOwn`, que já está na base comum, e chegando a `staffCan`;
   - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
   - o `db-e2e` de alcance real sobre a cópia.
 - **Pendência de autorização em Serviços (PR próprio, antes da publicação do lote):** fazer a rota de serviços aplicar a confirmação do gerente, como as outras áreas, de preferência passando pelo `resolveAuthorizedTenant` comum (mantendo o 404 sem vínculo, o 403 de vínculo suspenso, a situação do estabelecimento e o acesso comercial sem recurso próprio). O PR leva teste pela rota real contra PostgreSQL descartável: gerente não confirmado com `GRANTED` gravado recebe 403 em consultar e em cada escrita, e passa depois da confirmação. Também avalia os acessos afetados: os gerentes não confirmados com concessão de serviços gravada no piloto perdem o acesso pela API, o que deve ser conferido e comunicado antes da publicação. Os outros leitores dos ajustes sem `effectiveOverrides` foram conferidos e não têm o mesmo problema: `team/team-authorization.ts` e os avisos de reserva (`push/push-dispatcher.ts`) decidem só pelo dono.
 - **Dívida do enum `Permission` (tratar antes de implantar o modelo individual):** o enum TypeScript não tem nove valores que o enum `permission` do PostgreSQL tem (`ATENDIMENTO_PROPRIO_INICIAR`, `…_CONCLUIR`, `…_FALTA`, `SOLICITACOES_VISUALIZAR`, `SOLICITACOES_TRATAR`, `RECEBIMENTOS_VISUALIZAR`, `…_REGISTRAR`, `…_ESTORNAR` e `COMISSOES_PROPRIAS_VISUALIZAR`; detalhes em "`Permission` e as permissões de recebimentos"). Não é acrescentado de passagem em nenhum PR de conversão: completar o enum muda o que `Object.values(Permission)` devolve em tempo de execução, e a correção precisa examinar junto esses usos (hoje em specs de equivalência, `enums.spec.ts`, `tenant-effective-access.spec.ts` e `commission-access.spec.ts`), as listas de concessão (`TEAM_PERMISSIONS`, `EFFECTIVE_TENANT_PERMISSIONS`), as restrições do dono pelo portal e a coluna tipada da entidade `MembershipPermissionOverride`.
-- **Próximo passo concreto:** revisar e mesclar o PR de Serviços e Profissionais. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
+- **Próximo passo concreto:** revisar e mesclar o PR de Comissões. Depois, cada um num PR próprio, a partir da integração: a correção da confirmação do gerente na rota de serviços (antes da publicação do lote) e Equipe com a agenda própria, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(\|staffPermissionGranted(" backend/src`).
