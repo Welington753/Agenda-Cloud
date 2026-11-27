@@ -10,7 +10,9 @@
 // - cancelado e falta fora do total; atendimento concluído não cancela;
 //   reabertura futura preserva a fotografia;
 // - estorno do recebimento sinaliza, não apaga;
-// - isolamento entre estabelecimentos e recusas de acesso;
+// - isolamento entre estabelecimentos e recusas de acesso; a consulta das
+//   próprias (funcionário e gerente com profissional ligado) nunca traz as de
+//   outro profissional do mesmo estabelecimento;
 // - planos: comissões no Pro (código `equipe`) e no Max (código `pro`), não
 //   no Básico (código `essencial`), onde concluir segue normal; a exceção
 //   individual vence o plano, e o plano não concede nada ao funcionário;
@@ -25,6 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppointmentsService } from '../src/appointments/appointments.service.js';
 import { AvailabilityService } from '../src/availability/availability.service.js';
 import { apurarNaConclusao, configuracaoTravada, reverterApuracao } from '../src/commissions/commission-accrual.js';
+import { OWN_COMMISSIONS_FORBIDDEN_MESSAGE } from '../src/commissions/commission-access.js';
 import { CommissionsService } from '../src/commissions/commissions.service.js';
 import { ConsumersService } from '../src/consumers/consumers.service.js';
 import { buildRuntimeDataSourceOptions } from '../src/database/runtime-data-source.js';
@@ -42,6 +45,7 @@ import { ProfessionalsService } from '../src/professionals/professionals.service
 import { ProfessionalWorkingHoursService } from '../src/professionals/working-hours.service.js';
 import { ServicesService } from '../src/services/services.service.js';
 import { MyAgendaService } from '../src/team/my-agenda.service.js';
+import { OWN_AGENDA_FORBIDDEN_MESSAGE } from '../src/team/staff-access.js';
 import { resolveTeamManager } from '../src/team/team-authorization.js';
 
 const DIRECT_URL = process.env.DB_E2E_DIRECT_URL;
@@ -607,6 +611,62 @@ describe.skipIf(!DIRECT_URL)('comissões por profissional e serviço contra Post
     await expect(comissoes.report(c.dono, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
     // As apurações continuam gravadas.
     expect(((await db.query('SELECT count(*)::int AS n FROM commission_entries WHERE tenant_id = $1', [c.tenantId])) as { n: number }[])[0].n).toBe(3);
+  });
+
+  it('gerente com profissional ligado: só as próprias comissões, com a concessão e depois da confirmação; nunca as de outro profissional do mesmo estabelecimento', async () => {
+    const c = await cenario('gerente-proprias');
+    await comissoes.setRule(c.dono, c.tenantId, c.ana, c.corte, { kind: 'PERCENTAGE', value: 4000 });
+    await comissoes.setRule(c.dono, c.tenantId, c.bia, c.corte, { kind: 'FIXED', value: 800 });
+    const daAna = await reservar(c, [c.corte], as(DIA, 9));
+    await concluir(c, daAna.id, as(DIA, 9));
+    const daBia = await reservar(c, [c.corte], as(DIA, 9), c.bia);
+    await concluir(c, daBia.id, as(DIA, 9));
+    // 40% de 42,50 (Ana) + R$ 8 (Bia).
+    expect((await comissoes.report(c.dono, c.tenantId, MES)).totalAccruedCents).toBe(2500);
+
+    // O levantamento de vagas de pilot-team-manager-check lista só os primeiros
+    // estabelecimentos com gerente, no mesmo banco: o gerente sai daqui mesmo
+    // se o teste falhar.
+    const gerente = await funcionario(c, c.bia, 'GERENTE', ['COMISSOES_PROPRIAS_VISUALIZAR']);
+    const vinculo = [c.tenantId, gerente];
+    try {
+      // Confirmado e com a concessão: só as da Bia, sem o recebimento do cliente.
+      const propria = await agendaPropria.commissions(gerente, c.tenantId, MES);
+      expect(propria.professional.id).toBe(c.bia);
+      expect(propria.totalAccruedCents).toBe(800);
+      expect(propria.appointments.map((a) => a.id)).toEqual([daBia.id]);
+      expect(propria.professionals.map((p) => p.professional.id)).toEqual([c.bia]);
+      const corpo = JSON.stringify(propria);
+      expect(corpo).not.toContain(c.ana);
+      expect(corpo).not.toContain(daAna.id);
+      expect(corpo).not.toMatch(/clientPayment|refundedPayment|ESTORNADO|RECEBIDO/);
+      // A concessão das próprias não dá o relatório de todos.
+      await expect(comissoes.report(gerente, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+
+      // Sem a confirmação do dono, o GRANTED gravado não vale, nem a agenda própria.
+      await db.query('UPDATE memberships SET permissions_confirmed_at = NULL WHERE tenant_id = $1 AND user_id = $2', vinculo);
+      await expect(agendaPropria.commissions(gerente, c.tenantId, MES)).rejects.toThrow(OWN_AGENDA_FORBIDDEN_MESSAGE);
+      await db.query('UPDATE memberships SET permissions_confirmed_at = now() WHERE tenant_id = $1 AND user_id = $2', vinculo);
+
+      // A concessão trocada por DENIED (a tabela guarda um modo por permissão).
+      const trocar = (mode: string) =>
+        db.query(
+          `UPDATE membership_permission_overrides SET mode = $3::permission_mode
+            WHERE permission = 'COMISSOES_PROPRIAS_VISUALIZAR'
+              AND membership_id = (SELECT id FROM memberships WHERE tenant_id = $1 AND user_id = $2)`,
+          [...vinculo, mode],
+        );
+      await trocar('DENIED');
+      await expect(agendaPropria.commissions(gerente, c.tenantId, MES)).rejects.toThrow(OWN_COMMISSIONS_FORBIDDEN_MESSAGE);
+      await trocar('GRANTED');
+      expect((await agendaPropria.commissions(gerente, c.tenantId, MES)).totalAccruedCents).toBe(800);
+
+      // Profissional ligado inativo: recusado.
+      await db.query('UPDATE professionals SET active = false WHERE tenant_id = $1 AND id = $2', [c.tenantId, c.bia]);
+      await expect(agendaPropria.commissions(gerente, c.tenantId, MES)).rejects.toThrow(ForbiddenException);
+    } finally {
+      await db.query('DELETE FROM memberships WHERE user_id = $1', [gerente]);
+    }
   });
   // ------------------------------------------------------------------------
   // "Recebe comissão" e regra geral (migration ProfessionalCommissionSettings,

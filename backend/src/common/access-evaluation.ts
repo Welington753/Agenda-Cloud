@@ -10,28 +10,41 @@
 //   (`effectiveOverrides` descarta os `GRANTED` do gerente não confirmado);
 // - RECEPCIONISTA: só `GRANTED` sem `DENIED` da lista dela
 //   (`receptionistGranted`); o resto gravado é ignorado;
-// - PROFISSIONAL e qualquer outro papel: nenhuma concessão de gerente (as
-//   permissões de funcionário seguem em `team/staff-access.ts`).
+// - PROFISSIONAL e qualquer outro papel: nenhuma concessão de gerente.
 //
 // Uma ação exige a permissão dela e as dependências de
 // `MANAGER_PERMISSION_REQUIRES`, como em `managerCan`/`receptionistCan`.
+//
+// ALCANCE PRÓPRIO (permissões de funcionário, `STAFF_PERMISSIONS`): só
+// PROFISSIONAL e GERENTE, cada uma com `GRANTED` sem `DENIED`, como em
+// `staffPermissionGranted` (team/staff-access.ts); o dono e a recepcionista
+// nunca. O profissional ligado e ativo e a agenda própria são conferidos por
+// quem chama, no banco.
+//
 // O modelo INDIVIDUAL e a retirada do teto por papel entram em etapas
 // próprias; nada aqui os antecipa.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
+import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import {
   MANAGER_PERMISSION_REQUIRES,
   managerGrantedPermissions,
   receptionistGrantedPermissions,
   type ManagerPermission,
 } from './manager-permissions.js';
+import { STAFF_PERMISSIONS, type StaffPermission } from './staff-permissions.js';
 import { algumaNegada, type PermissionOverrideLike } from './tenant-authorization.js';
 
 /** Acesso efetivo de um vínculo, já calculado. As políticas perguntam a
- * `accessCan`, nunca ao papel diretamente. */
+ * `accessCan`, `accessAllows` ou `accessCanOwn`, nunca ao papel diretamente. */
 export type EffectiveAccess =
   | { readonly kind: 'OWNER'; readonly overrides: readonly PermissionOverrideLike[] }
-  | { readonly kind: 'GRANTS'; readonly granted: ReadonlySet<ManagerPermission> };
+  | {
+      readonly kind: 'GRANTS';
+      readonly granted: ReadonlySet<ManagerPermission>;
+      /** Permissões de funcionário efetivas (alcance próprio). */
+      readonly own: ReadonlySet<StaffPermission>;
+    };
 
 /** Concessões de gerente que valem no modelo LEGADO, pela regra do papel. */
 export function legacyGrantedPermissions(
@@ -43,6 +56,17 @@ export function legacyGrantedPermissions(
   return new Set();
 }
 
+/** Permissões de funcionário que valem no modelo LEGADO: só PROFISSIONAL e
+ * GERENTE, `GRANTED` sem `DENIED`. */
+export function legacyOwnPermissions(
+  role: EstablishmentRole | string,
+  overrides: readonly PermissionOverrideLike[],
+): ReadonlySet<StaffPermission> {
+  if (role !== EstablishmentRole.PROFISSIONAL && role !== EstablishmentRole.GERENTE) return new Set();
+  const tem = (p: string, mode: PermissionMode) => overrides.some((o) => o.permission === p && o.mode === mode);
+  return new Set(STAFF_PERMISSIONS.filter((p) => tem(p, PermissionMode.GRANTED) && !tem(p, PermissionMode.DENIED)));
+}
+
 /** Acesso efetivo pelo modelo LEGADO. `overrides` são os ajustes que valem
  * (`effectiveOverrides` já aplicado por quem leu o vínculo). */
 export function effectiveAccess(
@@ -50,7 +74,11 @@ export function effectiveAccess(
   overrides: readonly PermissionOverrideLike[] = [],
 ): EffectiveAccess {
   if (role === EstablishmentRole.DONO) return { kind: 'OWNER', overrides };
-  return { kind: 'GRANTS', granted: legacyGrantedPermissions(role, overrides) };
+  return {
+    kind: 'GRANTS',
+    granted: legacyGrantedPermissions(role, overrides),
+    own: legacyOwnPermissions(role, overrides),
+  };
 }
 
 /** A permissão e as dependências dela, na ordem em que são conferidas. */
@@ -86,4 +114,11 @@ export function accessAllows(access: EffectiveAccess, acao: LegacyAction): boole
   if (access.kind === 'OWNER') return acao.ownerDenials !== null && !algumaNegada(access.overrides, acao.ownerDenials);
   const grants = acao.grants ?? [];
   return grants.length > 0 && grants.every((p) => accessCan(access, p));
+}
+
+/** Pode no alcance PRÓPRIO: a permissão de funcionário efetiva. O dono nunca
+ * (ele não tem alcance próprio; vê o de todos pelas outras políticas). Quem
+ * chama confere o profissional ligado e ativo e a agenda própria. */
+export function accessCanOwn(access: EffectiveAccess, permissao: StaffPermission): boolean {
+  return access.kind === 'GRANTS' && access.own.has(permissao);
 }
