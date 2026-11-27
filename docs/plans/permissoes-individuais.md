@@ -1,6 +1,6 @@
 # Plano: permissões individuais, autorização pontual e caixas independentes
 
-Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas e Estoque mesclados, Agenda em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
+Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque e Agenda mesclados, Recebimentos em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
 
 Protótipo: `AgendaCloud-operacoes/prototipos/pdv-nova-venda/index.html`, fora do repositório (tela "Fluxo e decisões" e cenário de exemplo). A seção 9 lista o que o protótipo ainda mostra diferente desta revisão.
 
@@ -601,7 +601,8 @@ A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte
 |---|---|---|---|
 | #154 Vendas e base comum | `refactor/permissoes-base-vendas` | mesclado em 27/11/2026 como `be267cc` (head `93f7d7b`, CI 45985468550) | `C:/wt/perm-base` |
 | #155 Estoque | `refactor/permissoes-base-estoque` | mesclado em 27/11/2026 como `264d31d` (head `0dd86ab`, CI do PR com base na integração 45989781076) | `C:/wt/perm-estoque` |
-| Agenda e disponibilidade | `refactor/permissoes-base-agenda` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`264d31d`); head e CI no PR | `C:/wt/perm-agenda` |
+| #156 Agenda e disponibilidade | `refactor/permissoes-base-agenda` | mesclado em 27/11/2026 como `9c904ea` (head `75eb8fe`, CI 45997938971) | `C:/wt/perm-agenda` |
+| Recebimentos | `refactor/permissoes-base-recebimentos` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`9c904ea`); head e CI no PR | `C:/wt/perm-recebimentos` |
 
 As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
@@ -613,7 +614,10 @@ As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso s�
 - A correção do teste lento do lote sorteado (`93f7d7b`) entrou pelo #154; o #155 não a repete.
 - O retarget do #155 para a integração não dispara o workflow; o PR foi fechado e reaberto para gerar o run do PR (45989781076) sobre a base nova.
 
-### PR de Agenda e disponibilidade
+### Mesclado: #156 (Agenda e disponibilidade)
+
+Revisado antes do merge: a separação entre a lista do dono e as dependências do gerente só existe em `accessAllows`; `accessCan`, usada por Vendas e Estoque, não mudou, e `ownerDenials` é obrigatório no tipo (`null` fecha o dono de propósito, nunca por omissão).
+
 
 - **Feito:**
   - `common/access-evaluation.ts`: `LegacyAction` e `accessAllows`, para ações em que a lista de DENIED do dono difere das dependências exigidas do gerente, ou em que um dos lados não faz a ação. `accessCan` e o resto da base não mudaram;
@@ -643,10 +647,47 @@ As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso s�
 
   Tudo passou. Depois da revisão (teste de campos e `precosParaQuemPediu`), a mesma bateria mais `src/public-booking`: 56 arquivos, 777 testes; os 80 e2e, o typecheck, o build e o lint de novo. O `db-e2e` não foi executado localmente, porque nenhum SQL mudou; o CI do PR o roda. O resultado do CI no head fica registrado no PR.
 
+### PR de Recebimentos
+
+- **Feito:**
+  - `payments/payment-access.ts`: `canViewPayments`, `canRecordPayments`, `canRefundPayments` e `canManagePayments` decidem só por `accessAllows(effectiveAccess(role, overrides), …)`, com as mesmas assinaturas e mensagens. A lista do dono é literal e igual à de ver a agenda: só `AGENDA_VISUALIZAR` negada barra o dono, que não confere as permissões de recebimentos nem as dependências do gerente. O gerente precisa da concessão da ação e das dependências (`RECEBIMENTOS_VISUALIZAR`, `AGENDA_VISUALIZAR`, `PROFISSIONAIS_VISUALIZAR`). `canManagePayments` continua só do dono. A base comum não mudou;
+  - `payments/payment-access.equivalence.spec.ts`: referência congelada de `264d31d` (igual a `8f71335`, o piloto), com a política de ver a agenda do dono escrita por extenso, só com listas literais. Compara uma impressão de pares (ação, alcance): consultar, registrar, estornar e operar como dono, todos com alcance "todo o estabelecimento". Recebimentos não têm alcance próprio: funcionário e recepcionista não veem nenhum, nem dos próprios atendimentos, mesmo com tudo gravado (teste próprio). Como guarda, entram as decisões não convertidas que dependem de `canViewPayments`: o relatório de comissões e o que o histórico do cliente mostra (preço; recebimentos com o recurso contratado ligado ou não). Os casos combinam os quatro papéis, o gerente confirmado ou não, dois grupos exaustivos (10.240 casos) e 10.000 casos de semente fixa com todas as permissões. Uma guarda reprova política `can*` nova sem caso;
+  - treze mutantes apanhados, entre eles dono com as dependências do gerente ou sem a restrição da agenda, gerente registrando sem consultar, estornando com a permissão de registrar ou consultando sem `PROFISSIONAIS_VISUALIZAR`, GRANTED vencendo DENIED, gerente operando como dono, recepcionista ou funcionário com GRANTED, comissões para o gerente e histórico ignorando o recurso. A política lida sem `effectiveOverrides` também é apanhada. O spec passa contra a implementação anterior. Uma mutação manual no arquivo real (o dono passa a ser barrado por `RECEBIMENTOS_VISUALIZAR` negada) reprovou quatro testes e foi desfeita; o `payment-access.spec.ts` antigo não a apanhava;
+  - `test/payments-manager-postgres.db-e2e-spec.ts` (acrescentado na revisão): gerente registrando e estornando pela API HTTP real (AppModule inteiro, sessão por cookie) contra PostgreSQL descartável. O acesso é montado só pelo caminho que o sistema oferece: o dono entra, confirma a senha e cria o gerente em "Equipe e acessos" (`POST /tenants/:id/team/staff-accounts`, com a senha escolhida pelo dono, como a tela atual envia) e muda as concessões pela mesma tela (`PUT …/members/:id/permissions`). Nenhuma permissão é gravada direto no banco. Três cenários:
+    - com as cinco concessões (`AGENDA_VISUALIZAR`, `PROFISSIONAIS_VISUALIZAR`, `RECEBIMENTOS_VISUALIZAR`, `_REGISTRAR`, `_ESTORNAR`), confirmadas na criação, o gerente registra (linha com estabelecimento, atendimento, valor, forma, data e autor certos; auditoria `PAYMENT_RECORDED` com ele como autor; o mesmo formulário não duplica) e estorna. Sem a senha confirmada na própria sessão, o estorno responde `REAUTENTICACAO_NECESSARIA` sem gravar; depois de `POST /platform/reauth`, estorna (motivo, quem estornou e auditoria `PAYMENT_REFUNDED`), e um segundo estorno responde `JA_ESTORNADO`. A tela recusa conceder registrar sem consultar (`PERMISSOES_INCOMPLETAS`);
+    - sem a concessão da ação, 403 com a mensagem de sempre e nada gravado (nenhuma linha, nenhum estorno, nenhuma auditoria): só consultar (vê o recebimento do dono, não registra nem estorna), registrar sem estornar (registra o próprio, não estorna nem o próprio), e só a agenda depois que o dono retira a consulta, na requisição seguinte com a sessão aberta;
+    - isolamento: o gerente com tudo de A recebe 404 nas rotas de B (listar, registrar, estornar) e, no caminho de A, com ids de B (estornar o recebimento de B, registrar o atendimento de B); a lista de A não mostra nada de B, e nada muda em B.
+
+    No fim, mesmo com falha, o gerente é suspenso e perde as concessões, e depois todos os dados do spec (estabelecimentos, contas, recebimentos, auditoria e o plano de teste) saem numa transação. Nenhum gerente ativo fica para `pilot-team-manager-check`. Quatro mutações temporárias foram apanhadas e desfeitas: registrar com a concessão de consultar, estornar com a de registrar, gerente sem registrar e o estorno sem o filtro por estabelecimento em `payments.service.ts`.
+- **Sem mudança:** `payments.service.ts` inteiro: a senha confirmada há pouco do estorno (`requireRecentReauth`, conferida antes da autorização), as travas, a idempotência, o recurso `PAGAMENTOS` e o isolamento por `tenant_id`. Seguem em `resolveAuthorizedTenant` o vínculo, a situação do estabelecimento e o acesso comercial. Os recebimentos de vendas (`sales/`, com as regras e o recurso deles) não foram tocados. Nenhuma migration.
+- **Não convertido, fica para a etapa de cada área:** `commissions/commission-access.ts` (`canViewCommissions` chama `canViewPayments`) e `consumers/consumer-profile.service.ts` (`oQueOHistoricoMostra`: `veDinheiro` por `managerCan` e `veRecebimentos` por `canViewPayments`). O spec só as congela como guarda.
+- **Comportamento antigo questionável, registrado e não corrigido nesta etapa:**
+  - o dono com `RECEBIMENTOS_VISUALIZAR`, `_REGISTRAR` ou `_ESTORNAR` negada continua consultando, registrando e estornando: só a restrição da agenda conta para ele. Esse estado não é configurável pelo sistema: a restrição do dono pelo portal (`accounts-admin.service.ts`, `setDeniedPermissions`) só aceita a lista `EFFECTIVE_TENANT_PERMISSIONS` (`accounts/tenant-effective-access.ts`), que não tem recebimentos. Só aparece com escrita direta no banco;
+  - no estorno, a senha recente é conferida antes da autorização: quem não tem a permissão, ou nem vínculo, e está sem senha recente recebe `REAUTENTICACAO_NECESSARIA` em vez de 403 ou 404;
+  - a lista de recebimentos mostra o nome do cliente ao gerente com `RECEBIMENTOS_VISUALIZAR`, mesmo sem `CONSUMIDORES_VISUALIZAR` (na agenda, só o telefone e as observações são recortados);
+  - o enum TypeScript `Permission` não descreve todos os valores gravados; ver "`Permission` e as permissões de recebimentos" abaixo;
+  - recepcionista e funcionário ficam de fora porque a lista de concessões da recepcionista não tem recebimentos e o funcionário não tem concessões de gerente. A etapa das permissões individuais precisa rever isso junto.
+- **Testes executados localmente:**
+  - `vitest run` de `src/payments`, `commissions`, `consumers`, `accounts`, `dashboard`, `auth`, `team`, `common`, `appointments`, `sales` e `stock`: 57 arquivos, 845 testes;
+  - `test:e2e` de comissões, contas, equipe, agenda e vendas: 90 testes;
+  - `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`.
+
+  Tudo passou. O CI do PR roda o `db-e2e`, inclusive `payments-postgres` (registro, estorno, senha recente, restrição da agenda do dono, isolamento) e `team-manager-postgres` (consulta do gerente concedida e retirada). O resultado do CI no head fica registrado no PR.
+
+  Na revisão: o spec novo `payments-manager-postgres` passou num PostgreSQL 18 descartável com TLS (3 testes), e a bateria `db-e2e` inteira, num banco novo migrado (28 migrations), passou com o spec novo: 48 arquivos, 538 testes, inclusive `pilot-team-manager-check`. O typecheck e o lint passaram de novo.
+
+- **`Permission` e as permissões de recebimentos (esclarecido na revisão):**
+  - definição: `backend/src/entities/enums/permission.enum.ts`, `export enum Permission`. Tem os 17 valores originais, comissões, personalização, configurações, estoque e vendas. Não tem os valores que o banco ganhou por TeamAccess (`ATENDIMENTO_PROPRIO_INICIAR`, `…_CONCLUIR`, `…_FALTA`), por TeamManagerAccess (`SOLICITACOES_VISUALIZAR`, `SOLICITACOES_TRATAR`, `RECEBIMENTOS_VISUALIZAR`, `…_REGISTRAR`, `…_ESTORNAR`) e por ProfessionalCommissions (`COMISSOES_PROPRIAS_VISUALIZAR`). Conferido contra o enum `permission` de um banco migrado: são exatamente esses nove;
+  - concessão: `team/team.dto.ts` aceita `TEAM_PERMISSIONS` = `STAFF_PERMISSIONS` (`team/staff-access.ts`) + `MANAGER_PERMISSIONS` (`common/manager-permissions.ts`, onde estão os três de recebimentos). O serviço (`team/team-permissions.ts`) confere o papel, o que o dono pode conceder (`grantableManagerPermissions`: para os três de recebimentos, o dono precisa de `canViewPayments`), o adicional contratado e as dependências (`missingManagerRequirements`). Só o dono concede, e só `GRANTED`;
+  - gravação: `membership_permission_overrides.permission` é o enum `permission` do PostgreSQL, que tem os valores de recebimentos desde a migration TeamManagerAccess (`MANAGER_NEW_PERMISSIONS`). A equipe grava por SQL com `$4::permission` (`team/team.service.ts` e `team/staff-accounts.service.ts`). O portal só grava `DENIED` no dono, e só da lista `EFFECTIVE_TENANT_PERMISSIONS`;
+  - leitura e política: `resolveAuthorizedTenant` lê os ajustes pela entidade `MembershipPermissionOverride`, cuja coluna é tipada `Permission`. O TypeORM não confere o valor lido: `'RECEBIMENTOS_REGISTRAR'` chega como texto, com o tipo `Permission` sem ser membro dele. A política do gerente compara texto com `ManagerPermission` (`managerGranted`, base comum), então funciona. A lista do dono (`algumaNegada`, `ownerDenials`) é tipada `Permission[]` e não pode citar esses valores sem conversão de tipo; hoje nenhuma política do dono precisa deles;
+  - web: `src/lib/equipe/contratos.ts` (`PermissaoGerente`) tem os três valores; a sessão traz áreas (`RECEBIMENTOS_VER`, `RECEBIMENTOS_REGISTRAR`, `RECEBIMENTOS_ESTORNAR`, `src/lib/conta/papel.ts`), calculadas no servidor pelas mesmas políticas (`accounts/tenant-effective-access.ts`), não as permissões;
+  - conclusão: o gerente com as concessões de recebimentos é um acesso que o sistema atual configura de verdade (o `db-e2e` novo o monta pela tela de equipe). A limitação é só de tipo: `PermissionOverrideLike.permission` declara `Permission`, mais estreito que os valores gravados. Uma referência como `Permission.RECEBIMENTOS_VISUALIZAR` reprova no typecheck, mas no Vitest (sem checagem de tipos) vira `undefined` e passa calada. Não corrigido aqui: ampliar o enum ou o tipo é mudança fora desta etapa.
+
 ### Resto da etapa 1
 
 - **Não feito:**
-  - converter recebimentos (`payments/payment-access.ts`), clientes (`consumers/consumer-access.ts` e o `veDinheiro` de `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
+  - converter clientes (`consumers/consumer-access.ts` e o `veDinheiro` de `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
   - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
   - o `db-e2e` de alcance real sobre a cópia.
-- **Próximo passo concreto:** revisar e mesclar o PR de Agenda. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
+- **Próximo passo concreto:** revisar e mesclar o PR de Recebimentos. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
