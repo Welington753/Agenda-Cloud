@@ -1,6 +1,6 @@
 # Plano: permissões individuais, autorização pontual e caixas independentes
 
-Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque e Agenda mesclados, Recebimentos em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
+Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque, Agenda e Recebimentos mesclados, Clientes em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
 
 Protótipo: `AgendaCloud-operacoes/prototipos/pdv-nova-venda/index.html`, fora do repositório (tela "Fluxo e decisões" e cenário de exemplo). A seção 9 lista o que o protótipo ainda mostra diferente desta revisão.
 
@@ -602,7 +602,8 @@ A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte
 | #154 Vendas e base comum | `refactor/permissoes-base-vendas` | mesclado em 27/11/2026 como `be267cc` (head `93f7d7b`, CI 45985468550) | `C:/wt/perm-base` |
 | #155 Estoque | `refactor/permissoes-base-estoque` | mesclado em 27/11/2026 como `264d31d` (head `0dd86ab`, CI do PR com base na integração 45989781076) | `C:/wt/perm-estoque` |
 | #156 Agenda e disponibilidade | `refactor/permissoes-base-agenda` | mesclado em 27/11/2026 como `9c904ea` (head `75eb8fe`, CI 45997938971) | `C:/wt/perm-agenda` |
-| Recebimentos | `refactor/permissoes-base-recebimentos` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`9c904ea`); head e CI no PR | `C:/wt/perm-recebimentos` |
+| #157 Recebimentos | `refactor/permissoes-base-recebimentos` | mesclado em 27/11/2026 como `1a973a9` (head `edd4df4`, CI 46007675376) | `C:/wt/perm-recebimentos` |
+| Clientes | `refactor/permissoes-base-clientes` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`1a973a9`); head e CI no PR | `C:/wt/perm-clientes` |
 
 As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
@@ -647,7 +648,10 @@ Revisado antes do merge: a separação entre a lista do dono e as dependências 
 
   Tudo passou. Depois da revisão (teste de campos e `precosParaQuemPediu`), a mesma bateria mais `src/public-booking`: 56 arquivos, 777 testes; os 80 e2e, o typecheck, o build e o lint de novo. O `db-e2e` não foi executado localmente, porque nenhum SQL mudou; o CI do PR o roda. O resultado do CI no head fica registrado no PR.
 
-### PR de Recebimentos
+### Mesclado: #157 (Recebimentos)
+
+Revisado antes do merge: a lacuna de registrar e estornar pelo gerente com o banco real foi fechada por `test/payments-manager-postgres.db-e2e-spec.ts`, e o enum `Permission` foi esclarecido (abaixo). Nenhuma regra antiga questionável foi corrigida.
+
 
 - **Feito:**
   - `payments/payment-access.ts`: `canViewPayments`, `canRecordPayments`, `canRefundPayments` e `canManagePayments` decidem só por `accessAllows(effectiveAccess(role, overrides), …)`, com as mesmas assinaturas e mensagens. A lista do dono é literal e igual à de ver a agenda: só `AGENDA_VISUALIZAR` negada barra o dono, que não confere as permissões de recebimentos nem as dependências do gerente. O gerente precisa da concessão da ação e das dependências (`RECEBIMENTOS_VISUALIZAR`, `AGENDA_VISUALIZAR`, `PROFISSIONAIS_VISUALIZAR`). `canManagePayments` continua só do dono. A base comum não mudou;
@@ -684,10 +688,31 @@ Revisado antes do merge: a separação entre a lista do dono e as dependências 
   - web: `src/lib/equipe/contratos.ts` (`PermissaoGerente`) tem os três valores; a sessão traz áreas (`RECEBIMENTOS_VER`, `RECEBIMENTOS_REGISTRAR`, `RECEBIMENTOS_ESTORNAR`, `src/lib/conta/papel.ts`), calculadas no servidor pelas mesmas políticas (`accounts/tenant-effective-access.ts`), não as permissões;
   - conclusão: o gerente com as concessões de recebimentos é um acesso que o sistema atual configura de verdade (o `db-e2e` novo o monta pela tela de equipe). A limitação é só de tipo: `PermissionOverrideLike.permission` declara `Permission`, mais estreito que os valores gravados. Uma referência como `Permission.RECEBIMENTOS_VISUALIZAR` reprova no typecheck, mas no Vitest (sem checagem de tipos) vira `undefined` e passa calada. Não corrigido aqui: ampliar o enum ou o tipo é mudança fora desta etapa.
 
+### PR de Clientes
+
+- **Feito:**
+  - `consumers/consumer-access.ts`: `canViewConsumers` e `canManageConsumers` decidem só por `accessCan(effectiveAccess(role, overrides), …)`, porque a lista do dono é igual às dependências do gerente (cadastrar exige `CONSUMIDORES_GERENCIAR` e `CONSUMIDORES_VISUALIZAR`; buscar, só `CONSUMIDORES_VISUALIZAR`). `canMergeConsumers` usa `accessAllows` com a lista literal do dono (`CONSUMIDORES_VISUALIZAR` e `CONSUMIDORES_GERENCIAR`) e nenhuma concessão: unificar continua só do dono. Assinaturas e mensagens iguais. A base comum não mudou;
+  - recorte de preço do histórico (`consumers/consumer-profile.service.ts`, `oQueOHistoricoMostra`): o preço passa a vir de `canSeeAppointmentPrices` (convertida no #156), a mesma regra que o código já declarava seguir (o preço na agenda), no lugar da cópia com `managerCan`. O recebimento continua com `canViewPayments` (convertida no #157) e o recurso contratado. A montagem de cada item saiu do corpo de `history` para a função pura `itemDoHistoricoParaQuemPediu`, com o mesmo código, para ser testada campo a campo;
+  - `consumers/consumer-access.equivalence.spec.ts`: referência congelada das regras em `9c904ea` (iguais a `8f71335`, o piloto), com a consulta de recebimentos que o histórico chamava escrita por extenso, só com listas literais. Compara uma impressão de pares (ação, alcance): buscar, cadastrar e unificar, todos com alcance "todos os cadastros do estabelecimento", e o preço e o recebimento do histórico, com o recurso contratado ligado ou não. Clientes não têm alcance próprio: funcionário e recepcionista não alcançam cliente algum, mesmo com tudo gravado (teste próprio). Como guarda, entram as decisões de outras áreas que dependem das políticas de Clientes: as compras na ficha (`sales.service.ts`, consulta geral de vendas e de clientes) e o que o dono pode conceder ao gerente em clientes (`grantableManagerPermissions`). Os casos combinam os quatro papéis, o gerente confirmado ou não, dois grupos exaustivos (4.096 casos) e 10.000 casos de semente fixa com todas as permissões. Uma guarda reprova política `can*` nova sem caso;
+  - campos devolvidos: o mesmo spec compara cada item do histórico (`priceCents`, `payment` presente ou ausente, `hidden` e o resto do atendimento) com a transformação congelada, em 49.152 combinações (papéis, confirmação, `CONSUMIDORES_VISUALIZAR`, `AGENDA_VISUALIZAR`, `PROFISSIONAIS_VISUALIZAR`, `RECEBIMENTOS_VISUALIZAR`, recurso, quatro formas de preço e três de recebimento), com as entradas congeladas (alterar o item lança erro). Aparecem três desfechos: nada escondido, só o recebimento, ou os dois; "só o preço" não acontece, antes nem depois, porque quem vê recebimentos sempre vê o preço;
+  - dezesseis mutantes apanhados, entre eles gerente buscando sem concessão, cadastrando sem a dependência ou só com a consulta, dono cadastrando com a consulta negada ou ignorando a restrição de buscar, GRANTED vencendo DENIED, gerente ou dono com regra errada de unificar, recepcionista ou funcionário com GRANTED, histórico com o preço do gerente sem as dependências ou pela consulta de clientes, preço escondido do dono com a agenda negada, recebimentos sem o recurso, compras na ficha sem a consulta de clientes e concessão indevida. A política lida sem `effectiveOverrides` também é apanhada. O spec passa contra a implementação anterior. Quatro mutações manuais nos arquivos reais foram apanhadas e desfeitas: cadastrar com a regra de buscar, gerente unificando com `CONSUMIDORES_GERENCIAR`, o preço do item sem recorte e o preço do histórico pela consulta de recebimentos (que barraria o dono com a agenda negada).
+- **Sem mudança:** o SQL e as consultas de `consumers.service.ts`, `consumer-profile.service.ts` e `consumer-merge.service.ts`, o filtro por `tenant_id`, as travas e a prévia da unificação. A busca limitada de clientes da venda (`sales.service.ts`, `searchConsumers`) continua com a política de registrar vendas e não foi tocada; as compras na ficha continuam com a mesma composição. Seguem em `resolveAuthorizedTenant` o vínculo, a situação do estabelecimento e o acesso comercial. Nenhuma migration.
+- **Comportamento antigo questionável, registrado e não corrigido nesta etapa:**
+  - o preço do histórico é "visível" para qualquer papel que não seja gerente (`role !== GERENTE`). Hoje recepcionista e funcionário não chegam ao histórico (`canViewConsumers` os barra antes), mas uma etapa que abra clientes a outros papéis precisa rever o recorte junto, como na agenda;
+  - o dono com `AGENDA_VISUALIZAR` negada continua vendo o preço no histórico (o recorte de preço não olha restrições do dono), mas não vê o recebimento, que segue a consulta de recebimentos;
+  - lista, busca e ficha devolvem telefone e e-mail a quem busca clientes, sem recorte por concessão; só o histórico tem recorte.
+- **Testes executados localmente:**
+  - `vitest run` de `src/consumers`, `sales`, `team`, `accounts`, `auth`, `payments`, `appointments`, `common`, `commissions`, `dashboard`, `stock` e `availability`: 63 arquivos, 951 testes, inclusive as equivalências de Vendas, Estoque, Agenda e Recebimentos;
+  - `test:e2e` de contas, equipe, vendas, agenda e comissões: 90 testes;
+  - `db-e2e` num PostgreSQL 18 descartável com TLS: `consumers-identity-postgres` (ficha e histórico do dono com preço e recebimento, recurso desligado), `consumers-merge-postgres`, `team-manager-postgres`, `sales-access-postgres` e `isolamento-estabelecimentos-postgres`;
+  - `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`.
+
+  Tudo passou. Limitação: o recorte do histórico para o gerente não tem `db-e2e` (o spec de identidade evita gerente por causa do banco compartilhado); fica provado campo a campo pela equivalência e pelo SQL inalterado. O resultado do CI no head fica registrado no PR.
+
 ### Resto da etapa 1
 
 - **Não feito:**
-  - converter clientes (`consumers/consumer-access.ts` e o `veDinheiro` de `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
+  - converter serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
   - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
   - o `db-e2e` de alcance real sobre a cópia.
-- **Próximo passo concreto:** revisar e mesclar o PR de Recebimentos. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
+- **Próximo passo concreto:** revisar e mesclar o PR de Clientes. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
