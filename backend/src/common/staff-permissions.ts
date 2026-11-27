@@ -19,3 +19,7 @@ export type StaffPermission = (typeof STAFF_PERMISSIONS)[number];
 
 /** Concessão que libera as próprias comissões. */
 export const OWN_COMMISSIONS_PERMISSION = 'COMISSOES_PROPRIAS_VISUALIZAR' satisfies StaffPermission;
+
+export function isStaffPermission(valor: string): valor is StaffPermission {
+  return (STAFF_PERMISSIONS as readonly string[]).includes(valor);
+}

@@ -44,16 +44,15 @@ import { recordAudit } from '../accounts/audit.js';
 import { requireRecentReauth } from '../accounts/reauth.js';
 import { linhasDe } from '../common/linhas-de.js';
 import { MAX_INVITE_SENDS } from '../accounts/account-token.js';
-import { effectiveOverrides } from '../common/tenant-authorization.js';
+import { effectiveOverrides, type PermissionOverrideLike } from '../common/tenant-authorization.js';
 import {
   MANAGER_AREA_LABELS,
   MANAGER_PERMISSIONS,
   MANAGER_PERMISSION_META,
   MANAGER_PERMISSION_REQUIRES,
   RECEPTIONIST_PERMISSIONS,
-  managerGrantedPermissions,
-  receptionistGrantedPermissions,
 } from '../common/manager-permissions.js';
+import { accessGrantedPermissions, effectiveAccess } from '../common/access-evaluation.js';
 import { isUniqueViolation } from '../auth/unique-violation.js';
 import {
   activeProfessionals,
@@ -67,7 +66,6 @@ import {
 import {
   STAFF_PERMISSIONS,
   STAFF_PERMISSION_LABELS,
-  staffGrantedPermissions,
   type OverrideRow,
   type TeamRole,
 } from './staff-access.js';
@@ -109,16 +107,15 @@ interface StaffMembershipRow {
 
 /** O que vale hoje para o vínculo: as três ações próprias e as áreas de
  * gerente, na ordem do catálogo. Com os ajustes EFETIVOS (gerente sem
- * confirmação não tem nada). */
+ * confirmação não tem nada), pela base comum (common/access-evaluation.ts):
+ * a recepcionista só as dela, o dono nenhuma. */
 export function grantedTeamPermissions(
   role: string,
   permissionsConfirmed: boolean,
   overrides: readonly OverrideRow[],
 ): TeamPermission[] {
-  if (role === EstablishmentRole.RECEPCIONISTA) return receptionistGrantedPermissions(role, overrides);
-  if (role !== EstablishmentRole.PROFISSIONAL && role !== EstablishmentRole.GERENTE) return [];
-  const valem = effectiveOverrides(role, permissionsConfirmed, overrides);
-  return [...staffGrantedPermissions(role as EstablishmentRole, valem), ...managerGrantedPermissions(role, valem)];
+  const valem = effectiveOverrides(role, permissionsConfirmed, overrides) as unknown as PermissionOverrideLike[];
+  return accessGrantedPermissions(effectiveAccess(role, valem));
 }
 
 @Injectable()

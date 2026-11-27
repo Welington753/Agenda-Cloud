@@ -19,15 +19,16 @@ import {
   missingManagerRequirements,
   type ManagerPermission,
 } from '../common/manager-permissions.js';
-import { STAFF_PERMISSIONS, type StaffPermission, type TeamRole } from './staff-access.js';
+import { isStaffPermission } from '../common/staff-permissions.js';
+import type { TeamRole } from './staff-access.js';
 import type { TeamManager } from './team-authorization.js';
 import type { TeamPermission } from './team.dto.js';
 
 const conflito = (code: string, message: string) => new ConflictException({ code, message });
 
-export function isStaffPermission(valor: string): valor is StaffPermission {
-  return (STAFF_PERMISSIONS as readonly string[]).includes(valor);
-}
+// A conferência da permissão de funcionário fica em common/staff-permissions.ts
+// (a base comum também a usa); reexportada aqui.
+export { isStaffPermission };
 
 export function validarConcessoes(
   gestor: Pick<TeamManager, 'grantable' | 'grantableManager'> & Partial<Pick<TeamManager, 'managerWithoutFeature'>>,
