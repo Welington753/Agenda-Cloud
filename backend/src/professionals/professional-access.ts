@@ -1,48 +1,38 @@
-// Política de acesso à gestão de profissionais (Lote 6D.2) — espelho exato
-// de services/service-access.ts: função pura, sem Nest, sem banco, para a
-// regra ser testável isolada e nunca reimplementada por controller nenhum.
+// Política de acesso à gestão de profissionais (Lote 6D.2) — espelho de
+// services/service-access.ts: função pura, sem Nest, sem banco, para a regra
+// ser testável isolada e nunca reimplementada por controller nenhum. Vale
+// também para os horários semanais (professional-tenant-access.ts).
 //
-// POR QUE SÓ DONO: mesma justificativa do Lote 6D.1. O schema já tem
-// `Permission.PROFISSIONAIS_VISUALIZAR`/`PROFISSIONAIS_GERENCIAR`, mas o
-// backend ainda não tem uma tabela de permissões padrão por papel. Inferir
-// aqui o que GERENTE ou RECEPCIONISTA podem fazer seria inventar autorização
-// por suposição — este lote libera a gestão apenas ao DONO com vínculo
-// ativo, exatamente como serviços.
+// DONO: ver com `PROFISSIONAIS_VISUALIZAR` não negada; gerenciar com
+// `PROFISSIONAIS_VISUALIZAR` e `PROFISSIONAIS_GERENCIAR` não negadas.
+// GERENTE: as mesmas permissões concedidas pelo dono (`GRANTED` confirmado).
+// RECEPCIONISTA e PROFISSIONAL: nunca, nem com `GRANTED` gravado.
 //
-// Overrides SÃO respeitados, mas só no sentido que RESTRINGE: um `DENIED`
-// explícito em `PROFISSIONAIS_VISUALIZAR`/`PROFISSIONAIS_GERENCIAR` tira o
-// acesso do DONO. Um `GRANTED` para outro papel NÃO amplia nada neste lote.
+// BASE COMUM (docs/plans/permissoes-individuais.md, etapa 1): as duas
+// políticas decidem só por `accessCan`, porque a lista do dono é igual às
+// dependências exigidas do gerente (`PROFISSIONAIS_GERENCIAR` exige
+// `PROFISSIONAIS_VISUALIZAR`). Sem mudança de regra; equivalência com a regra
+// anterior em services/services-professionals-access.equivalence.spec.ts.
 //
 // DONO é dono DESTE estabelecimento, nunca administrador global: esta função
 // nunca é consultada sem um `Membership` do próprio tenant em mãos (ver
-// professionals.service.ts, `resolveAuthorizedTenant`).
-import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
-import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import { managerCan } from '../common/manager-permissions.js';
-
-/** Papéis com acesso padrão à gestão de profissionais neste lote. */
-const ROLES_WITH_PROFESSIONALS_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
-  EstablishmentRole.DONO,
-]);
+// professional-tenant-access.ts, `resolveAuthorizedTenant`).
+import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { accessCan, effectiveAccess } from '../common/access-evaluation.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 
 export function canViewProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'PROFISSIONAIS_VISUALIZAR');
-  if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, [Permission.PROFISSIONAIS_VISUALIZAR]);
+  return accessCan(effectiveAccess(role, overrides), 'PROFISSIONAIS_VISUALIZAR');
 }
 
+/** Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
+ * DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver". */
 export function canManageProfessionals(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'PROFISSIONAIS_GERENCIAR');
-  if (!ROLES_WITH_PROFESSIONALS_ACCESS.has(role)) return false;
-  // Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
-  // DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver".
-  if (algumaNegada(overrides, [Permission.PROFISSIONAIS_VISUALIZAR])) return false;
-  return !algumaNegada(overrides, [Permission.PROFISSIONAIS_GERENCIAR]);
+  return accessCan(effectiveAccess(role, overrides), 'PROFISSIONAIS_GERENCIAR');
 }

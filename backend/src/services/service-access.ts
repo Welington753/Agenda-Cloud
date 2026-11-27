@@ -2,51 +2,36 @@
 // Nest, sem banco, para a regra ser testável isolada e nunca ser
 // reimplementada por controller nenhum.
 //
-// POR QUE SÓ DONO: o schema já tem `Permission.SERVICOS_VISUALIZAR` /
-// `SERVICOS_GERENCIAR` e `MembershipPermissionOverride`, mas o backend NÃO
-// tem (ainda) uma política que mapeie papel -> permissões padrão. A única que
-// existe é a da demonstração (`src/lib/access/access-control.ts` no
-// frontend), que pertence ao domínio simulado e nunca se mistura com o real
-// (mesma disciplina de auth-api.ts). Inferir aqui o que GERENTE ou
-// RECEPCIONISTA podem fazer seria inventar autorização por suposição — então
-// este lote libera a gestão apenas ao DONO com vínculo ativo.
+// DONO: ver com `SERVICOS_VISUALIZAR` não negada; gerenciar com
+// `SERVICOS_VISUALIZAR` e `SERVICOS_GERENCIAR` não negadas (quem não pode ver
+// também não edita). GERENTE: as mesmas permissões concedidas pelo dono
+// (`GRANTED`). RECEPCIONISTA e PROFISSIONAL: nunca, nem com `GRANTED` gravado.
 //
-// Overrides SÃO respeitados, mas só no sentido que RESTRINGE: um `DENIED`
-// explícito em `SERVICOS_VISUALIZAR`/`SERVICOS_GERENCIAR` tira o acesso do
-// DONO (é a semântica já documentada da tabela: DENIED sempre vence). Um
-// `GRANTED` para outro papel NÃO amplia nada neste lote — ampliar exigiria a
-// tabela de padrões por papel que ainda não existe no backend.
+// BASE COMUM (docs/plans/permissoes-individuais.md, etapa 1): as duas
+// políticas decidem só por `accessCan`, porque a lista do dono é igual às
+// dependências exigidas do gerente (`SERVICOS_GERENCIAR` exige
+// `SERVICOS_VISUALIZAR`). Sem mudança de regra; equivalência com a regra
+// anterior em services-professionals-access.equivalence.spec.ts.
 //
 // DONO é dono DESTE estabelecimento, nunca administrador global: esta função
 // nunca é consultada sem um `Membership` do próprio tenant em mãos (ver
-// services.service.ts, `resolveAuthorizedTenant`).
-import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
-import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import { managerCan } from '../common/manager-permissions.js';
-
-/** Papéis com acesso padrão à gestão de serviços neste lote. */
-const ROLES_WITH_SERVICES_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
-  EstablishmentRole.DONO,
-]);
+// services.service.ts, que entrega os ajustes gravados do vínculo).
+import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { accessCan, effectiveAccess } from '../common/access-evaluation.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 
 export function canViewServices(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SERVICOS_VISUALIZAR');
-  if (!ROLES_WITH_SERVICES_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, [Permission.SERVICOS_VISUALIZAR]);
+  return accessCan(effectiveAccess(role, overrides), 'SERVICOS_VISUALIZAR');
 }
 
+/** Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
+ * DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver". */
 export function canManageServices(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SERVICOS_GERENCIAR');
-  if (!ROLES_WITH_SERVICES_ACCESS.has(role)) return false;
-  // Gerenciar exige também poder visualizar: um DENIED em VISUALIZAR sem
-  // DENIED em GERENCIAR nunca pode resultar em "edita o que não pode ver".
-  if (algumaNegada(overrides, [Permission.SERVICOS_VISUALIZAR])) return false;
-  return !algumaNegada(overrides, [Permission.SERVICOS_GERENCIAR]);
+  return accessCan(effectiveAccess(role, overrides), 'SERVICOS_GERENCIAR');
 }
