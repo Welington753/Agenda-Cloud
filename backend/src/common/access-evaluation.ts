@@ -65,3 +65,25 @@ export function accessCan(access: EffectiveAccess, permissao: ManagerPermission)
   if (access.kind === 'OWNER') return !algumaNegada(access.overrides, exigidas as readonly string[] as Permission[]);
   return exigidas.every((p) => access.granted.has(p));
 }
+
+/** Ação com regra própria do dono no modelo LEGADO. Algumas políticas antigas
+ * conferem no dono uma lista de DENIED diferente das dependências exigidas de
+ * quem recebe concessões (ver a agenda não olha `PROFISSIONAIS_VISUALIZAR` no
+ * dono, mas o gerente precisa dela concedida), e algumas ações são só de um
+ * dos lados. A lista do dono fica literal, como estava, para não mudar regra.
+ * Quando as duas coincidem, basta `accessCan`. */
+export interface LegacyAction {
+  /** Concessões exigidas de quem não é dono, cada uma com as dependências
+   * (`requiredFor`). `null` ou vazia: ninguém além do dono. */
+  readonly grants: readonly ManagerPermission[] | null;
+  /** DENIED que barram o dono. `null`: o dono não faz esta ação por aqui. */
+  readonly ownerDenials: readonly Permission[] | null;
+}
+
+/** Pode esta ação: o dono sem nenhuma negada da lista dele; os demais com
+ * todas as concessões exigidas (e as dependências delas) efetivas. */
+export function accessAllows(access: EffectiveAccess, acao: LegacyAction): boolean {
+  if (access.kind === 'OWNER') return acao.ownerDenials !== null && !algumaNegada(access.overrides, acao.ownerDenials);
+  const grants = acao.grants ?? [];
+  return grants.length > 0 && grants.every((p) => accessCan(access, p));
+}

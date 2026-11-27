@@ -5,7 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
 import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
-import { accessCan, effectiveAccess, legacyGrantedPermissions, requiredFor } from './access-evaluation.js';
+import {
+  accessAllows,
+  accessCan,
+  effectiveAccess,
+  legacyGrantedPermissions,
+  requiredFor,
+  type LegacyAction,
+} from './access-evaluation.js';
 import { MANAGER_PERMISSIONS, MANAGER_PERMISSION_REQUIRES, managerCan, receptionistCan } from './manager-permissions.js';
 import { algumaNegada, type PermissionOverrideLike } from './tenant-authorization.js';
 
@@ -73,5 +80,40 @@ describe('access-evaluation (modelo LEGADO)', () => {
     expect(legacyGrantedPermissions('PROFISSIONAL', tudo).size).toBe(0);
     expect(legacyGrantedPermissions('DONO', tudo).size).toBe(0);
     expect(legacyGrantedPermissions('GERENTE', tudo).size).toBe(MANAGER_PERMISSIONS.length);
+  });
+
+  it('accessAllows: lista literal do dono e concessões com dependências para os demais', () => {
+    const G = (...ps: string[]) => ps.map((p) => ({ permission: p as Permission, mode: PermissionMode.GRANTED }));
+    const D = (...ps: string[]) => ps.map((p) => ({ permission: p as Permission, mode: PermissionMode.DENIED }));
+    const ver: LegacyAction = { grants: ['AGENDA_VISUALIZAR'], ownerDenials: [Permission.AGENDA_VISUALIZAR] };
+    // Dono: só a lista dele conta (a dependência do gerente não).
+    expect(accessAllows(effectiveAccess('DONO', D('PROFISSIONAIS_VISUALIZAR')), ver)).toBe(true);
+    expect(accessAllows(effectiveAccess('DONO', D('AGENDA_VISUALIZAR')), ver)).toBe(false);
+    // Gerente: a concessão e as dependências dela.
+    expect(accessAllows(effectiveAccess('GERENTE', G('AGENDA_VISUALIZAR')), ver)).toBe(false);
+    expect(accessAllows(effectiveAccess('GERENTE', G('AGENDA_VISUALIZAR', 'PROFISSIONAIS_VISUALIZAR')), ver)).toBe(true);
+    // `null` de um lado fecha aquele lado; concessões vazias nunca liberam.
+    const tudo = G(...MANAGER_PERMISSIONS);
+    expect(accessAllows(effectiveAccess('DONO'), { grants: ['SOLICITACOES_TRATAR'], ownerDenials: null })).toBe(false);
+    expect(accessAllows(effectiveAccess('GERENTE', tudo), { grants: null, ownerDenials: [] })).toBe(false);
+    expect(accessAllows(effectiveAccess('GERENTE', tudo), { grants: [], ownerDenials: [] })).toBe(false);
+    expect(accessAllows(effectiveAccess('DONO'), { grants: null, ownerDenials: [] })).toBe(true);
+    // Papéis sem concessão de gerente, nunca.
+    for (const role of ['PROFISSIONAL', 'RECEPCIONISTA']) expect(accessAllows(effectiveAccess(role, tudo), ver), role).toBe(false);
+  });
+
+  it('accessAllows com a lista do dono igual às dependências vale o mesmo que accessCan', () => {
+    for (const role of PAPEIS) {
+      for (const alvo of MANAGER_PERMISSIONS) {
+        for (const modo of [PermissionMode.GRANTED, PermissionMode.DENIED]) {
+          const ov = [{ permission: alvo as Permission, mode: modo }];
+          const acesso = effectiveAccess(role, ov);
+          for (const p of MANAGER_PERMISSIONS) {
+            const acao: LegacyAction = { grants: [p], ownerDenials: requiredFor(p) as readonly string[] as Permission[] };
+            expect(accessAllows(acesso, acao), `${role} ${alvo} ${modo} ${p}`).toBe(accessCan(acesso, p));
+          }
+        }
+      }
+    }
   });
 });

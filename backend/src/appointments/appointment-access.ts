@@ -46,10 +46,19 @@
 // Todos os valores já existem no enum real — nenhuma permissão nova
 // (`AGENDAMENTO_CANCELAR` e `AGENDAMENTO_EDITAR` já estão em
 // entities/enums/permission.enum.ts desde o Lote 3).
+//
+// BASE COMUM (docs/plans/permissoes-individuais.md, etapa 1): cada política
+// decide só por `accessAllows(effectiveAccess(role, overrides), AÇÃO)`, sem
+// mudança de regra. As listas do dono acima ficam literais, porque ver a
+// agenda, cancelar e o andamento conferem no dono menos DENIED do que as
+// dependências exigidas do gerente; tratar solicitações não é ação do dono,
+// e os avisos não são do gerente. Equivalência com a regra anterior em
+// appointment-access.equivalence.spec.ts. A agenda própria do funcionário
+// continua em team/staff-access.ts, fora desta base nesta etapa.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import { managerCan } from '../common/manager-permissions.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { accessAllows, accessCan, effectiveAccess, type LegacyAction } from '../common/access-evaluation.js';
 
 export const APPOINTMENTS_FORBIDDEN_MESSAGE =
   'Você não tem permissão para acessar a agenda deste estabelecimento.';
@@ -66,10 +75,7 @@ export const APPOINTMENT_STATUS_FORBIDDEN_MESSAGE =
 export const APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE =
   'Você não tem permissão para remarcar agendamentos neste estabelecimento.';
 
-const ROLES_WITH_AGENDA_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
-  EstablishmentRole.DONO,
-]);
-
+// Listas do DONO: os DENIED que barram cada ação (literais, como antes).
 const PERMISSOES_PARA_VER: readonly Permission[] = [Permission.AGENDA_VISUALIZAR];
 
 const PERMISSOES_PARA_CRIAR: readonly Permission[] = [
@@ -97,40 +103,50 @@ const PERMISSOES_PARA_ANDAMENTO: readonly Permission[] = [
   Permission.AGENDA_GERENCIAR,
 ];
 
+// Cada ação: a concessão de gerente (com as dependências dela, em
+// common/manager-permissions.ts) e a lista do dono.
+const VER: LegacyAction = { grants: ['AGENDA_VISUALIZAR'], ownerDenials: PERMISSOES_PARA_VER };
+const CRIAR: LegacyAction = { grants: ['AGENDAMENTO_CRIAR'], ownerDenials: PERMISSOES_PARA_CRIAR };
+const CANCELAR: LegacyAction = { grants: ['AGENDAMENTO_CANCELAR'], ownerDenials: PERMISSOES_PARA_CANCELAR };
+const REMARCAR: LegacyAction = { grants: ['AGENDAMENTO_EDITAR'], ownerDenials: PERMISSOES_PARA_REMARCAR };
+const ANDAMENTO: LegacyAction = { grants: ['AGENDA_GERENCIAR'], ownerDenials: PERMISSOES_PARA_ANDAMENTO };
+/** O dono vê as solicitações pela política de ver a agenda. */
+const VER_SOLICITACOES: LegacyAction = { grants: ['SOLICITACOES_VISUALIZAR'], ownerDenials: PERMISSOES_PARA_VER };
+/** O dono trata pelas políticas gerais (andamento e cancelamento). */
+const TRATAR_SOLICITACOES: LegacyAction = { grants: ['SOLICITACOES_TRATAR'], ownerDenials: null };
+/** Só o dono, com a política de ver a agenda. */
+const RECEBER_AVISOS: LegacyAction = { grants: null, ownerDenials: PERMISSOES_PARA_VER };
+
+function pode(role: EstablishmentRole, overrides: readonly PermissionOverrideLike[], acao: LegacyAction): boolean {
+  return accessAllows(effectiveAccess(role, overrides), acao);
+}
+
 export function canViewAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_VISUALIZAR');
-  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, PERMISSOES_PARA_VER);
+  return pode(role, overrides, VER);
 }
 
 export function canCreateAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CRIAR');
-  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, PERMISSOES_PARA_CRIAR);
+  return pode(role, overrides, CRIAR);
 }
 
 export function canCancelAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CANCELAR');
-  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, PERMISSOES_PARA_CANCELAR);
+  return pode(role, overrides, CANCELAR);
 }
 
 export function canRescheduleAppointments(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_EDITAR');
-  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, PERMISSOES_PARA_REMARCAR);
+  return pode(role, overrides, REMARCAR);
 }
 
 /** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7). */
@@ -138,9 +154,7 @@ export function canManageAppointmentStatus(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_GERENCIAR');
-  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, PERMISSOES_PARA_ANDAMENTO);
+  return pode(role, overrides, ANDAMENTO);
 }
 
 /** Lista de solicitações. Dono: a mesma política de ver a agenda. */
@@ -148,8 +162,7 @@ export function canViewBookingRequests(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_VISUALIZAR');
-  return canViewAppointments(role, overrides);
+  return pode(role, overrides, VER_SOLICITACOES);
 }
 
 /** Confirmar ou recusar uma reserva ainda `PENDING` SEM o andamento ou o
@@ -159,8 +172,7 @@ export function canHandleBookingRequests(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_TRATAR');
-  return false;
+  return pode(role, overrides, TRATAR_SOLICITACOES);
 }
 
 /** Avisos de solicitação no aparelho: só o DONO neste lote, com a política
@@ -170,5 +182,27 @@ export function canReceiveBookingAlerts(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  return role === EstablishmentRole.DONO && canViewAppointments(role, overrides);
+  return pode(role, overrides, RECEBER_AVISOS);
+}
+
+// RECORTE DA RESPOSTA (appointments.service.ts, `recortarParaQuemPediu`): só
+// o GERENTE tem recorte. O dono vê tudo, mesmo com DENIED nessas permissões,
+// como sempre; os outros papéis nem chegam às rotas da agenda.
+
+/** Telefone e observações do cliente: o gerente só com a consulta de clientes. */
+export function canSeeAppointmentContact(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role !== EstablishmentRole.GERENTE) return true;
+  return accessCan(effectiveAccess(role, overrides), 'CONSUMIDORES_VISUALIZAR');
+}
+
+/** Preço dos atendimentos: o gerente só com a consulta de recebimentos. */
+export function canSeeAppointmentPrices(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role !== EstablishmentRole.GERENTE) return true;
+  return accessCan(effectiveAccess(role, overrides), 'RECEBIMENTOS_VISUALIZAR');
 }

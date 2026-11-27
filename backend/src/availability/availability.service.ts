@@ -39,7 +39,7 @@ import { Service } from '../entities/service.entity.js';
 import { Tenant } from '../entities/tenant.entity.js';
 import { TimeBlock } from '../entities/time-block.entity.js';
 import { paraIntervalos } from '../professionals/working-hours.js';
-import { AVAILABILITY_FORBIDDEN_MESSAGE, canViewAvailability } from './availability-access.js';
+import { AVAILABILITY_FORBIDDEN_MESSAGE, canSeeAvailabilityPrices, canViewAvailability } from './availability-access.js';
 import {
   calcularHorariosDisponiveis,
   diaDaSemanaDe,
@@ -50,8 +50,6 @@ import {
 } from './availability-rules.js';
 import type { AvailabilityQueryDto } from './availability.dto.js';
 import { servicosDaEscolha } from '../appointments/service-selection.js';
-import { managerCan } from '../common/manager-permissions.js';
-import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { ErroDeFuso, janelaDeCarregamento, type DataLocal } from './time-zone.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 
@@ -223,9 +221,7 @@ export class AvailabilityService {
       query.date,
     );
     const { professional, service, policy, resultado } = calculo;
-    const veDinheiro =
-      authorized.role !== EstablishmentRole.GERENTE ||
-      managerCan(authorized.role, authorized.overrides ?? [], 'RECEBIMENTOS_VISUALIZAR');
+    const veDinheiro = canSeeAvailabilityPrices(authorized.role, authorized.overrides ?? []);
     const itens = calculo.services.map((s) => ({
       id: s.id,
       name: s.name,

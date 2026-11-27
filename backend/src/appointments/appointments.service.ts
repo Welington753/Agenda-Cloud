@@ -103,10 +103,11 @@ import {
   canManageAppointmentStatus,
   canRescheduleAppointments,
   canHandleBookingRequests,
+  canSeeAppointmentContact,
+  canSeeAppointmentPrices,
   canViewAppointments,
   canViewBookingRequests,
 } from './appointment-access.js';
-import { managerCan } from '../common/manager-permissions.js';
 import type { AuthorizedTenant } from '../common/tenant-authorization.js';
 import {
   DESTINO_DA_ACAO,
@@ -1366,8 +1367,8 @@ export class AppointmentsService {
 export function recortarParaQuemPediu(view: AppointmentView, quem: Pick<AuthorizedTenant, 'role' | 'overrides'>): AppointmentView {
   if (quem.role !== 'GERENTE') return view;
   const overrides = quem.overrides ?? [];
-  const contato = managerCan(quem.role, overrides, 'CONSUMIDORES_VISUALIZAR');
-  const dinheiro = managerCan(quem.role, overrides, 'RECEBIMENTOS_VISUALIZAR');
+  const contato = canSeeAppointmentContact(quem.role, overrides);
+  const dinheiro = canSeeAppointmentPrices(quem.role, overrides);
   if (contato && dinheiro) return view;
   const hidden: ('price' | 'contact')[] = [];
   if (!dinheiro) hidden.push('price');
