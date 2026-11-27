@@ -593,7 +593,7 @@ O protótipo ainda mostra a versão anterior destes pontos. Ele não foi alterad
 
 ## Estado e retomada
 
-Atualizado em 27/11/2026.
+Atualizado em 27/11/2026, depois do merge do #161.
 
 A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte da integração depois que o anterior foi mesclado.
 
@@ -606,7 +606,8 @@ A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte
 | #158 Clientes | `refactor/permissoes-base-clientes` | mesclado em 27/11/2026 como `be1299c` (head `773d248`, CI 46014447370) | `C:/wt/perm-clientes` |
 | #159 Serviços e Profissionais | `refactor/permissoes-base-servicos-profissionais` | mesclado em 27/11/2026 como `7fec4f4` (head `c53bc67`, CI 46025123574) | `C:/wt/perm-servicos` |
 | #160 Comissões | `refactor/permissoes-base-comissoes` | mesclado em 27/11/2026 como `251dc99` (head `d08df30`, CI 46029077799, verde na segunda tentativa) | `C:/wt/perm-comissoes` |
-| Equipe e agenda própria | `refactor/permissoes-base-equipe` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`251dc99`); head e CI no PR | `C:/wt/perm-equipe` |
+| #161 Equipe e agenda própria | `refactor/permissoes-base-equipe` | mesclado em 27/11/2026 como `57d692e` (head `31ddcca`) | `C:/wt/perm-equipe` |
+| Comparação geral de acessos | `test/permissoes-impressao-geral` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`57d692e`); head e CI no PR | `C:/wt/perm-impressao` |
 
 As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
@@ -828,7 +829,7 @@ A primeira tentativa do CI falhou em `tests/browser/estoque-flow.spec.ts:107`:
   - o teste novo chama o serviço (`MyAgendaService.commissions`) contra o banco, como o resto do arquivo. Pela rota HTTP real, a consulta das próprias tem só o 200 e o 404 de `isolamento-estabelecimentos-postgres`;
   - a tabela de ajustes guarda um modo por permissão, então "GRANTED e DENIED juntos" só existe nos testes puros.
 
-### PR de Equipe e agenda própria
+### Mesclado: #161 (Equipe e agenda própria)
 
 - **Feito:**
   - `team/staff-access.ts`: as políticas decidem pela base comum, com as mesmas assinaturas e mensagens.
@@ -899,11 +900,23 @@ A primeira tentativa do CI falhou em `tests/browser/estoque-flow.spec.ts:107`:
 
   Tudo passou. Nenhum teste com banco foi acrescentado: as ações próprias do gerente usam o mesmo caminho de `resolveStaffAccess` que o funcionário, já coberto ação por ação. A recusa do gerente não confirmado está no teste de comissões do #160. O resultado do CI no head fica registrado no PR.
 
+### PR da comparação geral de acessos
+
+Só testes e um roteiro; nenhum arquivo de `src/` muda.
+
+- **Feito:**
+  - `backend/test/access-fingerprint/`: impressão geral (`accessFingerprint`) de todas as áreas juntas. A referência é a cópia byte a byte das políticas do piloto (`8f71335`) em `legacy/`, conferida por hash; `backend/.prettierignore` impede que a formatação altere essas cópias.
+    - **Inventário:** reprova arquivo `*-access.ts`, função exportada das políticas, constante (mensagens do 403, catálogos, áreas, recursos) ou consumidor das políticas em `src/` que fique fora da comparação sem motivo registrado.
+    - **Casos:** grupos com os papéis, a confirmação do gerente, o profissional ligado, os ajustes e os recursos, mais 4.000 casos de semente fixa. Cada par da impressão muda de valor em algum caso, e todas as áreas da sessão aparecem.
+    - **Mutantes apanhados:** entre eles o dono vendo a agenda com a negada, Serviços aplicando a confirmação (a correção pendente não entra por este PR), receber venda alheia sem a consulta geral, recepcionista com estoque, gerente não confirmado com agenda própria, portal sem a área de Equipe e o menu sem conferir os recursos.
+  - `backend/test/alcance-real-postgres.db-e2e-spec.ts`: os serviços reais respondem para cada vínculo semeado (dono, gerentes confirmados, não confirmados, com negada e suspenso, recepcionista, profissional) com dados fictícios. Recusa ou resposta em cada rota de consulta, as áreas da sessão e os campos escondidos são conferidos com a referência congelada. A coleta roda duas vezes e sai idêntica. O `afterAll` suspende os gerentes semeados, para não alterar os levantamentos do piloto na segunda passada do CI.
+  - `backend/test/alcance-real/`: o coletor e o comparador do ensaio sobre a cópia restaurada. O spec da cópia só roda com `ALCANCE_SAIDA` e fica desligado no CI.
+  - `docs/runbooks/ensaio-alcance-real-permissoes.md`: o roteiro do ensaio e o resultado de 27/11/2026.
+- **Ensaio na cópia (27/11/2026):** backup `pre-mig27-26-backup-2026-11-26T15-37-35Z` restaurado em PostgreSQL 17.12 com TLS e levado às 28 migrations. `8f71335` contra `57d692e`: 4 vínculos (3 donos e 1 profissional), 18 consultas por vínculo, zero diferença e nenhuma tabela alterada; a repetição do "depois" saiu idêntica. As saídas ficam em `%USERPROFILE%\AgendaCloud-operacoes\ensaio-alcance-permissoes-2026-11-27`, fora do repositório. A cópia é anterior à publicação de Vendas: não tem gerente, recepcionista nem venda. Para eles a prova é o `db-e2e` com dados fictícios. Um ensaio com dados atuais exige um backup novo, não autorizado nesta rodada; fica com o ensaio da etapa 2.
+- **Testes executados localmente** (refeitos depois da queda de energia de 27/11, no mesmo código): `access-fingerprint.spec.ts` (24 testes); `alcance-real-postgres` com `pilot-team-manager-check` num PostgreSQL 18 descartável com TLS e banco novo, duas passadas seguidas no mesmo banco (7 testes cada, o spec da cópia pulado); `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`. O comparador foi rodado de novo sobre as saídas guardadas do ensaio: zero diferença.
+
 ### Resto da etapa 1
 
-- **Não feito:**
-  - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
-  - o `db-e2e` de alcance real sobre a cópia.
 - **Pendência de autorização em Serviços (PR próprio, antes da publicação do lote):** fazer a rota de serviços aplicar a confirmação do gerente, como as outras áreas, de preferência passando pelo `resolveAuthorizedTenant` comum (mantendo o 404 sem vínculo, o 403 de vínculo suspenso, a situação do estabelecimento e o acesso comercial sem recurso próprio). O PR leva teste pela rota real contra PostgreSQL descartável: gerente não confirmado com `GRANTED` gravado recebe 403 em consultar e em cada escrita, e passa depois da confirmação. Também avalia os acessos afetados: os gerentes não confirmados com concessão de serviços gravada no piloto perdem o acesso pela API, o que deve ser conferido e comunicado antes da publicação. Os outros leitores dos ajustes sem `effectiveOverrides` foram conferidos e não têm o mesmo problema: `team/team-authorization.ts` e os avisos de reserva (`push/push-dispatcher.ts`) decidem só pelo dono.
 - **Dívida do enum `Permission` (tratar antes de implantar o modelo individual):** o enum TypeScript não tem nove valores que o enum `permission` do PostgreSQL tem (`ATENDIMENTO_PROPRIO_INICIAR`, `…_CONCLUIR`, `…_FALTA`, `SOLICITACOES_VISUALIZAR`, `SOLICITACOES_TRATAR`, `RECEBIMENTOS_VISUALIZAR`, `…_REGISTRAR`, `…_ESTORNAR` e `COMISSOES_PROPRIAS_VISUALIZAR`; detalhes em "`Permission` e as permissões de recebimentos"). Não é acrescentado de passagem em nenhum PR de conversão: completar o enum muda o que `Object.values(Permission)` devolve em tempo de execução, e a correção precisa examinar junto esses usos (hoje em specs de equivalência, `enums.spec.ts`, `tenant-effective-access.spec.ts` e `commission-access.spec.ts`), as listas de concessão (`TEAM_PERMISSIONS`, `EFFECTIVE_TENANT_PERMISSIONS`), as restrições do dono pelo portal e a coluna tipada da entidade `MembershipPermissionOverride`.
 - **Tempo do CI (diagnóstico de 27/11/2026, sem mudança no workflow):** o `test-frontend-auth.yml` é um job só, em série, de 16 a 22 minutos.
@@ -919,4 +932,4 @@ A primeira tentativa do CI falhou em `tests/browser/estoque-flow.spec.ts:107`:
     - um limite de tempo menor nas capturas, para uma captura travada falhar em segundos e não em 5 minutos, sem retry.
 
     Com jobs separados, a repetição refaz só o job que falhou. Nenhum teste é removido e nenhum retry é aumentado.
-- **Próximo passo concreto:** revisar e mesclar o PR de Equipe e agenda própria, que fecha a conversão das políticas. Depois, cada um num PR próprio, a partir da integração: a correção da confirmação do gerente na rota de serviços (antes da publicação do lote), a impressão de acesso geral com o `db-e2e` de alcance real sobre a cópia e a dívida do enum `Permission` (antes do modelo individual).
+- **Próximo passo concreto:** revisar e mesclar o PR da comparação geral de acessos, que fecha a etapa 1. Depois, cada um num PR próprio, a partir da integração: a correção da confirmação do gerente na rota de serviços (antes da publicação do lote; ela vai reprovar o mutante de Serviços da comparação geral, que deve ser trocado pela regra nova no mesmo PR) e a dívida do enum `Permission` (antes do modelo individual).
