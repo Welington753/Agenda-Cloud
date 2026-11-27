@@ -10,22 +10,24 @@
 // consulta, ver MANAGER_PERMISSION_REQUIRES) para cadastrar, movimentar e
 // conferir.
 // RECEPCIONISTA e PROFISSIONAL (funcionário): nunca.
-import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
-import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import { managerCan } from '../common/manager-permissions.js';
+//
+// Toda decisão passa pela base comum (common/access-evaluation.ts), que
+// calcula o acesso efetivo pelo modelo LEGADO: as mesmas regras por papel de
+// antes. A recepcionista não vê o estoque porque nenhuma permissão de
+// estoque está na lista dela (RECEPTIONIST_PERMISSIONS); o funcionário não
+// tem concessão de gerente. A divisão de ESTOQUE_GERENCIAR em permissões
+// menores é da etapa do modelo individual, não desta.
+import type { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { accessCan, effectiveAccess } from '../common/access-evaluation.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 
 export const STOCK_FORBIDDEN_MESSAGE = 'Você não tem permissão para ver o estoque deste estabelecimento.';
 export const STOCK_MANAGE_FORBIDDEN_MESSAGE = 'Você não tem permissão para operar o estoque deste estabelecimento.';
 
 export function canViewStock(role: EstablishmentRole, overrides: readonly PermissionOverrideLike[] = []): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'ESTOQUE_VISUALIZAR');
-  if (role !== EstablishmentRole.DONO) return false;
-  return !algumaNegada(overrides, [Permission.ESTOQUE_VISUALIZAR]);
+  return accessCan(effectiveAccess(role, overrides), 'ESTOQUE_VISUALIZAR');
 }
 
 export function canManageStock(role: EstablishmentRole, overrides: readonly PermissionOverrideLike[] = []): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'ESTOQUE_GERENCIAR');
-  if (role !== EstablishmentRole.DONO) return false;
-  return !algumaNegada(overrides, [Permission.ESTOQUE_VISUALIZAR, Permission.ESTOQUE_GERENCIAR]);
+  return accessCan(effectiveAccess(role, overrides), 'ESTOQUE_GERENCIAR');
 }
