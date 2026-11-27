@@ -1,6 +1,6 @@
 # Plano: permissões individuais, autorização pontual e caixas independentes
 
-Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque, Agenda e Recebimentos mesclados, Clientes em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
+Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas, Estoque, Agenda, Recebimentos e Clientes mesclados, Serviços e Profissionais em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
 
 Protótipo: `AgendaCloud-operacoes/prototipos/pdv-nova-venda/index.html`, fora do repositório (tela "Fluxo e decisões" e cenário de exemplo). A seção 9 lista o que o protótipo ainda mostra diferente desta revisão.
 
@@ -603,7 +603,8 @@ A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte
 | #155 Estoque | `refactor/permissoes-base-estoque` | mesclado em 27/11/2026 como `264d31d` (head `0dd86ab`, CI do PR com base na integração 45989781076) | `C:/wt/perm-estoque` |
 | #156 Agenda e disponibilidade | `refactor/permissoes-base-agenda` | mesclado em 27/11/2026 como `9c904ea` (head `75eb8fe`, CI 45997938971) | `C:/wt/perm-agenda` |
 | #157 Recebimentos | `refactor/permissoes-base-recebimentos` | mesclado em 27/11/2026 como `1a973a9` (head `edd4df4`, CI 46007675376) | `C:/wt/perm-recebimentos` |
-| Clientes | `refactor/permissoes-base-clientes` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`1a973a9`); head e CI no PR | `C:/wt/perm-clientes` |
+| #158 Clientes | `refactor/permissoes-base-clientes` | mesclado em 27/11/2026 como `be1299c` (head `773d248`, CI 46014447370) | `C:/wt/perm-clientes` |
+| Serviços e Profissionais | `refactor/permissoes-base-servicos-profissionais` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`be1299c`); head e CI no PR | `C:/wt/perm-servicos` |
 
 As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
@@ -688,7 +689,10 @@ Revisado antes do merge: a lacuna de registrar e estornar pelo gerente com o ban
   - web: `src/lib/equipe/contratos.ts` (`PermissaoGerente`) tem os três valores; a sessão traz áreas (`RECEBIMENTOS_VER`, `RECEBIMENTOS_REGISTRAR`, `RECEBIMENTOS_ESTORNAR`, `src/lib/conta/papel.ts`), calculadas no servidor pelas mesmas políticas (`accounts/tenant-effective-access.ts`), não as permissões;
   - conclusão: o gerente com as concessões de recebimentos é um acesso que o sistema atual configura de verdade (o `db-e2e` novo o monta pela tela de equipe). A limitação é só de tipo: `PermissionOverrideLike.permission` declara `Permission`, mais estreito que os valores gravados. Uma referência como `Permission.RECEBIMENTOS_VISUALIZAR` reprova no typecheck, mas no Vitest (sem checagem de tipos) vira `undefined` e passa calada. Não corrigido aqui: ampliar o enum ou o tipo é mudança fora desta etapa.
 
-### PR de Clientes
+### Mesclado: #158 (Clientes)
+
+Revisado antes do merge: o histórico consultado pelo gerente ganhou `db-e2e` pela rota real (`test/consumers-history-manager-postgres.db-e2e-spec.ts`, abaixo); a regra anterior do preço (`role !== GERENTE || managerCan(RECEBIMENTOS_VISUALIZAR)`) é a mesma de `canSeeAppointmentPrices`; `history` monta cada item por `itemDoHistoricoParaQuemPediu`; unificar continua só do dono; `sales/` e `common/` não mudaram. Nenhuma regra antiga questionável foi corrigida.
+
 
 - **Feito:**
   - `consumers/consumer-access.ts`: `canViewConsumers` e `canManageConsumers` decidem só por `accessCan(effectiveAccess(role, overrides), …)`, porque a lista do dono é igual às dependências do gerente (cadastrar exige `CONSUMIDORES_GERENCIAR` e `CONSUMIDORES_VISUALIZAR`; buscar, só `CONSUMIDORES_VISUALIZAR`). `canMergeConsumers` usa `accessAllows` com a lista literal do dono (`CONSUMIDORES_VISUALIZAR` e `CONSUMIDORES_GERENCIAR`) e nenhuma concessão: unificar continua só do dono. Assinaturas e mensagens iguais. A base comum não mudou;
@@ -715,11 +719,31 @@ Revisado antes do merge: a lacuna de registrar e estornar pelo gerente com o ban
 
   Tudo passou. Na revisão, o spec novo passou (2 testes) e, junto, os `db-e2e` de clientes, recebimentos, equipe, vendas, isolamento e os levantamentos `pilot-*` num banco novo (14 arquivos, 87 testes, o banco limpo depois, inclusive após as mutações). O resultado do CI no head fica registrado no PR.
 
+### PR de Serviços e Profissionais
+
+As duas áreas ficam num PR só: as políticas são espelho uma da outra, o diff é pequeno e o spec de equivalência é um só.
+
+- **Feito:**
+  - `services/service-access.ts` e `professionals/professional-access.ts`: `canViewServices`, `canManageServices`, `canViewProfessionals` e `canManageProfessionals` decidem só por `accessCan(effectiveAccess(role, overrides), …)`, porque em cada área a lista do dono é igual às dependências do gerente (gerenciar exige `*_GERENCIAR` e `*_VISUALIZAR`; ver, só `*_VISUALIZAR`). Assinaturas e o padrão `overrides = []` iguais; as mensagens do 403 ficam onde estavam (`services.service.ts` e `professional-tenant-access.ts`). A base comum não mudou;
+  - `services/services-professionals-access.equivalence.spec.ts`: referência congelada das regras em `1a973a9` (iguais a `8f71335`, o piloto), só com listas literais. Compara uma impressão de pares (ação, alcance): ver e gerenciar serviços, ver e gerenciar profissionais (inclusive os horários semanais, que usam a mesma política), todos com alcance "todos do estabelecimento". Nenhuma das duas áreas tem alcance próprio, nem recorte de campos por papel. Como a rota de serviços entrega os ajustes gravados sem a confirmação do gerente (abaixo), a impressão avalia serviços também com os ajustes gravados. Como guarda, entram as decisões de outras áreas que dependem destas políticas: as regras de comissão (`canManageCommissionRules`, que exige ver profissionais e serviços) e o que o dono pode conceder ao gerente nas duas áreas (`grantableManagerPermissions`). Os casos combinam os quatro papéis, o gerente confirmado ou não, dois grupos exaustivos de 4⁵ (16.384 casos) e 10.000 casos de semente fixa com todas as permissões. Uma guarda reprova política `can*` nova sem caso;
+  - dezesseis mutantes apanhados, entre eles gerente vendo sem concessão, gerenciando sem a dependência ou só com a consulta, dono gerenciando com a consulta negada ou ignorando a restrição de ver, GRANTED vencendo DENIED, serviços decididos pela permissão de profissionais, recepcionista ou funcionário com GRANTED, gerente operando como dono, regras de comissão sem ver serviços e concessão indevida. A política lida sem `effectiveOverrides` também é apanhada. O spec passa contra a implementação anterior. Quatro mutações manuais nos arquivos reais foram apanhadas e desfeitas: gerenciar serviços com a regra de ver, ver profissionais pela permissão de serviços, gerenciar profissionais com a regra de ver e ver serviços ignorando os ajustes.
+- **Sem mudança:** `services.service.ts` (inclusive o `resolveAuthorizedTenant` privado, o vínculo suspenso, a situação do estabelecimento e o acesso comercial sem recurso próprio), `professional-tenant-access.ts` (recurso `PROFISSIONAIS`), `professionals.service.ts`, `working-hours.service.ts`, o SQL e o filtro por `tenant_id`. Cadastro, preço, duração, horários, disponibilidade, comissões e vagas não foram tocados. Nenhuma migration.
+- **Comportamento antigo questionável, registrado e não corrigido nesta etapa:**
+  - a rota de serviços (`services.service.ts`, `resolveAuthorizedTenant` privado) lê os ajustes gravados e os entrega à política sem `effectiveOverrides`. Um gerente não confirmado com `SERVICOS_VISUALIZAR` ou `SERVICOS_GERENCIAR` em `GRANTED` gravado vê e gerencia serviços pela API, embora a sessão (que aplica a confirmação) não mostre a área. Profissionais e horários passam por `resolveAuthorizedTenant` comum e não têm essa diferença. O spec registra o comportamento atual com um teste próprio;
+  - quem vê serviços recebe o preço do serviço, sem o recorte que a agenda e o histórico aplicam ao gerente sem `RECEBIMENTOS_VISUALIZAR`.
+- **Testes executados localmente:**
+  - `vitest run` de `src/services`, `professionals`, `commissions`, `team`, `accounts`, `auth`, `availability`, `appointments`, `consumers`, `payments`, `sales`, `stock`, `common` e `dashboard`: 73 arquivos, 1.137 testes, inclusive as equivalências das áreas já convertidas;
+  - `test:e2e` de serviços, profissionais, horários, equipe, comissões, disponibilidade e contas: 88 testes;
+  - `db-e2e` num PostgreSQL 18 descartável com TLS, banco novo: `services-postgres`, `professionals-postgres`, `professional-working-hours-postgres`, `professional-service-link-concurrency`, `multi-services-postgres`, `availability-postgres`, `commissions-postgres`, `team-access-postgres`, `team-manager-postgres`, `isolamento-estabelecimentos-postgres`, `consumers-history-manager-postgres` e os levantamentos `pilot-team-manager-check`, `pilot-comissoes-profissionais-check` e `pilot-portal-multisservicos-check` (14 arquivos, 124 testes);
+  - `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`.
+
+  Tudo passou. O resultado do CI no head fica registrado no PR.
+
 ### Resto da etapa 1
 
 - **Não feito:**
-  - converter serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
+  - converter comissões e equipe, incluindo a agenda própria e `staffCan`;
   - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
   - o `db-e2e` de alcance real sobre a cópia.
 - **Dívida do enum `Permission` (tratar antes de implantar o modelo individual):** o enum TypeScript não tem nove valores que o enum `permission` do PostgreSQL tem (`ATENDIMENTO_PROPRIO_INICIAR`, `…_CONCLUIR`, `…_FALTA`, `SOLICITACOES_VISUALIZAR`, `SOLICITACOES_TRATAR`, `RECEBIMENTOS_VISUALIZAR`, `…_REGISTRAR`, `…_ESTORNAR` e `COMISSOES_PROPRIAS_VISUALIZAR`; detalhes em "`Permission` e as permissões de recebimentos"). Não é acrescentado de passagem em nenhum PR de conversão: completar o enum muda o que `Object.values(Permission)` devolve em tempo de execução, e a correção precisa examinar junto esses usos (hoje em specs de equivalência, `enums.spec.ts`, `tenant-effective-access.spec.ts` e `commission-access.spec.ts`), as listas de concessão (`TEAM_PERMISSIONS`, `EFFECTIVE_TENANT_PERMISSIONS`), as restrições do dono pelo portal e a coluna tipada da entidade `MembershipPermissionOverride`.
-- **Próximo passo concreto:** revisar e mesclar o PR de Clientes. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
+- **Próximo passo concreto:** revisar e mesclar o PR de Serviços e Profissionais. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
