@@ -1,0 +1,234 @@
+{
+ "accounts/accounts-directory.service.ts": [
+  "accounts/tenant-effective-access.ts#tenantEffectiveAccess",
+  "platform/platform-access.ts#platformCapabilities"
+ ],
+ "accounts/actor.ts": [
+  "platform/platform-access.ts#platformCapabilities"
+ ],
+ "accounts/tenant-effective-access.ts": [
+  "appointments/appointment-access.ts#canCancelAppointments",
+  "appointments/appointment-access.ts#canCreateAppointments",
+  "appointments/appointment-access.ts#canHandleBookingRequests",
+  "appointments/appointment-access.ts#canManageAppointmentStatus",
+  "appointments/appointment-access.ts#canRescheduleAppointments",
+  "appointments/appointment-access.ts#canViewAppointments",
+  "appointments/appointment-access.ts#canViewBookingRequests",
+  "availability/availability-access.ts#canViewAvailability",
+  "commissions/commission-access.ts#canManageCommissionRules",
+  "commissions/commission-access.ts#canViewCommissions",
+  "commissions/commission-access.ts#canViewOwnCommissions",
+  "consumers/consumer-access.ts#canManageConsumers",
+  "consumers/consumer-access.ts#canViewConsumers",
+  "payments/payment-access.ts#canRecordPayments",
+  "payments/payment-access.ts#canRefundPayments",
+  "payments/payment-access.ts#canViewPayments",
+  "professionals/professional-access.ts#canManageProfessionals",
+  "professionals/professional-access.ts#canViewProfessionals",
+  "public-booking/public-booking-access.ts#canManagePublicBooking",
+  "sales/sales-access.ts#canAccessSalesHistory",
+  "sales/sales-access.ts#canCancelSales",
+  "sales/sales-access.ts#canOverrideSalePrice",
+  "sales/sales-access.ts#canReceiveSales",
+  "sales/sales-access.ts#canRefundSalePayments",
+  "sales/sales-access.ts#canRegisterSales",
+  "sales/sales-access.ts#canViewAllSales",
+  "services/service-access.ts#canManageServices",
+  "services/service-access.ts#canViewServices",
+  "stock/stock-access.ts#canManageStock",
+  "stock/stock-access.ts#canViewStock",
+  "team/staff-access.ts#canManageTeam",
+  "team/staff-access.ts#canViewOwnAgenda",
+  "team/staff-access.ts#staffPermissionGranted"
+ ],
+ "appointments/appointment-access.ts": [
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "appointments/appointments.service.ts": [
+  "appointments/appointment-access.ts#canCancelAppointments",
+  "appointments/appointment-access.ts#canCreateAppointments",
+  "appointments/appointment-access.ts#canHandleBookingRequests",
+  "appointments/appointment-access.ts#canManageAppointmentStatus",
+  "appointments/appointment-access.ts#canRescheduleAppointments",
+  "appointments/appointment-access.ts#canSeeAppointmentContact",
+  "appointments/appointment-access.ts#canSeeAppointmentPrices",
+  "appointments/appointment-access.ts#canViewAppointments",
+  "appointments/appointment-access.ts#canViewBookingRequests"
+ ],
+ "auth/auth.service.ts": [
+  "auth/tenant-access.ts#isTenantUsableForSession"
+ ],
+ "auth/session-areas.ts": [
+  "accounts/tenant-effective-access.ts#tenantEffectiveAccess",
+  "team/staff-access.ts#canViewOwnAgenda"
+ ],
+ "availability/availability-access.ts": [
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "availability/availability.service.ts": [
+  "availability/availability-access.ts#canSeeAvailabilityPrices",
+  "availability/availability-access.ts#canViewAvailability"
+ ],
+ "commissions/commission-access.ts": [
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#accessCanOwn",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "commissions/commissions.service.ts": [
+  "commissions/commission-access.ts#canManageCommissionRules",
+  "commissions/commission-access.ts#canViewCommissions"
+ ],
+ "common/tenant-authorization.ts": [
+  "auth/tenant-access.ts#isTenantUsableForSession"
+ ],
+ "consumers/consumer-access.ts": [
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "consumers/consumer-merge.service.ts": [
+  "consumers/consumer-access.ts#canMergeConsumers"
+ ],
+ "consumers/consumer-profile.service.ts": [
+  "appointments/appointment-access.ts#canSeeAppointmentPrices",
+  "consumers/consumer-access.ts#canViewConsumers",
+  "payments/payment-access.ts#canViewPayments"
+ ],
+ "consumers/consumers.service.ts": [
+  "consumers/consumer-access.ts#canManageConsumers",
+  "consumers/consumer-access.ts#canViewConsumers"
+ ],
+ "dashboard/dashboard.service.ts": [
+  "appointments/appointment-access.ts#canViewAppointments"
+ ],
+ "payments/payment-access.ts": [
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "payments/payments.service.ts": [
+  "payments/payment-access.ts#canRecordPayments",
+  "payments/payment-access.ts#canRefundPayments",
+  "payments/payment-access.ts#canViewPayments"
+ ],
+ "platform/platform.service.ts": [
+  "platform/platform-access.ts#canViewEstablishments",
+  "platform/platform-access.ts#platformCapabilities",
+  "platform/platform-access.ts#requirePlatformAccess"
+ ],
+ "platform/portal-overview.ts": [
+  "auth/tenant-access.ts#isTenantUsableForSession"
+ ],
+ "professionals/professional-access.ts": [
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "professionals/professional-tenant-access.ts": [
+  "professionals/professional-access.ts#canManageProfessionals",
+  "professionals/professional-access.ts#canViewProfessionals"
+ ],
+ "professionals/professionals.service.ts": [
+  "professionals/professional-tenant-access.ts#resolveAuthorizedProfessionalsTenant"
+ ],
+ "professionals/working-hours.service.ts": [
+  "professionals/professional-tenant-access.ts#resolveAuthorizedProfessionalsTenant"
+ ],
+ "public-booking/public-booking.service.ts": [
+  "auth/tenant-access.ts#isTenantUsableForSession",
+  "public-booking/public-booking-access.ts#canManagePublicBooking"
+ ],
+ "push/push-dispatcher.ts": [
+  "appointments/appointment-access.ts#canReceiveBookingAlerts",
+  "auth/tenant-access.ts#isTenantUsableForSession"
+ ],
+ "push/push.service.ts": [
+  "appointments/appointment-access.ts#canReceiveBookingAlerts"
+ ],
+ "sales/sale-payments.service.ts": [
+  "sales/sales-access.ts#canAccessSalesHistory",
+  "sales/sales-access.ts#canReceiveSale",
+  "sales/sales-access.ts#canReceiveSales",
+  "sales/sales-access.ts#canRefundSalePayments",
+  "sales/sales-access.ts#canViewAllSales"
+ ],
+ "sales/sales-access.ts": [
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "sales/sales.service.ts": [
+  "consumers/consumer-access.ts#canViewConsumers",
+  "sales/sales-access.ts#canAccessSalesHistory",
+  "sales/sales-access.ts#canCancelSales",
+  "sales/sales-access.ts#canOverrideSalePrice",
+  "sales/sales-access.ts#canRegisterSales",
+  "sales/sales-access.ts#canViewAllSales",
+  "stock/stock-access.ts#canViewStock"
+ ],
+ "services/service-access.ts": [
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "services/services.service.ts": [
+  "auth/tenant-access.ts#isTenantUsableForSession",
+  "services/service-access.ts#canManageServices",
+  "services/service-access.ts#canViewServices"
+ ],
+ "stock/stock-access.ts": [
+  "common/access-evaluation.ts#accessCan",
+  "common/access-evaluation.ts#effectiveAccess"
+ ],
+ "stock/stock-common.ts": [
+  "stock/stock-access.ts#canManageStock",
+  "stock/stock-access.ts#canViewStock"
+ ],
+ "team/my-agenda.service.ts": [
+  "commissions/commission-access.ts#canViewOwnCommissions",
+  "team/staff-access.ts#canViewOwnAgenda",
+  "team/staff-access.ts#staffPermissionGranted"
+ ],
+ "team/staff-access.ts": [
+  "appointments/appointment-access.ts#canCancelAppointments",
+  "appointments/appointment-access.ts#canCreateAppointments",
+  "appointments/appointment-access.ts#canManageAppointmentStatus",
+  "appointments/appointment-access.ts#canRescheduleAppointments",
+  "appointments/appointment-access.ts#canViewAppointments",
+  "commissions/commission-access.ts#canViewCommissions",
+  "common/access-evaluation.ts#accessAllows",
+  "common/access-evaluation.ts#accessHasOwnAgenda",
+  "common/access-evaluation.ts#effectiveAccess",
+  "common/access-evaluation.ts#staffCan",
+  "consumers/consumer-access.ts#canManageConsumers",
+  "consumers/consumer-access.ts#canViewConsumers",
+  "payments/payment-access.ts#canViewPayments",
+  "professionals/professional-access.ts#canManageProfessionals",
+  "professionals/professional-access.ts#canViewProfessionals",
+  "sales/sales-access.ts#canCancelSales",
+  "sales/sales-access.ts#canOverrideSalePrice",
+  "sales/sales-access.ts#canReceiveSales",
+  "sales/sales-access.ts#canRefundSalePayments",
+  "sales/sales-access.ts#canRegisterSales",
+  "sales/sales-access.ts#canViewAllSales",
+  "services/service-access.ts#canManageServices",
+  "services/service-access.ts#canViewServices",
+  "stock/stock-access.ts#canManageStock",
+  "stock/stock-access.ts#canViewStock"
+ ],
+ "team/team-authorization.ts": [
+  "team/staff-access.ts#canManageTeam",
+  "team/staff-access.ts#grantableManagerPermissions",
+  "team/staff-access.ts#grantableStaffPermissions"
+ ],
+ "team/team-permissions.ts": [
+  "team/staff-access.ts#TeamRole"
+ ],
+ "team/team.controller.ts": [
+  "team/staff-access.ts#StaffAction"
+ ],
+ "team/team.service.ts": [
+  "common/access-evaluation.ts#accessGrantedPermissions",
+  "common/access-evaluation.ts#effectiveAccess"
+ ]
+}
