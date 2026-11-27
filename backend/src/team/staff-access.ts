@@ -24,10 +24,24 @@
 // `canManageAppointmentStatus`, nenhuma das três; uma área do estabelecimento
 // só se a política do dono para aquela área o deixa fazê-la. Gerente não
 // gerencia equipe, não concede permissões e não mexe em credenciais.
+//
+// BASE COMUM (docs/plans/permissoes-individuais.md, etapa 1): a agenda
+// própria decide por `accessHasOwnAgenda`, as permissões de funcionário por
+// `staffCan` (alcance próprio) e a gestão da equipe por `accessAllows`, só do
+// dono, com `EQUIPE_GERENCIAR` como única negada que barra. O que o dono pode
+// conceder continua composto pelas políticas de cada área (já na base comum).
+// Sem mudança de regra; equivalência com a regra anterior em
+// staff-access.equivalence.spec.ts.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
+import {
+  accessAllows,
+  accessHasOwnAgenda,
+  effectiveAccess,
+  staffCan,
+  type LegacyAction,
+} from '../common/access-evaluation.js';
 import type { AcaoDeStatus } from '../appointments/appointment-status-transitions.js';
 import {
   canCancelAppointments,
@@ -85,9 +99,14 @@ export const OWN_AGENDA_FORBIDDEN_MESSAGE = 'Esta área mostra a agenda de um pr
 export const STAFF_ACTION_FORBIDDEN_MESSAGE = 'O estabelecimento não liberou esta ação para você.';
 export const TEAM_FORBIDDEN_MESSAGE = 'Você não tem permissão para gerenciar a equipe deste estabelecimento.';
 
-function tem(overrides: readonly OverrideRow[], permission: string, mode: PermissionMode): boolean {
-  return overrides.some((o) => o.permission === permission && o.mode === mode);
+/** Ajustes lidos do banco, para a base comum: ela compara só os textos de
+ * permissão e modo, então um valor novo do enum passa igual. */
+function comoAjustes(overrides: readonly OverrideRow[]): readonly PermissionOverrideLike[] {
+  return overrides as readonly PermissionOverrideLike[];
 }
+
+/** Só o dono, e só sem `EQUIPE_GERENCIAR` negada. */
+const GERENCIAR_EQUIPE: LegacyAction = { grants: null, ownerDenials: [Permission.EQUIPE_GERENCIAR] };
 
 /** Papéis de equipe que o dono cria e administra em "Equipe e acessos".
  * RECEPCIONISTA (docs/plans/vendas-v1.md): sem profissional ligado, só com
@@ -99,27 +118,26 @@ export type TeamRole = (typeof TEAM_ROLES)[number];
  * depois de o dono confirmar as permissões dele (`permissionsConfirmed`). O
  * profissional ligado e ativo é conferido por quem chama. */
 export function canViewOwnAgenda(role: EstablishmentRole, permissionsConfirmed = false): boolean {
-  if (role === EstablishmentRole.PROFISSIONAL) return true;
-  return role === EstablishmentRole.GERENTE && permissionsConfirmed;
+  return accessHasOwnAgenda(effectiveAccess(role, [], { permissionsConfirmed }));
 }
 
+/** Permissão de funcionário (ações sobre os próprios atendimentos, próprias
+ * comissões): PROFISSIONAL ou GERENTE com `GRANTED` e sem `DENIED`. */
 export function staffPermissionGranted(
   role: EstablishmentRole,
   overrides: readonly OverrideRow[],
   permission: StaffPermission,
 ): boolean {
-  if (role !== EstablishmentRole.PROFISSIONAL && role !== EstablishmentRole.GERENTE) return false;
-  if (tem(overrides, permission, PermissionMode.DENIED)) return false;
-  return tem(overrides, permission, PermissionMode.GRANTED);
+  return staffCan(effectiveAccess(role, comoAjustes(overrides)), permission);
 }
 
 export function staffGrantedPermissions(role: EstablishmentRole, overrides: readonly OverrideRow[]): StaffPermission[] {
-  return STAFF_PERMISSIONS.filter((p) => staffPermissionGranted(role, overrides, p));
+  const acesso = effectiveAccess(role, comoAjustes(overrides));
+  return STAFF_PERMISSIONS.filter((p) => staffCan(acesso, p));
 }
 
 export function canManageTeam(role: EstablishmentRole, overrides: readonly PermissionOverrideLike[] = []): boolean {
-  if (role !== EstablishmentRole.DONO) return false;
-  return !overrides.some((o) => o.permission === Permission.EQUIPE_GERENCIAR && o.mode === PermissionMode.DENIED);
+  return accessAllows(effectiveAccess(role, overrides), GERENCIAR_EQUIPE);
 }
 
 /** O que este dono pode conceder: só o que ele mesmo pode fazer. As ações
