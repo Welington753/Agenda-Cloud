@@ -593,14 +593,14 @@ O protótipo ainda mostra a versão anterior destes pontos. Ele não foi alterad
 
 ## Estado e retomada
 
-Atualizado em 26/11/2026.
+Atualizado em 27/11/2026.
 
 A etapa 1 sai em PRs encadeados, um por área. Cada um parte do head do anterior e só é mesclado depois dele.
 
 | PR | Branch | Base do PR | Worktree local | Head | CI |
 |---|---|---|---|---|---|
-| #154 Vendas | `refactor/permissoes-base-vendas` | `integration/nestjs-typeorm-frontend` (`2bb961f`) | `C:/wt/perm-base` | `01a3c86` | run 45882016137 verde no head |
-| Estoque | `refactor/permissoes-base-estoque` | `refactor/permissoes-base-vendas` (`01a3c86`), até o #154 ser mesclado | `C:/wt/perm-estoque` | ver o PR | ver o PR |
+| #154 Vendas | `refactor/permissoes-base-vendas` | `integration/nestjs-typeorm-frontend` (`2bb961f`) | `C:/wt/perm-base` | ver o PR | ver o PR |
+| Estoque | `refactor/permissoes-base-estoque` | `refactor/permissoes-base-vendas` (`93f7d7b`), até o #154 ser mesclado | `C:/wt/perm-estoque` | ver o PR | ver o PR |
 
 As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. Depois que o #154 for mesclado, a base do PR de Estoque muda para a integração e o diff fica só com o que é de Estoque.
 
@@ -610,8 +610,9 @@ As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; is
   - `backend/src/common/access-evaluation.ts`: base comum do modelo LEGADO (`effectiveAccess`, `accessCan`, `legacyGrantedPermissions`, `requiredFor`), sem mudança de regra;
   - `backend/src/sales/sales-access.ts` passa a decidir só pela base comum, com as mesmas assinaturas;
   - `backend/src/common/access-evaluation.spec.ts`: a base reproduz `managerCan`, `receptionistCan` e o `algumaNegada` do dono para todas as permissões de gerente;
-  - `backend/src/sales/sales-access.equivalence.spec.ts`: referência congelada de `4e0d841`, com equivalência por ação e alcance (própria, de outra pessoa, todas) nas 4 × 2 × 4⁶ combinações e num lote de 20.000 casos com concessões ignoradas pelo papel. Uma guarda reprova política `can*` nova sem caso. Um teste de mutação manual (receber de outra pessoa sem a consulta geral) foi detectado.
-- **Testes executados localmente:** `vitest run src/common src/sales src/team src/accounts src/stock` (20 arquivos, 202 testes), `test:e2e` de vendas (12), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou. O CI do PR passou no head `01a3c86`.
+  - `backend/src/sales/sales-access.equivalence.spec.ts`: referência congelada de `4e0d841`, com equivalência por ação e alcance (própria, de outra pessoa, todas) nas 4 × 2 × 4⁶ combinações e num lote de 20.000 casos com concessões ignoradas pelo papel. Uma guarda reprova política `can*` nova sem caso. Um teste de mutação manual (receber de outra pessoa sem a consulta geral) foi detectado;
+  - `backend/src/common/access-evaluation.spec.ts` (commit `93f7d7b`, vindo do PR de Estoque em 27/11/2026): o lote sorteado acumula as diferenças e afirma uma vez. Antes, com um `expect` por comparação, ele passava de 5 s quando toda a bateria rodava em paralelo neste computador. Semente, sorteios e comparações são os mesmos; um mutante temporário na referência (dono sem as dependências) foi apanhado pelo lote e desfeito.
+- **Testes executados localmente:** `vitest run src/common src/sales src/team src/accounts src/stock` (20 arquivos, 202 testes), `test:e2e` de vendas (12), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou. O resultado do CI no head atual fica registrado no PR.
 
 ### PR de Estoque (depende do #154)
 
@@ -619,25 +620,15 @@ As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; is
   - `backend/src/stock/stock-access.ts` passa a decidir só pela base comum (`accessCan(effectiveAccess(role, overrides), …)`), com as mesmas assinaturas, mensagens e padrão `overrides = []`. `ESTOQUE_GERENCIAR` continua uma permissão só; a divisão dela é da etapa do modelo individual;
   - `backend/src/stock/stock-access.equivalence.spec.ts`: referência congelada de `stock-access.ts` em `01a3c86` (igual a `8f71335`, o piloto), só com listas literais. Compara consultar e operar nas 4 × 2 × 4⁴ combinações das duas permissões de estoque e de duas vizinhas (`VENDAS_REGISTRAR`, da lista da recepcionista, e `VENDAS_VISUALIZAR`), e num lote de 20.000 casos de semente fixa com todas as permissões, concessões conflitantes e ignoradas, gerente confirmado ou não. Uma guarda reprova política `can*` nova sem caso;
   - o mesmo spec roda cinco mutantes da política (recepcionista passa a ver, operar sem a consulta, GRANTED vencendo DENIED, dono ignorando DENIED na dependência, funcionário passando a operar) e a política lida sem `effectiveOverrides`; todos precisam ser apanhados. Uma mutação manual no arquivo real (`canManageStock` exigindo só a consulta) também reprovou o spec e foi desfeita;
-  - `backend/src/common/access-evaluation.spec.ts`: o lote sorteado agora acumula as diferenças e afirma uma vez. Antes, com um `expect` por comparação, ele passava de 5 s quando toda a bateria rodava em paralelo neste computador. A cobertura e a semente são as mesmas.
 - **Sem mudança:** o adicional `ESTOQUE` e o isolamento seguem em `resolveAuthorizedTenant` (`stock-common.ts`). As recusas da saída manual por venda com Vendas ligado (409 `USE_VENDAS`) e do estorno de baixa ligada a venda (409 `BAIXA_DE_VENDA`) seguem em `stock-movements.service.ts`. Nenhum desses arquivos mudou.
 - **Testes executados localmente:** `vitest run src/stock src/common src/sales src/team src/accounts src/auth` (39 arquivos, 361 testes, inclusive a equivalência de Vendas), `test:e2e` de estoque e vendas (30), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou.
 - **CI:** um PR com base em outra branch não dispara o workflow sozinho; ele é disparado por `workflow_dispatch` na branch de Estoque. O resultado fica registrado no PR.
 
-- **CI de Estoque:** o run 45886146355 passou no head `90b9857`. O resultado está num comentário no #155.
+- **CI de Estoque:** o resultado do head atual está num comentário no #155.
 
-### Pendência antes de mesclar o #154
+### Ordem de integração
 
-A correção do teste lento (`5ab2316`) só existe no #155. Sem ela, o lote sorteado de `access-evaluation.spec.ts` pode passar de 5 s no #154 e reprovar.
-
-Ordem para resolver:
-
-1. Incorporar `5ab2316` na branch `refactor/permissoes-base-vendas` e fazer push.
-2. Conferir o CI do #154 no head novo.
-3. Ajustar `refactor/permissoes-base-estoque` sobre esse head, sem repetir a correção no diff do #155.
-4. Conferir o estado e o CI do #155 de novo.
-
-Só depois disso mesclar o #154, mudar a base do #155 para a integração e seguir para a próxima área.
+A correção do teste lento está no #154 desde 27/11/2026, e a branch de Estoque foi refeita sobre o head novo sem repeti-la. Mesclar primeiro o #154, depois mudar a base do #155 para a integração, conferir o diff (só Estoque) e o CI, e só então mesclar o #155.
 
 ### Resto da etapa 1
 
