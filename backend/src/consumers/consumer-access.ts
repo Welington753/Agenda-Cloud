@@ -2,34 +2,37 @@
 // pura, sem Nest e sem banco, no mesmo molde de availability-access.ts e
 // professional-access.ts.
 //
-// POR QUE SÓ DONO: mesma justificativa dos lotes anteriores — o backend ainda
-// não tem tabela de permissões padrão por papel, e inferir daqui o que
-// RECEPCIONISTA enxerga seria inventar autorização por suposição. Ampliar é
-// decisão de um lote de papéis.
+// DONO: buscar com `CONSUMIDORES_VISUALIZAR` não negada; cadastrar e editar
+// com `CONSUMIDORES_VISUALIZAR` e `CONSUMIDORES_GERENCIAR` não negadas.
+// GERENTE: as mesmas permissões concedidas pelo dono (`GRANTED` confirmado).
+// RECEPCIONISTA e PROFISSIONAL: nunca, nem com `GRANTED` gravado. A busca
+// limitada de clientes da venda é outra regra (`sales/sales.service.ts`,
+// `searchConsumers`, com a política de registrar vendas).
 //
-// QUAIS `DENIED` SÃO PERTINENTES: `CONSUMIDORES_VISUALIZAR` para buscar e,
-// além dela, `CONSUMIDORES_GERENCIAR` para cadastrar. Os dois valores já
-// existem no enum real — nenhuma permissão nova é criada aqui, e nenhum
-// `GRANTED` amplia nada.
+// UNIFICAR cadastros: SÓ o dono (decisão do responsável, 19/11/2026), nem com
+// permissão concedida ao gerente. Um `DENIED` do próprio dono em visualizar
+// ou gerenciar clientes tira também a unificação.
+//
+// BASE COMUM (docs/plans/permissoes-individuais.md, etapa 1): cada política
+// decide só pela base comum, sem mudança de regra. Buscar e cadastrar usam
+// `accessCan`, porque a lista do dono é igual às dependências exigidas do
+// gerente (`CONSUMIDORES_GERENCIAR` exige `CONSUMIDORES_VISUALIZAR`).
+// Unificar usa `accessAllows` com a lista literal do dono e nenhuma
+// concessão. Equivalência com a regra anterior em
+// consumer-access.equivalence.spec.ts.
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
-import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
-import { managerCan } from '../common/manager-permissions.js';
+import { accessAllows, accessCan, effectiveAccess, type LegacyAction } from '../common/access-evaluation.js';
+import type { PermissionOverrideLike } from '../common/tenant-authorization.js';
 
 export const CONSUMERS_FORBIDDEN_MESSAGE =
   'Você não tem permissão para acessar os clientes deste estabelecimento.';
-
-const ROLES_WITH_CONSUMER_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
-  EstablishmentRole.DONO,
-]);
 
 export function canViewConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_VISUALIZAR');
-  if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, [Permission.CONSUMIDORES_VISUALIZAR]);
+  return accessCan(effectiveAccess(role, overrides), 'CONSUMIDORES_VISUALIZAR');
 }
 
 /** Cadastrar exige as duas: quem não pode nem ver a lista também não cadastra. */
@@ -37,25 +40,25 @@ export function canManageConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'CONSUMIDORES_GERENCIAR');
-  if (!ROLES_WITH_CONSUMER_ACCESS.has(role)) return false;
-  return !algumaNegada(overrides, [
-    Permission.CONSUMIDORES_VISUALIZAR,
-    Permission.CONSUMIDORES_GERENCIAR,
-  ]);
+  return accessCan(effectiveAccess(role, overrides), 'CONSUMIDORES_GERENCIAR');
 }
 
 export const CONSUMERS_MERGE_FORBIDDEN_MESSAGE = 'Só o dono do estabelecimento unifica cadastros de clientes.';
 
+/** Só o dono, com a lista dele literal; nenhuma concessão unifica. */
+const UNIFICAR: LegacyAction = {
+  grants: null,
+  ownerDenials: [Permission.CONSUMIDORES_VISUALIZAR, Permission.CONSUMIDORES_GERENCIAR],
+};
+
 /**
- * Unificar cadastros: SÓ o dono (decisão do responsável, 19/11/2026), nem
- * com permissão concedida ao gerente. Um `DENIED` do próprio dono em
- * visualizar ou gerenciar clientes tira também a unificação.
+ * Unificar cadastros: SÓ o dono, nem com permissão concedida ao gerente. Um
+ * `DENIED` do próprio dono em visualizar ou gerenciar clientes tira também a
+ * unificação.
  */
 export function canMergeConsumers(
   role: EstablishmentRole,
   overrides: readonly PermissionOverrideLike[] = [],
 ): boolean {
-  if (role !== EstablishmentRole.DONO) return false;
-  return !algumaNegada(overrides, [Permission.CONSUMIDORES_VISUALIZAR, Permission.CONSUMIDORES_GERENCIAR]);
+  return accessAllows(effectiveAccess(role, overrides), UNIFICAR);
 }
