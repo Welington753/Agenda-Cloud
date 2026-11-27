@@ -1,6 +1,6 @@
 # Plano: permissões individuais, autorização pontual e caixas independentes
 
-Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; implementação iniciada (etapa 1, ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
+Data: 26/11/2026, revisão 4. Situação: decisões de negócio aprovadas em 26/11/2026; etapa 1 em andamento (Vendas e Estoque mesclados, Agenda em revisão; ver "Estado e retomada" no fim). Nada foi migrado ou publicado.
 
 Protótipo: `AgendaCloud-operacoes/prototipos/pdv-nova-venda/index.html`, fora do repositório (tela "Fluxo e decisões" e cenário de exemplo). A seção 9 lista o que o protótipo ainda mostra diferente desta revisão.
 
@@ -595,42 +595,58 @@ O protótipo ainda mostra a versão anterior destes pontos. Ele não foi alterad
 
 Atualizado em 27/11/2026.
 
-A etapa 1 sai em PRs encadeados, um por área. Cada um parte do head do anterior e só é mesclado depois dele.
+A etapa 1 sai em PRs, um por área, sem mudança de comportamento. Cada PR parte da integração depois que o anterior foi mesclado.
 
-| PR | Branch | Base do PR | Worktree local | Head | CI |
-|---|---|---|---|---|---|
-| #154 Vendas | `refactor/permissoes-base-vendas` | `integration/nestjs-typeorm-frontend` (`2bb961f`) | `C:/wt/perm-base` | ver o PR | ver o PR |
-| Estoque | `refactor/permissoes-base-estoque` | `refactor/permissoes-base-vendas` (`93f7d7b`), até o #154 ser mesclado | `C:/wt/perm-estoque` | ver o PR | ver o PR |
+| PR | Branch | Situação | Worktree local |
+|---|---|---|---|
+| #154 Vendas e base comum | `refactor/permissoes-base-vendas` | mesclado em 27/11/2026 como `be267cc` (head `93f7d7b`, CI 45985468550) | `C:/wt/perm-base` |
+| #155 Estoque | `refactor/permissoes-base-estoque` | mesclado em 27/11/2026 como `264d31d` (head `0dd86ab`, CI do PR com base na integração 45989781076) | `C:/wt/perm-estoque` |
+| Agenda e disponibilidade | `refactor/permissoes-base-agenda` | aberto para revisão, base `integration/nestjs-typeorm-frontend` (`264d31d`); head e CI no PR | `C:/wt/perm-agenda` |
 
-As duas worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. Depois que o #154 for mesclado, a base do PR de Estoque muda para a integração e o diff fica só com o que é de Estoque.
+As worktrees têm `node_modules` como junções para `C:/wt/vendas-pr4`; isso só existe neste computador. As branches dos PRs mesclados continuam no remoto. A referência local `backup/permissoes-base-estoque-450cd2f` (em `C:/wt/perm-estoque`) guarda o head anterior ao rebase do Estoque.
 
-### PR #154: base comum e Vendas
+### Mesclados: #154 (base comum e Vendas) e #155 (Estoque)
+
+- `backend/src/common/access-evaluation.ts`: base comum do modelo LEGADO (`effectiveAccess`, `accessCan`, `legacyGrantedPermissions`, `requiredFor`).
+- `sales/sales-access.ts` e `stock/stock-access.ts` decidem só pela base comum, com as mesmas assinaturas e mensagens.
+- Equivalência: `sales-access.equivalence.spec.ts` (referência congelada de `4e0d841`) e `stock-access.equivalence.spec.ts` (referência de `01a3c86`, igual ao piloto), com casos exaustivos, lote de semente fixa, guarda de política `can*` nova e mutantes.
+- A correção do teste lento do lote sorteado (`93f7d7b`) entrou pelo #154; o #155 não a repete.
+- O retarget do #155 para a integração não dispara o workflow; o PR foi fechado e reaberto para gerar o run do PR (45989781076) sobre a base nova.
+
+### PR de Agenda e disponibilidade
 
 - **Feito:**
-  - `backend/src/common/access-evaluation.ts`: base comum do modelo LEGADO (`effectiveAccess`, `accessCan`, `legacyGrantedPermissions`, `requiredFor`), sem mudança de regra;
-  - `backend/src/sales/sales-access.ts` passa a decidir só pela base comum, com as mesmas assinaturas;
-  - `backend/src/common/access-evaluation.spec.ts`: a base reproduz `managerCan`, `receptionistCan` e o `algumaNegada` do dono para todas as permissões de gerente;
-  - `backend/src/sales/sales-access.equivalence.spec.ts`: referência congelada de `4e0d841`, com equivalência por ação e alcance (própria, de outra pessoa, todas) nas 4 × 2 × 4⁶ combinações e num lote de 20.000 casos com concessões ignoradas pelo papel. Uma guarda reprova política `can*` nova sem caso. Um teste de mutação manual (receber de outra pessoa sem a consulta geral) foi detectado;
-  - `backend/src/common/access-evaluation.spec.ts` (commit `93f7d7b`, vindo do PR de Estoque em 27/11/2026): o lote sorteado acumula as diferenças e afirma uma vez. Antes, com um `expect` por comparação, ele passava de 5 s quando toda a bateria rodava em paralelo neste computador. Semente, sorteios e comparações são os mesmos; um mutante temporário na referência (dono sem as dependências) foi apanhado pelo lote e desfeito.
-- **Testes executados localmente:** `vitest run src/common src/sales src/team src/accounts src/stock` (20 arquivos, 202 testes), `test:e2e` de vendas (12), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou. O resultado do CI no head atual fica registrado no PR.
+  - `common/access-evaluation.ts`: `LegacyAction` e `accessAllows`, para ações em que a lista de DENIED do dono difere das dependências exigidas do gerente, ou em que um dos lados não faz a ação. `accessCan` e o resto da base não mudaram;
+  - `appointments/appointment-access.ts`: ver, criar, cancelar, remarcar, andamento, ver e tratar solicitações e avisos decidem só por `accessAllows(effectiveAccess(role, overrides), …)`. As listas do dono continuam literais: ver a agenda, cancelar e o andamento não olham `PROFISSIONAIS_VISUALIZAR` no dono, mas o gerente precisa dela concedida. Tratar solicitações continua só do gerente; os avisos, só do dono;
+  - `availability/availability-access.ts`: a consulta de horários passa pela base, com as três permissões concedidas para o gerente e nenhuma negada para o dono;
+  - o recorte do gerente (contato e preço na agenda, preço na consulta de horários) saiu de `appointments.service.ts` e `availability.service.ts` para `canSeeAppointmentContact`, `canSeeAppointmentPrices` e `canSeeAvailabilityPrices`, pela base. Só o gerente tem recorte; o dono vê tudo, como antes. Na revisão, o cálculo dos preços da consulta de horários saiu do corpo de `consult` para a função pura `precosParaQuemPediu` (`availability.service.ts`), com o mesmo código, para ser testado campo a campo;
+  - `appointments/appointment-access.equivalence.spec.ts`: referência congelada das regras em `be267cc` (iguais a `8f71335`, o piloto), só com listas literais. Compara uma impressão de pares (ação, alcance), com alcance "todos", "só solicitações pendentes" (cancelar e confirmar de quem só trata solicitações) e "próprios" (agenda do profissional ligado e as três ações opt-in). Os casos combinam os quatro papéis, o gerente confirmado ou não e o profissional ausente, ativo ou inativo. Há três grupos exaustivos com 4⁶, 4⁶ e 4⁵ combinações, num total de 90.112 casos, e um lote de 10.000 casos de semente fixa com todas as permissões. Uma guarda reprova política `can*` nova sem caso;
+  - o mesmo spec roda quinze mutantes, entre eles dono com as dependências do gerente, dono tratando solicitações, gerente com avisos, recepcionista ou funcionário vendo a agenda de todos, gerente não confirmado ou profissional inativo com agenda própria e ação própria sem GRANTED. Também roda a política lida sem `effectiveOverrides`. Todos são apanhados. Uma mutação manual no arquivo real (o dono passa a exigir `PROFISSIONAIS_VISUALIZAR` para ver a agenda) reprovou o spec e foi desfeita;
+  - campos devolvidos (acrescentado na revisão): o mesmo spec compara a resposta inteira de `recortarParaQuemPediu` e de `precosParaQuemPediu` com a transformação congelada de `be267cc`, campo a campo (preço total e por serviço, observações, telefone, `hidden`, `totalPriceCents`, `priceHidden`), em todas as combinações de `AGENDA_VISUALIZAR`, `PROFISSIONAIS_VISUALIZAR`, `CONSUMIDORES_VISUALIZAR` e `RECEBIMENTOS_VISUALIZAR` nos quatro papéis, confirmado ou não, com e sem serviço sob consulta. Os quatro desfechos do recorte (nada, só preço, só contato, os dois) aparecem, e a vista original não é alterada. Duas mutações temporárias (preço por serviço sem recorte; `priceHidden` sempre falso) foram apanhadas e desfeitas. Quais registros cada um recebe (só pendentes na lista de solicitações, a agenda do profissional ligado, outro estabelecimento como 404) e os campos com o banco real continuam nos `db-e2e` já existentes (`team-manager-postgres`, `team-access-postgres`, `appointments-postgres`, `isolamento-estabelecimentos-postgres`), que o CI roda.
+- **Solicitações, para não confundir os dois acessos:**
+  - `canHandleBookingRequests` (`SOLICITACOES_TRATAR`) é só do gerente e dá acesso restrito: em `POST /tenants/:tenantId/appointments/:id/cancel` (`cancel`) recusa, com a reserva travada, qualquer reserva que não esteja `PENDING`; em `POST …/:id/confirm` (`changeStatus`) só confirma, e confirmar só sai de `PENDING` pela tabela de transições. Iniciar, concluir, falta e remarcar continuam fora;
+  - o dono não usa essa política. Ele vê a lista por `GET /tenants/:tenantId/booking-requests` (`listPending`, `canViewBookingRequests`, com a lista do dono de ver a agenda), confirma pelo andamento geral (`canManageAppointmentStatus`) e recusa pelo cancelamento geral (`canCancelAppointments`), que valem para qualquer reserva, pendente ou não. O gerente com o andamento ou o cancelamento gerais também age sobre qualquer reserva.
+- **Sem mudança:** o motor de horários, as regras de agendamento e as consultas de disponibilidade. Seguem em `resolveAuthorizedTenant`, como antes, o vínculo, a situação do estabelecimento, o acesso comercial, o recurso `AGENDA` e o isolamento por estabelecimento. Nenhuma migration.
+- **Não convertido, fica para a etapa de Equipe:** a agenda própria e as permissões de funcionário continuam com as regras antigas, fora da base comum. O spec de Agenda só as congela como guarda (a impressão "próprios" compara o código atual, não convertido, com a referência). São elas:
+  - `team/staff-access.ts`: `canViewOwnAgenda` (funcionário sempre, gerente só confirmado), `staffPermissionGranted` e `staffGrantedPermissions` (`ATENDIMENTO_PROPRIO_INICIAR`, `…_CONCLUIR`, `…_FALTA` e `COMISSOES_PROPRIAS_VISUALIZAR`), `canManageTeam`, `grantableStaffPermissions` e `grantableManagerPermissions`;
+  - `team/my-agenda.service.ts`: a conferência do profissional ligado e ativo e o filtro da agenda e das ações pelo `professionalId` do vínculo;
+  - `auth/session-areas.ts` (área `AGENDA_PROPRIA_VER`) e a linha correspondente de `accounts/tenant-effective-access.ts`.
+- **Comportamento antigo questionável, registrado e não corrigido nesta etapa:**
+  - a confirmação pelo gerente que só trata solicitações depende só da tabela de transições (confirmar sai apenas de `PENDING`); o cancelamento tem a checagem explícita de `PENDING`, a confirmação não. Se a tabela mudar, esse gerente passaria a confirmar outros estados;
+  - o recorte de contato e preço vale só para `GERENTE` (`role !== GERENTE` vê tudo). Hoje recepcionista e funcionário não chegam às rotas da agenda de todos, mas uma etapa que abra a agenda a outros papéis precisa rever o recorte junto;
+  - o gerente que só trata solicitações recebe a lista sem o telefone do cliente, salvo com `CONSUMIDORES_VISUALIZAR`;
+  - o dono com `AGENDA_GERENCIAR` negada e o cancelamento liberado consegue recusar uma solicitação, mas não confirmá-la, porque não existe caminho de solicitações próprio do dono.
+- **Testes executados localmente:**
+  - `vitest run` de `src/common`, `appointments`, `availability`, `sales`, `stock`, `team`, `accounts`, `auth`, `payments`, `dashboard` e `push`: 55 arquivos, 770 testes, inclusive as equivalências de Vendas e Estoque;
+  - `test:e2e` de agenda, disponibilidade, agendamento público, avisos e equipe: 80 testes;
+  - `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`.
 
-### PR de Estoque (depende do #154)
-
-- **Feito:**
-  - `backend/src/stock/stock-access.ts` passa a decidir só pela base comum (`accessCan(effectiveAccess(role, overrides), …)`), com as mesmas assinaturas, mensagens e padrão `overrides = []`. `ESTOQUE_GERENCIAR` continua uma permissão só; a divisão dela é da etapa do modelo individual;
-  - `backend/src/stock/stock-access.equivalence.spec.ts`: referência congelada de `stock-access.ts` em `01a3c86` (igual a `8f71335`, o piloto), só com listas literais. Compara consultar e operar nas 4 × 2 × 4⁴ combinações das duas permissões de estoque e de duas vizinhas (`VENDAS_REGISTRAR`, da lista da recepcionista, e `VENDAS_VISUALIZAR`), e num lote de 20.000 casos de semente fixa com todas as permissões, concessões conflitantes e ignoradas, gerente confirmado ou não. Uma guarda reprova política `can*` nova sem caso;
-  - o mesmo spec roda cinco mutantes da política (recepcionista passa a ver, operar sem a consulta, GRANTED vencendo DENIED, dono ignorando DENIED na dependência, funcionário passando a operar) e a política lida sem `effectiveOverrides`; todos precisam ser apanhados. Uma mutação manual no arquivo real (`canManageStock` exigindo só a consulta) também reprovou o spec e foi desfeita;
-- **Sem mudança:** o adicional `ESTOQUE` e o isolamento seguem em `resolveAuthorizedTenant` (`stock-common.ts`). As recusas da saída manual por venda com Vendas ligado (409 `USE_VENDAS`) e do estorno de baixa ligada a venda (409 `BAIXA_DE_VENDA`) seguem em `stock-movements.service.ts`. Nenhum desses arquivos mudou.
-- **Testes executados localmente:** `vitest run src/stock src/common src/sales src/team src/accounts src/auth` (39 arquivos, 361 testes, inclusive a equivalência de Vendas), `test:e2e` de estoque e vendas (30), `npm run typecheck`, `tsc -p tsconfig.build.json` e `npm run lint`, todos sem falha. O `db-e2e` não foi executado: nenhum SQL mudou.
-- **CI:** um PR com base em outra branch não dispara o workflow sozinho; ele é disparado por `workflow_dispatch` na branch de Estoque. O resultado fica registrado no PR.
-
-- **CI de Estoque:** o resultado do head atual está num comentário no #155.
-
-### Ordem de integração
-
-A correção do teste lento está no #154 desde 27/11/2026, e a branch de Estoque foi refeita sobre o head novo sem repeti-la. Mesclar primeiro o #154, depois mudar a base do #155 para a integração, conferir o diff (só Estoque) e o CI, e só então mesclar o #155.
+  Tudo passou. Depois da revisão (teste de campos e `precosParaQuemPediu`), a mesma bateria mais `src/public-booking`: 56 arquivos, 777 testes; os 80 e2e, o typecheck, o build e o lint de novo. O `db-e2e` não foi executado localmente, porque nenhum SQL mudou; o CI do PR o roda. O resultado do CI no head fica registrado no PR.
 
 ### Resto da etapa 1
 
-- **Não feito:** converter agenda (`appointments/appointment-access.ts`, `appointments.service.ts`, `availability.service.ts`), recebimentos (`payments/payment-access.ts`), clientes (`consumers/consumer-access.ts`, `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe; a impressão de acesso geral (`accessFingerprint`) para todas as áreas; o `db-e2e` de alcance real sobre a cópia.
-- **Próximo passo concreto:** depois da revisão do PR de Estoque, a próxima área num PR próprio, a partir do head dele, com spec de equivalência no mesmo molde (`grep -rln "managerCan(\|receptionistCan(" backend/src`).
+- **Não feito:**
+  - converter recebimentos (`payments/payment-access.ts`), clientes (`consumers/consumer-access.ts` e o `veDinheiro` de `consumer-profile.service.ts`), serviços (`services/service-access.ts`), profissionais (`professionals/professional-access.ts`), comissões e equipe, incluindo a agenda própria e `staffCan`;
+  - a impressão de acesso geral (`accessFingerprint`) para todas as áreas;
+  - o `db-e2e` de alcance real sobre a cópia.
+- **Próximo passo concreto:** revisar e mesclar o PR de Agenda. Depois, a próxima área num PR próprio, a partir da integração, com spec de equivalência no mesmo molde (`grep -rn "managerCan(\|receptionistCan(" backend/src`).
