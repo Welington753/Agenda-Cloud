@@ -1,0 +1,174 @@
+// Política de acesso aos agendamentos (Lote 6D.5) — função pura, sem Nest e
+// sem banco, no mesmo molde de availability-access.ts.
+//
+// POR QUE SÓ DONO: mesma justificativa dos lotes anteriores. O schema já tem
+// `AGENDAMENTO_CRIAR` e `AGENDA_VISUALIZAR`, mas não existe tabela de
+// permissões padrão por papel — inferir daqui o que GERENTE ou
+// RECEPCIONISTA podem fazer seria inventar autorização. Ampliar é decisão de
+// um lote de papéis, não deste.
+//
+// QUAIS `DENIED` SÃO PERTINENTES, e só no sentido que RESTRINGE (nenhum
+// `GRANTED` amplia nada):
+//
+// - ver a agenda: `AGENDA_VISUALIZAR` — a listagem É a agenda do dia;
+// - criar: além de `AGENDA_VISUALIZAR` (criar exige enxergar o que já está
+//   marcado), `AGENDAMENTO_CRIAR`, `PROFISSIONAIS_VISUALIZAR` (escolher de
+//   quem é a agenda), `SERVICOS_VISUALIZAR` (escolher o serviço) e
+//   `CONSUMIDORES_VISUALIZAR` (escolher o cliente). Um DENIED em qualquer
+//   uma delas impede a reserva, porque a reserva usa todas.
+// - cancelar (Lote 6D.6): `AGENDA_VISUALIZAR` (achar a reserva) e
+//   `AGENDAMENTO_CANCELAR`. NÃO exige `SERVICOS_VISUALIZAR` nem
+//   `PROFISSIONAIS_VISUALIZAR`: cancelar não escolhe serviço nem
+//   profissional, e precisa funcionar mesmo depois de o serviço ou o
+//   profissional da reserva ter sido desativado.
+// - remarcar (Lote 6D.6): `AGENDA_VISUALIZAR`, `AGENDAMENTO_EDITAR` e também
+//   `PROFISSIONAIS_VISUALIZAR` e `SERVICOS_VISUALIZAR` — remarcar consulta a
+//   jornada do profissional e a elegibilidade do serviço para achar os
+//   horários. NÃO exige `CONSUMIDORES_VISUALIZAR`: o cliente da reserva é
+//   preservado, nunca reescolhido.
+// - confirmar, iniciar, concluir e registrar falta (Lote 6D.7):
+//   `AGENDA_VISUALIZAR` (achar a reserva) e `AGENDA_GERENCIAR` (operar a
+//   agenda). Não escolhem serviço, profissional nem cliente, então não exigem
+//   as permissões de visualizar esses cadastros — e precisam funcionar mesmo
+//   com o serviço ou o profissional desativados depois da reserva.
+//
+// GERENTE (ver common/manager-permissions.ts): cada ação vale só com a
+// permissão correspondente CONCEDIDA pelo dono, com as dependências dela. O
+// nome do papel não libera nada.
+//
+// SOLICITAÇÕES: consultar os pedidos que aguardam resposta e tratá-los
+// (confirmar ou recusar uma reserva ainda `PENDING`). Para o dono, valem as
+// políticas que sempre valeram (ver a agenda; confirmar pelo andamento,
+// recusar pelo cancelamento). Para o gerente, as permissões próprias
+// `SOLICITACOES_*`: tratar solicitações não dá o andamento nem o
+// cancelamento da agenda inteira.
+//
+// Todos os valores já existem no enum real — nenhuma permissão nova
+// (`AGENDAMENTO_CANCELAR` e `AGENDAMENTO_EDITAR` já estão em
+// entities/enums/permission.enum.ts desde o Lote 3).
+import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
+import { Permission } from '../entities/enums/permission.enum.js';
+import { algumaNegada, type PermissionOverrideLike } from '../common/tenant-authorization.js';
+import { managerCan } from '../common/manager-permissions.js';
+
+export const APPOINTMENTS_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para acessar a agenda deste estabelecimento.';
+
+export const APPOINTMENT_CREATE_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para criar agendamentos neste estabelecimento.';
+
+export const APPOINTMENT_CANCEL_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para cancelar agendamentos neste estabelecimento.';
+
+export const APPOINTMENT_STATUS_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para alterar o andamento dos atendimentos neste estabelecimento.';
+
+export const APPOINTMENT_RESCHEDULE_FORBIDDEN_MESSAGE =
+  'Você não tem permissão para remarcar agendamentos neste estabelecimento.';
+
+const ROLES_WITH_AGENDA_ACCESS: ReadonlySet<EstablishmentRole> = new Set([
+  EstablishmentRole.DONO,
+]);
+
+const PERMISSOES_PARA_VER: readonly Permission[] = [Permission.AGENDA_VISUALIZAR];
+
+const PERMISSOES_PARA_CRIAR: readonly Permission[] = [
+  Permission.AGENDA_VISUALIZAR,
+  Permission.AGENDAMENTO_CRIAR,
+  Permission.PROFISSIONAIS_VISUALIZAR,
+  Permission.SERVICOS_VISUALIZAR,
+  Permission.CONSUMIDORES_VISUALIZAR,
+];
+
+const PERMISSOES_PARA_CANCELAR: readonly Permission[] = [
+  Permission.AGENDA_VISUALIZAR,
+  Permission.AGENDAMENTO_CANCELAR,
+];
+
+const PERMISSOES_PARA_REMARCAR: readonly Permission[] = [
+  Permission.AGENDA_VISUALIZAR,
+  Permission.AGENDAMENTO_EDITAR,
+  Permission.PROFISSIONAIS_VISUALIZAR,
+  Permission.SERVICOS_VISUALIZAR,
+];
+
+const PERMISSOES_PARA_ANDAMENTO: readonly Permission[] = [
+  Permission.AGENDA_VISUALIZAR,
+  Permission.AGENDA_GERENCIAR,
+];
+
+export function canViewAppointments(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_VISUALIZAR');
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !algumaNegada(overrides, PERMISSOES_PARA_VER);
+}
+
+export function canCreateAppointments(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CRIAR');
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !algumaNegada(overrides, PERMISSOES_PARA_CRIAR);
+}
+
+export function canCancelAppointments(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_CANCELAR');
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !algumaNegada(overrides, PERMISSOES_PARA_CANCELAR);
+}
+
+export function canRescheduleAppointments(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDAMENTO_EDITAR');
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !algumaNegada(overrides, PERMISSOES_PARA_REMARCAR);
+}
+
+/** Confirmar, iniciar, concluir e registrar falta (Lote 6D.7). */
+export function canManageAppointmentStatus(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'AGENDA_GERENCIAR');
+  if (!ROLES_WITH_AGENDA_ACCESS.has(role)) return false;
+  return !algumaNegada(overrides, PERMISSOES_PARA_ANDAMENTO);
+}
+
+/** Lista de solicitações. Dono: a mesma política de ver a agenda. */
+export function canViewBookingRequests(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_VISUALIZAR');
+  return canViewAppointments(role, overrides);
+}
+
+/** Confirmar ou recusar uma reserva ainda `PENDING` SEM o andamento ou o
+ * cancelamento gerais. Só o gerente com `SOLICITACOES_TRATAR`; o dono trata
+ * pelas políticas gerais. */
+export function canHandleBookingRequests(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  if (role === EstablishmentRole.GERENTE) return managerCan(role, overrides, 'SOLICITACOES_TRATAR');
+  return false;
+}
+
+/** Avisos de solicitação no aparelho: só o DONO neste lote, com a política
+ * de ver a agenda. O gerente não se inscreve nem recebe (o despachante lê os
+ * ajustes gravados, sem a confirmação do dono, e não deve ampliar nada). */
+export function canReceiveBookingAlerts(
+  role: EstablishmentRole,
+  overrides: readonly PermissionOverrideLike[] = [],
+): boolean {
+  return role === EstablishmentRole.DONO && canViewAppointments(role, overrides);
+}
