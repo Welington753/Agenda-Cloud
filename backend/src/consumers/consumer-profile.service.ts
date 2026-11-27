@@ -11,15 +11,16 @@
 //   - NUMERO_PARECIDO: mesma `phone_match_key` com número diferente (9º
 //     dígito ou DDD com zero); chave nula (telefone inválido) nunca agrupa;
 //   - MESMO_NOME: mesmo `name_key`, fora do grupo de telefone.
-// - Preço só para quem vê dinheiro (`recortarParaQuemPediu`); recebimento só
-//   com a consulta de recebimentos e o recurso contratado.
+// - Preço só para quem vê dinheiro (`canSeeAppointmentPrices`, a mesma regra do
+//   preço na agenda); recebimento só com a consulta de recebimentos e o
+//   recurso contratado.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { resolveAuthorizedTenant, type AuthorizedTenant } from '../common/tenant-authorization.js';
 import { FeatureKey } from '../entities/enums/feature-key.enum.js';
 import { linhasDe } from '../common/linhas-de.js';
-import { managerCan } from '../common/manager-permissions.js';
+import { canSeeAppointmentPrices } from '../appointments/appointment-access.js';
 import { canViewPayments } from '../payments/payment-access.js';
 import { featureEnabled } from '../commercial/commercial-gate.js';
 import { dataLocalDe, horaLocalDe } from '../availability/time-zone.js';
@@ -101,9 +102,12 @@ interface LinhaAtiva {
 
 /**
  * O que o histórico mostra para quem pediu. Preço: a mesma regra das
- * respostas de agendamento (`recortarParaQuemPediu`): o dono vê; o gerente
- * só com `RECEBIMENTOS_VISUALIZAR`. Recebimento: a política de recebimentos
- * (`canViewPayments`) e o recurso contratado.
+ * respostas de agendamento (`canSeeAppointmentPrices`, a fonte única do
+ * recorte de preço): o dono vê; o gerente só com `RECEBIMENTOS_VISUALIZAR` e
+ * as dependências. Recebimento: a política de recebimentos (`canViewPayments`)
+ * e o recurso contratado. As duas decidem pela base comum
+ * (docs/plans/permissoes-individuais.md, etapa 1); equivalência em
+ * consumer-access.equivalence.spec.ts.
  */
 export function oQueOHistoricoMostra(
   quem: Pick<AuthorizedTenant, 'role' | 'overrides'>,
@@ -111,8 +115,33 @@ export function oQueOHistoricoMostra(
 ): { veDinheiro: boolean; veRecebimentos: boolean } {
   const overrides = quem.overrides ?? [];
   return {
-    veDinheiro: quem.role !== 'GERENTE' || managerCan(quem.role, overrides, 'RECEBIMENTOS_VISUALIZAR'),
+    veDinheiro: canSeeAppointmentPrices(quem.role, overrides),
     veRecebimentos: recursoDePagamentos && canViewPayments(quem.role, overrides),
+  };
+}
+
+/**
+ * Um item do histórico como sai para quem pediu: o preço total só para quem
+ * vê dinheiro (nulo também quando algum serviço é sob consulta), o
+ * recebimento só para quem vê recebimentos (ausente para os demais) e, em
+ * `hidden`, o que foi escondido. Não altera o item recebido.
+ */
+export function itemDoHistoricoParaQuemPediu(
+  item: AtendimentoResumido & { precos?: (number | null)[] },
+  recebimento: NonNullable<ItemDoHistorico['payment']> | undefined,
+  { veDinheiro, veRecebimentos }: { veDinheiro: boolean; veRecebimentos: boolean },
+): ItemDoHistorico {
+  const hidden: ItemDoHistorico['hidden'] = [];
+  if (!veDinheiro) hidden.push('price');
+  if (!veRecebimentos) hidden.push('payment');
+  const { precos, ...resto } = item;
+  const lista = precos ?? [];
+  const total = lista.length === 0 || lista.some((p) => p === null) ? null : lista.reduce<number>((s, p) => s + (p ?? 0), 0);
+  return {
+    ...resto,
+    priceCents: veDinheiro ? total : null,
+    ...(veRecebimentos ? { payment: recebimento ?? null } : {}),
+    hidden,
   };
 }
 
@@ -467,20 +496,9 @@ export class ConsumerProfileService {
 
     const ultima = pagina.at(-1);
     return {
-      appointments: pagina.map((item) => {
-        const hidden: ItemDoHistorico['hidden'] = [];
-        if (!veDinheiro) hidden.push('price');
-        if (!veRecebimentos) hidden.push('payment');
-        const { precos, ...resto } = item as AtendimentoResumido & { precos?: (number | null)[] };
-        const lista = precos ?? [];
-        const total = lista.length === 0 || lista.some((p) => p === null) ? null : lista.reduce<number>((s, p) => s + (p ?? 0), 0);
-        return {
-          ...resto,
-          priceCents: veDinheiro ? total : null,
-          ...(veRecebimentos ? { payment: recebimentos.get(item.id) ?? null } : {}),
-          hidden,
-        };
-      }),
+      appointments: pagina.map((item) =>
+        itemDoHistoricoParaQuemPediu(item, recebimentos.get(item.id), { veDinheiro, veRecebimentos }),
+      ),
       nextCursor:
         linhas.length > query.limit && ultima ? escreverCursor([ultima.startAt, ultima.id]) : null,
     };
