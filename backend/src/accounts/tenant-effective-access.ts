@@ -32,7 +32,7 @@ import { canManageProfessionals, canViewProfessionals } from '../professionals/p
 import { canManagePublicBooking } from '../public-booking/public-booking-access.js';
 import { canManageServices, canViewServices } from '../services/service-access.js';
 import { canManageTeam, canViewOwnAgenda, staffPermissionGranted } from '../team/staff-access.js';
-import { canManageCommissionRules, canViewCommissions } from '../commissions/commission-access.js';
+import { canManageCommissionRules, canViewCommissions, canViewOwnCommissions } from '../commissions/commission-access.js';
 import { canManageStock, canViewStock } from '../stock/stock-access.js';
 import {
   canAccessSalesHistory,
@@ -109,7 +109,7 @@ export const TENANT_AREAS: readonly { key: string; label: string; policy: Politi
   {
     key: 'AGENDA_PROPRIA_COMISSOES',
     label: 'Ver as próprias comissões',
-    policy: (role, o) => staffPermissionGranted(role, o, 'COMISSOES_PROPRIAS_VISUALIZAR'),
+    policy: canViewOwnCommissions,
   },
 ];
 

@@ -1,6 +1,7 @@
 // A base comum reproduz, para TODAS as permissões de gerente, as regras por
 // papel de antes: `managerCan` (GERENTE), `receptionistCan` (RECEPCIONISTA),
-// `algumaNegada` com as dependências (DONO) e nada para os demais papéis.
+// `algumaNegada` com as dependências (DONO) e nada para os demais papéis; e,
+// no alcance próprio, `staffPermissionGranted` para as permissões de funcionário.
 import { describe, expect, it } from 'vitest';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
 import { Permission } from '../entities/enums/permission.enum.js';
@@ -8,13 +9,17 @@ import { PermissionMode } from '../entities/enums/permission-mode.enum.js';
 import {
   accessAllows,
   accessCan,
+  accessCanOwn,
   effectiveAccess,
   legacyGrantedPermissions,
+  legacyOwnPermissions,
   requiredFor,
   type LegacyAction,
 } from './access-evaluation.js';
 import { MANAGER_PERMISSIONS, MANAGER_PERMISSION_REQUIRES, managerCan, receptionistCan } from './manager-permissions.js';
+import { STAFF_PERMISSIONS } from './staff-permissions.js';
 import { algumaNegada, type PermissionOverrideLike } from './tenant-authorization.js';
+import { staffPermissionGranted } from '../team/staff-access.js';
 
 const PAPEIS = Object.values(EstablishmentRole);
 
@@ -115,5 +120,31 @@ describe('access-evaluation (modelo LEGADO)', () => {
         }
       }
     }
+  });
+
+  it('accessCanOwn reproduz staffPermissionGranted para cada permissão de funcionário, em todos os papéis', () => {
+    const estados = [[], [PermissionMode.GRANTED], [PermissionMode.DENIED], [PermissionMode.GRANTED, PermissionMode.DENIED]];
+    for (const role of PAPEIS) {
+      // Todas as combinações das quatro permissões de funcionário (4⁴).
+      for (let k = 0; k < estados.length ** STAFF_PERMISSIONS.length; k++) {
+        const ov: PermissionOverrideLike[] = [];
+        STAFF_PERMISSIONS.forEach((permission, i) => {
+          for (const mode of estados[Math.floor(k / estados.length ** i) % estados.length]) ov.push({ permission: permission as Permission, mode });
+        });
+        const acesso = effectiveAccess(role, ov);
+        for (const p of STAFF_PERMISSIONS) expect(accessCanOwn(acesso, p), `${role} ${k} ${p}`).toBe(staffPermissionGranted(role, ov, p));
+      }
+    }
+  });
+
+  it('alcance próprio: o dono e a recepcionista nunca; concessões de gerente não entram nele, nem as de funcionário nas de gerente', () => {
+    const tudo = [...MANAGER_PERMISSIONS, ...STAFF_PERMISSIONS].map((p) => ({ permission: p as Permission, mode: PermissionMode.GRANTED }));
+    for (const role of ['DONO', 'RECEPCIONISTA']) {
+      for (const p of STAFF_PERMISSIONS) expect(accessCanOwn(effectiveAccess(role, tudo), p), `${role} ${p}`).toBe(false);
+    }
+    expect(legacyOwnPermissions('GERENTE', tudo)).toEqual(new Set(STAFF_PERMISSIONS));
+    expect(legacyOwnPermissions('PROFISSIONAL', tudo)).toEqual(new Set(STAFF_PERMISSIONS));
+    expect(legacyGrantedPermissions('PROFISSIONAL', tudo).size).toBe(0);
+    expect([...legacyGrantedPermissions('GERENTE', tudo)].some((p) => (STAFF_PERMISSIONS as readonly string[]).includes(p))).toBe(false);
   });
 });

@@ -51,22 +51,11 @@ import {
   canViewAllSales,
 } from '../sales/sales-access.js';
 import { MANAGER_PERMISSIONS, type ManagerPermission } from '../common/manager-permissions.js';
+import { OWN_COMMISSIONS_PERMISSION, STAFF_PERMISSIONS, type StaffPermission } from '../common/staff-permissions.js';
 
-/** Valores novos do enum `permission` (migrations TeamAccess1792886400000 e
- * ProfessionalCommissions1793491200000), fora do enum TypeScript, que espelha
- * a migration inicial. `COMISSOES_PROPRIAS_VISUALIZAR` libera só as PRÓPRIAS
- * comissões (commissions/commission-access.ts); é separada de
- * `COMISSOES_VISUALIZAR`, que só restringe o dono. */
-export const STAFF_PERMISSIONS = [
-  'ATENDIMENTO_PROPRIO_INICIAR',
-  'ATENDIMENTO_PROPRIO_CONCLUIR',
-  'ATENDIMENTO_PROPRIO_FALTA',
-  'COMISSOES_PROPRIAS_VISUALIZAR',
-] as const;
-export type StaffPermission = (typeof STAFF_PERMISSIONS)[number];
-
-/** Concessão que libera as próprias comissões. */
-export const OWN_COMMISSIONS_PERMISSION = 'COMISSOES_PROPRIAS_VISUALIZAR' satisfies StaffPermission;
+// A lista das permissões de funcionário fica em common/staff-permissions.ts,
+// para a base comum usá-la sem importar esta política; reexportada aqui.
+export { OWN_COMMISSIONS_PERMISSION, STAFF_PERMISSIONS, type StaffPermission };
 
 /** Ações que o funcionário pode receber. Confirmar, cancelar, remarcar e
  * criar reservas continuam com o dono. */

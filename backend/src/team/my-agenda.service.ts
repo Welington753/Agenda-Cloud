@@ -27,6 +27,7 @@ import {
   MEMBERSHIP_SUSPENDED_MESSAGE,
   TENANT_NOT_FOUND_MESSAGE,
   effectiveOverrides,
+  type PermissionOverrideLike,
 } from '../common/tenant-authorization.js';
 import type { AppointmentStatus } from '../entities/enums/appointment-status.enum.js';
 import { EstablishmentRole } from '../entities/enums/establishment-role.enum.js';
@@ -38,7 +39,6 @@ import {
   STAFF_ACTIONS,
   STAFF_ACTION_FORBIDDEN_MESSAGE,
   STAFF_PERMISSION_OF_ACTION,
-  OWN_COMMISSIONS_PERMISSION,
   canViewOwnAgenda,
   staffPermissionGranted,
   type OverrideRow,
@@ -47,7 +47,7 @@ import {
 import type { MyAgendaQuery, OwnStatusActionDto } from './team.dto.js';
 import { ITENS_DA_RESERVA_SQL } from '../appointments/appointment-items-sql.js';
 import { commissionReport } from '../commissions/commission-report.js';
-import { OWN_COMMISSIONS_FORBIDDEN_MESSAGE } from '../commissions/commission-access.js';
+import { OWN_COMMISSIONS_FORBIDDEN_MESSAGE, canViewOwnCommissions } from '../commissions/commission-access.js';
 import { mesDaData } from '../dashboard/dashboard-period.js';
 import type { DashboardQueryDto } from '../dashboard/dashboard.dto.js';
 
@@ -148,7 +148,7 @@ export class MyAgendaService {
       professional: { id: linha.professional_id, name: linha.professional_name ?? '' },
       timezone: linha.timezone,
       allowed,
-      ownCommissions: staffPermissionGranted(linha.role, valem, OWN_COMMISSIONS_PERMISSION),
+      ownCommissions: canViewOwnCommissions(linha.role, valem as readonly PermissionOverrideLike[]),
     };
   }
 
